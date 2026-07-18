@@ -1770,6 +1770,13 @@
     }
     return `_${a.toString(36)}${b.toString(36)}`.slice(0, 18);
   }
+  function simplIdentifier(value) {
+    const identifier = String(value || "")
+      .replace(/[^A-Za-z0-9_]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return /^[A-Za-z_]/.test(identifier) ? identifier : `_${identifier}`;
+  }
   function contractRangeCount(row) {
     if (!row.range || !row.itemId) return 1;
     const item = state.items.find((entry) => entry.id === row.itemId),
@@ -1826,13 +1833,21 @@
           `“${value}” is assigned more than once (${prior.widget} and ${row.widget}).`,
         );
       else paths.set(value, row);
-      const instanceName = parts.slice(0, -1).join("."),
-        attributeName = parts[parts.length - 1],
+      const instancePath = parts.slice(0, -1).join("."),
+        instanceName = simplIdentifier(instancePath),
+        attributeName = simplIdentifier(parts[parts.length - 1]),
         key = instanceName,
         component = components.get(key) || {
           instanceName,
+          instancePath,
           rows: [],
         };
+      if (component.instancePath !== instancePath) {
+        errors.push(
+          `“${instancePath}” and “${component.instancePath}” both become the SIMPL name “${instanceName}”. Rename one of the contract paths.`,
+        );
+        return;
+      }
       component.rows.push({ ...row, attributeName });
       components.set(key, component);
     });
