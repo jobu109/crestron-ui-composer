@@ -1608,6 +1608,27 @@
             value: String(item.properties[range.baseKey] || ""),
             itemId: item.id,
             range: true,
+            rangeCount: Math.max(
+              1,
+              Math.min(
+                100,
+                Math.round(
+                  Number(
+                    item.properties.maxItems ||
+                      item.properties.maxCards ||
+                      item.properties.maxSlides ||
+                      item.properties.maxButtons ||
+                      item.properties.maxCount ||
+                      item.properties.defaultCount ||
+                      1,
+                  ) || 1,
+                ),
+              ),
+            ),
+            rangeIncrement: Math.max(
+              1,
+              Math.round(Number(item.properties[range.incrementKey] || 1) || 1),
+            ),
             setMode(mode) {
               item.properties.bindingMode = mode;
             },
@@ -1928,6 +1949,7 @@
     $("contract-open").disabled = !!result.errors.length || !result.rows.length;
   }
   async function saveContractEditorProject(openAfterSave) {
+    if (!approveExport()) return;
     const result = contractBuildData();
     if (result.errors.length) {
       alert(result.errors.join("\n"));
@@ -2525,27 +2547,65 @@
       add("error", device.name + " does not support CH5 projects.");
     if (device.supportsCh5 == null)
       add("warning", device.name + " has not been verified for CH5.");
+    if (!state.pages.length) add("error", "The project has no pages.");
+    if (!state.pages.some((page) => page.id === state.activePage))
+      add("error", "The active page no longer exists.");
+    const pageIds = new Set(),
+      pageNames = new Set();
     state.pages.forEach((page) => {
-      if (page.bindingMode !== "none") {
-        if (!String(page.binding || "").trim())
-          add("error", `Page “${page.name}” has no external selection signal.`);
-        else if (
-          page.bindingMode === "join" &&
-          !/^\d+$/.test(String(page.binding))
-        )
-          add("error", `Page “${page.name}” has an invalid digital join.`);
-        else {
-          const k = key("digital", "input", page.binding);
-          if (used.has(k))
-            add(
-              "warning",
-              `Page “${page.name}” shares ${page.bindingMode} signal ${page.binding} with ${used.get(k)}.`,
-            );
-          else used.set(k, `page “${page.name}”`);
-        }
-      }
+      if (!String(page.name || "").trim()) add("error", "A page has no name.");
+      if (pageIds.has(page.id))
+        add("error", `Page ID “${page.id}” is duplicated.`);
+      pageIds.add(page.id);
+      const normalizedName = String(page.name || "")
+        .trim()
+        .toLowerCase();
+      if (pageNames.has(normalizedName))
+        add("warning", `Page name “${page.name}” is duplicated.`);
+      pageNames.add(normalizedName);
+      if (page.bindingMode !== "none" && !String(page.binding || "").trim())
+        add("error", `Page “${page.name}” has no external selection signal.`);
     });
+
+    const assetIds = new Set();
+    state.assets.forEach((asset) => {
+      if (!asset.id)
+        add("error", `Asset “${asset.name || "Unnamed"}” has no ID.`);
+      else if (assetIds.has(asset.id))
+        add("error", `Asset ID “${asset.id}” is duplicated.`);
+      else assetIds.add(asset.id);
+      if (!asset.dataUrl || !/^data:/i.test(asset.dataUrl))
+        add("error", `Asset “${asset.name || asset.id}” has no embedded data.`);
+    });
+    const checkAsset = (assetId, owner) => {
+      if (assetId && !assetIds.has(assetId))
+        add("error", `${owner} references missing asset “${assetId}”.`);
+    };
+    state.pages.forEach((page) =>
+      checkAsset(page.backgroundAsset, `Page “${page.name}”`),
+    );
+    state.pageTemplates.forEach((template) => {
+      checkAsset(template.backgroundAsset, `Page template “${template.name}”`);
+      (template.items || []).forEach((item) => {
+        checkAsset(item.assetId, `Page template “${template.name}”`);
+        checkAsset(item.backgroundAsset, `Page template “${template.name}”`);
+      });
+    });
+    state.reusables.forEach((reusable) =>
+      (reusable.items || []).forEach((item) => {
+        checkAsset(item.assetId, `Reusable “${reusable.name}”`);
+        checkAsset(item.backgroundAsset, `Reusable “${reusable.name}”`);
+      }),
+    );
+
+    const unsupported = new Set(device.unsupportedComponents || []),
+      supported = device.supportedComponents
+        ? new Set(device.supportedComponents)
+        : null,
+      capabilities = new Set(device.capabilities || []);
     state.items.forEach((item) => {
+      if (!item.master && !pageIds.has(item.pageId))
+        add("error", `“${item.name}” belongs to a page that no longer exists.`);
       if (
         item.x < 0 ||
         item.y < 0 ||
@@ -2558,12 +2618,23 @@
         );
       if (item.w < 20 || item.h < 20)
         add("error", `“${item.name}” is smaller than the editor minimum.`);
+      if (![item.x, item.y, item.w, item.h, item.z].every(Number.isFinite))
+        add(
+          "error",
+          `“${item.name}” has invalid position, size, or z-index data.`,
+        );
       if (
         item.targetPage &&
         !state.pages.some((page) => page.id === item.targetPage)
       )
         add("error", `“${item.name}” targets a page that no longer exists.`);
-      if (!item.componentId) return;
+      checkAsset(item.assetId, `“${item.name}”`);
+      checkAsset(item.backgroundAsset, `“${item.name}”`);
+      if (!item.componentId) {
+        if (!String(item.source || "").trim())
+          add("error", `“${item.name}” has no custom HTML source.`);
+        return;
+      }
       const definition = window.ComposerRuntime.get(item.componentId);
       if (!definition) {
         add(
@@ -2572,55 +2643,102 @@
         );
         return;
       }
-      const overall =
-        (item.properties && item.properties.bindingMode) || "contract";
-      (definition.signals || []).forEach((signal) => {
-        const binding = item.signalBindings && item.signalBindings[signal.key],
-          value = binding && String(binding.value || "").trim();
-        if (!value) {
-          add("warning", `“${item.name}” has no ${signal.name} binding.`);
-          return;
-        }
-        if (overall === "join" && !/^\d+$/.test(value)) {
+      if (unsupported.has(item.componentId))
+        add("error", `${device.name} does not support “${item.name}”.`);
+      if (supported && !supported.has(item.componentId))
+        add(
+          "warning",
+          `“${item.name}” is not listed as supported by ${device.name}.`,
+        );
+      (definition.requiresCapabilities || []).forEach((capability) => {
+        if (!capabilities.has(capability))
           add(
             "error",
-            `“${item.name}” has invalid ${signal.name} join “${value}”.`,
-          );
-          return;
-        }
-        const k = key(signal.type, signal.direction, value);
-        if (used.has(k))
-          add(
-            "warning",
-            `“${item.name}” ${signal.name} shares ${overall} signal ${value} with ${used.get(k)}.`,
-          );
-        else used.set(k, `“${item.name}” ${signal.name}`);
-      });
-      (definition.addressBindings || []).forEach((address) => {
-        const value = String(
-          (item.properties && item.properties[address.key]) || "",
-        ).trim();
-        if (!value)
-          add("warning", `“${item.name}” has no ${address.name} binding.`);
-        else if (overall === "join" && !/^\d+$/.test(value))
-          add(
-            "error",
-            `“${item.name}” has invalid ${address.name} join “${value}”.`,
-          );
-      });
-      (definition.rangeBindings || []).forEach((range) => {
-        const value = String(
-          (item.properties && item.properties[range.baseKey]) || "",
-        ).trim();
-        if (!value)
-          add("warning", `“${item.name}” has no ${range.name} binding.`);
-        else if (overall === "join" && !/^\d+$/.test(value))
-          add(
-            "error",
-            `“${item.name}” has invalid ${range.name} base join “${value}”.`,
+            `“${item.name}” requires unsupported panel capability “${capability}”.`,
           );
       });
     });
+
+    const expandedSignals = [];
+    collectProjectSignals().forEach((row) => {
+      const value = String(row.value || "").trim(),
+        count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1;
+      if (!value) {
+        add(
+          "warning",
+          `${row.page} · “${row.widget}” has no ${row.name} binding.`,
+        );
+        return;
+      }
+      if (row.mode === "join") {
+        if (
+          !/^\d+$/.test(value) ||
+          Number(value) < 1 ||
+          Number(value) > 65535
+        ) {
+          add(
+            "error",
+            `${row.page} · “${row.widget}” has invalid ${row.name} join “${value}”.`,
+          );
+          return;
+        }
+        for (let index = 0; index < count; index++) {
+          const expandedJoin =
+            Number(value) + index * (row.rangeIncrement || 1);
+          if (expandedJoin > 65535)
+            add(
+              "error",
+              `${row.page} · “${row.widget}” ${row.name} expands beyond join 65535.`,
+            );
+          else expandedSignals.push({ ...row, value: String(expandedJoin) });
+        }
+      } else {
+        if (!/^[A-Za-z_][A-Za-z0-9_.{}-]*$/.test(value)) {
+          add(
+            "error",
+            `${row.page} · “${row.widget}” has invalid ${row.name} contract “${value}”.`,
+          );
+          return;
+        }
+        if (row.range && count > 1 && !/\{n\}|\{index\}/.test(value))
+          add(
+            "error",
+            `${row.page} · “${row.widget}” ${row.name} needs {n} or {index} for ${count} entries.`,
+          );
+        for (let index = 0; index < count; index++)
+          expandedSignals.push({
+            ...row,
+            value: value
+              .replace(/\{n\}/g, String(index + 1))
+              .replace(/\{index\}/g, String(index)),
+          });
+      }
+    });
+    expandedSignals.forEach((row) => {
+      const signalKey = key(row.type, row.direction, row.value),
+        owner = `${row.page} · “${row.widget}” ${row.name}`;
+      if (used.has(signalKey))
+        add(
+          "warning",
+          `${owner} duplicates ${row.mode} signal ${row.value} used by ${used.get(signalKey)}.`,
+        );
+      else used.set(signalKey, owner);
+    });
+    const contractResult = contractBuildData();
+    contractResult.errors.forEach((message) => add("error", message));
+
+    const estimatedBytes = JSON.stringify(project()).length,
+      maximumBytes = Number(device.maximumProjectSizeMb || 0) * 1024 * 1024;
+    if (maximumBytes && estimatedBytes > maximumBytes)
+      add(
+        "error",
+        `Estimated project size ${(estimatedBytes / 1024 / 1024).toFixed(1)} MB exceeds ${device.name} limit of ${device.maximumProjectSizeMb} MB.`,
+      );
+    else if (maximumBytes && estimatedBytes > maximumBytes * 0.85)
+      add(
+        "warning",
+        `Estimated project size is ${(estimatedBytes / maximumBytes).toLocaleString(undefined, { style: "percent", maximumFractionDigits: 0 })} of the ${device.name} limit.`,
+      );
     for (let a = 0; a < state.items.length; a++)
       for (let b = a + 1; b < state.items.length; b++) {
         const x = state.items[a],
