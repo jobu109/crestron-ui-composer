@@ -162,7 +162,18 @@ public partial class MainWindow : Window
         {
             try
             {
-                Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
+                var contractEditor = FindContractEditor();
+                if (contractEditor is null)
+                    throw new FileNotFoundException("Crestron CH5 Contract Editor was not found. Install Contract Editor and try again.");
+                var start = new ProcessStartInfo(contractEditor)
+                {
+                    UseShellExecute = false,
+                    WorkingDirectory = Path.GetDirectoryName(contractEditor) ?? AppContext.BaseDirectory
+                };
+                start.ArgumentList.Add(dialog.FileName);
+                var process = Process.Start(start) ?? throw new InvalidOperationException("Crestron Contract Editor could not be started.");
+                if (process.WaitForExit(1500) && process.ExitCode != 0)
+                    throw new InvalidOperationException($"Crestron Contract Editor exited immediately with code {process.ExitCode}.");
             }
             catch (Exception ex)
             {
@@ -170,6 +181,18 @@ public partial class MainWindow : Window
             }
         }
         Respond(id, true, new { path = dialog.FileName, opened = openAfterSave }, null);
+    }
+
+    private static string? FindContractEditor()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Crestron", "CH5-contract-editor", "CH5-Contract-Editor.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "CH5-contract-editor", "CH5-Contract-Editor.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Crestron", "CH5 Contract Editor", "CH5-Contract-Editor.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Crestron", "CH5 Contract Editor", "CH5-Contract-Editor.exe")
+        };
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static string RecoveryFilePath()
