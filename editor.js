@@ -23,6 +23,14 @@
     reusables: [],
     pageTemplates: [],
     themes: [],
+    contract: {
+      name: "MyCrestronUI",
+      description: "",
+      company: "",
+      client: "",
+      author: "",
+      version: "1.0.0.0",
+    },
     selected: null,
     selectedIds: [],
   };
@@ -66,6 +74,7 @@
       reusables: state.reusables,
       pageTemplates: state.pageTemplates,
       themes: state.themes,
+      contract: state.contract,
     });
   }
   function updateHistoryButtons() {
@@ -196,6 +205,7 @@
     state.reusables = saved.reusables || [];
     state.pageTemplates = saved.pageTemplates || [];
     state.themes = saved.themes || [];
+    state.contract = { ...state.contract, ...(saved.contract || {}) };
     state.selected = null;
     state.selectedIds = [];
     historyIndex = index;
@@ -231,6 +241,10 @@
     state.reusables = p.reusables || [];
     state.pageTemplates = p.pageTemplates || [];
     state.themes = p.themes || [];
+    state.contract = {
+      ...state.contract,
+      ...(p.contract || {}),
+    };
     state.pages = p.pages || [{ ...firstPage }];
     state.activePage = p.activePage || state.pages[0].id;
     state.targetDevice = p.targetDevice || "tsw-1070";
@@ -1593,6 +1607,7 @@
             mode: overall,
             value: String(item.properties[range.baseKey] || ""),
             itemId: item.id,
+            range: true,
             setMode(mode) {
               item.properties.bindingMode = mode;
             },
@@ -1723,6 +1738,234 @@
     ]
       .map((row) => row.map(quote).join(","))
       .join("\r\n");
+  }
+  function stableContractId(value) {
+    let a = 2166136261,
+      b = 2246822519;
+    for (let index = 0; index < value.length; index++) {
+      const code = value.charCodeAt(index);
+      a = Math.imul(a ^ code, 16777619) >>> 0;
+      b = Math.imul(b ^ code, 3266489917) >>> 0;
+    }
+    return `_${a.toString(36)}${b.toString(36)}`.slice(0, 18);
+  }
+  function contractRangeCount(row) {
+    if (!row.range || !row.itemId) return 1;
+    const item = state.items.find((entry) => entry.id === row.itemId),
+      p = (item && item.properties) || {},
+      preferred = [
+        p.maxItems,
+        p.maxCards,
+        p.maxSlides,
+        p.maxButtons,
+        p.maxCount,
+        p.defaultCount,
+      ].find((value) => Number(value) > 0);
+    return Math.max(1, Math.min(100, Math.round(Number(preferred) || 1)));
+  }
+  function expandedContractSignals() {
+    const rows = [];
+    collectProjectSignals()
+      .filter(
+        (row) => row.mode === "contract" && String(row.value || "").trim(),
+      )
+      .forEach((row) => {
+        const count = /\{n\}|\{index\}/.test(row.value)
+          ? contractRangeCount(row)
+          : 1;
+        for (let index = 0; index < count; index++)
+          rows.push({
+            ...row,
+            value: String(row.value)
+              .replace(/\{n\}/g, String(index + 1))
+              .replace(/\{index\}/g, String(index)),
+          });
+      });
+    return rows;
+  }
+  function contractBuildData() {
+    const rows = expandedContractSignals(),
+      errors = [],
+      paths = new Map(),
+      components = new Map();
+    rows.forEach((row) => {
+      const value = row.value.trim(),
+        parts = value.split(".").filter(Boolean);
+      if (parts.length < 2) {
+        errors.push(`“${value}” needs a component and signal name.`);
+        return;
+      }
+      if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(value)) {
+        errors.push(`“${value}” contains unsupported contract characters.`);
+        return;
+      }
+      const prior = paths.get(value);
+      if (prior)
+        errors.push(
+          `“${value}” is assigned more than once (${prior.widget} and ${row.widget}).`,
+        );
+      else paths.set(value, row);
+      const instanceName = parts.slice(0, -1).join("."),
+        attributeName = parts[parts.length - 1],
+        key = instanceName,
+        component = components.get(key) || {
+          instanceName,
+          rows: [],
+        };
+      component.rows.push({ ...row, attributeName });
+      components.set(key, component);
+    });
+    const contractId = stableContractId(`contract:${state.contract.name}`),
+      cceComponents = [],
+      specifications = [];
+    components.forEach((component) => {
+      const componentId = stableContractId(
+          `component:${component.instanceName}`,
+        ),
+        commands = [],
+        feedbacks = [],
+        byAttribute = new Map();
+      component.rows.forEach((row) => {
+        const id = stableContractId(
+            `${row.direction}:${row.type}:${row.value}`,
+          ),
+          entry = {
+            Errors: [],
+            name: row.attributeName,
+            siblingId: "",
+            dataType:
+              row.type === "digital" ? 1 : row.type === "analog" ? 2 : 3,
+            notes: `${row.page} · ${row.widget} · ${row.name}`,
+            id,
+            parentId: componentId,
+            attributeType: row.direction === "output" ? 0 : 1,
+          },
+          sibling = byAttribute.get(`${row.type}:${row.attributeName}`);
+        if (sibling) {
+          entry.siblingId = sibling.id;
+          sibling.entry.siblingId = id;
+        } else
+          byAttribute.set(`${row.type}:${row.attributeName}`, {
+            id,
+            entry,
+          });
+        (row.direction === "output" ? commands : feedbacks).push(entry);
+      });
+      cceComponents.push({
+        Errors: [],
+        parentId: contractId,
+        id: componentId,
+        name: component.instanceName,
+        description: `Generated from Crestron UI Composer (${component.rows[0]?.page || "Project"})`,
+        commands,
+        feedbacks,
+        specifications: [],
+      });
+      specifications.push({
+        Errors: [],
+        parentId: contractId,
+        id: stableContractId(`specification:${component.instanceName}`),
+        componentId,
+        instanceName: component.instanceName,
+        numberOfInstances: 1,
+      });
+    });
+    const contract = {
+      Errors: [],
+      id: contractId,
+      name: state.contract.name,
+      description: state.contract.description,
+      company: state.contract.company,
+      client: state.contract.client,
+      author: state.contract.author,
+      version: state.contract.version,
+      schemaVersion: 1,
+      subContractLinks: [],
+      subContracts: [],
+      specifications,
+      components: cceComponents,
+      allComponentsForAllContracts: [],
+    };
+    return { contract, rows, errors };
+  }
+  function syncContractMetadata() {
+    ["name", "description", "company", "client", "author", "version"].forEach(
+      (key) => {
+        const input = $(`contract-${key}`);
+        input.value = state.contract[key] || "";
+        input.oninput = () => {
+          state.contract[key] = input.value.trim();
+          renderContractSummary();
+          scheduleHistory();
+        };
+      },
+    );
+  }
+  function renderContractSummary() {
+    const result = contractBuildData(),
+      host = $("contract-summary"),
+      status = $("contract-status");
+    host.innerHTML = "";
+    result.rows.slice(0, 250).forEach((row) => {
+      const entry = document.createElement("div");
+      entry.className = "contract-summary-row";
+      entry.innerHTML = `<span></span><span></span><span></span>`;
+      entry.children[0].textContent = row.value;
+      entry.children[1].textContent = row.type;
+      entry.children[2].textContent =
+        row.direction === "output" ? "Command" : "Feedback";
+      host.appendChild(entry);
+    });
+    if (!result.rows.length)
+      host.innerHTML =
+        '<p class="hint" style="padding:12px">No contract bindings are assigned.</p>';
+    status.textContent = result.errors.length
+      ? `${result.errors.length} contract error${result.errors.length === 1 ? "" : "s"}: ${result.errors[0]}`
+      : `${result.rows.length} signals in ${result.contract.components.length} Contract Editor components.`;
+    status.classList.toggle("error", !!result.errors.length);
+    $("contract-export").disabled =
+      !!result.errors.length || !result.rows.length;
+    $("contract-open").disabled = !!result.errors.length || !result.rows.length;
+  }
+  async function saveContractEditorProject(openAfterSave) {
+    const result = contractBuildData();
+    if (result.errors.length) {
+      alert(result.errors.join("\n"));
+      return;
+    }
+    if (!result.rows.length) {
+      alert("Assign at least one contract binding before exporting.");
+      return;
+    }
+    const contents = JSON.stringify(result.contract, null, "\t"),
+      command = openAfterSave
+        ? "openContractEditorProject"
+        : "saveContractEditorProject";
+    try {
+      if (native) {
+        const saved = await nativeRequest(command, {
+          contents,
+          name: state.contract.name,
+        });
+        $("contract-status").textContent = openAfterSave
+          ? `Saved and opened ${saved.path}`
+          : `Exported ${saved.path}`;
+      } else if (!openAfterSave)
+        download(
+          `${state.contract.name || "CrestronUiContract"}.cce`,
+          contents,
+          "application/json",
+        );
+      else
+        alert(
+          "Opening Contract Editor is available in the Windows application.",
+        );
+    } catch (error) {
+      if (error.message !== "cancelled") {
+        $("contract-status").textContent = error.message;
+        alert(error.message);
+      }
+    }
   }
   const signalTypeCode = (type) =>
     type === "digital" ? "b" : type === "analog" ? "n" : "s";
@@ -2455,6 +2698,7 @@
       reusables: state.reusables,
       pageTemplates: state.pageTemplates,
       themes: state.themes,
+      contract: state.contract,
     };
   }
   function exportHtml() {
@@ -3093,6 +3337,7 @@
     state.reusables = p.reusables || [];
     state.pageTemplates = p.pageTemplates || [];
     state.themes = p.themes || [];
+    state.contract = { ...state.contract, ...(p.contract || {}) };
     state.pages = p.pages || [
       { ...firstPage, background: p.background || firstPage.background },
     ];
@@ -3214,7 +3459,14 @@
       }
     } else download("index.html", text, "text/html");
   };
-  $("build-ch5").onclick = async () => {
+  $("build-ch5").onclick = () => {
+    syncContractMetadata();
+    renderContractSummary();
+    $("build-project-dialog").showModal();
+  };
+  $("contract-export").onclick = () => saveContractEditorProject(false);
+  $("contract-open").onclick = () => saveContractEditorProject(true);
+  $("build-project-ch5").onclick = async () => {
     if (!approveExport()) return;
     if (!native) {
       alert("CH5 packaging is available in the Windows application.");
@@ -3236,7 +3488,7 @@
       )
     )
       return;
-    const projectName = prompt("Crestron package name", "MyCrestronUI");
+    const projectName = state.contract.name.trim();
     if (!projectName) return;
     const usesContracts =
       state.pages.some((p) => p.bindingMode === "contract") ||
@@ -3261,6 +3513,8 @@
       });
       $("deploy-package").value = result.path;
       saveDeploymentSettings({ packagePath: result.path });
+      $("contract-status").textContent =
+        "Built " + result.path + " for " + device.name;
       setStatus("Built " + result.path + " for " + device.name);
     } catch (error) {
       if (error.message !== "cancelled") {
@@ -3414,6 +3668,14 @@
     state.reusables = [];
     state.pageTemplates = [];
     state.themes = [];
+    state.contract = {
+      name: "MyCrestronUI",
+      description: "",
+      company: "",
+      client: "",
+      author: "",
+      version: "1.0.0.0",
+    };
     state.pages = [{ ...firstPage }];
     state.activePage = firstPage.id;
     state.diagnostics = false;

@@ -118,6 +118,12 @@ public partial class MainWindow : Window
                 case "clearRecovery":
                     ClearRecovery(id);
                     break;
+                case "saveContractEditorProject":
+                    SaveContractEditorProject(id, root.GetProperty("payload"), false);
+                    break;
+                case "openContractEditorProject":
+                    SaveContractEditorProject(id, root.GetProperty("payload"), true);
+                    break;
                 default:
                     Respond(id, false, null, $"Unknown desktop command: {command}");
                     break;
@@ -135,6 +141,35 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         File.WriteAllText(dialog.FileName, contents);
         Respond(id, true, dialog.FileName, null);
+    }
+
+    private void SaveContractEditorProject(string id, JsonElement payload, bool openAfterSave)
+    {
+        var contents = payload.GetProperty("contents").GetString() ?? "";
+        var requestedName = payload.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "CrestronUiContract" : "CrestronUiContract";
+        var fileName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or ' ').ToArray()).Trim();
+        if (string.IsNullOrWhiteSpace(fileName)) fileName = "CrestronUiContract";
+        var dialog = new SaveFileDialog
+        {
+            Title = openAfterSave ? "Import into Crestron Contract Editor" : "Export Contract Editor Project",
+            Filter = "Crestron Contract Editor Project (*.cce)|*.cce",
+            FileName = fileName + ".cce",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        File.WriteAllText(dialog.FileName, contents);
+        if (openAfterSave)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("The .cce project was saved, but Windows could not open it. Install Crestron Contract Editor or associate .cce files with it.\n\nSaved to: " + dialog.FileName, ex);
+            }
+        }
+        Respond(id, true, new { path = dialog.FileName, opened = openAfterSave }, null);
     }
 
     private static string RecoveryFilePath()

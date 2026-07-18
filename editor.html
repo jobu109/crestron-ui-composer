@@ -228,7 +228,7 @@
       <button id="signal-manager">Signals</button>
       <button id="signal-simulator">Simulate</button>
       <button id="export">Export HTML</button>
-      <button id="build-ch5">Build .ch5z</button>
+      <button id="build-ch5">Build Project</button>
       <button id="deploy-panel">Deploy</button>
       <button id="system-diagnostics">System</button>
     </header>
@@ -536,6 +536,41 @@
         <p id="deploy-status" class="deployment-status">Ready.</p>
         <h2>Deployment history</h2>
         <div id="deployment-history" class="deployment-history"></div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="build-project-dialog" class="build-project-dialog">
+      <form method="dialog">
+        <h2>Build Project</h2>
+        <p class="hint">
+          Export the named bindings to Crestron Contract Editor, then use its
+          official outputs when building the CH5 package.
+        </p>
+        <div class="build-project-grid">
+          <label
+            >Project / contract name<input
+              id="contract-name"
+              value="MyCrestronUI"
+          /></label>
+          <label>Version<input id="contract-version" value="1.0.0.0" /></label>
+          <label
+            >Description<input
+              id="contract-description"
+              placeholder="Touch panel contract"
+          /></label>
+          <label>Company<input id="contract-company" /></label>
+          <label>Client<input id="contract-client" /></label>
+          <label>Author<input id="contract-author" /></label>
+        </div>
+        <div id="contract-summary" class="contract-summary"></div>
+        <div class="build-project-actions">
+          <button id="contract-export" type="button">Export .cce</button>
+          <button id="contract-open" type="button" class="primary">
+            Import into Contract Editor
+          </button>
+          <button id="build-project-ch5" type="button">Build .ch5z</button>
+        </div>
+        <p id="contract-status" class="deployment-status">Ready.</p>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
