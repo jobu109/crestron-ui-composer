@@ -1,0 +1,179 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.circular-preloader-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.circular-preloader-container .center {
+  width: min(86vw, 86vh);
+  height: min(86vw, 86vh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.circular-preloader-container .circle {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transform-style: preserve-3d;
+  animation: rotate 10s ease-in-out infinite var(--delay);
+}
+
+.circular-preloader-container .letter {
+  position: absolute;
+  display: block;
+  font-family: "Segoe UI", sans-serif;
+  font-weight: 900;
+  color: white;
+  text-shadow: 1px 1px 0 rgb(80, 80, 80);
+}
+
+.circular-preloader-container .circle:nth-child(1) .letter {
+  color: white;
+  font-size: clamp(18px, 11vmin, 50px);
+  text-shadow: 1px 1px 0 black, 2px 2px 0 black, 2px 3px 0 black, 2px 4px 0 black, 2px 5px 0 black;
+}
+
+.circular-preloader-container .circle:nth-child(2) .letter {
+  color: #cccccc;
+  font-size: clamp(17px, 10.3vmin, 47px);
+}
+
+.circular-preloader-container .circle:nth-child(3) .letter {
+  color: #999999;
+  font-size: clamp(16px, 9.6vmin, 44px);
+}
+
+.circular-preloader-container .circle:nth-child(4) .letter {
+  color: #666666;
+  font-size: clamp(15px, 8.9vmin, 41px);
+}
+
+.circular-preloader-container .circle:nth-child(5) .letter {
+  color: #333333;
+  font-size: clamp(14px, 8.2vmin, 38px);
+}
+
+.circular-preloader-container .circle:nth-child(6) .letter {
+  color: black;
+  font-size: clamp(13px, 7.5vmin, 35px);
+  text-shadow: none;
+}
+
+@keyframes rotate {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  50% {
+    transform: rotate(180deg);
+  }
+}
+</style>
+
+<div class="circular-preloader-container">
+  <div class="center" id="preloader-center"></div>
+</div>
+
+<script>
+(function () {
+  var textSignal = "21";
+
+  // Contract-name example:
+  // var textSignal = "Preloader.Message";
+
+  var defaultText = "Please Wait.......";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var center = document.getElementById("preloader-center");
+  var circles = [];
+
+  for (var i = 0; i < 6; i++) {
+    var circle = document.createElement("div");
+    circle.className = "circle";
+    circle.style.setProperty("--delay", (i * 0.1) + "s");
+    center.appendChild(circle);
+    circles.push(circle);
+  }
+
+  function render(text) {
+    text = String(text || defaultText);
+
+    if (!text.length) {
+      text = defaultText;
+    }
+
+    var angleStep = 360 / text.length;
+    var y = 0;
+    var radiusBase = center.offsetWidth * 0.375;
+
+    circles.forEach(function (circle) {
+      circle.innerHTML = "";
+
+      for (var i = 0; i < text.length; i++) {
+        var letter = document.createElement("span");
+        letter.className = "letter";
+        letter.textContent = text[i];
+
+        var angle = (i * angleStep) - 175;
+        var radius = -(radiusBase - y);
+
+        letter.style.transform =
+          "rotate(" + angle + "deg) translateY(" + radius + "px)";
+
+        circle.appendChild(letter);
+      }
+
+      circle.style.zIndex = 1000 - y;
+      y += center.offsetWidth * 0.025;
+    });
+  }
+
+  render(defaultText);
+
+  window.addEventListener("resize", function () {
+    render(defaultText);
+  });
+
+  if (lib && textSignal) {
+    lib.subscribeState("s", textSignal, function (value) {
+      render(value || defaultText);
+    });
+  }
+})();
+</script>

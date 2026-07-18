@@ -1,0 +1,185 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.toggle-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10vw;
+}
+
+.toggle-rolling-reverse {
+  width: 100%;
+  height: 100%;
+  max-width: 280px;
+  max-height: 140px;
+  min-width: 90px;
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle-rolling-reverse input[type="checkbox"] {
+  display: none;
+}
+
+.toggle-rolling-reverse label {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgb(122, 118, 118);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 0 10px 1px rgb(4, 170, 142);
+}
+
+.toggle-rolling-reverse .thumb {
+  position: absolute;
+  width: calc(50% - 6px);
+  height: calc(100% - 6px);
+  background: rgb(32, 51, 50);
+  top: 3px;
+  left: 3px;
+  border-radius: 50%;
+  box-shadow:
+    2px 2px 0 rgba(0, 0, 0, 0.2),
+    3px 3px 0 rgba(100, 100, 100, 0.2);
+  overflow: hidden;
+  transition: left 0.5s ease-in;
+}
+
+.toggle-rolling-reverse .rotator {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  align-items: center;
+  transition: transform 0.5s ease-in, background-color 0.5s ease-in;
+}
+
+.toggle-rolling-reverse .side {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.5s ease-in;
+}
+
+.toggle-rolling-reverse .side.left::before,
+.toggle-rolling-reverse .side.right::before {
+  content: "";
+  width: 36%;
+  height: 36%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.toggle-rolling-reverse .side.right::before {
+  background: white;
+  box-shadow: 0 0 10px rgba(236, 8, 8, 0.9);
+}
+
+.toggle-rolling-reverse input:checked + label .thumb {
+  left: calc(50% + 3px);
+}
+
+.toggle-rolling-reverse input:checked + label .thumb .rotator {
+  transform: translateX(-50%);
+  background: rgba(236, 8, 8, 0.5);
+}
+
+.toggle-rolling-reverse input:checked + label .thumb .rotator .side {
+  transform: rotate(180deg);
+}
+
+.toggle-rolling-reverse input:checked + label {
+  box-shadow: 0 0 15px 3px rgba(236, 8, 8, 0.5);
+  animation: pulse-glow-reverse 1.5s infinite;
+}
+
+@keyframes pulse-glow-reverse {
+  0% {
+    box-shadow: 0 0 15px rgba(236, 8, 8, 0.5);
+  }
+
+  50% {
+    box-shadow: 0 0 100px rgba(236, 8, 8, 0.5);
+  }
+
+  100% {
+    box-shadow: 0 0 15px rgba(236, 8, 8, 0.5);
+  }
+}
+</style>
+
+<div class="toggle-wrapper">
+  <div class="toggle-rolling-reverse">
+    <input id="toggle-rolling-reverse-input" type="checkbox">
+    <label for="toggle-rolling-reverse-input">
+      <div class="thumb">
+        <div class="rotator">
+          <div class="side left"></div>
+          <div class="side right"></div>
+        </div>
+      </div>
+    </label>
+  </div>
+</div>
+
+<script>
+(function () {
+  var pressSignal = "41";
+  var feedbackSignal = "51";
+
+  // Contract-name example:
+  // var pressSignal = "Mic1.Mute.Press";
+  // var feedbackSignal = "Mic1.Mute.Selected";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var input = document.getElementById("toggle-rolling-reverse-input");
+
+  input.addEventListener("change", function () {
+    if (!lib) return;
+
+    lib.publishEvent("b", pressSignal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", pressSignal, false);
+    }, 100);
+  });
+
+  if (lib) {
+    lib.subscribeState("b", feedbackSignal, function (value) {
+      input.checked = value === true || value === 1 || value === "1";
+    });
+  }
+})();
+</script>

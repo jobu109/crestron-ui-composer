@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>Crestron UI Composer</title>
+    <link rel="stylesheet" href="editor.css" />
+    <style>
+      .widget.locked .handle {
+        display: none;
+      }
+      .widget.locked.selected {
+        outline-style: dashed;
+      }
+      .widget.locked::after {
+        content: "LOCK";
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        z-index: 999999;
+        padding: 2px 4px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.72);
+        font-size: 9px;
+        pointer-events: none;
+      }
+      .signal-section {
+        margin: 18px 0 12px;
+        padding-top: 8px;
+        border-top: 1px solid #324347;
+      }
+      .signal-binding {
+        margin: 10px 0;
+        padding: 8px;
+        border: 1px solid #33494a;
+        border-radius: 5px;
+        background: #111b1d;
+      }
+      .signal-binding strong {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 12px;
+        color: #d6e9e7;
+      }
+      .signal-binding .binding-controls {
+        display: grid;
+        grid-template-columns: 78px 1fr;
+        gap: 6px;
+        margin-top: 5px;
+      }
+      .signal-binding select,
+      .signal-binding input {
+        width: 100%;
+        margin: 0;
+        padding: 6px;
+        border: 1px solid #415557;
+        border-radius: 4px;
+        color: #fff;
+        background: #101719;
+      }
+      .signal-binding small {
+        display: block;
+        margin-top: 4px;
+        color: #77918f;
+      }
+      .signal-empty {
+        color: #77918f;
+        font-size: 12px;
+        font-style: italic;
+      }
+      .page-list {
+        display: grid;
+        gap: 5px;
+        margin-bottom: 8px;
+      }
+      .page-row {
+        display: grid;
+        grid-template-columns: 1fr 30px;
+        gap: 4px;
+      }
+      .page-row button {
+        padding: 7px;
+        border: 1px solid #3a5050;
+        border-radius: 5px;
+        background: #213033;
+        color: #fff;
+        text-align: left;
+      }
+      .page-row button.active {
+        border-color: #14d4b4;
+        background: #155448;
+      }
+      .page-row .remove-page {
+        text-align: center;
+        color: #ffb3b3;
+      }
+      .sidebar > button {
+        width: 100%;
+        padding: 7px;
+        border: 1px solid #46605f;
+        border-radius: 5px;
+        background: #253436;
+        color: #fff;
+      }
+      .component-category {
+        border: 1px solid #304446;
+        border-radius: 6px;
+        background: #111b1d;
+        overflow: hidden;
+      }
+      .component-category summary {
+        cursor: pointer;
+        padding: 8px 9px;
+        background: #1d2b2e;
+        color: #c8dcda;
+        font-size: 12px;
+        font-weight: 700;
+        list-style: none;
+      }
+      .component-category summary::-webkit-details-marker {
+        display: none;
+      }
+      .component-category summary:before {
+        content: "▸";
+        display: inline-block;
+        width: 14px;
+        color: #6ec7b8;
+      }
+      .component-category[open] summary:before {
+        content: "▾";
+      }
+      .category-count {
+        float: right;
+        color: #78918f;
+        font-weight: 400;
+      }
+      .category-items {
+        display: grid;
+        gap: 4px;
+        padding: 5px;
+      }
+      .category-items .component {
+        margin: 0;
+        padding: 7px 8px;
+        border-color: #304446;
+        background: #172528;
+      }
+      .library-search {
+        width: 100%;
+        margin: 10px 0 8px;
+        padding: 7px;
+        border: 1px solid #415557;
+        border-radius: 5px;
+        color: #fff;
+        background: #101719;
+      }
+      .widget .scoped-preview {
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand">
+        Crestron UI Composer <small id="status">Ready</small>
+      </div>
+      <label
+        >Target panel
+        <select id="target-device">
+          <option value="tsw-1070">Crestron TSW-1070 — 1920 × 1200</option>
+          <option value="custom">Custom resolution</option>
+        </select></label
+      >
+      <button id="new-project">New</button>
+      <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
+      <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
+      <select id="align-component" title="Align selected components" disabled>
+        <option value="">Align…</option>
+        <option value="left">Left</option>
+        <option value="center">Horizontal center</option>
+        <option value="right">Right</option>
+        <option value="top">Top</option>
+        <option value="middle">Vertical center</option>
+        <option value="bottom">Bottom</option>
+        <option value="distribute-h">Distribute horizontally</option>
+        <option value="distribute-v">Distribute vertically</option>
+      </select>
+      <select
+        id="layer-component"
+        title="Change selected component layer"
+        disabled
+      >
+        <option value="">Layer…</option>
+        <option value="front">Bring to front</option>
+        <option value="forward">Bring forward</option>
+        <option value="backward">Send backward</option>
+        <option value="back">Send to back</option>
+      </select>
+      <label title="Snap movement and resizing to a grid"
+        ><input id="snap-grid" type="checkbox" checked /> Snap
+        <input
+          id="snap-size"
+          type="number"
+          min="1"
+          max="200"
+          value="10"
+          style="width: 54px"
+        />
+        px</label
+      >
+      <button id="save-project">Save project</button>
+      <label id="open-project-label" class="button"
+        >Open project<input
+          id="open-project"
+          type="file"
+          accept="application/json,.json,.cuiproj"
+      /></label>
+      <button id="preview">Preview</button>
+      <button id="validate-project">Validate</button>
+      <button id="signal-manager">Signals</button>
+      <button id="signal-simulator">Simulate</button>
+      <button id="export">Export HTML</button>
+      <button id="build-ch5">Build .ch5z</button>
+      <button id="deploy-panel">Deploy</button>
+      <button id="system-diagnostics">System</button>
+    </header>
+    <main class="workspace">
+      <aside class="sidebar">
+        <h2>Components</h2>
+        <p class="hint">Drag a component onto the panel.</p>
+        <label id="snippet-files-label" class="button primary"
+          >Import snippets<input
+            id="snippet-files"
+            type="file"
+            accept="text/html,.html"
+            multiple
+        /></label>
+        <input
+          id="component-search"
+          class="library-search"
+          type="search"
+          placeholder="Search components"
+        />
+        <div id="component-list" class="component-list"></div>
+        <h2 style="margin-top: 24px">Assets</h2>
+        <label class="button primary asset-import-button"
+          >Import assets<input
+            id="asset-files"
+            type="file"
+            accept="image/*,audio/*,video/*,.woff,.woff2,.ttf,.otf"
+            multiple
+        /></label>
+        <input
+          id="asset-replace-file"
+          type="file"
+          accept="image/*,audio/*,video/*,.woff,.woff2,.ttf,.otf"
+          hidden
+        />
+        <input
+          id="asset-search"
+          class="library-search"
+          type="search"
+          placeholder="Search assets"
+        />
+        <div class="asset-actions">
+          <button id="asset-audit" type="button">Audit</button>
+          <button id="asset-clean" type="button">Remove unused</button>
+        </div>
+        <div id="asset-list" class="asset-list"></div>
+        <h2 style="margin-top: 24px">Reusable designs</h2>
+        <button id="save-reusable" type="button">Save selection</button>
+        <div id="reusable-list" class="design-list"></div>
+        <h2 style="margin-top: 24px">Page templates</h2>
+        <button id="save-page-template" type="button">Save current page</button>
+        <div id="page-template-list" class="design-list"></div>
+        <h2 style="margin-top: 24px">Themes</h2>
+        <div class="theme-grid">
+          <label
+            >Page<input id="theme-page" type="color" value="#182126"
+          /></label>
+          <label
+            >Surface<input id="theme-surface" type="color" value="#253436"
+          /></label>
+          <label
+            >Accent<input id="theme-accent" type="color" value="#04aa8e"
+          /></label>
+          <label
+            >Text<input id="theme-text" type="color" value="#ffffff"
+          /></label>
+          <label
+            >Glow<input id="theme-glow" type="color" value="#04dcb9"
+          /></label>
+          <label
+            >Border<input id="theme-border" type="color" value="#ffffff"
+          /></label>
+        </div>
+        <div class="theme-actions">
+          <button id="theme-selection" type="button">Selection</button>
+          <button id="theme-page-apply" type="button">Page</button>
+          <button id="theme-project" type="button">Project</button>
+          <button id="theme-save" type="button">Save theme</button>
+        </div>
+        <div id="theme-list" class="design-list"></div>
+        <h2 style="margin-top: 24px">Pages</h2>
+        <div id="page-list" class="page-list"></div>
+        <button id="add-page" type="button">+ Add page</button>
+        <h2 style="margin-top: 24px">Layers</h2>
+        <input
+          id="layer-search"
+          class="library-search"
+          type="search"
+          placeholder="Search layers"
+        />
+        <p class="hint">Drag layers to change z-index.</p>
+        <div id="layers-list" class="layers-list"></div>
+      </aside>
+      <section class="stage-wrap">
+        <div id="stage" class="stage" tabindex="0"></div>
+      </section>
+      <aside class="inspector">
+        <h2>Inspector</h2>
+        <div id="empty-inspector" class="hint">
+          Select an item on the panel.
+        </div>
+        <form id="properties" hidden>
+          <label>Name<input id="prop-name" /></label>
+          <div class="grid2">
+            <label>X<input id="prop-x" type="number" /></label
+            ><label>Y<input id="prop-y" type="number" /></label>
+          </div>
+          <div class="grid2">
+            <label>Width<input id="prop-w" type="number" min="20" /></label
+            ><label>Height<input id="prop-h" type="number" min="20" /></label>
+          </div>
+          <label>Z-index<input id="prop-z" type="number" min="1" /></label>
+          <label
+            >Local navigation<select id="prop-target">
+              <option value="">No page change</option>
+            </select></label
+          >
+          <section
+            id="component-properties-section"
+            class="signal-section"
+            hidden
+          >
+            <h2>Component properties</h2>
+            <div id="component-properties"></div>
+          </section>
+          <section class="signal-section">
+            <h2>Signal bindings</h2>
+            <p class="hint">
+              Choose a join number or contract name for each signal.
+            </p>
+            <div id="signal-bindings"></div>
+          </section>
+          <button id="edit-source" type="button">Edit component HTML</button>
+          <button id="duplicate" type="button">Duplicate</button>
+          <button id="delete" class="danger" type="button">Delete</button>
+        </form>
+        <h2>Page</h2>
+        <label>Name<input id="page-name" /></label>
+        <label
+          >Background<input id="page-background" type="color" value="#182126"
+        /></label>
+        <label
+          >External selection<select id="page-binding-mode">
+            <option value="none">None — local only</option>
+            <option value="join">Digital join</option>
+            <option value="contract">Contract name</option>
+          </select></label
+        >
+        <label id="page-binding-label" hidden
+          >Signal<input id="page-binding"
+        /></label>
+        <div id="custom-size" class="grid2" hidden>
+          <label
+            >Width<input id="panel-width" type="number" value="1280" /></label
+          ><label
+            >Height<input id="panel-height" type="number" value="800"
+          /></label>
+        </div>
+      </aside>
+    </main>
+    <dialog id="source-dialog">
+      <form method="dialog">
+        <h2>Component HTML</h2>
+        <p class="hint">
+          Edit signal joins, contract names, text, CSS, or behavior.
+        </p>
+        <textarea id="source-editor" spellcheck="false"></textarea>
+        <div class="dialog-actions">
+          <button value="cancel">Cancel</button
+          ><button id="apply-source" value="default" class="primary">
+            Apply
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="signal-dialog" class="signal-dialog">
+      <form method="dialog">
+        <div class="signal-manager-head">
+          <div>
+            <h2>Signal Manager</h2>
+            <p id="signal-summary" class="hint"></p>
+          </div>
+          <input
+            id="signal-search"
+            type="search"
+            placeholder="Filter page, widget, signal, type, or value"
+          />
+        </div>
+        <div class="signal-table-wrap">
+          <table class="signal-table">
+            <thead>
+              <tr>
+                <th>Page</th>
+                <th>Widget</th>
+                <th>Signal</th>
+                <th>Type</th>
+                <th>Direction</th>
+                <th>Mode</th>
+                <th>Address</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="signal-table-body"></tbody>
+          </table>
+        </div>
+        <div class="dialog-actions">
+          <button id="signal-export-csv" type="button">Export CSV</button
+          ><button value="default">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="simulator-dialog" class="simulator-dialog">
+      <form method="dialog">
+        <div
+          id="simulator-drag-handle"
+          class="signal-manager-head simulator-drag-handle"
+        >
+          <div>
+            <h2>Signal Simulator</h2>
+            <p class="hint">
+              Drive feedback inputs and observe widget output events without
+              SIMPL.
+            </p>
+          </div>
+          <input
+            id="simulator-search"
+            type="search"
+            placeholder="Filter simulated signals"
+          />
+        </div>
+        <div class="simulator-layout">
+          <div class="signal-table-wrap">
+            <table class="signal-table">
+              <thead>
+                <tr>
+                  <th>Page</th>
+                  <th>Widget</th>
+                  <th>Signal</th>
+                  <th>Type</th>
+                  <th>Address</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody id="simulator-table-body"></tbody>
+            </table>
+          </div>
+          <section class="simulator-events">
+            <h2>Event log</h2>
+            <pre id="simulator-event-log"></pre>
+          </section>
+        </div>
+        <div class="dialog-actions">
+          <button id="simulator-clear" type="button">Clear log</button
+          ><button id="simulator-export" type="button">Export log</button
+          ><button value="default">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="deployment-dialog" class="deployment-dialog">
+      <form method="dialog">
+        <h2>TSW Deployment</h2>
+        <p class="hint">
+          Deploys through Crestron ch5-cli. Credentials are entered only in the
+          official terminal prompt and are never stored by this editor.
+        </p>
+        <div class="deployment-grid">
+          <label
+            >Panel IP or host<input
+              id="deploy-host"
+              placeholder="192.168.1.100" /></label
+          ><label class="deploy-slow"
+            ><input id="deploy-slow" type="checkbox" /> Slow mode</label
+          >
+        </div>
+        <label
+          >CH5 package<input
+            id="deploy-package"
+            readonly
+            placeholder="Build or select a .ch5z package"
+        /></label>
+        <div class="deployment-actions">
+          <button id="deploy-check" type="button">Check panel</button
+          ><button id="deploy-select" type="button">Select .ch5z</button
+          ><button id="deploy-build" type="button">Build .ch5z</button
+          ><button id="deploy-start" type="button" class="primary">
+            Deploy to panel
+          </button>
+        </div>
+        <p id="deploy-status" class="deployment-status">Ready.</p>
+        <h2>Deployment history</h2>
+        <div id="deployment-history" class="deployment-history"></div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="system-dialog" class="system-dialog">
+      <form method="dialog">
+        <h2>System Diagnostics</h2>
+        <p class="hint">
+          Checks the Windows runtime and Crestron build/deployment
+          prerequisites.
+        </p>
+        <div id="system-diagnostic-list" class="system-diagnostic-list"></div>
+        <div class="system-actions">
+          <button id="system-install-webview" type="button">Get WebView2</button
+          ><button id="system-install-node" type="button">Get Node.js</button
+          ><button id="system-install-ch5" type="button">
+            Install Crestron CLI</button
+          ><button id="system-open-settings" type="button">
+            Open settings folder</button
+          ><button id="system-refresh" type="button">Refresh</button>
+        </div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <script src="component-runtime.js"></script>
+    <script src="standard-button.component.js"></script>
+    <script src="button-components.js"></script>
+    <script src="more-button-components.js"></script>
+    <script src="card-flip.component.js"></script>
+    <script src="volume-slider.component.js"></script>
+    <script src="lighting-control.component.js"></script>
+    <script src="microphone-control.component.js"></script>
+    <script src="shade-control.component.js"></script>
+    <script src="horizontal-scrolling-text.component.js"></script>
+    <script src="vertical-scrolling-text.component.js"></script>
+    <script src="horizontal-carousel.component.js"></script>
+    <script src="vertical-carousel.component.js"></script>
+    <script src="directional-pad.component.js"></script>
+    <script src="folding-menu.component.js"></script>
+    <script src="hamburger-popup.component.js"></script>
+    <script src="menu-item.component.js"></script>
+    <script src="rolling-menu.component.js"></script>
+    <script src="checkbox-button-list.component.js"></script>
+    <script src="horizontal-button-list.component.js"></script>
+    <script src="vertical-button-list.component.js"></script>
+    <script src="countdown-selector.component.js"></script>
+    <script src="preset-led.component.js"></script>
+    <script src="keyboard.component.js"></script>
+    <script src="password-entry.component.js"></script>
+    <script src="alarm-clock.component.js"></script>
+    <script src="analog-clock.component.js"></script>
+    <script src="display-control.component.js"></script>
+    <script src="glass-block.component.js"></script>
+    <script src="please-wait-spinner.component.js"></script>
+    <script src="shutdown-progress.component.js"></script>
+    <script src="weather-card.component.js"></script>
+    <div id="canvas-context-menu" class="context-menu" hidden>
+      <button id="context-copy" type="button">Copy</button>
+      <button id="context-paste" type="button">Paste</button>
+      <div class="context-menu-separator"></div>
+      <button id="context-lock" type="button">Lock</button>
+      <button id="context-group" type="button">Group</button>
+      <button id="context-ungroup" type="button">Ungroup</button>
+      <div class="context-menu-separator"></div>
+      <button id="context-save-reusable" type="button">Save as reusable</button>
+      <button id="context-update-reusable" type="button">
+        Update linked instances
+      </button>
+      <button id="context-detach-reusable" type="button">
+        Detach reusable instance
+      </button>
+      <button id="context-master" type="button">Make global</button>
+      <button id="context-delete" type="button">Delete</button>
+    </div>
+    <div id="layer-context-menu" class="context-menu" hidden>
+      <button id="layer-rename" type="button">Rename</button>
+      <button id="layer-duplicate" type="button">Duplicate</button>
+      <button id="layer-delete" type="button">Delete</button>
+    </div>
+    <script src="exporter.js"></script>
+    <script src="editor.js"></script>
+  </body>
+</html>

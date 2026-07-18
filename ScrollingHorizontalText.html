@@ -1,0 +1,285 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.btn-stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6vw;
+  font-family: "Montserrat", "Manrope", "Segoe UI", sans-serif;
+}
+
+.btn-wrapper {
+  --padding: 8px;
+  --border-radius: 24px;
+  --dot-size: 9px;
+  --btn-color: #e4e4e4;
+  --hue: 170deg;
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 90px;
+  min-height: 44px;
+  border-radius: var(--border-radius);
+  border: none;
+  background-color: rgba(0, 0, 0, 0.04);
+  box-shadow:
+    1px 1px 2px 0 rgba(255, 255, 255, 0.86),
+    2px 2px 2px rgba(0, 0, 0, 0.06) inset,
+    2px 2px 4px rgba(0, 0, 0, 0.06) inset,
+    2px 2px 8px rgba(0, 0, 0, 0.06) inset;
+  perspective: 150px;
+  perspective-origin: center;
+  user-select: none;
+}
+
+.btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.25em;
+  width: calc(100% - 2 * var(--padding));
+  height: calc(100% - 2 * var(--padding));
+  min-height: 34px;
+  border-radius: calc(var(--border-radius) - var(--padding));
+  border: none;
+  cursor: pointer;
+  padding: 0 clamp(34px, 20vmin, 70px) 0 calc(var(--padding) * 2);
+  background: linear-gradient(rgba(255, 255, 255, 0.13), rgba(0, 0, 0, 0.07)), var(--btn-color);
+  box-shadow:
+    1px 1px 2px -1px rgba(255, 255, 255, 1) inset,
+    0 2px 1px rgba(0, 0, 0, 0.06),
+    0 4px 2px rgba(0, 0, 0, 0.06),
+    0 8px 4px rgba(0, 0, 0, 0.06),
+    0 16px 8px rgba(0, 0, 0, 0.06),
+    0 32px 16px rgba(0, 0, 0, 0.06);
+  transition:
+    transform 0.25s cubic-bezier(0.25, 1.5, 0.5, 2.2),
+    box-shadow 0.25s cubic-bezier(0.25, 1.5, 0.5, 1),
+    filter 0.3s cubic-bezier(0.25, 1.5, 0.5, 1);
+  z-index: 2;
+}
+
+.btn-txt {
+  display: block;
+  width: 100%;
+  font-size: clamp(13px, 7vmin, 28px);
+  font-weight: 600;
+  line-height: 1;
+  color: transparent;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.66), #555);
+  background-clip: text;
+  -webkit-background-clip: text;
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 1))
+    drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.32));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  position: absolute;
+  top: calc(50% - var(--dot-size) / 2);
+  right: calc(var(--padding) + 16px);
+  width: var(--dot-size);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background-color: hsla(var(--hue), 0%, 50%, 0.12);
+  border: 1px solid hsla(var(--hue), 0%, 60%, 0.6);
+  box-shadow:
+    1px 1px 2px -1px rgba(255, 255, 255, 0.93) inset,
+    0 2px 1px rgba(0, 0, 0, 0.06),
+    0 4px 2px rgba(0, 0, 0, 0.06),
+    0 8px 4px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.dot::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--padding) / -2);
+  left: calc(var(--padding) / -2);
+  width: calc(100% + var(--padding));
+  height: calc(100% + var(--padding));
+  border-radius: inherit;
+  background-color: rgba(0, 0, 0, 0.38);
+  mask-image: radial-gradient(circle at 50% 60%, transparent 50%, black);
+  -webkit-mask-image: radial-gradient(circle at 50% 60%, transparent 50%, black);
+}
+
+.dot::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--padding) / -2);
+  left: calc(var(--padding) / -2);
+  width: calc(100% + var(--padding));
+  height: calc(100% + var(--padding));
+  border-radius: inherit;
+  background-color: transparent;
+  box-shadow:
+    0 0 10px 2px hsla(var(--hue), 80%, 50%, 0.3),
+    0 0 20px 10px hsla(var(--hue), 80%, 50%, 0.5),
+    0 0 36px 14px hsla(var(--hue), 80%, 50%, 0.36),
+    0 0 16px 1px hsla(var(--hue), 100%, 60%, 0.9) inset;
+  opacity: 0;
+}
+
+/* This is the old hover look, now used only for pressed state. */
+.btn-wrapper.pressed .btn {
+  filter: drop-shadow(
+    var(--padding) 0 var(--padding) hsla(var(--hue), 100%, 50%, 0.75)
+  );
+  transform: translate3d(0, 0, -4px);
+}
+
+.btn-wrapper.pressed .btn-txt {
+  background-image: none;
+  background-color: hsla(var(--hue), 50%, 50%, 1);
+}
+
+.btn-wrapper.pressed {
+  box-shadow:
+    1px 1px 2px 0 rgba(255, 255, 255, 1),
+    2px 2px 2px rgba(0, 0, 0, 0.06) inset,
+    2px 2px 4px rgba(0, 0, 0, 0.06) inset,
+    2px 2px 8px rgba(0, 0, 0, 0.06) inset,
+    0 0 32px 2px hsla(var(--hue), 50%, 50%, 0.5) inset;
+}
+
+/* LED only lights when selected or pressed. */
+.btn-wrapper.selected .dot,
+.btn-wrapper.pressed .dot {
+  background-color: hsla(var(--hue), 100%, 50%, 1);
+  border-color: hsla(var(--hue), 100%, 68%, 0.95);
+}
+
+.btn-wrapper.selected .dot::after,
+.btn-wrapper.pressed .dot::after {
+  opacity: 1;
+}
+
+.btn-wrapper.selected .btn {
+  box-shadow:
+    1px 1px 2px -1px rgba(255, 255, 255, 1) inset,
+    0 2px 1px rgba(0, 0, 0, 0.06),
+    0 4px 2px rgba(0, 0, 0, 0.06),
+    0 8px 4px rgba(0, 0, 0, 0.06),
+    0 0 18px hsla(var(--hue), 80%, 50%, 0.42);
+}
+
+.btn:focus-visible {
+  outline: 2px dashed hsla(var(--hue), 70%, 40%, 1);
+  outline-offset: var(--padding);
+}
+</style>
+
+<div class="btn-stage">
+  <div class="btn-wrapper" id="btn-wrapper">
+    <button class="btn" id="btn" type="button">
+      <span class="btn-txt" id="btn-label">View Offers</span>
+      <span class="dot" id="btn-led"></span>
+    </button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var pressSignal = "201";
+  var feedbackSignal = "202";
+  var labelSignal = "203";
+
+  // Contract-name example:
+  // var pressSignal = "Button.Main.Press";
+  // var feedbackSignal = "Button.Main.Selected";
+  // var labelSignal = "Button.Main.Label";
+
+  var defaultLabel = "Preset 1";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var wrapper = document.getElementById("btn-wrapper");
+  var button = document.getElementById("btn");
+  var label = document.getElementById("btn-label");
+
+  function isTrue(value) {
+    return value === true || value === 1 || value === "1" || value === "true";
+  }
+
+  function publishPressed(value) {
+    wrapper.classList.toggle("pressed", value);
+
+    if (lib && pressSignal) {
+      lib.publishEvent("b", pressSignal, value);
+    }
+  }
+
+  label.textContent = defaultLabel;
+
+  button.addEventListener("pointerdown", function (event) {
+    publishPressed(true);
+
+    if (button.setPointerCapture) {
+      button.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  });
+
+  button.addEventListener("pointerup", function () {
+    publishPressed(false);
+  });
+
+  button.addEventListener("pointerleave", function () {
+    publishPressed(false);
+  });
+
+  button.addEventListener("pointercancel", function () {
+    publishPressed(false);
+  });
+
+  if (lib) {
+    if (feedbackSignal) {
+      lib.subscribeState("b", feedbackSignal, function (value) {
+        wrapper.classList.toggle("selected", isTrue(value));
+      });
+    }
+
+    if (labelSignal) {
+      lib.subscribeState("s", labelSignal, function (value) {
+        label.textContent = value || defaultLabel;
+      });
+    }
+  }
+})();
+</script>

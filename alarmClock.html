@@ -1,0 +1,565 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.flip-clock-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vw;
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+}
+
+.flip-clock-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 180px;
+  min-height: 120px;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(58, 66, 66, 0.9),
+      rgba(42, 54, 54, 0.88) 52%,
+      rgba(4, 170, 142, 0.18)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 28px rgba(0, 0, 0, 0.36),
+    0 0 14px rgba(4, 170, 142, 0.22);
+  overflow: hidden;
+  position: relative;
+}
+
+.flip-clock-panel::before {
+  content: none;
+}
+
+.flip-clock-panel::after {
+  content: "";
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  top: 50%;
+  height: clamp(34px, 11vmin, 54px);
+  transform: translateY(-50%);
+  border-radius: 7px;
+  background: rgba(110, 110, 110, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 10px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.flip-clock-controls {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 68%;
+  height: min(72vh, 280px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: clamp(6px, 2vmin, 18px);
+  z-index: 2;
+  overflow: hidden;
+  perspective: 700px;
+}
+
+.flip-clock-wheel {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  mask-image: linear-gradient(transparent, white 34%, white 66%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, white 34%, white 66%, transparent);
+  cursor: grab;
+  user-select: none;
+}
+
+.flip-clock-wheel.dragging {
+  cursor: grabbing;
+}
+
+.flip-clock-items {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform-style: preserve-3d;
+  transition: transform 0.18s ease;
+}
+
+.flip-clock-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: clamp(34px, 11vmin, 54px);
+  margin-top: calc(clamp(34px, 11vmin, 54px) / -2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: clamp(20px, 8vmin, 36px);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: color 0.18s ease, opacity 0.18s ease, text-shadow 0.18s ease;
+}
+
+.flip-clock-item.active {
+  color: white;
+  opacity: 1;
+  font-weight: 500;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.7),
+    0 0 10px rgba(255, 255, 255, 0.32);
+}
+
+.flip-clock-item.near {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.flip-clock-item.far {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.alarm-set-button {
+  position: absolute;
+  right: clamp(12px, 6vw, 34px);
+  bottom: clamp(10px, 5vh, 28px);
+  width: clamp(82px, 23vw, 126px);
+  height: clamp(44px, 14vh, 60px);
+  border: 1px solid rgba(4, 220, 185, 0.72);
+  border-radius: 999px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(4, 170, 142, 0.48)),
+    rgba(4, 85, 72, 0.74);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 18px rgba(4, 170, 142, 0.28),
+    0 0 12px rgba(4, 170, 142, 0.62);
+  color: white;
+  cursor: pointer;
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(12px, 3.5vmin, 16px);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.76),
+    0 0 8px rgba(255, 255, 255, 0.4);
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    background 0.14s ease;
+  z-index: 4;
+}
+
+.alarm-set-button:hover,
+.alarm-set-button.pressed {
+  transform: scale(0.96);
+  border-color: rgba(255, 255, 255, 0.88);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(4, 220, 185, 0.66)),
+    rgba(4, 105, 90, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 0 20px rgba(255, 255, 255, 0.18),
+    0 0 18px rgba(4, 220, 185, 0.82);
+}
+
+.alarm-enable-button {
+  position: absolute;
+  left: clamp(12px, 6vw, 34px);
+  bottom: clamp(10px, 5vh, 28px);
+  width: clamp(128px, 34vw, 190px);
+  height: clamp(44px, 14vh, 60px);
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 999px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(160, 60, 60, 0.48)),
+    rgba(78, 44, 44, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 0 18px rgba(0, 0, 0, 0.18),
+    0 0 12px rgba(210, 45, 45, 0.42);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: "Segoe UI", sans-serif;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.76),
+    0 0 8px rgba(255, 255, 255, 0.34);
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    background 0.14s ease;
+  z-index: 4;
+}
+
+.alarm-enable-state {
+  font-size: clamp(12px, 3.5vmin, 16px);
+  font-weight: 900;
+}
+
+.alarm-enable-action {
+  font-size: clamp(8px, 2.3vmin, 11px);
+  font-weight: 700;
+  opacity: 0.78;
+}
+
+.alarm-enable-button.enabled {
+  border-color: rgba(4, 220, 185, 0.76);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(4, 170, 142, 0.56)),
+    rgba(4, 85, 72, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 18px rgba(4, 170, 142, 0.3),
+    0 0 14px rgba(4, 170, 142, 0.68);
+}
+
+.alarm-enable-button:hover,
+.alarm-enable-button.pressed {
+  transform: scale(0.96);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+</style>
+
+<div class="flip-clock-wrapper">
+  <div class="flip-clock-panel">
+    <div class="flip-clock-controls">
+      <div class="flip-clock-wheel" id="hour-wheel"></div>
+      <div class="flip-clock-wheel" id="minute-wheel"></div>
+      <div class="flip-clock-wheel" id="meridiem-wheel"></div>
+    </div>
+    <button class="alarm-enable-button" id="alarm-enable-button" type="button">
+      <span class="alarm-enable-state" id="alarm-enable-state">DISABLED</span>
+      <span class="alarm-enable-action">ENABLE / DISABLE</span>
+    </button>
+    <button class="alarm-set-button" id="alarm-set-button" type="button">SET</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Contract names:
+  //var hourSerialOutSignal = "AlarmClockHour.ValueText";
+  //var minuteSerialOutSignal = "AlarmClockMinute.ValueText";
+  //var meridiemSerialOutSignal = "AlarmClockMeridiem.ValueText";
+
+  //var amDigitalOutSignal = "AlarmClockAM.Selected";
+  //var pmDigitalOutSignal = "AlarmClockPM.Selected";
+  //var setDigitalOutSignal = "AlarmClockSet.Press";
+
+  // Or join numbers from your current app:
+   var hourSerialOutSignal = "160";
+   var minuteSerialOutSignal = "161";
+   var meridiemSerialOutSignal = "162";
+   var amDigitalOutSignal = "160";
+   var pmDigitalOutSignal = "161";
+   var setDigitalOutSignal = "162";
+   var alarmEnabledDigitalOutSignal = "163";
+   var alarmDisabledDigitalOutSignal = "164";
+
+  var defaultHour = "11";
+  var defaultMinute = "00";
+  var defaultMeridiem = "PM";
+  var defaultAlarmEnabled = false;
+
+  var publishOnLoad = true;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  function pad2(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  var lib = getCrComLib();
+  var setButton = document.getElementById("alarm-set-button");
+  var enableButton = document.getElementById("alarm-enable-button");
+  var enableState = document.getElementById("alarm-enable-state");
+
+  function publishSerial(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("s", signal, value);
+    }
+  }
+
+  function publishDigital(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("b", signal, value);
+    }
+  }
+
+  var hours = [];
+  var minutes = [];
+  var meridiems = ["AM", "PM"];
+
+  for (var h = 1; h <= 12; h++) {
+    hours.push(pad2(h));
+  }
+
+  for (var m = 0; m < 60; m++) {
+    minutes.push(pad2(m));
+  }
+
+  var state = {
+    hourIndex: Math.max(0, hours.indexOf(defaultHour)),
+    minuteIndex: Math.max(0, minutes.indexOf(defaultMinute)),
+    meridiemIndex: Math.max(0, meridiems.indexOf(defaultMeridiem)),
+    alarmEnabled: defaultAlarmEnabled
+  };
+
+  function getCurrentHour() {
+    return hours[state.hourIndex];
+  }
+
+  function getCurrentMinute() {
+    return minutes[state.minuteIndex];
+  }
+
+  function getCurrentMeridiem() {
+    return meridiems[state.meridiemIndex];
+  }
+
+  function publishCurrentTime() {
+    var meridiem = getCurrentMeridiem();
+
+    publishSerial(hourSerialOutSignal, getCurrentHour());
+    publishSerial(minuteSerialOutSignal, getCurrentMinute());
+    publishSerial(meridiemSerialOutSignal, meridiem);
+
+    publishDigital(amDigitalOutSignal, meridiem === "AM");
+    publishDigital(pmDigitalOutSignal, meridiem === "PM");
+  }
+
+  function setButtonPressed(pressed) {
+    setButton.classList.toggle("pressed", pressed);
+    publishDigital(setDigitalOutSignal, pressed);
+  }
+
+  function publishAlarmEnabledState() {
+    publishDigital(alarmEnabledDigitalOutSignal, state.alarmEnabled);
+    publishDigital(alarmDisabledDigitalOutSignal, !state.alarmEnabled);
+  }
+
+  function renderAlarmEnabledState() {
+    enableButton.classList.toggle("enabled", state.alarmEnabled);
+    enableState.textContent = state.alarmEnabled ? "ENABLED" : "DISABLED";
+  }
+
+  function setAlarmEnabled(enabled) {
+    state.alarmEnabled = !!enabled;
+    renderAlarmEnabledState();
+    publishAlarmEnabledState();
+  }
+
+  function createWheel(elementId, values, stateKey) {
+    var wheel = document.getElementById(elementId);
+    var itemsWrap = document.createElement("div");
+    var itemEls = [];
+    var dragStartY = 0;
+    var dragStartIndex = 0;
+    var isDragging = false;
+    var itemHeight = 44;
+
+    wheel.innerHTML = "";
+    itemsWrap.className = "flip-clock-items";
+    wheel.appendChild(itemsWrap);
+
+    values.forEach(function (value) {
+      var item = document.createElement("div");
+      item.className = "flip-clock-item";
+      item.textContent = value;
+      itemsWrap.appendChild(item);
+      itemEls.push(item);
+    });
+
+    function clampIndex(index) {
+      return Math.max(0, Math.min(values.length - 1, index));
+    }
+
+    function getItemHeight() {
+      var sample = itemEls[0];
+      return sample ? sample.offsetHeight || itemHeight : itemHeight;
+    }
+
+    function render() {
+      var selectedIndex = state[stateKey];
+      itemHeight = getItemHeight();
+
+      itemEls.forEach(function (item, index) {
+        var distance = index - selectedIndex;
+        var absDistance = Math.abs(distance);
+        var rotate = distance * -18;
+        var translateY = distance * itemHeight;
+        var translateZ = -Math.min(absDistance * 16, 72);
+
+        item.style.transform =
+          "translateY(" + translateY + "px) translateZ(" + translateZ + "px) rotateX(" + rotate + "deg)";
+
+        item.style.opacity = Math.max(0.12, 1 - absDistance * 0.24);
+
+        if (absDistance === 0) {
+          item.className = "flip-clock-item active";
+        } else if (absDistance <= 2) {
+          item.className = "flip-clock-item near";
+        } else {
+          item.className = "flip-clock-item far";
+        }
+      });
+    }
+
+    function setIndex(index, publish) {
+      var nextIndex = clampIndex(index);
+
+      if (state[stateKey] === nextIndex && publish) {
+        publishCurrentTime();
+        return;
+      }
+
+      state[stateKey] = nextIndex;
+      render();
+
+      if (publish) {
+        publishCurrentTime();
+      }
+    }
+
+    wheel.addEventListener("wheel", function (event) {
+      event.preventDefault();
+
+      if (event.deltaY > 0) {
+        setIndex(state[stateKey] + 1, true);
+      } else if (event.deltaY < 0) {
+        setIndex(state[stateKey] - 1, true);
+      }
+    }, { passive: false });
+
+    wheel.addEventListener("pointerdown", function (event) {
+      isDragging = true;
+      dragStartY = event.clientY;
+      dragStartIndex = state[stateKey];
+      wheel.classList.add("dragging");
+
+      if (wheel.setPointerCapture) {
+        wheel.setPointerCapture(event.pointerId);
+      }
+
+      event.preventDefault();
+    });
+
+    wheel.addEventListener("pointermove", function (event) {
+      if (!isDragging) return;
+
+      var deltaY = event.clientY - dragStartY;
+      var steps = Math.round(deltaY / getItemHeight());
+
+      setIndex(dragStartIndex - steps, false);
+    });
+
+    function endDrag() {
+      if (!isDragging) return;
+
+      isDragging = false;
+      wheel.classList.remove("dragging");
+      publishCurrentTime();
+    }
+
+    wheel.addEventListener("pointerup", endDrag);
+    wheel.addEventListener("pointerleave", endDrag);
+    wheel.addEventListener("pointercancel", endDrag);
+
+    window.addEventListener("resize", render);
+    render();
+  }
+
+  createWheel("hour-wheel", hours, "hourIndex");
+  createWheel("minute-wheel", minutes, "minuteIndex");
+  createWheel("meridiem-wheel", meridiems, "meridiemIndex");
+
+  setButton.addEventListener("pointerdown", function (event) {
+    publishCurrentTime();
+    setButtonPressed(true);
+
+    if (setButton.setPointerCapture) {
+      setButton.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  });
+
+  function releaseSetButton() {
+    setButtonPressed(false);
+  }
+
+  setButton.addEventListener("pointerup", releaseSetButton);
+  setButton.addEventListener("pointerleave", releaseSetButton);
+  setButton.addEventListener("pointercancel", releaseSetButton);
+
+  enableButton.addEventListener("pointerdown", function (event) {
+    enableButton.classList.add("pressed");
+    setAlarmEnabled(!state.alarmEnabled);
+
+    if (enableButton.setPointerCapture) {
+      enableButton.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  });
+
+  function releaseEnableButton() {
+    enableButton.classList.remove("pressed");
+  }
+
+  enableButton.addEventListener("pointerup", releaseEnableButton);
+  enableButton.addEventListener("pointerleave", releaseEnableButton);
+  enableButton.addEventListener("pointercancel", releaseEnableButton);
+
+  renderAlarmEnabledState();
+
+  if (publishOnLoad) {
+    setTimeout(function () {
+      publishCurrentTime();
+      publishAlarmEnabledState();
+    }, 100);
+  }
+})();
+</script>

@@ -1,0 +1,197 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.radio-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6vw;
+}
+
+.radio-toggle {
+  --button-count: 5;
+  --selected-index: 0;
+
+  position: relative;
+  display: grid;
+  grid-template-rows: repeat(var(--button-count), 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 120px;
+  min-height: 140px;
+  max-width: 260px;
+  padding: 4px;
+  background: rgba(240, 240, 240, 0.1);
+  border-radius: 8px;
+  font-family: "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.radio-toggle input[type="radio"] {
+  display: none;
+}
+
+.radio-toggle label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0 8px;
+  color: white;
+  font-size: clamp(12px, 8vmin, 28px);
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  z-index: 2;
+  position: relative;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.radio-toggle input[type="radio"]:checked + label {
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+}
+
+.radio-toggle .slider {
+  position: absolute;
+  left: 4px;
+  top: calc(4px + ((100% - 8px) / var(--button-count)) * var(--selected-index));
+  width: calc(100% - 8px);
+  height: calc((100% - 8px) / var(--button-count));
+  background: rgb(4, 170, 142);
+  border-radius: 6px;
+  box-shadow: 0 0 15px rgb(4, 170, 142);
+  z-index: 1;
+  transition: top 0.25s ease-in-out, background-color 0.25s;
+  animation: pulse-glow-radio 1.5s infinite;
+}
+
+@keyframes pulse-glow-radio {
+  0% {
+    box-shadow: 0 0 10px rgba(4, 170, 142, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 24px rgba(4, 170, 142, 0.85);
+  }
+
+  100% {
+    box-shadow: 0 0 10px rgba(4, 170, 142, 0.4);
+  }
+}
+</style>
+
+<div class="radio-wrapper">
+  <div class="radio-toggle" id="radio-toggle">
+    <span class="slider" id="radio-slider"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var groupId = "grp1";
+
+  var buttons = [
+    { label: "Preset 1", pressSignal: "81", feedbackSignal: "91", labelSignal: "81" },
+    { label: "Preset 2", pressSignal: "82", feedbackSignal: "92", labelSignal: "82" },
+    { label: "Preset 3", pressSignal: "83", feedbackSignal: "93", labelSignal: "83" },
+    { label: "Preset 4", pressSignal: "84", feedbackSignal: "94", labelSignal: "84" },
+    { label: "Preset 5", pressSignal: "85", feedbackSignal: "95", labelSignal: "85" }
+  ];
+
+  var defaultSelectedIndex = 0;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var wrapper = document.getElementById("radio-toggle");
+  var inputs = [];
+
+  wrapper.style.setProperty("--button-count", buttons.length);
+
+  function setSelectedIndex(index) {
+    index = Math.max(0, Math.min(buttons.length - 1, index));
+
+    wrapper.style.setProperty("--selected-index", index);
+
+    inputs.forEach(function (input, inputIndex) {
+      input.checked = inputIndex === index;
+    });
+  }
+
+  function pulsePress(signal) {
+    if (!lib || !signal) return;
+
+    lib.publishEvent("b", signal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", signal, false);
+    }, 100);
+  }
+
+  buttons.forEach(function (buttonConfig, index) {
+    var id = "radio-" + groupId + "-" + index;
+
+    var input = document.createElement("input");
+    input.type = "radio";
+    input.name = "selector-" + groupId;
+    input.id = id;
+
+    var label = document.createElement("label");
+    label.setAttribute("for", id);
+    label.textContent = buttonConfig.label;
+
+    input.addEventListener("change", function () {
+      if (input.checked) {
+        setSelectedIndex(index);
+        pulsePress(buttonConfig.pressSignal);
+      }
+    });
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(label);
+    inputs.push(input);
+
+    if (lib && buttonConfig.feedbackSignal) {
+      lib.subscribeState("b", buttonConfig.feedbackSignal, function (value) {
+        if (value === true || value === 1 || value === "1") {
+          setSelectedIndex(index);
+        }
+      });
+    }
+
+    if (lib && buttonConfig.labelSignal) {
+      lib.subscribeState("s", buttonConfig.labelSignal, function (value) {
+        label.textContent = value || buttonConfig.label;
+      });
+    }
+  });
+
+  setSelectedIndex(defaultSelectedIndex);
+})();
+</script>

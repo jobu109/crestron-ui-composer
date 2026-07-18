@@ -1,0 +1,22 @@
+{
+  "version": 3,
+  "width": 1920,
+  "height": 1200,
+  "targetDevice": "tsw-1070",
+  "targetDeviceProfile": { "id": "tsw-1070", "name": "Crestron TSW-1070", "width": 1920, "height": 1200, "supportsCh5": true },
+  "diagnostics": true,
+  "pages": [
+    { "id": "smoke-home", "name": "Controls", "background": "#182126", "bindingMode": "none", "binding": "" },
+    { "id": "smoke-status", "name": "Status", "background": "#102b30", "bindingMode": "join", "binding": "20" }
+  ],
+  "activePage": "smoke-home",
+  "items": [
+    { "id": "smoke-button", "pageId": "smoke-home", "name": "Join Button", "source": "", "componentId": "standard-button", "signalBindings": { "press": { "mode": "join", "value": "1" }, "selected": { "mode": "join", "value": "2" }, "label": { "mode": "join", "value": "3" } }, "properties": { "bindingMode": "join", "text": "Press 1 / Feedback 2 / Label 3", "textColor": "#ffffff", "faceColor": "#04aa8e", "borderColor": "#ffffff", "glowColor": "#04aa8e", "selectedColor": "#04aa8e", "textSize": 24 }, "x": 100, "y": 120, "w": 520, "h": 170, "z": 1, "targetPage": "" },
+    { "id": "smoke-slider", "pageId": "smoke-home", "name": "Volume Slider", "source": "", "componentId": "volume-slider", "signalBindings": { "set": { "mode": "join", "value": "4" }, "level": { "mode": "join", "value": "5" } }, "properties": { "bindingMode": "join", "lowColor": "#4caf50", "middleColor": "#ffeb3b", "highColor": "#f44336", "trackCoverColor": "#2a2a2a", "knobColor": "#ffffff", "textColor": "#ffffff", "glowColor": "#04aa8e", "textSize": 28, "iconSize": 48 }, "x": 100, "y": 360, "w": 620, "h": 180, "z": 2, "targetPage": "" },
+    { "id": "smoke-nav", "pageId": "smoke-home", "name": "Local Navigation", "source": "", "componentId": "standard-button", "signalBindings": { "press": { "mode": "join", "value": "6" }, "selected": { "mode": "join", "value": "7" }, "label": { "mode": "join", "value": "8" } }, "properties": { "bindingMode": "join", "text": "Local Status Page →", "textSize": 24 }, "x": 100, "y": 630, "w": 520, "h": 170, "z": 3, "targetPage": "smoke-status" },
+    { "id": "smoke-countdown", "pageId": "smoke-home", "name": "Countdown Selector", "source": "", "componentId": "countdown-selector", "signalBindings": { "value": { "mode": "join", "value": "9" }, "valueText": { "mode": "join", "value": "10" }, "enabled": { "mode": "join", "value": "11" }, "disabled": { "mode": "join", "value": "12" } }, "properties": { "bindingMode": "join", "minValue": 5, "maxValue": 120, "stepValue": 5, "defaultValue": 60, "defaultEnabled": "no" }, "x": 850, "y": 120, "w": 720, "h": 360, "z": 4, "targetPage": "" },
+    { "id": "smoke-clock", "pageId": "smoke-status", "name": "Analog Clock", "source": "", "componentId": "analog-clock", "signalBindings": { "time": { "mode": "join", "value": "13" }, "city": { "mode": "join", "value": "14" } }, "properties": { "bindingMode": "join", "localCity": "TSW-1070", "previewMode": "live", "glowStrength": 40 }, "x": 120, "y": 120, "w": 520, "h": 520, "z": 1, "targetPage": "" },
+    { "id": "smoke-back", "pageId": "smoke-status", "name": "Local Back", "source": "", "componentId": "standard-button", "signalBindings": { "press": { "mode": "join", "value": "15" }, "selected": { "mode": "join", "value": "16" }, "label": { "mode": "join", "value": "17" } }, "properties": { "bindingMode": "join", "text": "← Local Controls Page", "textSize": 24 }, "x": 760, "y": 180, "w": 560, "h": 180, "z": 2, "targetPage": "smoke-home" },
+    { "id": "smoke-progress", "pageId": "smoke-status", "name": "Shutdown Progress", "source": "", "componentId": "shutdown-progress", "signalBindings": { "progress": { "mode": "join", "value": "18" }, "note": { "mode": "join", "value": "19" }, "title": { "mode": "join", "value": "21" }, "visible": { "mode": "join", "value": "22" } }, "properties": { "bindingMode": "join", "defaultProgress": 45, "analogScale": "percent", "localNote": "Smoke test progress" }, "x": 720, "y": 520, "w": 900, "h": 300, "z": 3, "targetPage": "" }
+  ]
+}

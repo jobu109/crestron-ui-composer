@@ -1,0 +1,282 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.flip-cards-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 3vw, 20px);
+  padding: 10vw 10vw;
+  overflow: visible;
+}
+
+.flip-card-container {
+  width: min(42vw, 270px);
+  height: min(78vh, 340px);
+  min-width: 110px;
+  min-height: 150px;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.flip-card {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  transition: transform 0.6s ease;
+}
+
+.flip-card-container.flipped .flip-card {
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: clamp(10px, 4vmin, 20px);
+  box-shadow:
+    0 8px 16px rgba(0, 0, 0, 0.3),
+    0 0 18px rgba(4, 170, 142, 0.25);
+}
+
+.card-front {
+  background: #333;
+  color: white;
+  z-index: 2;
+  transform: rotateY(0deg);
+  -webkit-transform: rotateY(0deg);
+}
+
+.card-back {
+  background: #666;
+  color: white;
+  transform: rotateY(180deg);
+  -webkit-transform: rotateY(180deg);
+  flex-direction: column;
+}
+
+.card-front figure,
+.card-back figure {
+  width: 100%;
+  margin: 0;
+}
+
+.card-front img,
+.card-back img {
+  width: 100%;
+  max-height: 70%;
+  object-fit: contain;
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+
+.tv-on-image {
+  filter:
+    drop-shadow(0 0 10px rgba(4, 170, 142, 0.9))
+    drop-shadow(0 0 24px rgba(4, 170, 142, 0.65))
+    drop-shadow(0 0 42px rgba(4, 170, 142, 0.35));
+}
+
+.card-front figcaption,
+.card-back .card-description {
+  font-family: "Segoe UI", sans-serif;
+  font-weight: 700;
+  font-size: clamp(13px, 4vmin, 24px);
+  line-height: 1.2;
+}
+</style>
+
+<div class="flip-cards-wrapper" id="flip-cards-wrapper"></div>
+
+<script>
+(function () {
+  var cardCountSignal = "140";
+
+  var pressBaseSignal = 141;
+  var feedbackBaseSignal = 151;
+  var labelBaseSignal = 161;
+
+  var maxCards = 20;
+  var defaultCardCount = 2;
+
+  var frontImage = "./app/project/assets/img/TV_Off.png";
+  var backImage = "./app/project/assets/img/TV_On.png";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var wrapper = document.getElementById("flip-cards-wrapper");
+
+  var cardCount = defaultCardCount;
+  var labels = [];
+
+  for (var i = 0; i < maxCards; i++) {
+    labels[i] = "Display " + (i + 1);
+  }
+
+  function getPressSignal(index) {
+    return String(pressBaseSignal + index);
+  }
+
+  function getFeedbackSignal(index) {
+    return String(feedbackBaseSignal + index);
+  }
+
+  function getLabelSignal(index) {
+    return String(labelBaseSignal + index);
+  }
+
+  function setCardFlipped(index, flipped) {
+    var card = wrapper.querySelector('[data-card-index="' + index + '"]');
+
+    if (card) {
+      card.classList.toggle("flipped", flipped);
+    }
+  }
+
+  function pulseCardPress(index) {
+    if (!lib) return;
+
+    var signal = getPressSignal(index);
+
+    lib.publishEvent("b", signal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", signal, false);
+    }, 100);
+  }
+
+  function renderCards() {
+    wrapper.innerHTML = "";
+
+    for (var i = 0; i < cardCount; i++) {
+      var container = document.createElement("div");
+      container.className = "flip-card-container";
+      container.setAttribute("data-card-index", i);
+
+      var flipCard = document.createElement("div");
+      flipCard.className = "flip-card";
+
+      var front = document.createElement("div");
+      front.className = "card-front";
+
+      var frontFigure = document.createElement("figure");
+
+      if (frontImage) {
+        var frontImg = document.createElement("img");
+        frontImg.src = frontImage;
+        frontImg.alt = "";
+        frontFigure.appendChild(frontImg);
+      }
+
+      var caption = document.createElement("figcaption");
+      caption.textContent = labels[i] || ("Display " + (i + 1));
+      frontFigure.appendChild(caption);
+
+      front.appendChild(frontFigure);
+
+      var back = document.createElement("div");
+      back.className = "card-back";
+
+      var backFigure = document.createElement("figure");
+
+      if (backImage) {
+        var backImg = document.createElement("img");
+        backImg.className = "tv-on-image";
+        backImg.src = backImage;
+        backImg.alt = "";
+        backFigure.appendChild(backImg);
+      }
+
+      var description = document.createElement("div");
+      description.className = "card-description";
+      description.textContent = labels[i] || ("Display " + (i + 1));
+      backFigure.appendChild(description);
+
+      back.appendChild(backFigure);
+
+      flipCard.appendChild(front);
+      flipCard.appendChild(back);
+      container.appendChild(flipCard);
+      wrapper.appendChild(container);
+
+      (function (index) {
+        container.addEventListener("click", function () {
+          pulseCardPress(index);
+        });
+      })(i);
+    }
+  }
+
+  function setCardCount(value) {
+    var count = Math.round(Number(value));
+
+    if (!Number.isFinite(count) || count < 1) {
+      count = defaultCardCount;
+    }
+
+    cardCount = Math.max(1, Math.min(maxCards, count));
+    renderCards();
+  }
+
+  renderCards();
+
+  if (lib) {
+    lib.subscribeState("n", cardCountSignal, setCardCount);
+
+    for (var i = 0; i < maxCards; i++) {
+      (function (index) {
+        lib.subscribeState("b", getFeedbackSignal(index), function (value) {
+          setCardFlipped(
+            index,
+            value === true || value === 1 || value === "1"
+          );
+        });
+
+        lib.subscribeState("s", getLabelSignal(index), function (value) {
+          if (value) {
+            labels[index] = value;
+            renderCards();
+          }
+        });
+      })(i);
+    }
+  }
+})();
+</script>

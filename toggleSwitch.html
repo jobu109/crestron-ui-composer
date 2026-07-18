@@ -1,0 +1,200 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.tsw-toggle-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8vw;
+}
+
+.tsw-toggle-center {
+  width: 100%;
+  height: 100%;
+  max-width: 420px;
+  max-height: 140px;
+  min-width: 140px;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tsw-toggle-center input[type="checkbox"] {
+  display: none;
+}
+
+.tsw-toggle-switch {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  background: transparent;
+  border-radius: 8px;
+  perspective: 300px;
+  position: relative;
+  cursor: pointer;
+}
+
+.tsw-toggle-mode {
+  flex: 1;
+  height: 100%;
+  min-height: 48px;
+  background: linear-gradient(rgb(245, 244, 246), rgb(204, 201, 202));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.25s, background 0.25s, box-shadow 0.25s;
+}
+
+.tsw-toggle-mode:nth-child(1) {
+  border-radius: 8px 0 0 8px;
+  transform-origin: right;
+}
+
+.tsw-toggle-mode:nth-child(2) {
+  border-radius: 0 8px 8px 0;
+  transform-origin: left;
+}
+
+.tsw-toggle-text {
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(18px, 12vmin, 34px);
+  font-weight: 800;
+  color: transparent;
+  background-color: green;
+  background-clip: text;
+  -webkit-background-clip: text;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3);
+  transition: background-color 0.2s ease;
+}
+
+.tsw-toggle-center input[type="checkbox"]:not(:checked) + .tsw-toggle-switch .tsw-toggle-mode:nth-child(1) .tsw-toggle-text {
+  background-color: red;
+}
+
+.tsw-toggle-center input[type="checkbox"]:not(:checked) + .tsw-toggle-switch .tsw-toggle-mode:nth-child(2) .tsw-toggle-text {
+  background-color: green;
+}
+
+.tsw-toggle-center input[type="checkbox"]:checked + .tsw-toggle-switch .tsw-toggle-mode:nth-child(2) .tsw-toggle-text {
+  background-color: red;
+}
+
+.tsw-toggle-center input[type="checkbox"]:checked + .tsw-toggle-switch .tsw-toggle-mode:nth-child(1) .tsw-toggle-text {
+  background-color: green;
+}
+
+.tsw-toggle-center input[type="checkbox"]:not(:checked) + .tsw-toggle-switch .tsw-toggle-mode:nth-child(1) {
+  transform: rotateY(50deg);
+  background: rgb(238, 237, 239);
+  box-shadow: -10px 5px 20px rgba(0, 0, 0, 0.2);
+}
+
+.tsw-toggle-center input[type="checkbox"]:checked + .tsw-toggle-switch .tsw-toggle-mode:nth-child(2) {
+  transform: rotateY(-50deg);
+  background: rgb(238, 237, 239);
+  box-shadow: 10px 5px 20px rgba(0, 0, 0, 0.2);
+}
+
+.tsw-toggle-indicator {
+  position: absolute;
+  height: calc(100% - 18px);
+  width: 0;
+  background: linear-gradient(to right, rgb(153, 152, 153), rgb(84, 83, 84));
+  top: 50%;
+  z-index: -1;
+  transition: width 0.25s;
+}
+
+.tsw-toggle-indicator.tsw-toggle-left {
+  left: 5px;
+  transform: translate(0, -50%) rotateY(-65deg);
+  transform-origin: left;
+}
+
+.tsw-toggle-indicator.tsw-toggle-right {
+  right: 5px;
+  transform: translate(0, -50%) rotateY(65deg);
+  transform-origin: right;
+}
+
+.tsw-toggle-center input[type="checkbox"]:not(:checked) + .tsw-toggle-switch .tsw-toggle-indicator.tsw-toggle-left {
+  width: 50%;
+}
+
+.tsw-toggle-center input[type="checkbox"]:checked + .tsw-toggle-switch .tsw-toggle-indicator.tsw-toggle-right {
+  width: 50%;
+}
+</style>
+
+<div class="tsw-toggle-wrapper">
+  <div class="tsw-toggle-center">
+    <input id="toggle-switch-input" type="checkbox">
+    <label class="tsw-toggle-switch" for="toggle-switch-input">
+      <div class="tsw-toggle-mode">
+        <div class="tsw-toggle-text">OFF</div>
+      </div>
+      <div class="tsw-toggle-mode">
+        <div class="tsw-toggle-text">ON</div>
+      </div>
+      <div class="tsw-toggle-indicator tsw-toggle-left"></div>
+      <div class="tsw-toggle-indicator tsw-toggle-right"></div>
+    </label>
+  </div>
+</div>
+
+<script>
+(function () {
+  var pressSignal = "101";
+  var feedbackSignal = "111";
+
+  // Contract-name example:
+  // var pressSignal = "Display1.Power.Press";
+  // var feedbackSignal = "Display1.Power.Selected";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var input = document.getElementById("toggle-switch-input");
+
+  input.addEventListener("change", function () {
+    if (!lib) return;
+
+    lib.publishEvent("b", pressSignal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", pressSignal, false);
+    }, 100);
+  });
+
+  if (lib) {
+    lib.subscribeState("b", feedbackSignal, function (value) {
+      input.checked = value === true || value === 1 || value === "1";
+    });
+  }
+})();
+</script>

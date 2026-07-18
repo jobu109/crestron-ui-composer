@@ -1,0 +1,31 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Crestron UI Composer"
+           Manufacturer="Crestron UI Composer"
+           Version="$(AppVersion)"
+           UpgradeCode="A7090F35-A6F2-47ED-A9F2-D0A839D49788"
+           Language="1033"
+           Scope="perUser"
+           InstallerVersion="500">
+    <SummaryInformation Description="Standalone HTML5 interface editor for Crestron touch panels" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Crestron UI Composer is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="ApplicationIcon" SourceFile="$(IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="ApplicationIcon" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Crestron UI Composer" />
+    </StandardDirectory>
+
+    <Files Include="$(PublishDir)\**" Directory="INSTALLFOLDER" />
+
+    <Component Id="ShellIntegration" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\CrestronUiComposer" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\.cuiproj" Type="string" Value="CrestronUiComposer.Project" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\CrestronUiComposer.Project" Type="string" Value="Crestron UI Composer Project" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\CrestronUiComposer.Project\DefaultIcon" Type="string" Value="[INSTALLFOLDER]CrestronUiComposer.exe,0" />
+      <RegistryValue Root="HKCU" Key="Software\Classes\CrestronUiComposer.Project\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]CrestronUiComposer.exe&quot; &quot;%1&quot;" />
+      <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Crestron UI Composer" Target="[INSTALLFOLDER]CrestronUiComposer.exe" WorkingDirectory="INSTALLFOLDER" Icon="ApplicationIcon" />
+      <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="Crestron UI Composer" Target="[INSTALLFOLDER]CrestronUiComposer.exe" WorkingDirectory="INSTALLFOLDER" Icon="ApplicationIcon" />
+    </Component>
+  </Package>
+</Wix>

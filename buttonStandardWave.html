@@ -1,0 +1,306 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.glass-wrapper {
+  width: 100%;
+  height: 100%;
+  display: block;
+  padding: 10px;
+  background: transparent;
+  overflow: hidden;
+}
+
+.glass-button {
+  width: 100%;
+  height: 100%;
+  border-radius: 36px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.24),
+      rgba(52, 68, 68, 0.26) 42%,
+      rgba(4, 170, 142, 0.16)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -20px 34px rgba(4, 170, 142, 0.1),
+    0 0 10px rgba(4, 170, 142, 0.35),
+    0 6px 12px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: clamp(8px, 5vmin, 22px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    transform 0.16s ease;
+}
+
+.glass-button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  border-radius: 34px;
+  background:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.22),
+      rgba(255, 255, 255, 0.06) 34%,
+      rgba(255, 255, 255, 0) 58%
+    );
+  pointer-events: none;
+}
+
+.glass-button::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 8%;
+  height: 22%;
+  z-index: 1;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.glass-pulse-dots {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.glass-pulse-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 100vh);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle,
+      rgba(4, 170, 142, 0.38) 0%,
+      rgba(4, 170, 142, 0.24) 34%,
+      rgba(4, 170, 142, 0.08) 62%,
+      rgba(4, 170, 142, 0) 72%
+    );
+  box-shadow:
+    0 0 18px rgba(4, 170, 142, 0.34),
+    inset 0 0 22px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  transform: translate3d(-50%, -50%, 0) scale3d(0, 0, 1);
+}
+
+.glass-button.pulse .glass-pulse-dot {
+  animation-name: glass-pulse-wave;
+  animation-timing-function: ease-in-out;
+  animation-duration: 1.45s;
+  animation-fill-mode: forwards;
+}
+
+.glass-button.pulse .glass-pulse-dot:nth-child(2) {
+  animation-delay: 0.22s;
+}
+
+.glass-button.pulse .glass-pulse-dot:nth-child(3) {
+  animation-delay: 0.44s;
+}
+
+@keyframes glass-pulse-wave {
+  0% {
+    opacity: 0.85;
+    transform: translate3d(-50%, -50%, 0) scale3d(0.05, 0.05, 1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) scale3d(2.7, 2.7, 1);
+  }
+}
+
+.glass-button-label {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  color: white;
+  font-size: clamp(16px, 10vmin, 42px);
+  font-weight: 800;
+  line-height: 1.05;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.65),
+    0 0 10px rgba(255, 255, 255, 0.35);
+}
+
+.glass-button.pressed {
+  filter: brightness(1.14);
+  transform: scale(0.985);
+}
+
+.glass-button.active {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.28),
+      rgba(52, 68, 68, 0.24) 38%,
+      rgba(4, 170, 142, 0.36)
+    );
+  border-color: rgba(4, 170, 142, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    inset 0 -20px 34px rgba(4, 170, 142, 0.2),
+    0 0 16px rgba(4, 170, 142, 0.72),
+    0 6px 12px rgba(0, 0, 0, 0.22);
+}
+
+.glass-button.active .glass-button-label {
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.68),
+    0 0 10px rgba(255, 255, 255, 0.75),
+    0 0 22px rgba(4, 170, 142, 0.95);
+}
+</style>
+
+<div class="glass-wrapper">
+  <button class="glass-button" id="glass-button" type="button">
+    <span class="glass-pulse-dots" aria-hidden="true">
+      <span class="glass-pulse-dot"></span>
+      <span class="glass-pulse-dot"></span>
+      <span class="glass-pulse-dot"></span>
+    </span>
+
+    <span class="glass-button-label" id="glass-button-label">Button</span>
+  </button>
+</div>
+
+<script>
+(function () {
+  var pressSignal = "81";
+  var feedbackSignal = "91";
+  var labelSignal = "101";
+
+  // Contract-name example:
+  // var pressSignal = "GlassButton.Press";
+  // var feedbackSignal = "GlassButton.Selected";
+  // var labelSignal = "GlassButton.Name";
+
+  var defaultLabel = "SET";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  var lib = getCrComLib();
+  var button = document.getElementById("glass-button");
+  var label = document.getElementById("glass-button-label");
+  var pulseTimer = null;
+
+  label.textContent = defaultLabel;
+  button.setAttribute("aria-label", defaultLabel);
+
+  function triggerPulse() {
+    button.classList.remove("pulse");
+    void button.offsetWidth;
+    button.classList.add("pulse");
+
+    if (pulseTimer) {
+      clearTimeout(pulseTimer);
+    }
+
+    pulseTimer = setTimeout(function () {
+      button.classList.remove("pulse");
+      pulseTimer = null;
+    }, 1900);
+  }
+
+  function publishPressed(value) {
+    button.classList.toggle("pressed", value);
+
+    if (value) {
+      triggerPulse();
+    }
+
+    if (lib && pressSignal) {
+      lib.publishEvent("b", pressSignal, value);
+    }
+  }
+
+  button.addEventListener("pointerdown", function (event) {
+    publishPressed(true);
+    event.preventDefault();
+  });
+
+  button.addEventListener("pointerup", function () {
+    publishPressed(false);
+  });
+
+  button.addEventListener("pointerleave", function () {
+    publishPressed(false);
+  });
+
+  button.addEventListener("pointercancel", function () {
+    publishPressed(false);
+  });
+
+  if (lib) {
+    if (feedbackSignal) {
+      lib.subscribeState("b", feedbackSignal, function (value) {
+        button.classList.toggle("active", isHigh(value));
+      });
+    }
+
+    if (labelSignal) {
+      lib.subscribeState("s", labelSignal, function (value) {
+        var text = value || defaultLabel;
+
+        label.textContent = text;
+        button.setAttribute("aria-label", text);
+      });
+    }
+  }
+})();
+</script>

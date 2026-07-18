@@ -1,0 +1,402 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.weather-card-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 5vw;
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+}
+
+.weather-card {
+  width: 100%;
+  height: 100%;
+  min-width: 160px;
+  min-height: 120px;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.24),
+      rgba(52, 68, 68, 0.26) 42%,
+      rgba(4, 170, 142, 0.16)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -24px 42px rgba(4, 170, 142, 0.1),
+    0 0 22px rgba(4, 170, 142, 0.5),
+    0 16px 34px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: clamp(8px, 3vmin, 18px);
+  padding: clamp(12px, 5vmin, 28px);
+  overflow: hidden;
+  position: relative;
+}
+
+.weather-card::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 9px;
+  background:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.22),
+      rgba(255, 255, 255, 0.06) 34%,
+      rgba(255, 255, 255, 0) 58%
+    );
+  pointer-events: none;
+}
+
+.weather-card::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 8%;
+  height: 22%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.weather-header,
+.weather-main,
+.weather-details,
+.weather-error {
+  position: relative;
+  z-index: 1;
+}
+
+.weather-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 0;
+}
+
+.weather-city {
+  font-size: clamp(18px, 8vmin, 36px);
+  font-weight: 800;
+  line-height: 1;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.6),
+    0 0 12px rgba(255, 255, 255, 0.45),
+    0 0 18px rgba(4, 170, 142, 0.35);
+}
+
+.weather-updated {
+  font-size: clamp(10px, 4vmin, 16px);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.65),
+    0 0 10px rgba(255, 255, 255, 0.35);
+}
+
+.weather-main {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: clamp(10px, 4vmin, 24px);
+  min-height: 0;
+}
+
+.weather-temp {
+  font-size: clamp(44px, 24vmin, 110px);
+  font-weight: 900;
+  line-height: 0.9;
+  color: white;
+  text-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.62),
+    0 0 16px rgba(255, 255, 255, 0.82),
+    0 0 30px rgba(4, 170, 142, 0.75);
+  white-space: nowrap;
+}
+
+.weather-condition {
+  font-size: clamp(15px, 6vmin, 28px);
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: right;
+  color: rgb(0, 210, 176);
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.72),
+    0 0 12px rgba(4, 170, 142, 0.9),
+    0 0 22px rgba(4, 170, 142, 0.55);
+}
+
+.weather-details {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(6px, 2vmin, 12px);
+  min-height: 0;
+}
+
+.weather-detail {
+  min-width: 0;
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.18),
+      rgba(20, 32, 34, 0.22)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.12),
+    0 0 12px rgba(4, 170, 142, 0.18);
+  padding: clamp(6px, 3vmin, 12px);
+  overflow: hidden;
+}
+
+.weather-detail-label {
+  font-size: clamp(10px, 4vmin, 15px);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.58),
+    0 0 8px rgba(255, 255, 255, 0.28);
+}
+
+.weather-detail-value {
+  font-size: clamp(14px, 6vmin, 24px);
+  font-weight: 900;
+  line-height: 1;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.68),
+    0 0 10px rgba(255, 255, 255, 0.42);
+}
+
+.weather-error {
+  display: none;
+  color: #ff7777;
+  font-size: clamp(12px, 5vmin, 20px);
+  font-weight: 800;
+  text-align: center;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.65);
+}
+</style>
+
+<div class="weather-card-wrapper">
+  <div class="weather-card">
+    <div class="weather-header">
+      <div class="weather-city" id="weather-city">St. Louis</div>
+      <div class="weather-updated" id="weather-updated">Loading</div>
+    </div>
+
+    <div class="weather-main">
+      <div class="weather-temp" id="weather-temp">--</div>
+      <div class="weather-condition" id="weather-condition">Loading</div>
+    </div>
+
+    <div class="weather-details">
+      <div class="weather-detail">
+        <div class="weather-detail-label">Feels Like</div>
+        <div class="weather-detail-value" id="weather-feels">--</div>
+      </div>
+
+      <div class="weather-detail">
+        <div class="weather-detail-label">High / Low</div>
+        <div class="weather-detail-value" id="weather-high-low">--</div>
+      </div>
+
+      <div class="weather-detail">
+        <div class="weather-detail-label">Humidity</div>
+        <div class="weather-detail-value" id="weather-humidity">--</div>
+      </div>
+
+      <div class="weather-detail">
+        <div class="weather-detail-label">Wind</div>
+        <div class="weather-detail-value" id="weather-wind">--</div>
+      </div>
+    </div>
+
+    <div class="weather-error" id="weather-error">Weather unavailable</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var locationName = "St. Louis";
+  var latitude = 38.6270;
+  var longitude = -90.1994;
+
+  var refreshMinutes = 30;
+
+  var cityEl = document.getElementById("weather-city");
+  var updatedEl = document.getElementById("weather-updated");
+  var tempEl = document.getElementById("weather-temp");
+  var conditionEl = document.getElementById("weather-condition");
+  var feelsEl = document.getElementById("weather-feels");
+  var highLowEl = document.getElementById("weather-high-low");
+  var humidityEl = document.getElementById("weather-humidity");
+  var windEl = document.getElementById("weather-wind");
+  var errorEl = document.getElementById("weather-error");
+
+  function weatherCodeToText(code) {
+    var map = {
+      0: "Clear",
+      1: "Mostly Clear",
+      2: "Partly Cloudy",
+      3: "Cloudy",
+      45: "Fog",
+      48: "Fog",
+      51: "Light Drizzle",
+      53: "Drizzle",
+      55: "Heavy Drizzle",
+      56: "Freezing Drizzle",
+      57: "Freezing Drizzle",
+      61: "Light Rain",
+      63: "Rain",
+      65: "Heavy Rain",
+      66: "Freezing Rain",
+      67: "Freezing Rain",
+      71: "Light Snow",
+      73: "Snow",
+      75: "Heavy Snow",
+      77: "Snow Grains",
+      80: "Light Showers",
+      81: "Showers",
+      82: "Heavy Showers",
+      85: "Snow Showers",
+      86: "Snow Showers",
+      95: "Thunderstorm",
+      96: "Thunderstorm",
+      99: "Thunderstorm"
+    };
+
+    return map[code] || "Weather";
+  }
+
+  function formatTemp(value) {
+    if (typeof value !== "number") return "--";
+    return Math.round(value) + "\u00B0";
+  }
+
+  function formatPercent(value) {
+    if (typeof value !== "number") return "--";
+    return Math.round(value) + "%";
+  }
+
+  function formatWind(speed, gust) {
+    if (typeof speed !== "number") return "--";
+
+    var text = Math.round(speed) + " mph";
+
+    if (typeof gust === "number" && gust > speed) {
+      text += " / " + Math.round(gust) + " gust";
+    }
+
+    return text;
+  }
+
+  function formatUpdated(value) {
+    if (!value) return "Updated";
+
+    var date = new Date(value);
+
+    if (isNaN(date.getTime())) {
+      return "Updated";
+    }
+
+    return date.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+  }
+
+  function setError(showError) {
+    errorEl.style.display = showError ? "block" : "none";
+  }
+
+  function loadWeather() {
+    var url =
+      "https://api.open-meteo.com/v1/forecast" +
+      "?latitude=" + encodeURIComponent(latitude) +
+      "&longitude=" + encodeURIComponent(longitude) +
+      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m" +
+      "&daily=temperature_2m_max,temperature_2m_min" +
+      "&temperature_unit=fahrenheit" +
+      "&wind_speed_unit=mph" +
+      "&precipitation_unit=inch" +
+      "&forecast_days=1" +
+      "&timezone=auto";
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Weather request failed");
+        }
+
+        return response.json();
+      })
+      .then(function (data) {
+        var current = data.current || {};
+        var daily = data.daily || {};
+
+        cityEl.textContent = locationName;
+        updatedEl.textContent = formatUpdated(current.time);
+        tempEl.textContent = formatTemp(current.temperature_2m);
+        conditionEl.textContent = weatherCodeToText(current.weather_code);
+        feelsEl.textContent = formatTemp(current.apparent_temperature);
+        highLowEl.textContent =
+          formatTemp(daily.temperature_2m_max && daily.temperature_2m_max[0]) +
+          " / " +
+          formatTemp(daily.temperature_2m_min && daily.temperature_2m_min[0]);
+        humidityEl.textContent = formatPercent(current.relative_humidity_2m);
+        windEl.textContent = formatWind(current.wind_speed_10m, current.wind_gusts_10m);
+
+        setError(false);
+      })
+      .catch(function () {
+        updatedEl.textContent = "Error";
+        tempEl.textContent = "--";
+        conditionEl.textContent = "Unavailable";
+        feelsEl.textContent = "--";
+        highLowEl.textContent = "--";
+        humidityEl.textContent = "--";
+        windEl.textContent = "--";
+
+        setError(true);
+      });
+  }
+
+  loadWeather();
+  setInterval(loadWeather, refreshMinutes * 60 * 1000);
+})();
+</script>

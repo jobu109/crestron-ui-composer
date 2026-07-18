@@ -1,0 +1,747 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.mics-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", sans-serif;
+  container-type: size;
+}
+
+.mics-track {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--mic-card-width, clamp(210px, 23cqw, 250px));
+  grid-template-rows: repeat(var(--mic-row-count, 1), minmax(0, 1fr));
+  gap: var(--mic-gap, clamp(10px, 2.2cqw, 18px));
+  align-items: stretch;
+  padding:
+    var(--mic-padding-y, clamp(10px, 2.4cqh, 18px))
+    var(--mic-padding-x, clamp(12px, 3.6cqw, 36px))
+    calc(var(--mic-padding-y, clamp(10px, 2.4cqh, 18px)) + 10px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.mics-track::-webkit-scrollbar {
+  display: none;
+}
+
+.mic-card {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: clamp(8px, 2.2cqh, 16px) clamp(8px, 2.4cqw, 16px);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: clamp(4px, 1.3cqh, 9px);
+  align-items: center;
+  justify-items: center;
+  border: 1px solid rgba(148, 238, 226, 0.54);
+  border-radius: 7px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.15), rgba(4, 170, 142, 0.2)),
+    rgba(4, 85, 72, 0.32);
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.08),
+    inset 0 0 26px rgba(4, 170, 142, 0.2),
+    0 0 14px rgba(4, 170, 142, 0.24);
+  container-type: size;
+}
+
+.mic-gauge {
+  --gauge-rgb: 4, 170, 142;
+
+  width: min(74cqw, 58cqh, 156px);
+  min-width: 54px;
+  aspect-ratio: 1 / 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: end;
+  border-radius: 999px;
+  background:
+    radial-gradient(
+      circle,
+      rgba(var(--gauge-rgb), 0.14) 0%,
+      rgba(var(--gauge-rgb), 0.08) 42%,
+      rgba(var(--gauge-rgb), 0.035) 62%,
+      transparent 78%
+    );
+  box-shadow:
+    inset 0 0 22px rgba(var(--gauge-rgb), 0.12),
+    0 0 16px rgba(var(--gauge-rgb), 0.18);
+}
+
+.mic-hitbox {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  cursor: pointer;
+  border-radius: 999px;
+  touch-action: none;
+}
+
+.mic-progress-bar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  overflow: visible;
+}
+
+.mic-track-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 660 880;
+  stroke-dashoffset: 0;
+  transform: rotate(135deg);
+  transform-origin: 150px 150px;
+}
+
+.mic-progress {
+  fill: none;
+  stroke: rgb(var(--gauge-rgb));
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 660 880;
+  stroke-dashoffset: 660;
+  transform: rotate(135deg);
+  transform-origin: 150px 150px;
+  filter:
+    drop-shadow(0 0 6px rgba(var(--gauge-rgb), 0.75))
+    drop-shadow(0 0 14px rgba(var(--gauge-rgb), 0.45));
+  transition:
+    stroke-dashoffset 0.16s ease,
+    filter 0.16s ease;
+}
+
+.mic-pointer {
+  stroke: rgb(var(--gauge-rgb));
+  stroke-width: 5;
+  stroke-linecap: round;
+  filter:
+    drop-shadow(0 0 6px rgba(var(--gauge-rgb), 0.75))
+    drop-shadow(0 0 12px rgba(var(--gauge-rgb), 0.45));
+  transition: transform 0.16s ease;
+}
+
+.mic-knob {
+  position: absolute;
+  inset: 30%;
+  z-index: 3;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 38% 32%,
+      rgba(255, 255, 255, 0.38),
+      rgba(255, 255, 255, 0.13) 22%,
+      rgba(var(--gauge-rgb), 0.16) 48%,
+      rgba(0, 0, 0, 0.36) 100%
+    );
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    inset 0 2px 8px rgba(255, 255, 255, 0.16),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.38),
+    0 0 12px rgba(var(--gauge-rgb), 0.35);
+}
+
+.mic-text {
+  color: white;
+  font-size: clamp(13px, 11cqw, 22px);
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.75),
+    0 0 12px rgba(var(--gauge-rgb), 0.8);
+}
+
+.mic-label {
+  width: 100%;
+  color: white;
+  font-size: clamp(10px, 5.3cqw, 15px);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.72),
+    0 0 10px rgba(255, 255, 255, 0.26);
+}
+
+.mic-toggle {
+  position: relative;
+  width: clamp(72px, 38cqw, 92px);
+  height: clamp(30px, 17cqh, 44px);
+  min-height: 26px;
+  border: 2px solid rgba(126, 42, 42, 0.72);
+  border-radius: 999px;
+  background: rgba(138, 124, 121, 0.8);
+  cursor: pointer;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.38),
+    0 0 8px rgba(126, 42, 42, 0.55);
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
+}
+
+.mic-toggle:active {
+  transform: scale(0.96);
+}
+
+.mic-toggle.selected {
+  border-color: rgba(4, 220, 185, 0.95);
+  background: rgba(4, 170, 142, 0.72);
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.3),
+    0 0 12px rgba(4, 220, 185, 0.62);
+}
+
+.mic-toggle-knob {
+  position: absolute;
+  top: 50%;
+  left: 8%;
+  width: 30%;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  background: rgba(238, 238, 238, 0.94);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  transform: translateY(-50%);
+  transition: left 0.16s ease;
+}
+
+.mic-toggle.selected .mic-toggle-knob {
+  left: 62%;
+}
+
+.scroll-overlay {
+  position: absolute;
+  left: clamp(10px, 3cqw, 20px);
+  right: clamp(10px, 3cqw, 20px);
+  bottom: clamp(4px, 1.2cqh, 8px);
+  height: clamp(4px, 1.4cqh, 8px);
+  border-radius: 999px;
+  background: rgba(42, 42, 42, 0.38);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 5;
+}
+
+.mics-stage.scrollable .scroll-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scroll-thumb {
+  height: 100%;
+  width: 32px;
+  border-radius: inherit;
+  background: rgba(112, 112, 112, 0.76);
+  box-shadow:
+    0 0 4px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateX(0);
+}
+</style>
+
+<div class="mics-stage" id="mics-stage">
+  <div class="mics-track" id="mics-track"></div>
+  <div class="scroll-overlay" id="scroll-overlay">
+    <div class="scroll-thumb" id="scroll-thumb"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // The default count renders first; numItemsSignal overrides it when it sends a value above 0.
+  var micCount = 8;
+
+  var numItemsSignal = "230";
+  var levelSetBaseSignal = "231";
+  var levelFeedbackBaseSignal = "231";
+  var labelBaseSignal = "231";
+  var togglePressBaseSignal = "231";
+  var toggleFeedbackBaseSignal = "231";
+
+  var signalIncrement = 1;  //essentially join offset.
+  var itemIdBase = 1;
+  var maxItems = 48;
+
+  var defaultLabel = "Label";
+  var defaultLevel = 0;
+  var defaultToggleSelected = false;
+
+  var arcLength = 660;
+  var renderVersion = 0;
+  var micItems = [];
+  var activeItem = null;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var stage = document.getElementById("mics-stage");
+  var track = document.getElementById("mics-track");
+  var scrollOverlay = document.getElementById("scroll-overlay");
+  var scrollThumb = document.getElementById("scroll-thumb");
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function clampPercent(value) {
+    return clamp(Math.round(Number(value) || 0), 0, 100);
+  }
+
+  function clampCount(value) {
+    return clamp(Math.round(Number(value) || 1), 1, maxItems);
+  }
+
+  function getAnalogItemCount(value) {
+    var count = Math.round(Number(value));
+
+    if (!isFinite(count) || count <= 0) {
+      return null;
+    }
+
+    return clampCount(count);
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  function normalizeIncomingLevel(value) {
+    var numberValue = Number(value) || 0;
+
+    if (numberValue > 100) {
+      return clampPercent((numberValue / 65535) * 100);
+    }
+
+    return clampPercent(numberValue);
+  }
+
+  function makeSignal(baseSignal, index) {
+    if (baseSignal === null || baseSignal === undefined || baseSignal === "") {
+      return "";
+    }
+
+    var text = String(baseSignal).trim();
+    var itemId = itemIdBase + index;
+    var numericBase = Number(text);
+
+    if (text.indexOf("{n}") !== -1) {
+      return text.replace(/\{n\}/g, String(itemId));
+    }
+
+    if (text.indexOf("{index}") !== -1) {
+      return text.replace(/\{index\}/g, String(index));
+    }
+
+    if (!isNaN(numericBase) && text !== "") {
+      return String(numericBase + (index * signalIncrement));
+    }
+
+    return text + itemId;
+  }
+
+  function mixColor(a, b, amount) {
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * amount),
+      Math.round(a[1] + (b[1] - a[1]) * amount),
+      Math.round(a[2] + (b[2] - a[2]) * amount)
+    ];
+  }
+
+  function getGaugeRgb(percent) {
+    var green = [4, 170, 142];
+    var orange = [255, 165, 0];
+    var red = [255, 40, 40];
+
+    if (percent <= 65) {
+      return mixColor(green, orange, percent / 65);
+    }
+
+    return mixColor(orange, red, (percent - 65) / 35);
+  }
+
+  function setMicLevel(item, value) {
+    var percent = clampPercent(value);
+    var angle = (percent / 100) * 270 - 135;
+    var fill = arcLength * (percent / 100);
+    var rgb = getGaugeRgb(percent).join(", ");
+
+    item.currentLevel = percent;
+    item.gauge.style.setProperty("--gauge-rgb", rgb);
+    item.pointer.setAttribute("transform", "rotate(" + angle + ", 150, 150)");
+    item.progress.style.strokeDashoffset = arcLength - fill;
+    item.text.textContent = percent + "%";
+  }
+
+  function setToggleState(item, selected) {
+    item.toggleSelected = !!selected;
+    item.toggle.classList.toggle("selected", item.toggleSelected);
+  }
+
+  function publishAnalog(signal, value) {
+    if (!lib || !signal) return;
+
+    var crestronValue = Math.round((clampPercent(value) / 100) * 65535);
+    lib.publishEvent("n", signal, crestronValue);
+  }
+
+  function pulseDigital(signal) {
+    if (!lib || !signal) return;
+
+    lib.publishEvent("b", signal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", signal, false);
+    }, 100);
+  }
+
+  function getLevelFromPointer(event, item) {
+    var rect = item.gauge.getBoundingClientRect();
+    var centerX = rect.left + rect.width / 2;
+    var centerY = rect.top + rect.height / 2;
+    var dx = event.clientX - centerX;
+    var dy = event.clientY - centerY;
+    var angleRad = Math.atan2(dy, dx);
+    var angleDeg = angleRad * 180 / Math.PI;
+    var rotationAngle = (angleDeg - 135 + 360) % 360;
+
+    if (rotationAngle > 270) {
+      return item.currentLevel;
+    }
+
+    return clampPercent((rotationAngle / 270) * 100);
+  }
+
+  function publishLevelFromEvent(event, item) {
+    var nextLevel = getLevelFromPointer(event, item);
+
+    setMicLevel(item, nextLevel);
+    publishAnalog(item.levelSetSignal, nextLevel);
+  }
+
+  function startGaugePress(event, item) {
+    activeItem = item;
+    publishLevelFromEvent(event, item);
+
+    if (item.hitbox.setPointerCapture) {
+      item.hitbox.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  }
+
+  function moveGaugePress(event, item) {
+    if (activeItem !== item) return;
+
+    publishLevelFromEvent(event, item);
+  }
+
+  function endGaugePress(item) {
+    if (activeItem !== item) return;
+
+    activeItem = null;
+  }
+
+  function createMic(index) {
+    var card = document.createElement("div");
+    var gauge = document.createElement("div");
+    var hitbox = document.createElement("div");
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    var trackRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    var progress = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    var pointer = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    var knob = document.createElement("div");
+    var text = document.createElement("div");
+    var label = document.createElement("div");
+    var toggle = document.createElement("button");
+    var toggleKnob = document.createElement("span");
+
+    var item = {
+      card: card,
+      gauge: gauge,
+      hitbox: hitbox,
+      progress: progress,
+      pointer: pointer,
+      text: text,
+      label: label,
+      toggle: toggle,
+      currentLevel: defaultLevel,
+      toggleSelected: defaultToggleSelected,
+      levelSetSignal: makeSignal(levelSetBaseSignal, index),
+      levelFeedbackSignal: makeSignal(levelFeedbackBaseSignal, index),
+      labelSignal: makeSignal(labelBaseSignal, index),
+      togglePressSignal: makeSignal(togglePressBaseSignal, index),
+      toggleFeedbackSignal: makeSignal(toggleFeedbackBaseSignal, index)
+    };
+
+    card.className = "mic-card";
+    gauge.className = "mic-gauge";
+    hitbox.className = "mic-hitbox";
+    svg.classList.add("mic-progress-bar");
+    trackRing.classList.add("mic-track-ring");
+    progress.classList.add("mic-progress");
+    pointer.classList.add("mic-pointer");
+    knob.className = "mic-knob";
+    text.className = "mic-text";
+    label.className = "mic-label";
+    toggle.className = "mic-toggle";
+    toggleKnob.className = "mic-toggle-knob";
+
+    svg.setAttribute("viewBox", "0 0 300 300");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+    trackRing.setAttribute("cx", "150");
+    trackRing.setAttribute("cy", "150");
+    trackRing.setAttribute("r", "140");
+    progress.setAttribute("cx", "150");
+    progress.setAttribute("cy", "150");
+    progress.setAttribute("r", "140");
+    pointer.setAttribute("x1", "150");
+    pointer.setAttribute("y1", "92");
+    pointer.setAttribute("x2", "150");
+    pointer.setAttribute("y2", "24");
+    pointer.setAttribute("transform", "rotate(-135, 150, 150)");
+
+    toggle.type = "button";
+    toggle.setAttribute("aria-label", "Toggle microphone");
+    label.textContent = defaultLabel;
+    text.textContent = defaultLevel + "%";
+
+    svg.appendChild(trackRing);
+    svg.appendChild(progress);
+    svg.appendChild(pointer);
+    knob.appendChild(text);
+    gauge.appendChild(hitbox);
+    gauge.appendChild(svg);
+    gauge.appendChild(knob);
+    toggle.appendChild(toggleKnob);
+    card.appendChild(gauge);
+    card.appendChild(label);
+    card.appendChild(toggle);
+
+    hitbox.addEventListener("pointerdown", function (event) {
+      startGaugePress(event, item);
+    });
+
+    hitbox.addEventListener("pointermove", function (event) {
+      moveGaugePress(event, item);
+    });
+
+    hitbox.addEventListener("pointerup", function () {
+      endGaugePress(item);
+    });
+
+    hitbox.addEventListener("pointerleave", function () {
+      endGaugePress(item);
+    });
+
+    hitbox.addEventListener("pointercancel", function () {
+      endGaugePress(item);
+    });
+
+    toggle.addEventListener("click", function () {
+      setToggleState(item, !item.toggleSelected);
+      pulseDigital(item.togglePressSignal);
+    });
+
+    return item;
+  }
+
+  function subscribeMic(item, version) {
+    if (!lib) return;
+
+    if (item.levelFeedbackSignal) {
+      lib.subscribeState("n", item.levelFeedbackSignal, function (value) {
+        if (version !== renderVersion) return;
+        setMicLevel(item, normalizeIncomingLevel(value));
+      });
+    }
+
+    if (item.labelSignal) {
+      lib.subscribeState("s", item.labelSignal, function (value) {
+        if (version !== renderVersion) return;
+        item.label.textContent = value || defaultLabel;
+      });
+    }
+
+    if (item.toggleFeedbackSignal) {
+      lib.subscribeState("b", item.toggleFeedbackSignal, function (value) {
+        if (version !== renderVersion) return;
+        setToggleState(item, isHigh(value));
+      });
+    }
+  }
+
+  function updateResponsiveLayout() {
+    var height = stage.clientHeight || window.innerHeight || 1;
+    var width = stage.clientWidth || window.innerWidth || 1;
+    var paddingY = clamp(Math.round(height * 0.035), 8, 18);
+    var paddingX = clamp(Math.round(width * 0.028), 10, 36);
+    var gap = clamp(Math.round(Math.min(width, height) * 0.025), 8, 18);
+    var availableHeight = Math.max(1, height - (paddingY * 2) - 12);
+    var minRowHeight = 174;
+    var rows = clamp(Math.floor((availableHeight + gap) / (minRowHeight + gap)), 1, 4);
+    var cardWidth = clamp(Math.round(width * 0.23), 190, 250);
+
+    track.style.setProperty("--mic-row-count", rows);
+    track.style.setProperty("--mic-card-width", cardWidth + "px");
+    track.style.setProperty("--mic-gap", gap + "px");
+    track.style.setProperty("--mic-padding-y", paddingY + "px");
+    track.style.setProperty("--mic-padding-x", paddingX + "px");
+  }
+
+  function updateScrollThumb() {
+    var scrollWidth = track.scrollWidth;
+    var clientWidth = track.clientWidth;
+    var maxScroll = scrollWidth - clientWidth;
+    var overlayWidth = scrollOverlay.clientWidth;
+
+    if (maxScroll <= 1 || overlayWidth <= 0) {
+      stage.classList.remove("scrollable");
+      scrollThumb.style.width = "0px";
+      scrollThumb.style.transform = "translateX(0)";
+      return;
+    }
+
+    var thumbWidth = Math.max(36, Math.round((clientWidth / scrollWidth) * overlayWidth));
+    var maxThumbX = overlayWidth - thumbWidth;
+    var thumbX = Math.round((track.scrollLeft / maxScroll) * maxThumbX);
+
+    stage.classList.add("scrollable");
+    scrollThumb.style.width = thumbWidth + "px";
+    scrollThumb.style.transform = "translateX(" + thumbX + "px)";
+  }
+
+  function refreshLayout() {
+    updateResponsiveLayout();
+    requestAnimationFrame(updateScrollThumb);
+  }
+
+  function renderMics(count) {
+    var normalizedCount = clampCount(count);
+
+    renderVersion += 1;
+    activeItem = null;
+    micCount = normalizedCount;
+    micItems = [];
+    track.textContent = "";
+
+    for (var i = 0; i < micCount; i += 1) {
+      var item = createMic(i);
+
+      micItems.push(item);
+      track.appendChild(item.card);
+      setMicLevel(item, defaultLevel);
+      setToggleState(item, defaultToggleSelected);
+      subscribeMic(item, renderVersion);
+    }
+
+    refreshLayout();
+  }
+
+  track.addEventListener("scroll", updateScrollThumb);
+  window.addEventListener("resize", refreshLayout);
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(refreshLayout).observe(stage);
+    new ResizeObserver(updateScrollThumb).observe(track);
+  }
+
+  scrollOverlay.addEventListener("pointerdown", function (event) {
+    var overlayRect = scrollOverlay.getBoundingClientRect();
+    var thumbRect = scrollThumb.getBoundingClientRect();
+    var maxScroll = track.scrollWidth - track.clientWidth;
+    var maxThumbX = scrollOverlay.clientWidth - scrollThumb.offsetWidth;
+    var grabOffset = event.clientX - thumbRect.left;
+
+    if (maxScroll <= 0 || maxThumbX <= 0) return;
+
+    if (event.target === scrollOverlay) {
+      grabOffset = scrollThumb.offsetWidth / 2;
+    }
+
+    function moveThumb(moveEvent) {
+      var x = moveEvent.clientX - overlayRect.left - grabOffset;
+      var clampedX = Math.max(0, Math.min(maxThumbX, x));
+
+      track.scrollLeft = (clampedX / maxThumbX) * maxScroll;
+      updateScrollThumb();
+      moveEvent.preventDefault();
+    }
+
+    function stopDrag() {
+      window.removeEventListener("pointermove", moveThumb);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
+    }
+
+    window.addEventListener("pointermove", moveThumb);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+    moveThumb(event);
+    event.preventDefault();
+  });
+
+  renderMics(micCount);
+
+  if (lib && numItemsSignal) {
+    lib.subscribeState("n", numItemsSignal, function (value) {
+      var count = getAnalogItemCount(value);
+
+      if (count !== null) {
+        renderMics(count);
+      }
+    });
+  }
+})();
+</script>

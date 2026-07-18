@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "devices": [
+    {
+      "id": "tsw-1070",
+      "manufacturer": "Crestron",
+      "model": "TSW-1070",
+      "name": "Crestron TSW-1070",
+      "width": 1920,
+      "height": 1200,
+      "aspectRatio": "16:10",
+      "colorDepth": 24,
+      "supportsCh5": true,
+      "maximumProjectSizeMb": 600,
+      "validationStatus": "hardware-test-target"
+    },
+    {
+      "id": "custom",
+      "manufacturer": "Custom",
+      "model": "Custom",
+      "name": "Custom resolution",
+      "width": 1280,
+      "height": 800,
+      "supportsCh5": null,
+      "validationStatus": "unverified"
+    }
+  ]
+}

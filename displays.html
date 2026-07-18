@@ -1,0 +1,864 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.displays-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", sans-serif;
+  container-type: size;
+}
+
+.displays-track {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--display-card-width, clamp(230px, 28cqw, 320px));
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--display-gap, clamp(10px, 1.7cqw, 18px));
+  align-items: stretch;
+  padding:
+    var(--display-padding-y, clamp(8px, 2.4cqh, 18px))
+    var(--display-padding-x, clamp(10px, 3cqw, 28px))
+    calc(var(--display-padding-y, clamp(8px, 2.4cqh, 18px)) + 10px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.displays-track::-webkit-scrollbar {
+  display: none;
+}
+
+.display-card {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: clamp(8px, 2.2cqh, 16px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(7px, 2.1cqh, 16px);
+  border: 1px solid rgba(148, 238, 226, 0.58);
+  border-radius: 7px;
+  background:
+    radial-gradient(circle at 42% 34%, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.04) 42%, transparent 64%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(4, 170, 142, 0.19)),
+    rgba(4, 85, 72, 0.32);
+  box-shadow:
+    inset 0 0 22px rgba(255, 255, 255, 0.09),
+    inset 0 0 28px rgba(4, 170, 142, 0.22),
+    0 0 14px rgba(4, 170, 142, 0.24);
+  color: white;
+  container-type: size;
+}
+
+.display-header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: clamp(8px, 3cqw, 14px);
+  align-items: center;
+}
+
+.display-icon {
+  width: clamp(19px, 9cqw, 28px);
+  height: clamp(19px, 9cqw, 28px);
+  color: white;
+  opacity: 0.94;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.48));
+}
+
+.display-name {
+  min-width: 0;
+  font-size: clamp(15px, 7.5cqw, 25px);
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.65),
+    0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.display-controls {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  align-content: stretch;
+  align-items: center;
+  justify-items: center;
+  gap: 0;
+}
+
+.display-power-toggle {
+  width: clamp(126px, 58cqw, 172px);
+  height: clamp(48px, 24cqh, 68px);
+  min-height: 42px;
+  display: flex;
+  padding: 5px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  perspective: 300px;
+  position: relative;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.display-power-mode {
+  flex: 1;
+  height: 100%;
+  min-height: 34px;
+  background: linear-gradient(rgb(245, 244, 246), rgb(204, 201, 202));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.25s,
+    background 0.25s,
+    box-shadow 0.25s;
+}
+
+.display-power-mode:first-child {
+  border-radius: 8px 0 0 8px;
+  transform-origin: right;
+}
+
+.display-power-mode:nth-child(2) {
+  border-radius: 0 8px 8px 0;
+  transform-origin: left;
+}
+
+.display-power-text {
+  font-size: clamp(14px, 7.8cqw, 22px);
+  font-weight: 800;
+  line-height: 1;
+  color: transparent;
+  background-color: green;
+  background-clip: text;
+  -webkit-background-clip: text;
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3);
+  transition: background-color 0.2s ease;
+}
+
+.display-power-toggle:not(.selected) .display-power-mode:first-child .display-power-text {
+  background-color: red;
+}
+
+.display-power-toggle:not(.selected) .display-power-mode:nth-child(2) .display-power-text {
+  background-color: green;
+}
+
+.display-power-toggle.selected .display-power-mode:nth-child(2) .display-power-text {
+  background-color: red;
+}
+
+.display-power-toggle.selected .display-power-mode:first-child .display-power-text {
+  background-color: green;
+}
+
+.display-power-toggle:not(.selected) .display-power-mode:first-child {
+  transform: rotateY(50deg);
+  background: rgb(238, 237, 239);
+  box-shadow: -10px 5px 20px rgba(0, 0, 0, 0.2);
+}
+
+.display-power-toggle.selected .display-power-mode:nth-child(2) {
+  transform: rotateY(-50deg);
+  background: rgb(238, 237, 239);
+  box-shadow: 10px 5px 20px rgba(0, 0, 0, 0.2);
+}
+
+.display-power-indicator {
+  position: absolute;
+  height: calc(100% - 18px);
+  width: 0;
+  background: linear-gradient(to right, rgb(153, 152, 153), rgb(84, 83, 84));
+  top: 50%;
+  z-index: -1;
+  transition: width 0.25s;
+}
+
+.display-power-indicator.left {
+  left: 5px;
+  transform: translate(0, -50%) rotateY(-65deg);
+  transform-origin: left;
+}
+
+.display-power-indicator.right {
+  right: 5px;
+  transform: translate(0, -50%) rotateY(65deg);
+  transform-origin: right;
+}
+
+.display-power-toggle:not(.selected) .display-power-indicator.left,
+.display-power-toggle.selected .display-power-indicator.right {
+  width: 50%;
+}
+
+.video-mute-button {
+  min-width: clamp(96px, 44cqw, 136px);
+  height: clamp(38px, 17cqh, 48px);
+  padding: 0 clamp(14px, 6cqw, 26px);
+  border: 1px solid rgba(174, 245, 235, 0.72);
+  border-radius: 999px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.25), rgba(4, 170, 142, 0.2)),
+    rgba(116, 156, 150, 0.68);
+  color: white;
+  font-size: clamp(12px, 5.2cqw, 16px);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow:
+    inset 0 1px 7px rgba(255, 255, 255, 0.22),
+    inset 0 -8px 15px rgba(0, 0, 0, 0.18),
+    0 4px 9px rgba(0, 0, 0, 0.3),
+    0 0 10px rgba(4, 170, 142, 0.32);
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.65);
+  transition:
+    background-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
+}
+
+.video-mute-button.pressed {
+  transform: scale(0.96);
+}
+
+.video-mute-button.active {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 48, 48, 0.24)),
+    rgba(190, 42, 42, 0.78);
+  border-color: rgba(255, 210, 210, 0.86);
+  box-shadow:
+    inset 0 1px 7px rgba(255, 255, 255, 0.18),
+    inset 0 -8px 15px rgba(0, 0, 0, 0.2),
+    0 0 16px rgba(240, 6, 6, 0.62);
+}
+
+.source-selector {
+  --button-count: 2;
+  --selected-index: 0;
+
+  position: relative;
+  justify-self: center;
+  align-self: center;
+  display: grid;
+  grid-template-columns: repeat(var(--button-count), 1fr);
+  width: min(100%, clamp(154px, 70cqw, 190px));
+  height: clamp(52px, 24cqh, 72px);
+  min-height: 44px;
+  padding: 4px;
+  background: rgba(240, 240, 240, 0.1);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.source-slider {
+  position: absolute;
+  top: 4px;
+  left: calc(4px + ((100% - 8px) / var(--button-count)) * var(--selected-index));
+  width: calc((100% - 8px) / var(--button-count));
+  height: calc(100% - 8px);
+  background: rgb(4, 170, 142);
+  border-radius: 6px;
+  box-shadow: 0 0 15px rgb(4, 170, 142);
+  z-index: 1;
+  transition:
+    left 0.25s ease-in-out,
+    background-color 0.25s;
+  animation: pulse-glow-source 1.5s infinite;
+}
+
+.source-button {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: white;
+  padding: 0 clamp(4px, 2.6cqw, 8px);
+  font-size: clamp(10px, 4.4cqw, 14px);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.56);
+  transition:
+    text-shadow 0.18s ease,
+    transform 0.12s ease;
+}
+
+.source-button.pressed {
+  transform: scale(0.96);
+}
+
+.source-button.selected {
+  text-shadow:
+    0 0 9px rgba(255, 255, 255, 0.9),
+    0 2px 5px rgba(0, 0, 0, 0.56);
+}
+
+.scroll-overlay {
+  position: absolute;
+  left: clamp(10px, 3cqw, 20px);
+  right: clamp(10px, 3cqw, 20px);
+  bottom: clamp(4px, 1.2cqh, 8px);
+  height: clamp(4px, 1.4cqh, 8px);
+  border-radius: 999px;
+  background: rgba(42, 42, 42, 0.38);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 5;
+}
+
+.displays-stage.scrollable .scroll-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scroll-thumb {
+  height: 100%;
+  width: 32px;
+  border-radius: inherit;
+  background: rgba(112, 112, 112, 0.76);
+  box-shadow:
+    0 0 4px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateX(0);
+}
+
+@keyframes pulse-glow-source {
+  0% {
+    box-shadow: 0 0 10px rgba(4, 170, 142, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 24px rgba(4, 170, 142, 0.85);
+  }
+
+  100% {
+    box-shadow: 0 0 10px rgba(4, 170, 142, 0.4);
+  }
+}
+</style>
+
+<div class="displays-stage" id="displays-stage">
+  <div class="displays-track" id="displays-track"></div>
+  <div class="scroll-overlay" id="scroll-overlay">
+    <div class="scroll-thumb" id="scroll-thumb"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // The default count renders first; numItemsSignal overrides it when it sends a value above 0.
+  var displayCount = 5;
+  var sourceCount = 2;
+
+  var numItemsSignal = "240";
+
+  var displayNameBaseSignal = "241";
+  var powerPressBaseSignal = "241";
+  var powerFeedbackBaseSignal = "241";
+  var videoMutePressBaseSignal = "242";
+  var videoMuteFeedbackBaseSignal = "242";
+  var videoMuteLabelBaseSignal = "242";
+  var sourcePressBaseSignal = "243";
+  var sourceFeedbackBaseSignal = "243";
+  var sourceLabelBaseSignal = "243";
+
+  var displaySignalIncrement = 5;
+  var sourceSignalIncrement = 1;
+  var sourceDisplayStride = 5;
+  var itemIdBase = 1;
+  var sourceItemIdBase = 1;
+  var maxDisplays = 48;
+  var maxSources = 8;
+
+  var defaultDisplayName = "Display Name";
+  var defaultVideoMuteLabel = "Video Mute";
+  var defaultSourceLabels = ["HDMI 1", "HDMI 2", "HDMI 3", "HDMI 4"];
+  var defaultSourceSelectedIndex = 0;
+
+  var renderVersion = 0;
+  var displays = [];
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var stage = document.getElementById("displays-stage");
+  var track = document.getElementById("displays-track");
+  var scrollOverlay = document.getElementById("scroll-overlay");
+  var scrollThumb = document.getElementById("scroll-thumb");
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function clampCount(value, max) {
+    return clamp(Math.round(Number(value) || 1), 1, max);
+  }
+
+  function getAnalogItemCount(value) {
+    var count = Math.round(Number(value));
+
+    if (!isFinite(count) || count <= 0) {
+      return null;
+    }
+
+    return clampCount(count, maxDisplays);
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  function makeSignal(baseSignal, displayIndex, sourceIndex) {
+    if (baseSignal === null || baseSignal === undefined || baseSignal === "") {
+      return "";
+    }
+
+    var text = String(baseSignal).trim();
+    var displayId = itemIdBase + displayIndex;
+    var sourceId = sourceItemIdBase + (sourceIndex || 0);
+    var numericBase = Number(text);
+
+    if (text.indexOf("{display}") !== -1 || text.indexOf("{d}") !== -1 || text.indexOf("{n}") !== -1) {
+      return text
+        .replace(/\{display\}/g, String(displayId))
+        .replace(/\{d\}/g, String(displayId))
+        .replace(/\{n\}/g, String(displayId))
+        .replace(/\{source\}/g, String(sourceId))
+        .replace(/\{s\}/g, String(sourceId))
+        .replace(/\{index\}/g, String(displayIndex))
+        .replace(/\{sourceIndex\}/g, String(sourceIndex || 0));
+    }
+
+    if (text.indexOf("{source}") !== -1 || text.indexOf("{s}") !== -1 || text.indexOf("{sourceIndex}") !== -1) {
+      return text
+        .replace(/\{source\}/g, String(sourceId))
+        .replace(/\{s\}/g, String(sourceId))
+        .replace(/\{sourceIndex\}/g, String(sourceIndex || 0));
+    }
+
+    if (!isNaN(numericBase) && text !== "") {
+      if (sourceIndex !== null && sourceIndex !== undefined) {
+        return String(numericBase + (displayIndex * sourceDisplayStride) + (sourceIndex * sourceSignalIncrement));
+      }
+
+      return String(numericBase + (displayIndex * displaySignalIncrement));
+    }
+
+    if (sourceIndex !== null && sourceIndex !== undefined) {
+      return text + displayId + "_" + sourceId;
+    }
+
+    return text + displayId;
+  }
+
+  function publishDigital(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("b", signal, value);
+    }
+  }
+
+  function pulseDigital(signal) {
+    if (!lib || !signal) return;
+
+    lib.publishEvent("b", signal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", signal, false);
+    }, 100);
+  }
+
+  function setPowerState(display, selected) {
+    display.powerSelected = !!selected;
+    display.powerToggle.classList.toggle("selected", display.powerSelected);
+  }
+
+  function setVideoMuteState(display, selected) {
+    display.videoMuteSelected = !!selected;
+    display.videoMuteButton.classList.toggle("active", display.videoMuteSelected);
+  }
+
+  function setSourceSelected(display, index) {
+    var safeIndex = clamp(Math.round(Number(index) || 0), 0, display.sourceButtons.length - 1);
+
+    display.sourceSelectedIndex = safeIndex;
+    display.sourceSelector.style.setProperty("--selected-index", safeIndex);
+
+    display.sourceButtons.forEach(function (button, buttonIndex) {
+      button.classList.toggle("selected", buttonIndex === safeIndex);
+    });
+  }
+
+  function createDisplay(index) {
+    var card = document.createElement("div");
+    var header = document.createElement("div");
+    var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    var iconPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    var name = document.createElement("div");
+    var controls = document.createElement("div");
+    var powerToggle = document.createElement("button");
+    var offMode = document.createElement("span");
+    var onMode = document.createElement("span");
+    var offText = document.createElement("span");
+    var onText = document.createElement("span");
+    var leftIndicator = document.createElement("span");
+    var rightIndicator = document.createElement("span");
+    var videoMuteButton = document.createElement("button");
+    var sourceSelector = document.createElement("div");
+    var sourceSlider = document.createElement("span");
+
+    var display = {
+      card: card,
+      name: name,
+      powerToggle: powerToggle,
+      videoMuteButton: videoMuteButton,
+      sourceSelector: sourceSelector,
+      sourceButtons: [],
+      sourceSelectedIndex: defaultSourceSelectedIndex,
+      powerSelected: false,
+      videoMuteSelected: false,
+      nameSignal: makeSignal(displayNameBaseSignal, index),
+      powerPressSignal: makeSignal(powerPressBaseSignal, index),
+      powerFeedbackSignal: makeSignal(powerFeedbackBaseSignal, index),
+      videoMutePressSignal: makeSignal(videoMutePressBaseSignal, index),
+      videoMuteFeedbackSignal: makeSignal(videoMuteFeedbackBaseSignal, index),
+      videoMuteLabelSignal: makeSignal(videoMuteLabelBaseSignal, index)
+    };
+
+    card.className = "display-card";
+    header.className = "display-header";
+    icon.classList.add("display-icon");
+    name.className = "display-name";
+    controls.className = "display-controls";
+    powerToggle.className = "display-power-toggle";
+    offMode.className = "display-power-mode";
+    onMode.className = "display-power-mode";
+    offText.className = "display-power-text";
+    onText.className = "display-power-text";
+    leftIndicator.className = "display-power-indicator left";
+    rightIndicator.className = "display-power-indicator right";
+    videoMuteButton.className = "video-mute-button";
+    sourceSelector.className = "source-selector";
+    sourceSlider.className = "source-slider";
+
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    iconPath.setAttribute("d", "M4 5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h3v-2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v9h16V7H4Z");
+    iconPath.setAttribute("fill", "currentColor");
+
+    powerToggle.type = "button";
+    powerToggle.setAttribute("aria-label", "Display power");
+    videoMuteButton.type = "button";
+    videoMuteButton.textContent = defaultVideoMuteLabel;
+    videoMuteButton.setAttribute("aria-label", defaultVideoMuteLabel);
+
+    offText.textContent = "OFF";
+    onText.textContent = "ON";
+    name.textContent = defaultDisplayName;
+
+    icon.appendChild(iconPath);
+    header.appendChild(icon);
+    header.appendChild(name);
+    offMode.appendChild(offText);
+    onMode.appendChild(onText);
+    powerToggle.appendChild(offMode);
+    powerToggle.appendChild(onMode);
+    powerToggle.appendChild(leftIndicator);
+    powerToggle.appendChild(rightIndicator);
+    controls.appendChild(powerToggle);
+    controls.appendChild(videoMuteButton);
+    sourceSelector.appendChild(sourceSlider);
+    card.appendChild(header);
+    card.appendChild(controls);
+    controls.appendChild(sourceSelector);
+
+    powerToggle.addEventListener("click", function () {
+      setPowerState(display, !display.powerSelected);
+      pulseDigital(display.powerPressSignal);
+    });
+
+    videoMuteButton.addEventListener("pointerdown", function (event) {
+      videoMuteButton.classList.add("pressed");
+      publishDigital(display.videoMutePressSignal, true);
+      event.preventDefault();
+    });
+
+    function releaseVideoMute() {
+      videoMuteButton.classList.remove("pressed");
+      publishDigital(display.videoMutePressSignal, false);
+    }
+
+    videoMuteButton.addEventListener("pointerup", releaseVideoMute);
+    videoMuteButton.addEventListener("pointerleave", releaseVideoMute);
+    videoMuteButton.addEventListener("pointercancel", releaseVideoMute);
+
+    renderSources(display, index);
+
+    return display;
+  }
+
+  function renderSources(display, displayIndex) {
+    var safeSourceCount = clampCount(sourceCount, maxSources);
+
+    display.sourceSelector.style.setProperty("--button-count", safeSourceCount);
+
+    for (var i = 0; i < safeSourceCount; i += 1) {
+      var sourceButton = document.createElement("button");
+      var sourceConfig = {
+        button: sourceButton,
+        label: defaultSourceLabels[i] || ("Input " + (i + 1)),
+        pressSignal: makeSignal(sourcePressBaseSignal, displayIndex, i),
+        feedbackSignal: makeSignal(sourceFeedbackBaseSignal, displayIndex, i),
+        labelSignal: makeSignal(sourceLabelBaseSignal, displayIndex, i)
+      };
+
+      sourceButton.type = "button";
+      sourceButton.className = "source-button";
+      sourceButton.textContent = sourceConfig.label;
+
+      sourceButton.addEventListener("pointerdown", function (event) {
+        event.currentTarget.classList.add("pressed");
+      });
+
+      sourceButton.addEventListener("pointerup", function (event) {
+        event.currentTarget.classList.remove("pressed");
+      });
+
+      sourceButton.addEventListener("pointerleave", function (event) {
+        event.currentTarget.classList.remove("pressed");
+      });
+
+      sourceButton.addEventListener("pointercancel", function (event) {
+        event.currentTarget.classList.remove("pressed");
+      });
+
+      (function (buttonIndex, config) {
+        sourceButton.addEventListener("click", function () {
+          setSourceSelected(display, buttonIndex);
+          pulseDigital(config.pressSignal);
+        });
+      })(i, sourceConfig);
+
+      display.sourceButtons.push(sourceButton);
+      display.sourceSelector.appendChild(sourceButton);
+      sourceButton._sourceConfig = sourceConfig;
+    }
+
+    setSourceSelected(display, defaultSourceSelectedIndex);
+  }
+
+  function subscribeDisplay(display, version) {
+    if (!lib) return;
+
+    if (display.nameSignal) {
+      lib.subscribeState("s", display.nameSignal, function (value) {
+        if (version !== renderVersion) return;
+        display.name.textContent = value || defaultDisplayName;
+      });
+    }
+
+    if (display.powerFeedbackSignal) {
+      lib.subscribeState("b", display.powerFeedbackSignal, function (value) {
+        if (version !== renderVersion) return;
+        setPowerState(display, isHigh(value));
+      });
+    }
+
+    if (display.videoMuteFeedbackSignal) {
+      lib.subscribeState("b", display.videoMuteFeedbackSignal, function (value) {
+        if (version !== renderVersion) return;
+        setVideoMuteState(display, isHigh(value));
+      });
+    }
+
+    if (display.videoMuteLabelSignal) {
+      lib.subscribeState("s", display.videoMuteLabelSignal, function (value) {
+        if (version !== renderVersion) return;
+        display.videoMuteButton.textContent = value || defaultVideoMuteLabel;
+        display.videoMuteButton.setAttribute("aria-label", value || defaultVideoMuteLabel);
+      });
+    }
+
+    display.sourceButtons.forEach(function (button, sourceIndex) {
+      var config = button._sourceConfig;
+
+      if (config.feedbackSignal) {
+        lib.subscribeState("b", config.feedbackSignal, function (value) {
+          if (version !== renderVersion) return;
+
+          if (isHigh(value)) {
+            setSourceSelected(display, sourceIndex);
+          }
+        });
+      }
+
+      if (config.labelSignal) {
+        lib.subscribeState("s", config.labelSignal, function (value) {
+          if (version !== renderVersion) return;
+          button.textContent = value || config.label;
+        });
+      }
+    });
+  }
+
+  function updateResponsiveLayout() {
+    var height = stage.clientHeight || window.innerHeight || 1;
+    var width = stage.clientWidth || window.innerWidth || 1;
+    var paddingY = clamp(Math.round(height * 0.035), 8, 18);
+    var paddingX = clamp(Math.round(width * 0.028), 10, 32);
+    var gap = clamp(Math.round(Math.min(width, height) * 0.024), 8, 18);
+    var availableWidth = Math.max(1, width - (paddingX * 2));
+    var preferredVisibleCount = width >= 900 ? 3.45 : width >= 640 ? 2.45 : 1.35;
+    var cardWidth = clamp(Math.round((availableWidth - (gap * Math.max(0, preferredVisibleCount - 1))) / preferredVisibleCount), 210, 320);
+
+    track.style.setProperty("--display-card-width", cardWidth + "px");
+    track.style.setProperty("--display-gap", gap + "px");
+    track.style.setProperty("--display-padding-y", paddingY + "px");
+    track.style.setProperty("--display-padding-x", paddingX + "px");
+  }
+
+  function updateScrollThumb() {
+    var scrollWidth = track.scrollWidth;
+    var clientWidth = track.clientWidth;
+    var maxScroll = scrollWidth - clientWidth;
+    var overlayWidth = scrollOverlay.clientWidth;
+
+    if (maxScroll <= 1 || overlayWidth <= 0) {
+      stage.classList.remove("scrollable");
+      scrollThumb.style.width = "0px";
+      scrollThumb.style.transform = "translateX(0)";
+      return;
+    }
+
+    var thumbWidth = Math.max(36, Math.round((clientWidth / scrollWidth) * overlayWidth));
+    var maxThumbX = overlayWidth - thumbWidth;
+    var thumbX = Math.round((track.scrollLeft / maxScroll) * maxThumbX);
+
+    stage.classList.add("scrollable");
+    scrollThumb.style.width = thumbWidth + "px";
+    scrollThumb.style.transform = "translateX(" + thumbX + "px)";
+  }
+
+  function refreshLayout() {
+    updateResponsiveLayout();
+    requestAnimationFrame(updateScrollThumb);
+  }
+
+  function renderDisplays(count) {
+    var normalizedCount = clampCount(count, maxDisplays);
+
+    renderVersion += 1;
+    displayCount = normalizedCount;
+    displays = [];
+    track.textContent = "";
+
+    for (var i = 0; i < displayCount; i += 1) {
+      var display = createDisplay(i);
+
+      displays.push(display);
+      track.appendChild(display.card);
+      setPowerState(display, false);
+      setVideoMuteState(display, false);
+      subscribeDisplay(display, renderVersion);
+    }
+
+    refreshLayout();
+  }
+
+  track.addEventListener("scroll", updateScrollThumb);
+  window.addEventListener("resize", refreshLayout);
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(refreshLayout).observe(stage);
+    new ResizeObserver(updateScrollThumb).observe(track);
+  }
+
+  scrollOverlay.addEventListener("pointerdown", function (event) {
+    var overlayRect = scrollOverlay.getBoundingClientRect();
+    var thumbRect = scrollThumb.getBoundingClientRect();
+    var maxScroll = track.scrollWidth - track.clientWidth;
+    var maxThumbX = scrollOverlay.clientWidth - scrollThumb.offsetWidth;
+    var grabOffset = event.clientX - thumbRect.left;
+
+    if (maxScroll <= 0 || maxThumbX <= 0) return;
+
+    if (event.target === scrollOverlay) {
+      grabOffset = scrollThumb.offsetWidth / 2;
+    }
+
+    function moveThumb(moveEvent) {
+      var x = moveEvent.clientX - overlayRect.left - grabOffset;
+      var clampedX = Math.max(0, Math.min(maxThumbX, x));
+
+      track.scrollLeft = (clampedX / maxThumbX) * maxScroll;
+      updateScrollThumb();
+      moveEvent.preventDefault();
+    }
+
+    function stopDrag() {
+      window.removeEventListener("pointermove", moveThumb);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
+    }
+
+    window.addEventListener("pointermove", moveThumb);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+    moveThumb(event);
+    event.preventDefault();
+  });
+
+  renderDisplays(displayCount);
+
+  if (lib && numItemsSignal) {
+    lib.subscribeState("n", numItemsSignal, function (value) {
+      var count = getAnalogItemCount(value);
+
+      if (count !== null) {
+        renderDisplays(count);
+      }
+    });
+  }
+})();
+</script>

@@ -1,0 +1,198 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.mute-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8vw;
+}
+
+.mute-group {
+  width: min(82vw, 82vh);
+  height: min(82vw, 82vh);
+  max-width: 220px;
+  max-height: 220px;
+  min-width: 60px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#mute-btn {
+  width: 100%;
+  height: 100%;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #555;
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgb(230, 96, 96);
+  transition: box-shadow 0.3s, background-color 0.3s, transform 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6%;
+  padding: 10%;
+  font-family: "Segoe UI", sans-serif;
+}
+
+#mute-btn:hover,
+#mute-btn.pressed {
+  box-shadow: 0 0 15px rgb(230, 96, 96);
+  transform: scale(0.92);
+  background-color: #666;
+}
+
+#mute-btn.active {
+  background: #f00606;
+  animation: pulse-glow 1.5s infinite;
+}
+
+.mute-icon {
+  width: 72%;
+  height: 72%;
+  display: block;
+}
+
+.mute-label {
+  max-width: 100%;
+  color: white;
+  font-size: clamp(11px, 8vmin, 26px);
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 8px rgba(240, 6, 6, 0.45);
+  }
+
+  50% {
+    box-shadow: 0 0 26px rgba(240, 6, 6, 0.95);
+  }
+
+  100% {
+    box-shadow: 0 0 8px rgba(240, 6, 6, 0.45);
+  }
+}
+</style>
+
+<div class="mute-wrapper">
+  <div class="mute-group">
+    <button id="mute-btn" type="button">
+      <svg class="mute-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M4 9v6h4l5 4V5L8 9H4z"
+          fill="currentColor"
+        ></path>
+        <path
+          d="M17 9l4 4m0-4l-4 4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        ></path>
+      </svg>
+      <span class="mute-label" id="mute-label">Mute</span>
+    </button>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Contract names:
+  var pressSignal = "Main.VolMute.Press";
+  var feedbackSignal = "Main.VolMute.Selected";
+  var labelSignal = "Main.VolMute.IndirectText";
+
+  // Or join numbers from your current app:
+  //var pressSignal = "123";
+  //var feedbackSignal = "123";
+  //var labelSignal = "123";
+
+  var defaultLabel = "Mute";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var button = document.getElementById("mute-btn");
+  var label = document.getElementById("mute-label");
+
+  if (label && !label.textContent) {
+    label.textContent = defaultLabel;
+  }
+
+  function publishPressed(value) {
+    button.classList.toggle("pressed", value);
+
+    if (lib) {
+      lib.publishEvent("b", pressSignal, value);
+    }
+  }
+
+  button.addEventListener("pointerdown", function (event) {
+    publishPressed(true);
+    event.preventDefault();
+  });
+
+  button.addEventListener("pointerup", function () {
+    publishPressed(false);
+  });
+
+  button.addEventListener("pointerleave", function () {
+    publishPressed(false);
+  });
+
+  button.addEventListener("pointercancel", function () {
+    publishPressed(false);
+  });
+
+  if (lib) {
+    lib.subscribeState("b", feedbackSignal, function (value) {
+      button.classList.toggle(
+        "active",
+        value === true || value === 1 || value === "1"
+      );
+    });
+
+    if (label && labelSignal) {
+      lib.subscribeState("s", labelSignal, function (value) {
+        label.textContent =
+          value !== null && value !== undefined && value !== ""
+            ? value
+            : defaultLabel;
+      });
+    }
+  }
+})();
+</script>

@@ -1,0 +1,439 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.horizontal-picker-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vw;
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+}
+
+.horizontal-picker-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 180px;
+  min-height: 120px;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(58, 66, 66, 0.9),
+      rgba(42, 54, 54, 0.88) 52%,
+      rgba(4, 170, 142, 0.18)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 28px rgba(0, 0, 0, 0.36),
+    0 0 14px rgba(4, 170, 142, 0.22);
+  overflow: hidden;
+  position: relative;
+}
+
+.horizontal-picker-panel::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: clamp(66px, 18vw, 112px);
+  height: clamp(34px, 42vh, 58px);
+  transform: translate(-50%, -50%);
+  border-radius: 7px;
+  background: rgba(110, 110, 110, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 10px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.horizontal-picker-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: clamp(52px, 24vh, 82px);
+  bottom: 0;
+  z-index: 2;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  mask-image: linear-gradient(90deg, transparent, white 16%, white 84%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, white 16%, white 84%, transparent);
+}
+
+.horizontal-picker-window.dragging {
+  cursor: grabbing;
+}
+
+.horizontal-picker-items {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  transition: transform 0.18s ease;
+}
+
+.horizontal-picker-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: clamp(66px, 18vw, 112px);
+  height: clamp(34px, 42vh, 58px);
+  margin-left: calc(clamp(66px, 18vw, 112px) / -2);
+  margin-top: calc(clamp(34px, 42vh, 58px) / -2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: clamp(18px, 9vmin, 36px);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: color 0.18s ease, opacity 0.18s ease, text-shadow 0.18s ease;
+}
+
+.horizontal-picker-item.active {
+  color: white;
+  opacity: 1;
+  font-weight: 600;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.7),
+    0 0 10px rgba(255, 255, 255, 0.32);
+}
+
+.horizontal-picker-item.near {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.horizontal-picker-item.far {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.countdown-enable-button {
+  position: absolute;
+  left: 50%;
+  top: clamp(8px, 4vh, 20px);
+  width: clamp(128px, 34vw, 190px);
+  height: clamp(44px, 14vh, 60px);
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 999px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(160, 60, 60, 0.48)),
+    rgba(78, 44, 44, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 0 18px rgba(0, 0, 0, 0.18),
+    0 0 12px rgba(210, 45, 45, 0.42);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: "Segoe UI", sans-serif;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.76),
+    0 0 8px rgba(255, 255, 255, 0.34);
+  transition:
+    transform 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    background 0.14s ease;
+  z-index: 4;
+}
+
+.countdown-enable-state {
+  font-size: clamp(12px, 3.5vmin, 16px);
+  font-weight: 900;
+}
+
+.countdown-enable-action {
+  font-size: clamp(8px, 2.3vmin, 11px);
+  font-weight: 700;
+  opacity: 0.78;
+}
+
+.countdown-enable-button.enabled {
+  border-color: rgba(4, 220, 185, 0.76);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(4, 170, 142, 0.56)),
+    rgba(4, 85, 72, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 18px rgba(4, 170, 142, 0.3),
+    0 0 14px rgba(4, 170, 142, 0.68);
+}
+
+.countdown-enable-button:hover,
+.countdown-enable-button.pressed {
+  transform: translateX(-50%) scale(0.96);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+</style>
+
+<div class="horizontal-picker-wrapper">
+  <div class="horizontal-picker-panel">
+    <button class="countdown-enable-button" id="countdown-enable-button" type="button">
+      <span class="countdown-enable-state" id="countdown-enable-state">DISABLED</span>
+      <span class="countdown-enable-action">ENABLE / DISABLE</span>
+    </button>
+    <div class="horizontal-picker-window" id="horizontal-picker-window">
+      <div class="horizontal-picker-items" id="horizontal-picker-items"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var analogOutSignal = "170";
+  var serialOutSignal = "170";
+  var countdownEnabledDigitalOutSignal = "170";
+  var countdownDisabledDigitalOutSignal = "171";
+
+  // Contract-name example:
+  // var analogOutSignal = "Picker.Value";
+  // var serialOutSignal = "Picker.ValueText";
+  // var countdownEnabledDigitalOutSignal = "Countdown.Enabled";
+  // var countdownDisabledDigitalOutSignal = "Countdown.Disabled";
+
+  var minValue = 5;
+  var maxValue = 240;
+  var stepValue = 5;
+  var defaultValue = 60;
+  var defaultCountdownEnabled = false;
+  var publishOnLoad = true;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var pickerWindow = document.getElementById("horizontal-picker-window");
+  var itemsWrap = document.getElementById("horizontal-picker-items");
+  var enableButton = document.getElementById("countdown-enable-button");
+  var enableState = document.getElementById("countdown-enable-state");
+
+  var values = [];
+  var itemEls = [];
+  var selectedIndex = 0;
+  var countdownEnabled = defaultCountdownEnabled;
+  var dragStartX = 0;
+  var dragStartIndex = 0;
+  var isDragging = false;
+  var itemWidth = 86;
+
+  for (var value = minValue; value <= maxValue; value += stepValue) {
+    values.push(value);
+  }
+
+  selectedIndex = Math.max(0, values.indexOf(defaultValue));
+
+  function clampIndex(index) {
+    return Math.max(0, Math.min(values.length - 1, index));
+  }
+
+  function getItemWidth() {
+    var sample = itemEls[0];
+    return sample ? sample.offsetWidth || itemWidth : itemWidth;
+  }
+
+  function publishAnalog(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("n", signal, value);
+    }
+  }
+
+  function publishSerial(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("s", signal, String(value));
+    }
+  }
+
+  function publishDigital(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("b", signal, value);
+    }
+  }
+
+  function publishSelectedValue() {
+    var value = values[selectedIndex];
+
+    publishAnalog(analogOutSignal, value);
+    publishSerial(serialOutSignal, value);
+  }
+
+  function publishCountdownEnabledState() {
+    publishDigital(countdownEnabledDigitalOutSignal, countdownEnabled);
+    publishDigital(countdownDisabledDigitalOutSignal, !countdownEnabled);
+  }
+
+  function renderCountdownEnabledState() {
+    enableButton.classList.toggle("enabled", countdownEnabled);
+    enableState.textContent = countdownEnabled ? "ENABLED" : "DISABLED";
+  }
+
+  function setCountdownEnabled(enabled) {
+    countdownEnabled = !!enabled;
+    renderCountdownEnabledState();
+    publishCountdownEnabledState();
+  }
+
+  function render() {
+    itemWidth = getItemWidth();
+
+    itemEls.forEach(function (item, index) {
+      var distance = index - selectedIndex;
+      var absDistance = Math.abs(distance);
+      var rotate = distance * 12;
+      var translateX = distance * itemWidth;
+      var translateZ = -Math.min(absDistance * 14, 84);
+
+      item.style.transform =
+        "translateX(" + translateX + "px) translateZ(" + translateZ + "px) rotateY(" + rotate + "deg)";
+
+      item.style.opacity = Math.max(0.16, 1 - absDistance * 0.18);
+
+      if (absDistance === 0) {
+        item.className = "horizontal-picker-item active";
+      } else if (absDistance <= 3) {
+        item.className = "horizontal-picker-item near";
+      } else {
+        item.className = "horizontal-picker-item far";
+      }
+    });
+  }
+
+  function setSelectedIndex(index, publish) {
+    var nextIndex = clampIndex(index);
+
+    selectedIndex = nextIndex;
+    render();
+
+    if (publish) {
+      publishSelectedValue();
+    }
+  }
+
+  values.forEach(function (value, index) {
+    var item = document.createElement("div");
+    item.className = "horizontal-picker-item";
+    item.textContent = String(value);
+
+    item.addEventListener("click", function () {
+      setSelectedIndex(index, true);
+    });
+
+    itemsWrap.appendChild(item);
+    itemEls.push(item);
+  });
+
+  pickerWindow.addEventListener("wheel", function (event) {
+    event.preventDefault();
+
+    var delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY;
+
+    if (delta > 0) {
+      setSelectedIndex(selectedIndex + 1, true);
+    } else if (delta < 0) {
+      setSelectedIndex(selectedIndex - 1, true);
+    }
+  }, { passive: false });
+
+  pickerWindow.addEventListener("pointerdown", function (event) {
+    isDragging = true;
+    dragStartX = event.clientX;
+    dragStartIndex = selectedIndex;
+    pickerWindow.classList.add("dragging");
+
+    if (pickerWindow.setPointerCapture) {
+      pickerWindow.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  });
+
+  pickerWindow.addEventListener("pointermove", function (event) {
+    if (!isDragging) return;
+
+    var deltaX = event.clientX - dragStartX;
+    var steps = Math.round(deltaX / getItemWidth());
+
+    setSelectedIndex(dragStartIndex - steps, false);
+  });
+
+  function endDrag() {
+    if (!isDragging) return;
+
+    isDragging = false;
+    pickerWindow.classList.remove("dragging");
+    publishSelectedValue();
+  }
+
+  pickerWindow.addEventListener("pointerup", endDrag);
+  pickerWindow.addEventListener("pointerleave", endDrag);
+  pickerWindow.addEventListener("pointercancel", endDrag);
+
+  enableButton.addEventListener("pointerdown", function (event) {
+    enableButton.classList.add("pressed");
+    setCountdownEnabled(!countdownEnabled);
+
+    if (enableButton.setPointerCapture) {
+      enableButton.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  });
+
+  function releaseEnableButton() {
+    enableButton.classList.remove("pressed");
+  }
+
+  enableButton.addEventListener("pointerup", releaseEnableButton);
+  enableButton.addEventListener("pointerleave", releaseEnableButton);
+  enableButton.addEventListener("pointercancel", releaseEnableButton);
+
+  window.addEventListener("resize", render);
+
+  render();
+  renderCountdownEnabledState();
+
+  if (publishOnLoad) {
+    setTimeout(function () {
+      publishSelectedValue();
+      publishCountdownEnabledState();
+    }, 100);
+  }
+})();
+</script>

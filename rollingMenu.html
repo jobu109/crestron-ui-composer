@@ -1,0 +1,452 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.rolling-menu-container {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.rolling-menu-container .center {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  position: relative;
+  z-index: 2;
+  padding: 0;
+  background: transparent !important;
+}
+
+.rolling-menu-container .menu {
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  border-radius: 0;
+  position: relative;
+  transform-style: preserve-3d;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.rolling-menu-container .items {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  background: transparent !important;
+}
+
+.rolling-menu-container .item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 50%;
+  left: 1%;
+  width: 98%;
+  height: var(--item-height, 88px);
+  padding: 0 var(--item-padding-x, 16px);
+  background: rgba(160, 160, 160, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: var(--item-radius, 10px);
+  font-size: var(--item-font-size, 28px);
+  font-family: "Segoe UI", sans-serif;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  text-decoration: none;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  transition: text-shadow 0.2s, color 0.2s, background-color 0.2s, border-color 0.2s, opacity 0.2s;
+  opacity: 1;
+  text-shadow: none;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.rolling-menu-container .item.active {
+  background: rgba(4, 170, 142, 0.68);
+  border-color: rgba(4, 170, 142, 0.95);
+  color: white;
+  text-shadow: 0 0 10px white, 0 0 20px white, 0 0 30px white;
+  opacity: 1;
+  z-index: 10;
+  box-shadow: 0 0 20px rgba(4, 170, 142, 0.85);
+}
+</style>
+
+<div class="rolling-menu-container">
+  <div class="center">
+    <div class="menu" id="rolling-menu">
+      <div class="items" id="rolling-items"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var itemCountSignal = "180";
+  var selectedSetSignal = "181";
+  var selectedAnalogOutSignal = "181";
+
+  var pressBaseSignal = "180";
+  var feedbackBaseSignal = "180";
+  var labelBaseSignal = "180";
+
+  var maxItems = 20;
+  var defaultItemCount = 10;
+  var threshold = 80;
+
+  var useZeroBasedAnalogValues = true;
+  var defaultLabelPrefix = "Item";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  function makeSignal(baseSignal, index) {
+    if (baseSignal === null || baseSignal === undefined || baseSignal === "") {
+      return "";
+    }
+
+    var numericBase = Number(baseSignal);
+
+    if (Number.isFinite(numericBase)) {
+      return String(numericBase + index);
+    }
+
+    return String(baseSignal) + "." + index;
+  }
+
+  function getDefaultLabel(index) {
+    return defaultLabelPrefix + " " + index;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function wrapIndex(index) {
+    if (!itemEls.length) return 0;
+    return ((index % itemEls.length) + itemEls.length) % itemEls.length;
+  }
+
+  function toAnalogValue(index) {
+    return useZeroBasedAnalogValues ? index : index + 1;
+  }
+
+  function fromAnalogValue(value) {
+    var numeric = Math.round(Number(value));
+
+    if (!Number.isFinite(numeric)) {
+      return 0;
+    }
+
+    return useZeroBasedAnalogValues ? numeric : numeric - 1;
+  }
+
+  var lib = getCrComLib();
+  var menu = document.getElementById("rolling-menu");
+  var itemsContainer = document.getElementById("rolling-items");
+
+  var itemEls = [];
+  var labelValues = new Array(maxItems).fill("");
+  var feedbackStates = new Array(maxItems).fill(false);
+  var selectedIndex = 0;
+  var accumulatedDeltaY = 0;
+  var startY = 0;
+  var layoutMetrics = {
+    itemHeight: 88,
+    radius: 220
+  };
+
+  function getIncrement() {
+    return (360 / Math.max(1, itemEls.length)) * 0.62;
+  }
+
+  function updateResponsiveMetrics() {
+    var rect = menu.getBoundingClientRect();
+    var height = rect.height || menu.offsetHeight || window.innerHeight || 1;
+    var width = rect.width || menu.offsetWidth || window.innerWidth || 1;
+    var count = Math.max(1, itemEls.length || defaultItemCount);
+    var incrementRadians = ((360 / count) * 0.62) * (Math.PI / 180);
+    var angleSpacing = Math.max(0.16, Math.sin(incrementRadians));
+    var itemHeight = clamp(Math.round(height * 0.14), 26, 104);
+    var fontSize = clamp(Math.round(Math.min(itemHeight * 0.34, width * 0.13)), 10, 34);
+    var itemRadius = clamp(Math.round(itemHeight * 0.12), 5, 10);
+    var paddingX = clamp(Math.round(width * 0.055), 8, 22);
+    var radius = clamp(Math.round((itemHeight / angleSpacing) * 1.03), height * 0.22, height * 0.78);
+
+    layoutMetrics.itemHeight = itemHeight;
+    layoutMetrics.radius = radius;
+
+    menu.style.setProperty("--item-height", itemHeight + "px");
+    menu.style.setProperty("--item-font-size", fontSize + "px");
+    menu.style.setProperty("--item-radius", itemRadius + "px");
+    menu.style.setProperty("--item-padding-x", paddingX + "px");
+  }
+
+  function getRadius() {
+    return layoutMetrics.radius;
+  }
+
+  function getScrollThreshold() {
+    return Math.max(18, Math.min(threshold, Math.round(layoutMetrics.itemHeight * 0.9)));
+  }
+
+  function getFeedbackIndex() {
+    for (var i = 0; i < itemEls.length; i++) {
+      if (feedbackStates[i]) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  function getHighlightedIndex() {
+    var feedbackIndex = getFeedbackIndex();
+    return feedbackIndex >= 0 ? feedbackIndex : selectedIndex;
+  }
+
+  function getOpacityForAngle(angle) {
+    var normalized = ((angle + 180) % 360 + 360) % 360 - 180;
+    var distance = Math.abs(normalized);
+    return Math.max(0.72, 1 - distance / 260);
+  }
+
+  function rotateItems() {
+    if (!itemEls.length) return;
+
+    updateResponsiveMetrics();
+
+    var increment = getIncrement();
+    var radius = getRadius();
+    var highlightedIndex = getHighlightedIndex();
+    var halfCount = itemEls.length / 2;
+
+    itemEls.forEach(function (item, index) {
+      var distance = index - selectedIndex;
+
+      if (distance > halfCount) {
+        distance -= itemEls.length;
+      } else if (distance < -halfCount) {
+        distance += itemEls.length;
+      }
+
+      var itemAngle = distance * increment;
+
+      item.style.transform =
+        "translateY(-50%) rotateX(" + itemAngle + "deg) translateZ(" + radius + "px)";
+
+      item.style.opacity = getOpacityForAngle(itemAngle);
+      item.className = "item" + (index === highlightedIndex ? " active" : "");
+    });
+  }
+
+  function publishSelectedIndex() {
+    if (!lib || !selectedAnalogOutSignal || !itemEls.length) return;
+
+    lib.publishEvent("n", selectedAnalogOutSignal, toAnalogValue(selectedIndex));
+  }
+
+  function pulseItemPress(index) {
+    if (!lib) return;
+
+    var signal = makeSignal(pressBaseSignal, index);
+    if (!signal) return;
+
+    lib.publishEvent("b", signal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", signal, false);
+    }, 100);
+  }
+
+  function setSelectedIndex(index, publish) {
+    if (!itemEls.length) return;
+
+    selectedIndex = clamp(Math.round(index), 0, itemEls.length - 1);
+    rotateItems();
+
+    if (publish) {
+      publishSelectedIndex();
+    }
+  }
+
+  function moveBySteps(steps) {
+    if (!itemEls.length || steps === 0) return;
+
+    setSelectedIndex(wrapIndex(selectedIndex + steps), true);
+  }
+
+  function handleScrollDelta(deltaY) {
+    accumulatedDeltaY += deltaY;
+
+    var stepThreshold = getScrollThreshold();
+
+    if (Math.abs(accumulatedDeltaY) >= stepThreshold) {
+      var steps = accumulatedDeltaY > 0
+        ? Math.floor(accumulatedDeltaY / stepThreshold)
+        : Math.ceil(accumulatedDeltaY / stepThreshold);
+
+      moveBySteps(-steps);
+      accumulatedDeltaY -= steps * stepThreshold;
+    }
+  }
+
+  function updateItemCount(count) {
+    var parsedCount = Math.round(Number(count));
+    var safeCount = Number.isFinite(parsedCount) && parsedCount > 0
+      ? clamp(parsedCount, 1, maxItems)
+      : defaultItemCount;
+
+    itemsContainer.innerHTML = "";
+    itemEls = [];
+
+    for (var i = 0; i < safeCount; i++) {
+      (function (index) {
+        var item = document.createElement("button");
+        item.className = "item";
+        item.type = "button";
+        item.textContent = labelValues[index] || getDefaultLabel(index);
+
+        item.addEventListener("click", function () {
+          setSelectedIndex(index, true);
+          pulseItemPress(index);
+        });
+
+        itemsContainer.appendChild(item);
+        itemEls.push(item);
+      })(i);
+    }
+
+    var feedbackIndex = getFeedbackIndex();
+
+    if (feedbackIndex >= 0) {
+      selectedIndex = feedbackIndex;
+    } else {
+      selectedIndex = clamp(selectedIndex, 0, itemEls.length - 1);
+    }
+
+    setTimeout(rotateItems, 50);
+  }
+
+  function subscribePerItemSignals() {
+    if (!lib) return;
+
+    for (var i = 0; i < maxItems; i++) {
+      (function (index) {
+        var feedbackSignal = makeSignal(feedbackBaseSignal, index);
+        var labelSignal = makeSignal(labelBaseSignal, index);
+
+        if (feedbackSignal) {
+          lib.subscribeState("b", feedbackSignal, function (value) {
+            feedbackStates[index] = isHigh(value);
+
+            if (feedbackStates[index] && index < itemEls.length) {
+              setSelectedIndex(index, false);
+            } else {
+              rotateItems();
+            }
+          });
+        }
+
+        if (labelSignal) {
+          lib.subscribeState("s", labelSignal, function (value) {
+            labelValues[index] = value || "";
+
+            if (itemEls[index]) {
+              itemEls[index].textContent = labelValues[index] || getDefaultLabel(index);
+            }
+          });
+        }
+      })(i);
+    }
+  }
+
+  menu.addEventListener("wheel", function (event) {
+    event.preventDefault();
+    handleScrollDelta(event.deltaY);
+  }, { passive: false });
+
+  menu.addEventListener("touchstart", function (event) {
+    startY = event.touches[0].clientY;
+  }, { passive: true });
+
+  menu.addEventListener("touchmove", function (event) {
+    var currentY = event.touches[0].clientY;
+    var deltaY = startY - currentY;
+
+    handleScrollDelta(deltaY);
+    startY = currentY;
+
+    event.preventDefault();
+  }, { passive: false });
+
+  menu.addEventListener("pointerdown", function (event) {
+    startY = event.clientY;
+  });
+
+  menu.addEventListener("pointermove", function (event) {
+    if (event.buttons !== 1) return;
+
+    var deltaY = startY - event.clientY;
+    handleScrollDelta(deltaY);
+    startY = event.clientY;
+  });
+
+  window.addEventListener("resize", rotateItems);
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(rotateItems).observe(menu);
+  }
+
+  updateItemCount(defaultItemCount);
+  subscribePerItemSignals();
+
+  if (lib) {
+    lib.subscribeState("n", itemCountSignal, function (value) {
+      updateItemCount(value);
+    });
+
+    lib.subscribeState("n", selectedSetSignal, function (value) {
+      setSelectedIndex(fromAnalogValue(value), false);
+    });
+  }
+})();
+</script>

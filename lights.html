@@ -1,0 +1,549 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.lights-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", sans-serif;
+  container-type: size;
+}
+
+.lights-track {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(118px, 18cqw, 178px);
+  grid-template-rows: 1fr;
+  gap: clamp(12px, 3cqw, 26px);
+  align-items: stretch;
+  padding: clamp(10px, 3cqh, 24px) clamp(12px, 4cqw, 44px) clamp(14px, 4cqh, 28px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.lights-track::-webkit-scrollbar {
+  display: none;
+}
+
+.light-card {
+  min-width: 118px;
+  height: 100%;
+  min-height: 120px;
+  padding: clamp(10px, 3cqw, 22px);
+  border: 1px solid rgba(148, 238, 226, 0.54);
+  border-radius: 7px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(4, 170, 142, 0.18)),
+    rgba(4, 85, 72, 0.32);
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.08),
+    inset 0 0 26px rgba(4, 170, 142, 0.2),
+    0 0 14px rgba(4, 170, 142, 0.24);
+}
+
+.light-button {
+  --inner-glow: 0;
+  --outer-yellow: 0;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 96px;
+  border: 1px solid rgba(4, 170, 142, 0.38);
+  border-radius: 10px;
+  background: rgb(0, 0, 0);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: clamp(8px, 2cqh, 16px);
+  padding: clamp(10px, 3cqh, 18px) clamp(8px, 3cqw, 16px);
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 22px rgba(0, 0, 0, 0.78),
+    inset 0 0 18px rgba(255, 220, 40, var(--inner-glow)),
+    0 0 7px rgba(4, 170, 142, 0.3),
+    0 0 16px rgba(255, 220, 40, var(--outer-yellow));
+  transition:
+    transform 0.14s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.light-button.pressed {
+  transform: scale(0.97);
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    inset 0 0 18px rgba(0, 0, 0, 0.62),
+    inset 0 0 22px rgba(255, 220, 40, 0.22),
+    0 0 14px rgba(255, 220, 40, 0.38),
+    0 0 18px rgba(4, 170, 142, 0.42);
+}
+
+.light-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0%;
+  background:
+    linear-gradient(
+      0deg,
+      rgba(255, 210, 30, 0.78),
+      rgba(255, 235, 90, 0.46) 70%,
+      rgba(255, 255, 185, 0.18)
+    );
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    height 0.16s ease,
+    opacity 0.16s ease;
+  z-index: 0;
+}
+
+.light-glow {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(255, 245, 130, 0.72) 0%,
+      rgba(255, 220, 40, 0.34) 42%,
+      rgba(255, 170, 0, 0) 76%
+    );
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.light-name {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  color: white;
+  font-size: clamp(11px, 2.7cqw, 16px);
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.88);
+}
+
+.light-spacer {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.light-status {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  color: rgb(255, 220, 40);
+  font-size: clamp(18px, 5.6cqw, 26px);
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.84),
+    0 0 12px rgba(255, 220, 40, 0.7),
+    0 0 3px rgba(255, 255, 255, 0.85);
+}
+
+.scroll-overlay {
+  position: absolute;
+  left: clamp(10px, 3cqw, 20px);
+  right: clamp(10px, 3cqw, 20px);
+  bottom: clamp(4px, 1.2cqh, 8px);
+  height: clamp(4px, 1.4cqh, 8px);
+  border-radius: 999px;
+  background: rgba(42, 42, 42, 0.38);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 5;
+}
+
+.lights-stage.scrollable .scroll-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.scroll-thumb {
+  height: 100%;
+  width: 32px;
+  border-radius: inherit;
+  background: rgba(112, 112, 112, 0.76);
+  box-shadow:
+    0 0 4px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateX(0);
+}
+</style>
+
+<div class="lights-stage" id="lights-stage">
+  <div class="lights-track" id="lights-track"></div>
+  <div class="scroll-overlay" id="scroll-overlay">
+    <div class="scroll-thumb" id="scroll-thumb"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // The default count renders first; numItemsSignal overrides it when it sends a value above 0.
+  var lightCount = 5;
+
+  var levelFeedbackBaseSignal = "101";
+  var nameBaseSignal = "101";
+  var levelSetBaseSignal = "101";
+  var numItemsSignal = "100";
+
+  var signalIncrement = 1;  //essentially join offset.
+  var itemIdBase = 1;
+
+  var defaultName = "Light Load";
+  var defaultLevel = 0;
+
+  var renderVersion = 0;
+  var lightItems = [];
+  var activeItem = null;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var stage = document.getElementById("lights-stage");
+  var track = document.getElementById("lights-track");
+  var scrollOverlay = document.getElementById("scroll-overlay");
+  var scrollThumb = document.getElementById("scroll-thumb");
+
+  function clampPercent(value) {
+    return Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  }
+
+  function clampCount(value) {
+    return Math.max(1, Math.min(48, Math.round(Number(value) || 1)));
+  }
+
+  function getAnalogItemCount(value) {
+    var count = Math.round(Number(value));
+
+    if (!isFinite(count) || count <= 0) {
+      return null;
+    }
+
+    return clampCount(count);
+  }
+
+  function normalizeIncomingLevel(value) {
+    var numberValue = Number(value) || 0;
+
+    if (numberValue > 100) {
+      return clampPercent((numberValue / 65535) * 100);
+    }
+
+    return clampPercent(numberValue);
+  }
+
+  function makeSignal(baseSignal, index) {
+    if (baseSignal === null || baseSignal === undefined || baseSignal === "") {
+      return "";
+    }
+
+    var text = String(baseSignal).trim();
+    var itemId = itemIdBase + index;
+    var numericBase = Number(text);
+
+    if (text.indexOf("{n}") !== -1) {
+      return text.replace(/\{n\}/g, String(itemId));
+    }
+
+    if (text.indexOf("{index}") !== -1) {
+      return text.replace(/\{index\}/g, String(index));
+    }
+
+    if (!isNaN(numericBase) && text !== "") {
+      return String(numericBase + (index * signalIncrement));
+    }
+
+    return text + itemId;
+  }
+
+  function setLightLevel(item, value) {
+    var percent = clampPercent(value);
+    var level = percent / 100;
+    var fillOpacity = level === 0 ? 0 : (0.2 + (level * 0.72)).toFixed(2);
+    var glowOpacity = (level * 0.28).toFixed(2);
+    var yellowGlow = (0.7 - (level * 0.18)).toFixed(2);
+    var innerGlow = (level * 0.34).toFixed(2);
+
+    item.currentLevel = percent;
+    item.fill.style.height = percent + "%";
+    item.fill.style.opacity = fillOpacity;
+    item.glow.style.opacity = glowOpacity;
+    item.status.textContent = percent + "%";
+
+    item.button.style.setProperty("--inner-glow", innerGlow);
+    item.button.style.setProperty("--outer-yellow", (level * 0.22).toFixed(2));
+
+    item.status.style.textShadow =
+      "0 2px 5px rgba(0, 0, 0, 0.84), " +
+      "0 0 12px rgba(255, 220, 40, " + yellowGlow + "), " +
+      "0 0 3px rgba(255, 255, 255, 0.85)";
+  }
+
+  function publishAnalog(signal, value) {
+    if (lib && signal) {
+      lib.publishEvent("n", signal, clampPercent(value));
+    }
+  }
+
+  function getLevelFromPointer(event, button) {
+    var rect = button.getBoundingClientRect();
+    var y = event.clientY - rect.top;
+    var percent = 100 - (y / rect.height * 100);
+
+    return clampPercent(percent);
+  }
+
+  function publishLevelFromEvent(event, item) {
+    var nextLevel = getLevelFromPointer(event, item.button);
+
+    setLightLevel(item, nextLevel);
+    publishAnalog(item.levelSetSignal, nextLevel);
+  }
+
+  function startPress(event, item) {
+    activeItem = item;
+    item.button.classList.add("pressed");
+    publishLevelFromEvent(event, item);
+
+    if (item.button.setPointerCapture) {
+      item.button.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  }
+
+  function movePress(event, item) {
+    if (activeItem !== item) return;
+
+    publishLevelFromEvent(event, item);
+  }
+
+  function endPress(item) {
+    if (activeItem !== item) return;
+
+    activeItem = null;
+    item.button.classList.remove("pressed");
+  }
+
+  function createLight(index) {
+    var card = document.createElement("div");
+    var button = document.createElement("button");
+    var fill = document.createElement("div");
+    var glow = document.createElement("div");
+    var name = document.createElement("div");
+    var spacer = document.createElement("div");
+    var status = document.createElement("div");
+
+    var item = {
+      card: card,
+      button: button,
+      fill: fill,
+      glow: glow,
+      name: name,
+      status: status,
+      currentLevel: defaultLevel,
+      levelFeedbackSignal: makeSignal(levelFeedbackBaseSignal, index),
+      nameSignal: makeSignal(nameBaseSignal, index),
+      levelSetSignal: makeSignal(levelSetBaseSignal, index)
+    };
+
+    card.className = "light-card";
+    button.className = "light-button";
+    button.type = "button";
+    fill.className = "light-fill";
+    glow.className = "light-glow";
+    name.className = "light-name";
+    spacer.className = "light-spacer";
+    status.className = "light-status";
+
+    name.textContent = defaultName;
+    status.textContent = defaultLevel + "%";
+
+    button.appendChild(fill);
+    button.appendChild(glow);
+    button.appendChild(name);
+    button.appendChild(spacer);
+    button.appendChild(status);
+    card.appendChild(button);
+
+    button.addEventListener("pointerdown", function (event) {
+      startPress(event, item);
+    });
+
+    button.addEventListener("pointermove", function (event) {
+      movePress(event, item);
+    });
+
+    button.addEventListener("pointerup", function () {
+      endPress(item);
+    });
+
+    button.addEventListener("pointerleave", function () {
+      endPress(item);
+    });
+
+    button.addEventListener("pointercancel", function () {
+      endPress(item);
+    });
+
+    return item;
+  }
+
+  function subscribeLight(item, version) {
+    if (!lib) return;
+
+    if (item.levelFeedbackSignal) {
+      lib.subscribeState("n", item.levelFeedbackSignal, function (value) {
+        if (version !== renderVersion) return;
+        setLightLevel(item, normalizeIncomingLevel(value));
+      });
+    }
+
+    if (item.nameSignal) {
+      lib.subscribeState("s", item.nameSignal, function (value) {
+        if (version !== renderVersion) return;
+        item.name.textContent = value || defaultName;
+      });
+    }
+  }
+
+  function updateScrollThumb() {
+    var scrollWidth = track.scrollWidth;
+    var clientWidth = track.clientWidth;
+    var maxScroll = scrollWidth - clientWidth;
+    var overlayWidth = scrollOverlay.clientWidth;
+
+    if (maxScroll <= 1 || overlayWidth <= 0) {
+      stage.classList.remove("scrollable");
+      scrollThumb.style.width = "0px";
+      scrollThumb.style.transform = "translateX(0)";
+      return;
+    }
+
+    var thumbWidth = Math.max(36, Math.round((clientWidth / scrollWidth) * overlayWidth));
+    var maxThumbX = overlayWidth - thumbWidth;
+    var thumbX = Math.round((track.scrollLeft / maxScroll) * maxThumbX);
+
+    stage.classList.add("scrollable");
+    scrollThumb.style.width = thumbWidth + "px";
+    scrollThumb.style.transform = "translateX(" + thumbX + "px)";
+  }
+
+  function renderLights(count) {
+    var normalizedCount = clampCount(count);
+
+    renderVersion += 1;
+    activeItem = null;
+    lightCount = normalizedCount;
+    lightItems = [];
+    track.textContent = "";
+
+    for (var i = 0; i < lightCount; i += 1) {
+      var item = createLight(i);
+
+      lightItems.push(item);
+      track.appendChild(item.card);
+      setLightLevel(item, defaultLevel);
+      subscribeLight(item, renderVersion);
+    }
+
+    requestAnimationFrame(updateScrollThumb);
+  }
+
+  track.addEventListener("scroll", updateScrollThumb);
+  window.addEventListener("resize", updateScrollThumb);
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(updateScrollThumb).observe(stage);
+    new ResizeObserver(updateScrollThumb).observe(track);
+  }
+
+  scrollOverlay.addEventListener("pointerdown", function (event) {
+    var overlayRect = scrollOverlay.getBoundingClientRect();
+    var thumbRect = scrollThumb.getBoundingClientRect();
+    var maxScroll = track.scrollWidth - track.clientWidth;
+    var maxThumbX = scrollOverlay.clientWidth - scrollThumb.offsetWidth;
+    var grabOffset = event.clientX - thumbRect.left;
+
+    if (maxScroll <= 0 || maxThumbX <= 0) return;
+
+    if (event.target === scrollOverlay) {
+      grabOffset = scrollThumb.offsetWidth / 2;
+    }
+
+    function moveThumb(moveEvent) {
+      var x = moveEvent.clientX - overlayRect.left - grabOffset;
+      var clampedX = Math.max(0, Math.min(maxThumbX, x));
+
+      track.scrollLeft = (clampedX / maxThumbX) * maxScroll;
+      updateScrollThumb();
+      moveEvent.preventDefault();
+    }
+
+    function stopDrag() {
+      window.removeEventListener("pointermove", moveThumb);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
+    }
+
+    window.addEventListener("pointermove", moveThumb);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+    moveThumb(event);
+    event.preventDefault();
+  });
+
+  renderLights(lightCount);
+
+  if (lib && numItemsSignal) {
+    lib.subscribeState("n", numItemsSignal, function (value) {
+      var count = getAnalogItemCount(value);
+
+      if (count !== null) {
+        renderLights(count);
+      }
+    });
+  }
+})();
+</script>

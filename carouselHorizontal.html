@@ -1,0 +1,262 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.glass-carousel-container {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 clamp(8px, 4vw, 32px);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.carousel-controls button {
+  width: clamp(36px, 14vmin, 60px);
+  height: clamp(36px, 14vmin, 60px);
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: clamp(20px, 8vmin, 34px);
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 12px rgba(4, 170, 142, 0.4);
+  pointer-events: auto;
+}
+
+.carousel-controls button:active {
+  transform: scale(0.92);
+  box-shadow: 0 0 20px rgba(4, 170, 142, 0.8);
+}
+
+.glass-track-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.glass-track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  transition: transform 0.4s ease-in-out;
+  will-change: transform;
+}
+
+.glass-slide {
+  width: min(54vw, 300px);
+  height: min(62vh, 400px);
+  min-width: 120px;
+  min-height: 140px;
+  margin: 0 clamp(8px, 2vw, 18px);
+  position: relative;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(16px);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.15),
+    0 4px 24px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 4vw, 20px);
+}
+
+.glass-slide.active {
+  box-shadow:
+    0 0 20px rgba(4, 170, 142, 0.8),
+    0 0 40px rgba(4, 170, 142, 0.4),
+    0 0 60px rgba(4, 170, 142, 0.2);
+  transform: scale(1.1);
+}
+
+.glass-label {
+  color: white;
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(16px, 8vmin, 34px);
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+}
+</style>
+
+<div class="glass-carousel-container">
+  <div class="carousel-controls">
+    <button class="glass-carousel-prev" type="button">&#10094;</button>
+    <button class="glass-carousel-next" type="button">&#10095;</button>
+  </div>
+
+  <div class="glass-track-wrapper">
+    <div class="glass-track" id="glass-track"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var setSignal = "31";
+  var feedbackSignal = "41";
+
+  // Contract-name example:
+  // var setSignal = "Carousel.Selected.Set";
+  // var feedbackSignal = "Carousel.Selected.Value";
+
+  var slideLabels = [
+    "Slide 1",
+    "Slide 2",
+    "Slide 3",
+    "Slide 4",
+    "Slide 5"
+  ];
+
+  // Use 0-based values by default: 0, 1, 2, 3, 4.
+  // Change to true if your control system uses 1, 2, 3, 4, 5.
+  var useOneBasedSignals = false;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var currentIndex = 0;
+  var startX = 0;
+  var endX = 0;
+
+  var track = document.getElementById("glass-track");
+  var wrapper = document.querySelector(".glass-track-wrapper");
+  var prevBtn = document.querySelector(".glass-carousel-prev");
+  var nextBtn = document.querySelector(".glass-carousel-next");
+
+  slideLabels.forEach(function (label, index) {
+    var slide = document.createElement("div");
+    slide.className = "glass-slide" + (index === 0 ? " active" : "");
+    slide.setAttribute("data-slide-index", index);
+
+    var span = document.createElement("span");
+    span.className = "glass-label";
+    span.textContent = label;
+
+    slide.appendChild(span);
+    track.appendChild(slide);
+  });
+
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".glass-slide"));
+
+  function toSignalValue(index) {
+    return useOneBasedSignals ? index + 1 : index;
+  }
+
+  function fromSignalValue(value) {
+    var numeric = Math.round(Number(value));
+    if (!Number.isFinite(numeric)) return currentIndex;
+
+    var index = useOneBasedSignals ? numeric - 1 : numeric;
+    return Math.max(0, Math.min(slides.length - 1, index));
+  }
+
+  function updateTransform() {
+    var slide = slides[currentIndex];
+    var slideRect = slide.getBoundingClientRect();
+    var wrapperRect = wrapper.getBoundingClientRect();
+    var offset = (wrapperRect.width / 2) - (slideRect.width / 2 + slide.offsetLeft);
+
+    track.style.transform = "translateX(" + offset + "px)";
+  }
+
+  function setActiveSlide(index, publish) {
+    index = Math.max(0, Math.min(slides.length - 1, index));
+
+    slides[currentIndex].classList.remove("active");
+    currentIndex = index;
+    slides[currentIndex].classList.add("active");
+
+    updateTransform();
+
+    if (publish && lib) {
+      lib.publishEvent("n", setSignal, toSignalValue(currentIndex));
+    }
+  }
+
+  function move(direction) {
+    var nextIndex = (currentIndex + direction + slides.length) % slides.length;
+    setActiveSlide(nextIndex, true);
+  }
+
+  function handleSwipe() {
+    var diff = endX - startX;
+
+    if (diff > 50) {
+      move(-1);
+    } else if (diff < -50) {
+      move(1);
+    }
+  }
+
+  prevBtn.addEventListener("click", function () {
+    move(-1);
+  });
+
+  nextBtn.addEventListener("click", function () {
+    move(1);
+  });
+
+  track.addEventListener("pointerdown", function (event) {
+    startX = event.clientX;
+  });
+
+  track.addEventListener("pointerup", function (event) {
+    endX = event.clientX;
+    handleSwipe();
+  });
+
+  slides.forEach(function (slide, index) {
+    slide.addEventListener("click", function () {
+      setActiveSlide(index, true);
+    });
+  });
+
+  window.addEventListener("resize", updateTransform);
+
+  requestAnimationFrame(updateTransform);
+
+  if (lib) {
+    lib.subscribeState("n", feedbackSignal, function (value) {
+      setActiveSlide(fromSignalValue(value), false);
+    });
+  }
+})();
+</script>

@@ -1,0 +1,573 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.nav-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  container-type: size;
+}
+
+.nav-wrapper {
+  position: absolute;
+  inset: 0;
+  --item-count: 5;
+  --icon-size: 40px;
+  --label-size: 22px;
+  container-type: size;
+
+  display: grid;
+  grid-template-columns: repeat(var(--item-count), minmax(clamp(96px, 26cqw, 240px), 1fr));
+  gap: clamp(4px, 2cqw, 10px);
+  align-items: stretch;
+  justify-content: stretch;
+  padding: clamp(2px, 1cqh, 6px) clamp(4px, 2cqw, 10px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.nav-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-overlay {
+  position: absolute;
+  left: clamp(8px, 2cqw, 16px);
+  right: clamp(8px, 2cqw, 16px);
+  bottom: clamp(4px, 1.2cqh, 8px);
+  height: clamp(4px, 1.5cqh, 8px);
+  border-radius: 999px;
+  background: rgba(42, 42, 42, 0.38);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.18s ease;
+  z-index: 5;
+}
+
+.nav-stage.scrollable .scroll-overlay {
+  opacity: 1;
+}
+
+.scroll-thumb {
+  height: 100%;
+  width: 32px;
+  border-radius: inherit;
+  background: rgba(112, 112, 112, 0.76);
+  box-shadow:
+    0 0 4px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateX(0);
+}
+
+.nav-btn {
+  width: 100%;
+  height: 100%;
+  min-width: clamp(96px, 26cqw, 240px);
+  min-height: clamp(44px, 92cqh, 120px);
+  border: none;
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02)),
+    rgba(102, 102, 102, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: rgb(4, 170, 142);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(3px, 2cqh, 10px);
+  padding: clamp(4px, 2cqh, 12px) clamp(8px, 4cqw, 24px);
+  overflow: hidden;
+  font-family: "Segoe UI", sans-serif;
+  position: relative;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.nav-btn:hover,
+.nav-btn.pressed {
+  background-color: rgba(102, 102, 102, 0.48);
+  border-color: rgba(4, 170, 142, 0.7);
+  box-shadow:
+    inset 0 0 16px rgba(4, 170, 142, 0.14),
+    0 0 14px rgba(4, 170, 142, 0.6);
+}
+
+.nav-btn.active {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(4, 170, 142, 0.78)),
+    rgba(4, 170, 142, 0.86);
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 0 18px rgba(255, 255, 255, 0.2),
+    0 0 20px rgba(4, 170, 142, 0.92),
+    0 0 3px rgba(255, 255, 255, 0.92);
+}
+
+.nav-btn.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10%;
+  min-height: 5px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 0 10px rgba(255, 255, 255, 0.55),
+    0 0 14px rgba(4, 170, 142, 0.38);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nav-btn.pressed {
+  transform: scale(0.96);
+}
+
+.nav-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: 0 0 auto;
+  color: rgb(4, 170, 142);
+  filter: drop-shadow(0 0 7px rgba(4, 170, 142, 0.55));
+  position: relative;
+  z-index: 1;
+}
+
+.nav-label {
+  flex: 0 1 auto;
+  color: rgb(4, 170, 142);
+  font-size: var(--label-size);
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  width: 100%;
+  min-height: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 8px rgba(4, 170, 142, 0.45);
+  position: relative;
+  z-index: 1;
+}
+
+.nav-btn.active .nav-label {
+  color: white;
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.55),
+    0 0 10px rgba(255, 255, 255, 0.52);
+}
+
+.nav-btn.active .nav-icon {
+  color: white;
+  filter:
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.66))
+    drop-shadow(0 0 10px rgba(4, 170, 142, 0.74));
+}
+</style>
+
+<div class="nav-stage" id="nav-stage">
+  <div class="nav-wrapper" id="nav-wrapper"></div>
+  <div class="scroll-overlay" id="scroll-overlay">
+    <div class="scroll-thumb" id="scroll-thumb"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var itemCount = 5;
+
+  var pressBaseSignal = 1;
+  var feedbackBaseSignal = 1;
+  var displayChoiceBaseSignal = 1;
+  var textSizeSignal = 6;
+  var iconSizeSignal = 7;
+  var itemIdBase = 1;
+
+  var defaultChoiceValues = [1, 2, 3, 4, 5];
+
+  // Contract-name example:
+  // var pressBaseSignal = "MenuItem.Press";
+  // var feedbackBaseSignal = "MenuItem.Selected";
+  // var displayChoiceBaseSignal = "MenuItem.DisplayChoice";
+  // var textSizeSignal = "MenuItem.TextSize";
+  // var iconSizeSignal = "MenuItem.IconSize";
+  //
+  // Contract examples would become:
+  // MenuItem.Press.1, MenuItem.Press.2, etc.
+  // MenuItem.Selected.1, MenuItem.Selected.2, etc.
+  // MenuItem.DisplayChoice.1, MenuItem.DisplayChoice.2, etc.
+  //
+  // Text/Icon size signals are analog percent values:
+  // 0 = auto, 75 = 75%, 100 = normal, 125 = 125%, etc.
+
+  var choices = {
+    1: { label: "Home", icon: "home" },
+    2: { label: "Video", icon: "video" },
+    3: { label: "Displays", icon: "displays" },
+    4: { label: "Mics", icon: "mics" },
+    5: { label: "Camera", icon: "camera" },
+    6: { label: "Call", icon: "call" },
+    7: { label: "Settings", icon: "settings" }
+  };
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  function makeSignal(baseSignal, index) {
+    if (baseSignal === null || baseSignal === undefined || baseSignal === "") {
+      return "";
+    }
+
+    var numericBase = Number(baseSignal);
+
+    if (Number.isFinite(numericBase)) {
+      return String(numericBase + index);
+    }
+
+    return String(baseSignal) + "." + (itemIdBase + index);
+  }
+
+  function getIconSvg(name) {
+    var icons = {
+      home:
+        '<path d="M3 11.5L12 4l9 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>' +
+        '<path d="M5.5 10.5V20h13v-9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>' +
+        '<path d="M10 20v-5h4v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>',
+
+      video:
+        '<rect x="3" y="6" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>' +
+        '<path d="M17 10l4-2v8l-4-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>',
+
+      displays:
+        '<rect x="3" y="5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>' +
+        '<path d="M8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>',
+
+      mics:
+        '<rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="2"></rect>' +
+        '<path d="M5 11a7 7 0 0014 0M12 18v3M8 21h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>',
+
+      camera:
+        '<path d="M4 7h4l2-2h4l2 2h4v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>' +
+        '<circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"></circle>',
+
+      call:
+        '<path d="M7 4l3 3-2 3c1.5 3 3 4.5 6 6l3-2 3 3-2 4c-8 0-15-7-15-15z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path>',
+
+      settings:
+        '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>' +
+        '<path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>'
+    };
+
+    return icons[name] || icons.home;
+  }
+
+  var lib = getCrComLib();
+  var stage = document.getElementById("nav-stage");
+  var wrapper = document.getElementById("nav-wrapper");
+  var scrollOverlay = document.getElementById("scroll-overlay");
+  var scrollThumb = document.getElementById("scroll-thumb");
+  var buttons = [];
+  var labels = [];
+  var icons = [];
+  var textSizeScale = 1;
+  var iconSizeScale = 1;
+  var isDraggingScrollThumb = false;
+  var dragStartX = 0;
+  var dragStartScrollLeft = 0;
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function updateResponsiveSizes() {
+    var rect = wrapper.getBoundingClientRect();
+    var styles = window.getComputedStyle(wrapper);
+    var paddingLeft = parseFloat(styles.paddingLeft) || 0;
+    var paddingRight = parseFloat(styles.paddingRight) || 0;
+    var paddingTop = parseFloat(styles.paddingTop) || 0;
+    var paddingBottom = parseFloat(styles.paddingBottom) || 0;
+    var gap = parseFloat(styles.columnGap || styles.gap) || 0;
+    var width = Math.max(0, rect.width - paddingLeft - paddingRight);
+    var height = Math.max(0, rect.height - paddingTop - paddingBottom);
+    var minItemWidth = clamp(width * 0.26, 96, 240);
+    var visibleItemWidth = itemCount > 0
+      ? (width - gap * (itemCount - 1)) / itemCount
+      : width;
+    var itemWidth = Math.max(minItemWidth, visibleItemWidth);
+    var autoIconSize = clamp(height * 0.48, 24, 68);
+    var autoLabelSize = clamp(Math.min(itemWidth * 0.18, height * 0.42), 10, 38);
+    var iconSize = clamp(autoIconSize * iconSizeScale, 12, 96);
+    var labelSize = clamp(autoLabelSize * textSizeScale, 8, 72);
+
+    wrapper.style.setProperty("--icon-size", iconSize + "px");
+    wrapper.style.setProperty("--label-size", labelSize + "px");
+    updateScrollOverlay();
+
+    requestAnimationFrame(function () {
+      fitLabelText(labelSize);
+    });
+  }
+
+  function updateScrollOverlay() {
+    var maxScroll = wrapper.scrollWidth - wrapper.clientWidth;
+
+    if (!scrollOverlay || !scrollThumb || maxScroll <= 1) {
+      stage.classList.remove("scrollable");
+      return;
+    }
+
+    var trackWidth = scrollOverlay.clientWidth;
+    var thumbWidth = clamp(
+      trackWidth * (wrapper.clientWidth / wrapper.scrollWidth),
+      28,
+      trackWidth
+    );
+    var maxThumbX = Math.max(0, trackWidth - thumbWidth);
+    var thumbX = maxScroll > 0
+      ? maxThumbX * (wrapper.scrollLeft / maxScroll)
+      : 0;
+
+    stage.classList.add("scrollable");
+    scrollThumb.style.width = thumbWidth + "px";
+    scrollThumb.style.transform = "translateX(" + thumbX + "px)";
+  }
+
+  function beginScrollThumbDrag(event) {
+    isDraggingScrollThumb = true;
+    dragStartX = event.clientX;
+    dragStartScrollLeft = wrapper.scrollLeft;
+
+    if (scrollThumb.setPointerCapture) {
+      scrollThumb.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  }
+
+  function dragScrollThumb(event) {
+    if (!isDraggingScrollThumb) return;
+
+    var maxScroll = wrapper.scrollWidth - wrapper.clientWidth;
+    var trackWidth = scrollOverlay.clientWidth;
+    var thumbWidth = scrollThumb.offsetWidth;
+    var maxThumbX = Math.max(1, trackWidth - thumbWidth);
+    var deltaX = event.clientX - dragStartX;
+
+    wrapper.scrollLeft = dragStartScrollLeft + (deltaX / maxThumbX) * maxScroll;
+  }
+
+  function endScrollThumbDrag(event) {
+    if (!isDraggingScrollThumb) return;
+
+    isDraggingScrollThumb = false;
+
+    if (scrollThumb.releasePointerCapture) {
+      scrollThumb.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function fitLabelText(maxLabelSize) {
+    var fittedSize = maxLabelSize;
+
+    labels.forEach(function (label) {
+      if (!label || !label.clientWidth || label.scrollWidth <= label.clientWidth) {
+        return;
+      }
+
+      fittedSize = Math.min(
+        fittedSize,
+        maxLabelSize * (label.clientWidth / label.scrollWidth)
+      );
+    });
+
+    wrapper.style.setProperty(
+      "--label-size",
+      clamp(fittedSize, 8, maxLabelSize) + "px"
+    );
+  }
+
+  function getManualScale(value) {
+    var percent = Math.round(Number(value));
+
+    if (!Number.isFinite(percent) || percent <= 0) {
+      return 1;
+    }
+
+    return clamp(percent, 25, 250) / 100;
+  }
+
+  function setButtonDisplay(index, buttonLabel, buttonIcon) {
+    if (!labels[index] || !icons[index]) return;
+
+    labels[index].textContent = buttonLabel;
+    icons[index].innerHTML = getIconSvg(buttonIcon);
+    updateResponsiveSizes();
+  }
+
+  function setDisplayChoice(index, value) {
+    var choiceNumber = Math.round(Number(value));
+
+    if (!choiceNumber || !choices[choiceNumber]) {
+      return;
+    }
+
+    setButtonDisplay(
+      index,
+      choices[choiceNumber].label,
+      choices[choiceNumber].icon
+    );
+  }
+
+  function publishPressed(index, value) {
+    var signal = makeSignal(pressBaseSignal, index);
+
+    if (buttons[index]) {
+      buttons[index].classList.toggle("pressed", value);
+    }
+
+    if (lib && signal) {
+      lib.publishEvent("b", signal, value);
+    }
+  }
+
+  function renderButtons() {
+    wrapper.innerHTML = "";
+    wrapper.style.setProperty("--item-count", itemCount);
+    buttons = [];
+    labels = [];
+    icons = [];
+
+    for (var i = 0; i < itemCount; i++) {
+      (function (index) {
+        var button = document.createElement("button");
+        var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        var label = document.createElement("span");
+
+        button.className = "nav-btn";
+        button.type = "button";
+
+        icon.classList.add("nav-icon");
+        icon.setAttribute("viewBox", "0 0 24 24");
+        icon.setAttribute("aria-hidden", "true");
+
+        label.className = "nav-label";
+
+        button.appendChild(icon);
+        button.appendChild(label);
+
+        button.addEventListener("pointerdown", function (event) {
+          publishPressed(index, true);
+          event.preventDefault();
+        });
+
+        button.addEventListener("pointerup", function () {
+          publishPressed(index, false);
+        });
+
+        button.addEventListener("pointerleave", function () {
+          publishPressed(index, false);
+        });
+
+        button.addEventListener("pointercancel", function () {
+          publishPressed(index, false);
+        });
+
+        wrapper.appendChild(button);
+        buttons[index] = button;
+        labels[index] = label;
+        icons[index] = icon;
+
+        setDisplayChoice(index, defaultChoiceValues[index] || index + 1);
+      })(i);
+    }
+
+    updateResponsiveSizes();
+  }
+
+  function subscribeSignals() {
+    if (!lib) return;
+
+    for (var i = 0; i < itemCount; i++) {
+      (function (index) {
+        var displayChoiceSignal = makeSignal(displayChoiceBaseSignal, index);
+        var feedbackSignal = makeSignal(feedbackBaseSignal, index);
+
+        if (displayChoiceSignal) {
+          lib.subscribeState("n", displayChoiceSignal, function (value) {
+            setDisplayChoice(index, value);
+          });
+        }
+
+        if (feedbackSignal) {
+          lib.subscribeState("b", feedbackSignal, function (value) {
+            if (buttons[index]) {
+              buttons[index].classList.toggle("active", isHigh(value));
+            }
+          });
+        }
+      })(i);
+    }
+
+    if (textSizeSignal !== null && textSizeSignal !== undefined && textSizeSignal !== "") {
+      lib.subscribeState("n", String(textSizeSignal), function (value) {
+        textSizeScale = getManualScale(value);
+        updateResponsiveSizes();
+      });
+    }
+
+    if (iconSizeSignal !== null && iconSizeSignal !== undefined && iconSizeSignal !== "") {
+      lib.subscribeState("n", String(iconSizeSignal), function (value) {
+        iconSizeScale = getManualScale(value);
+        updateResponsiveSizes();
+      });
+    }
+  }
+
+  renderButtons();
+  subscribeSignals();
+  wrapper.addEventListener("scroll", updateScrollOverlay, { passive: true });
+  scrollThumb.addEventListener("pointerdown", beginScrollThumbDrag);
+  scrollThumb.addEventListener("pointermove", dragScrollThumb);
+  scrollThumb.addEventListener("pointerup", endScrollThumbDrag);
+  scrollThumb.addEventListener("pointercancel", endScrollThumbDrag);
+
+  if (window.ResizeObserver) {
+    var resizeObserver = new ResizeObserver(updateResponsiveSizes);
+    resizeObserver.observe(stage);
+    resizeObserver.observe(wrapper);
+  } else {
+    window.addEventListener("resize", updateResponsiveSizes);
+  }
+})();
+</script>

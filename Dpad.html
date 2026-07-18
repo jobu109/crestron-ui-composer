@@ -1,0 +1,295 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.dpad-wrapper {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: clamp(4px, 2vmin, 12px);
+  padding: clamp(4px, 2vmin, 12px);
+  background: transparent;
+  overflow: hidden;
+}
+
+.dpad-spacer {
+  min-width: 0;
+  min-height: 0;
+}
+
+.dpad-button {
+  width: 100%;
+  height: 100%;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 24px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.24),
+      rgba(52, 68, 68, 0.26) 42%,
+      rgba(4, 170, 142, 0.16)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -14px 26px rgba(4, 170, 142, 0.1),
+    0 0 8px rgba(4, 170, 142, 0.32),
+    0 4px 8px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 18%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    filter 0.2s ease;
+}
+
+.dpad-button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 22px;
+  background:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.22),
+      rgba(255, 255, 255, 0.06) 34%,
+      rgba(255, 255, 255, 0) 58%
+    );
+  pointer-events: none;
+}
+
+.dpad-button::after {
+  content: "";
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  top: 10%;
+  height: 24%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.dpad-button-icon {
+  width: 100%;
+  height: 100%;
+  max-width: 70%;
+  max-height: 70%;
+  position: relative;
+  z-index: 1;
+  color: white;
+  filter:
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.28));
+  transition:
+    color 0.2s ease,
+    filter 0.2s ease,
+    transform 0.2s ease;
+}
+
+.dpad-button.pressed {
+  transform: scale(0.94);
+  filter: brightness(1.12);
+}
+
+.dpad-button.active {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.28),
+      rgba(52, 68, 68, 0.24) 38%,
+      rgba(4, 170, 142, 0.36)
+    );
+  border-color: rgba(4, 170, 142, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    inset 0 -14px 26px rgba(4, 170, 142, 0.2),
+    0 0 16px rgba(4, 170, 142, 0.72),
+    0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.dpad-button.active .dpad-button-icon {
+  color: white;
+  filter:
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))
+    drop-shadow(0 0 16px rgba(4, 170, 142, 0.95));
+}
+</style>
+
+<div class="dpad-wrapper">
+  <div class="dpad-spacer"></div>
+
+  <button class="dpad-button" id="dpad-up" type="button" aria-label="Up">
+    <svg class="dpad-button-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5l-8 8h5v6h6v-6h5z" fill="currentColor"></path>
+    </svg>
+  </button>
+
+  <div class="dpad-spacer"></div>
+
+  <button class="dpad-button" id="dpad-left" type="button" aria-label="Left">
+    <svg class="dpad-button-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12l8-8v5h6v6h-6v5z" fill="currentColor"></path>
+    </svg>
+  </button>
+
+  <button class="dpad-button" id="dpad-home" type="button" aria-label="Home">
+    <svg class="dpad-button-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 11.5L12 4l9 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+      <path d="M6.5 10.5V20h11v-9.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+      <path d="M10 20v-5h4v5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  </button>
+
+  <button class="dpad-button" id="dpad-right" type="button" aria-label="Right">
+    <svg class="dpad-button-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M19 12l-8 8v-5H5V9h6V4z" fill="currentColor"></path>
+    </svg>
+  </button>
+
+  <div class="dpad-spacer"></div>
+
+  <button class="dpad-button" id="dpad-down" type="button" aria-label="Down">
+    <svg class="dpad-button-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 19l8-8h-5V5H9v6H4z" fill="currentColor"></path>
+    </svg>
+  </button>
+
+  <div class="dpad-spacer"></div>
+</div>
+
+<script>
+(function () {
+  var buttons = [
+    {
+      id: "dpad-up",
+      defaultName: "Up",
+      pressSignal: "81",
+      feedbackSignal: "91",
+      labelSignal: "101"
+    },
+    {
+      id: "dpad-down",
+      defaultName: "Down",
+      pressSignal: "82",
+      feedbackSignal: "92",
+      labelSignal: "102"
+    },
+    {
+      id: "dpad-left",
+      defaultName: "Left",
+      pressSignal: "83",
+      feedbackSignal: "93",
+      labelSignal: "103"
+    },
+    {
+      id: "dpad-right",
+      defaultName: "Right",
+      pressSignal: "84",
+      feedbackSignal: "94",
+      labelSignal: "104"
+    },
+    {
+      id: "dpad-home",
+      defaultName: "Home",
+      pressSignal: "85",
+      feedbackSignal: "95",
+      labelSignal: "105"
+    }
+  ];
+
+  // Contract-name example:
+  // pressSignal: "DPad.Up.Press"
+  // feedbackSignal: "DPad.Up.Selected"
+  // labelSignal: "DPad.Up.Name"
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  var lib = getCrComLib();
+
+  function publishPressed(button, signal, value) {
+    button.classList.toggle("pressed", value);
+
+    if (lib && signal) {
+      lib.publishEvent("b", signal, value);
+    }
+  }
+
+  buttons.forEach(function (config) {
+    var button = document.getElementById(config.id);
+
+    if (!button) return;
+
+    button.setAttribute("aria-label", config.defaultName);
+
+    button.addEventListener("pointerdown", function (event) {
+      publishPressed(button, config.pressSignal, true);
+      event.preventDefault();
+    });
+
+    button.addEventListener("pointerup", function () {
+      publishPressed(button, config.pressSignal, false);
+    });
+
+    button.addEventListener("pointerleave", function () {
+      publishPressed(button, config.pressSignal, false);
+    });
+
+    button.addEventListener("pointercancel", function () {
+      publishPressed(button, config.pressSignal, false);
+    });
+
+    if (lib && config.feedbackSignal) {
+      lib.subscribeState("b", config.feedbackSignal, function (value) {
+        button.classList.toggle("active", isHigh(value));
+      });
+    }
+
+    if (lib && config.labelSignal) {
+      lib.subscribeState("s", config.labelSignal, function (value) {
+        button.setAttribute("aria-label", value || config.defaultName);
+      });
+    }
+  });
+})();
+</script>

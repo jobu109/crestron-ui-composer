@@ -1,0 +1,34 @@
+# Desktop build outputs
+dist/
+**/bin/
+**/obj/
+
+# Local tools and temporary working files
+.tools/
+.agents/
+tmp/
+
+# Generated Crestron smoke-test packages
+ch5-smoke-output/
+tsw-1070-smoke-build/
+tsw-1070-smoke-output/
+*.ch5z
+
+# Downloaded package archives (the required extracted runtime is retained)
+CrestronUiComposer/*.tgz
+
+# IDE and operating-system files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.DS_Store
+Thumbs.db
+
+# Logs and local environment/secrets
+*.log
+.env
+.env.*
+!.env.example

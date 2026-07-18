@@ -1,0 +1,298 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.vertical-ticker-wrapper {
+  width: 100%;
+  height: 100%;
+  padding: clamp(3px, 1.2vmin, 8px);
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.vertical-ticker-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 20px;
+  min-height: 40px;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.22),
+      rgba(52, 68, 68, 0.24) 42%,
+      rgba(4, 170, 142, 0.14)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -18px 34px rgba(4, 170, 142, 0.1),
+    0 0 12px rgba(4, 170, 142, 0.38),
+    0 6px 14px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  position: relative;
+  overflow: hidden;
+}
+
+.vertical-ticker-panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 9px;
+  background:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.2),
+      rgba(255, 255, 255, 0.05) 34%,
+      rgba(255, 255, 255, 0) 58%
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.vertical-ticker-panel::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 8%;
+  height: 24%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.11);
+  filter: blur(14px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.vertical-ticker-window {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 2;
+  mask-image: linear-gradient(transparent, white 8%, white 92%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, white 8%, white 92%, transparent);
+}
+
+.vertical-ticker-text {
+  --ticker-font-size: 32px;
+  --ticker-char-height: 29px;
+  --ticker-space-height: 43px;
+
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 100%;
+  color: rgb(4, 220, 185);
+  font-size: var(--ticker-font-size);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.68),
+    0 0 8px rgba(4, 220, 185, 0.75),
+    0 0 18px rgba(4, 170, 142, 0.55);
+  transform: translateX(-50%) translateY(0);
+  will-change: transform;
+}
+
+.vertical-ticker-char {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--ticker-char-height);
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.vertical-ticker-space {
+  height: var(--ticker-space-height);
+  color: transparent;
+  text-shadow: none;
+}
+</style>
+
+<div class="vertical-ticker-wrapper">
+  <div class="vertical-ticker-panel" id="vertical-ticker-panel">
+    <div class="vertical-ticker-window" id="vertical-ticker-window">
+      <div class="vertical-ticker-text" id="vertical-ticker-text"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var textSignal = "301";
+  var speedSignal = "302";
+
+  // Change font size here only:
+  var fontSize = 32;
+
+  var defaultText = "Scrolling Text";
+
+  // Change this to visually test speed in Construct.
+  // 0 = slowest, 100 = fastest.
+  var fallbackSpeedValue = 50;
+
+  var speedValue = fallbackSpeedValue;
+  var currentText = defaultText;
+  var currentY = 0;
+  var windowHeight = 100;
+  var textHeight = 100;
+  var lastFrameTime = null;
+  var resizeTimer = null;
+
+  var allowAnalogSpeedOverride = false;
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var tickerWindow = document.getElementById("vertical-ticker-window");
+  var tickerText = document.getElementById("vertical-ticker-text");
+
+  function setSpeedValue(value) {
+    speedValue = Math.max(0, Math.min(100, Number(value) || 0));
+  }
+
+  function getPixelsPerSecond() {
+    var minPixelsPerSecond = 20;
+    var maxPixelsPerSecond = 240;
+    var percent = speedValue / 100;
+
+    return minPixelsPerSecond +
+      ((maxPixelsPerSecond - minPixelsPerSecond) * percent);
+  }
+
+  function applyFontSize() {
+    var safeFontSize = Math.max(1, Number(fontSize) || 22);
+    var charHeight = Math.max(1, Math.round(safeFontSize * 0.9));
+    var spaceHeight = Math.max(1, Math.round(safeFontSize * 1.35));
+
+    tickerText.style.setProperty("--ticker-font-size", safeFontSize + "px");
+    tickerText.style.setProperty("--ticker-char-height", charHeight + "px");
+    tickerText.style.setProperty("--ticker-space-height", spaceHeight + "px");
+  }
+
+  function buildText(text) {
+    tickerText.innerHTML = "";
+
+    for (var i = 0; i < text.length; i++) {
+      var span = document.createElement("span");
+      span.className = "vertical-ticker-char";
+
+      if (text[i] === " ") {
+        span.className += " vertical-ticker-space";
+        span.textContent = String.fromCharCode(160);
+      } else {
+        span.textContent = text[i];
+      }
+
+      tickerText.appendChild(span);
+    }
+  }
+
+  function measureTicker(resetPosition) {
+    windowHeight = tickerWindow.clientHeight || 100;
+    textHeight = tickerText.scrollHeight || 100;
+
+    if (resetPosition) {
+      currentY = windowHeight;
+    }
+  }
+
+  function setTickerText(value) {
+    var text = String(value || defaultText);
+
+    currentText = text;
+    applyFontSize();
+    buildText(text);
+
+    requestAnimationFrame(function () {
+      measureTicker(true);
+    });
+  }
+
+  function refreshTicker() {
+    clearTimeout(resizeTimer);
+
+    resizeTimer = setTimeout(function () {
+      measureTicker(false);
+    }, 80);
+  }
+
+  function animateTicker(time) {
+    if (lastFrameTime === null) {
+      lastFrameTime = time;
+    }
+
+    var elapsedSeconds = Math.min(0.1, (time - lastFrameTime) / 1000);
+    lastFrameTime = time;
+
+    currentY -= getPixelsPerSecond() * elapsedSeconds;
+
+    if (currentY < -textHeight) {
+      currentY = windowHeight;
+    }
+
+    tickerText.style.transform =
+      "translateX(-50%) translateY(" + currentY + "px)";
+
+    requestAnimationFrame(animateTicker);
+  }
+
+  setSpeedValue(fallbackSpeedValue);
+  setTickerText(defaultText);
+  requestAnimationFrame(animateTicker);
+
+  setTimeout(function () {
+    allowAnalogSpeedOverride = true;
+  }, 1000);
+
+  window.addEventListener("resize", refreshTicker);
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(refreshTicker).observe(tickerWindow);
+  }
+
+  if (lib && textSignal) {
+    lib.subscribeState("s", textSignal, function (value) {
+      setTickerText(value);
+    });
+  }
+
+  if (lib && speedSignal) {
+    lib.subscribeState("n", speedSignal, function (value) {
+      if (!allowAnalogSpeedOverride) {
+        return;
+      }
+
+      setSpeedValue(value);
+    });
+  }
+})();
+</script>

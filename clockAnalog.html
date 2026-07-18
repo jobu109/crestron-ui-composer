@@ -1,0 +1,275 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.tsw-clock-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 3vh, 20px);
+  --face-size: min(78vw, 70vh);
+}
+
+.tsw-clock-city {
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(12px, 7vmin, 32px);
+  font-weight: 600;
+  line-height: 1;
+  color: white;
+  text-align: center;
+}
+
+.tsw-clock-face {
+  width: var(--face-size);
+  height: var(--face-size);
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(4, 170, 142, 0.25) 0%,
+    rgba(0, 0, 0, 0.6) 50%,
+    rgba(0, 0, 0, 0.9) 100%
+  );
+  box-shadow: 0 0 60px 15px rgba(4, 170, 142, 0.4);
+}
+
+.tsw-clock-glow {
+  position: absolute;
+  width: 90%;
+  height: 90%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(4, 170, 142, 0.3), transparent 70%);
+  box-shadow: 0 0 40px 3px rgba(4, 170, 142, 0.6);
+}
+
+.tsw-clock-point {
+  width: 1px;
+  height: calc(var(--face-size) * 0.04);
+  background: rgba(255, 255, 255, 0.7);
+  position: absolute;
+  top: calc(50% - (var(--face-size) * 0.02));
+  left: calc(50% - 0.5px);
+  transform-origin: center;
+}
+
+.tsw-clock-point.big {
+  height: calc(var(--face-size) * 0.05);
+  background: white;
+  top: calc(50% - (var(--face-size) * 0.025));
+}
+
+.tsw-clock-point.big .text {
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+  position: absolute;
+  top: 100%;
+  font-size: clamp(8px, 5vmin, 20px);
+  font-weight: 600;
+  width: calc(var(--face-size) * 0.14);
+  text-align: center;
+  left: calc(50% - (var(--face-size) * 0.07));
+}
+
+.tsw-clock-seconds,
+.tsw-clock-minutes,
+.tsw-clock-hours {
+  width: 2px;
+  position: absolute;
+  left: calc(50% - 1px);
+}
+
+.tsw-clock-seconds {
+  height: calc(var(--face-size) * 0.61);
+  background: orange;
+  top: calc(50% - (var(--face-size) * 0.087));
+  transform-origin: 1px calc(var(--face-size) * 0.087);
+}
+
+.tsw-clock-minutes,
+.tsw-clock-hours {
+  top: 50%;
+  transform-origin: 1px 0;
+  background: white;
+}
+
+.tsw-clock-hours {
+  height: calc(var(--face-size) * 0.37);
+}
+
+.tsw-clock-minutes {
+  height: calc(var(--face-size) * 0.44);
+}
+
+.tsw-clock-minutes::before,
+.tsw-clock-hours::before {
+  content: "";
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  width: clamp(4px, 4vmin, 12px);
+  height: calc(100% - 22px);
+  background: white;
+  border-radius: 10px;
+}
+
+.tsw-clock-pivot {
+  position: absolute;
+  width: clamp(8px, 4vmin, 16px);
+  height: clamp(8px, 4vmin, 16px);
+  background: black;
+  border: 3px solid white;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tsw-clock-pivot::before {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border: 3px solid orange;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+</style>
+
+<div class="tsw-clock-container">
+  <div class="tsw-clock-city" id="tsw-clock-city">Default City</div>
+  <div class="tsw-clock-face">
+    <div class="tsw-clock-glow"></div>
+    <div class="tsw-clock-points" id="tsw-clock-points"></div>
+    <div class="tsw-clock-minutes" id="tsw-clock-minutes"></div>
+    <div class="tsw-clock-seconds" id="tsw-clock-seconds"></div>
+    <div class="tsw-clock-hours" id="tsw-clock-hours"></div>
+    <div class="tsw-clock-pivot"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var timeSignal = "51";
+  var citySignal = "52";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var cityLabel = document.getElementById("tsw-clock-city");
+  var secondsHand = document.getElementById("tsw-clock-seconds");
+  var minutesHand = document.getElementById("tsw-clock-minutes");
+  var hoursHand = document.getElementById("tsw-clock-hours");
+  var points = document.getElementById("tsw-clock-points");
+
+  var label = 12;
+
+  for (var i = 0; i < 360; i += 6) {
+    var point = document.createElement("span");
+    point.className = "tsw-clock-point";
+
+    if ((i / 6) % 5 === 0) {
+      point.classList.add("big");
+
+      var text = document.createElement("span");
+      text.className = "text";
+      text.textContent = label;
+      text.style.transform = "rotate(" + (-i) + "deg) translateY(2px)";
+      point.appendChild(text);
+
+      label = label === 12 ? 1 : label + 1;
+    }
+
+    point.style.transform =
+      "rotate(" + i + "deg) translateY(calc(var(--face-size) * -0.46))";
+
+    points.appendChild(point);
+  }
+
+  function setClockFromTime(value) {
+    if (!value) return;
+
+    var raw = String(value).trim();
+    var h;
+    var m;
+    var s;
+
+    if (raw.indexOf(":") !== -1) {
+      var parts = raw.split(":");
+      if (parts.length !== 3) return;
+
+      h = Number(parts[0]);
+      m = Number(parts[1]);
+      s = Number(parts[2]);
+    } else if (/^\d{14,}$/.test(raw)) {
+      h = Number(raw.substring(8, 10));
+      m = Number(raw.substring(10, 12));
+      s = Number(raw.substring(12, 14));
+    } else {
+      return;
+    }
+
+    if (isNaN(h) || isNaN(m) || isNaN(s)) return;
+
+    var hourDeg = ((h % 12) + m / 60) * 30;
+    var minuteDeg = m * 6;
+    var secondDeg = s * 6;
+
+    secondsHand.style.transition = s === 0 ? "none" : "transform 0.25s";
+    minutesHand.style.transition = m === 0 ? "none" : "transform 0.25s";
+    hoursHand.style.transition = h === 0 ? "none" : "transform 0.25s";
+
+    secondsHand.style.transform = "rotate(" + (secondDeg - 180) + "deg)";
+    minutesHand.style.transform = "rotate(" + (minuteDeg - 180) + "deg)";
+    hoursHand.style.transform = "rotate(" + (hourDeg - 180) + "deg)";
+  }
+
+  var lib = getCrComLib();
+
+  if (lib) {
+    lib.subscribeState("s", timeSignal, setClockFromTime);
+
+    lib.subscribeState("s", citySignal, function (value) {
+      cityLabel.textContent = value || "City";
+    });
+  } else {
+    cityLabel.textContent = "Preview";
+
+    setInterval(function () {
+      var now = new Date();
+      var time =
+        String(now.getHours()).padStart(2, "0") + ":" +
+        String(now.getMinutes()).padStart(2, "0") + ":" +
+        String(now.getSeconds()).padStart(2, "0");
+
+      setClockFromTime(time);
+    }, 1000);
+  }
+})();
+</script>

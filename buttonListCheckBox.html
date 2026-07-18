@@ -1,0 +1,435 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.flipcheck-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 4vw;
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.flipcheck-list {
+  width: 100%;
+  height: 100%;
+  min-width: 120px;
+  min-height: 120px;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.18),
+      rgba(52, 68, 68, 0.22) 42%,
+      rgba(4, 170, 142, 0.1)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -20px 34px rgba(4, 170, 142, 0.08),
+    0 0 12px rgba(4, 170, 142, 0.32);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  padding: clamp(8px, 4vmin, 18px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.flipcheck-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: clamp(42px, 12vmin, 72px);
+  cursor: pointer;
+  padding: clamp(6px, 3vmin, 12px);
+  border-radius: 8px;
+  margin-bottom: clamp(6px, 2vmin, 10px);
+  background: rgba(120, 120, 120, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.flipcheck-item:last-child {
+  margin-bottom: 0;
+}
+
+.flipcheck-item:hover,
+.flipcheck-item.pressed {
+  background: rgba(140, 140, 140, 0.34);
+  transform: scale(0.985);
+}
+
+.flipcheck-item.checked {
+  background: rgba(4, 170, 142, 0.24);
+  border-color: rgba(4, 170, 142, 0.72);
+  box-shadow:
+    inset 0 0 16px rgba(4, 170, 142, 0.18),
+    0 0 14px rgba(4, 170, 142, 0.36);
+}
+
+.flipcheck-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.flipcheck-disc {
+  position: relative;
+  width: clamp(28px, 9vmin, 48px);
+  height: clamp(28px, 9vmin, 48px);
+  flex: 0 0 auto;
+  margin-right: clamp(10px, 4vmin, 18px);
+  perspective: 800px;
+}
+
+.flipcheck-flipper {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+.flipcheck-front,
+.flipcheck-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flipcheck-front {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(28, 28, 28, 0.92),
+      rgba(80, 80, 80, 0.52)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.12),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.42);
+}
+
+.flipcheck-back {
+  background:
+    radial-gradient(
+      circle,
+      rgba(4, 220, 185, 1),
+      rgba(4, 170, 142, 0.95)
+    );
+  border: 1px solid rgba(4, 170, 142, 1);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.38),
+    0 0 14px rgba(4, 170, 142, 0.82);
+  transform: rotateX(180deg);
+}
+
+.flipcheck-icon {
+  width: 62%;
+  height: 62%;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.flipcheck-front .flipcheck-icon {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.flipcheck-back .flipcheck-icon {
+  color: white;
+  filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.82))
+    drop-shadow(0 0 10px rgba(4, 170, 142, 0.75));
+}
+
+.flipcheck-item.checked .flipcheck-flipper {
+  transform: rotateX(-180deg);
+}
+
+.flipcheck-text {
+  min-width: 0;
+  flex: 1;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: clamp(14px, 7vmin, 28px);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.flipcheck-item.checked .flipcheck-text {
+  color: white;
+  text-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.62),
+    0 0 12px rgba(4, 170, 142, 0.95);
+}
+</style>
+
+<div class="flipcheck-wrapper">
+  <div class="flipcheck-list" id="flipcheck-list"></div>
+</div>
+
+<script>
+(function () {
+  var itemCountSignal = "21";
+
+  var checkedOutBaseSignal = 81;
+  var feedbackBaseSignal = 91;
+  var labelBaseSignal = 101;
+
+  // Contract-name example:
+  // var itemCountSignal = "Checklist.Count";
+  // var checkedOutBaseSignal = "Checklist.CheckedOut";
+  // var feedbackBaseSignal = "Checklist.CheckedIn";
+  // var labelBaseSignal = "Checklist.Label";
+  //
+  // Contract examples would become:
+  // Checklist.CheckedOut.0, Checklist.CheckedOut.1, etc.
+  // Checklist.CheckedIn.0, Checklist.CheckedIn.1, etc.
+  // Checklist.Label.0, Checklist.Label.1, etc.
+
+  var maxItems = 20;
+  var defaultItemCount = 5;
+  var defaultLabelPrefix = "Item";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  function isHigh(value) {
+    return value === true || value === 1 || value === "1";
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function makeSignal(baseSignal, index) {
+    if (baseSignal === null || baseSignal === undefined || baseSignal === "") {
+      return "";
+    }
+
+    var numericBase = Number(baseSignal);
+
+    if (Number.isFinite(numericBase)) {
+      return String(numericBase + index);
+    }
+
+    return String(baseSignal) + "." + index;
+  }
+
+  function getDefaultLabel(index) {
+    return defaultLabelPrefix + " " + index;
+  }
+
+  var lib = getCrComLib();
+  var list = document.getElementById("flipcheck-list");
+
+  var itemEls = [];
+  var inputEls = [];
+  var textEls = [];
+  var labelValues = new Array(maxItems).fill("");
+  var checkedValues = new Array(maxItems).fill(false);
+
+  function publishChecked(index, checked) {
+    if (!lib) return;
+
+    var signal = makeSignal(checkedOutBaseSignal, index);
+
+    if (signal) {
+      lib.publishEvent("b", signal, checked);
+    }
+  }
+
+  function setChecked(index, checked, publish) {
+    checkedValues[index] = !!checked;
+
+    if (itemEls[index]) {
+      itemEls[index].classList.toggle("checked", checkedValues[index]);
+    }
+
+    if (inputEls[index]) {
+      inputEls[index].checked = checkedValues[index];
+    }
+
+    if (publish) {
+      publishChecked(index, checkedValues[index]);
+    }
+  }
+
+  function setLabel(index, text) {
+    labelValues[index] = text || "";
+
+    if (textEls[index]) {
+      textEls[index].textContent = labelValues[index] || getDefaultLabel(index);
+    }
+  }
+
+  function renderItems(count) {
+    var parsedCount = Math.round(Number(count));
+    var safeCount = Number.isFinite(parsedCount) && parsedCount > 0
+      ? clamp(parsedCount, 1, maxItems)
+      : defaultItemCount;
+
+    list.innerHTML = "";
+    itemEls = [];
+    inputEls = [];
+    textEls = [];
+
+    for (var i = 0; i < safeCount; i++) {
+      (function (index) {
+        var item = document.createElement("label");
+        var input = document.createElement("input");
+        var disc = document.createElement("div");
+        var flipper = document.createElement("div");
+        var front = document.createElement("div");
+        var back = document.createElement("div");
+        var frontIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        var backIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        var frontPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        var backPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        var text = document.createElement("span");
+
+        item.className = "flipcheck-item";
+        item.setAttribute("for", "flipcheck-" + index);
+
+        input.className = "flipcheck-input";
+        input.type = "checkbox";
+        input.id = "flipcheck-" + index;
+
+        disc.className = "flipcheck-disc";
+        flipper.className = "flipcheck-flipper";
+        front.className = "flipcheck-front";
+        back.className = "flipcheck-back";
+        text.className = "flipcheck-text";
+        text.textContent = labelValues[index] || getDefaultLabel(index);
+
+        frontIcon.setAttribute("class", "flipcheck-icon");
+        frontIcon.setAttribute("viewBox", "0 0 24 24");
+        frontIcon.setAttribute("fill", "none");
+        frontIcon.setAttribute("stroke", "currentColor");
+
+        frontPath.setAttribute("d", "M6 6h12v12H6z");
+        frontPath.setAttribute("stroke-width", "2.4");
+        frontPath.setAttribute("stroke-linecap", "round");
+        frontPath.setAttribute("stroke-linejoin", "round");
+
+        backIcon.setAttribute("class", "flipcheck-icon");
+        backIcon.setAttribute("viewBox", "0 0 24 24");
+        backIcon.setAttribute("fill", "none");
+        backIcon.setAttribute("stroke", "currentColor");
+
+        backPath.setAttribute("d", "M4.5 12.75l5.4 5.4 9.6-12.3");
+        backPath.setAttribute("stroke-width", "2.8");
+        backPath.setAttribute("stroke-linecap", "round");
+        backPath.setAttribute("stroke-linejoin", "round");
+
+        frontIcon.appendChild(frontPath);
+        backIcon.appendChild(backPath);
+        front.appendChild(frontIcon);
+        back.appendChild(backIcon);
+        flipper.appendChild(front);
+        flipper.appendChild(back);
+        disc.appendChild(flipper);
+
+        item.appendChild(input);
+        item.appendChild(disc);
+        item.appendChild(text);
+
+        input.addEventListener("change", function () {
+          setChecked(index, input.checked, true);
+        });
+
+        item.addEventListener("pointerdown", function () {
+          item.classList.add("pressed");
+        });
+
+        item.addEventListener("pointerup", function () {
+          item.classList.remove("pressed");
+        });
+
+        item.addEventListener("pointerleave", function () {
+          item.classList.remove("pressed");
+        });
+
+        item.addEventListener("pointercancel", function () {
+          item.classList.remove("pressed");
+        });
+
+        list.appendChild(item);
+
+        itemEls[index] = item;
+        inputEls[index] = input;
+        textEls[index] = text;
+
+        setChecked(index, checkedValues[index], false);
+      })(i);
+    }
+  }
+
+  function subscribeSignals() {
+    if (!lib) return;
+
+    for (var i = 0; i < maxItems; i++) {
+      (function (index) {
+        var feedbackSignal = makeSignal(feedbackBaseSignal, index);
+        var labelSignal = makeSignal(labelBaseSignal, index);
+
+        if (feedbackSignal) {
+          lib.subscribeState("b", feedbackSignal, function (value) {
+            setChecked(index, isHigh(value), false);
+          });
+        }
+
+        if (labelSignal) {
+          lib.subscribeState("s", labelSignal, function (value) {
+            setLabel(index, value);
+          });
+        }
+      })(i);
+    }
+
+    if (itemCountSignal) {
+      lib.subscribeState("n", itemCountSignal, function (value) {
+        renderItems(value);
+      });
+    }
+  }
+
+  renderItems(defaultItemCount);
+  subscribeSignals();
+})();
+</script>

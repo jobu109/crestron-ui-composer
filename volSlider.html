@@ -1,0 +1,199 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.volume-slider-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10vw;
+  overflow: hidden;
+}
+
+.volume-bar {
+  --knob-size: clamp(26px, 16vmin, 44px);
+
+  width: 100%;
+  height: clamp(22px, 18vh, 42px);
+  max-width: 900px;
+  min-width: 80px;
+  background: linear-gradient(
+    to right,
+    #4caf50 0%,
+    #4caf50 45%,
+    #ffeb3b 55%,
+    #ffeb3b 70%,
+    #f44336 80%,
+    #f44336 100%
+  );
+  border-radius: 999px;
+  box-shadow:
+    inset -1px 2px 2px rgb(0, 0, 0),
+    1px 1px 1px rgb(120, 120, 120),
+    0 0 12px rgba(4, 170, 142, 0.55);
+  position: relative;
+  overflow: visible;
+  cursor: pointer;
+}
+
+.volume-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  background: rgb(42, 42, 42);
+  z-index: 1;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.volume-knob {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--knob-size);
+  height: var(--knob-size);
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(4, 170, 142, 0.8);
+  cursor: pointer;
+  z-index: 10;
+}
+
+.volume-knob:active {
+  box-shadow: 0 0 15px rgba(4, 170, 93, 0.9);
+}
+
+.volume-percent {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(14px, 8vmin, 30px);
+  font-family: "Segoe UI", sans-serif;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  text-shadow: 1px 1px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+</style>
+
+<div class="volume-slider-wrapper">
+  <div class="volume-bar" id="volume-bar">
+    <div class="volume-fill" id="volume-fill"></div>
+    <div class="volume-knob" id="volume-knob"></div>
+    <span class="volume-percent" id="volume-percent">0%</span>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Contract names:
+  //var setSignal = "miclevel.Set";
+  //var feedbackSignal = "miclevel.Value";
+
+  // Or join numbers from your current app:
+  var setSignal = "12";
+  var feedbackSignal = "13";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var bar = document.getElementById("volume-bar");
+  var fill = document.getElementById("volume-fill");
+  var knob = document.getElementById("volume-knob");
+  var label = document.getElementById("volume-percent");
+
+  var isDragging = false;
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function updateUI(value) {
+    var analogValue = clamp(Number(value) || 0, 0, 65535);
+    var percent = Math.round((analogValue / 65535) * 100);
+
+    fill.style.width = (100 - percent) + "%";
+    knob.style.left = percent + "%";
+    label.textContent = percent + "%";
+  }
+
+  function publishFromClientX(clientX) {
+    var rect = bar.getBoundingClientRect();
+    var x = clamp(clientX - rect.left, 0, rect.width);
+    var percent = x / rect.width;
+    var value = Math.round(percent * 65535);
+
+    updateUI(value);
+
+    if (lib) {
+      lib.publishEvent("n", setSignal, value);
+    }
+  }
+
+  function getClientX(event) {
+    if (event.touches && event.touches.length) {
+      return event.touches[0].clientX;
+    }
+
+    return event.clientX;
+  }
+
+  function startDrag(event) {
+    isDragging = true;
+    publishFromClientX(getClientX(event));
+    event.preventDefault();
+  }
+
+  function moveDrag(event) {
+    if (!isDragging) return;
+    publishFromClientX(getClientX(event));
+    event.preventDefault();
+  }
+
+  function endDrag() {
+    isDragging = false;
+  }
+
+  bar.addEventListener("mousedown", startDrag);
+  document.addEventListener("mousemove", moveDrag);
+  document.addEventListener("mouseup", endDrag);
+
+  bar.addEventListener("touchstart", startDrag, { passive: false });
+  document.addEventListener("touchmove", moveDrag, { passive: false });
+  document.addEventListener("touchend", endDrag);
+
+  if (lib) {
+    lib.subscribeState("n", feedbackSignal, function (value) {
+      updateUI(value);
+    });
+  } else {
+    updateUI(32768);
+  }
+})();
+</script>

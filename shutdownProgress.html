@@ -1,0 +1,159 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.tsw-shutdown-wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 6vw;
+}
+
+.tsw-shutdown-center {
+  width: 100%;
+  max-width: 700px;
+}
+
+.tsw-shutdown-box {
+  background: #1c1c1c;
+  border-radius: 12px;
+  padding: clamp(14px, 5vw, 28px);
+  box-shadow: 0 0 25px rgba(4, 170, 142, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 4vh, 18px);
+}
+
+.tsw-shutdown-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tsw-shutdown-title {
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(18px, 7vmin, 34px);
+  line-height: 1.1;
+  font-weight: 600;
+  color: white;
+}
+
+.tsw-shutdown-details {
+  font-family: "Segoe UI", sans-serif;
+  color: white;
+}
+
+.tsw-shutdown-percentage {
+  font-size: clamp(16px, 6vmin, 28px);
+  font-weight: 500;
+  color: rgb(4, 170, 142);
+}
+
+.tsw-shutdown-progress {
+  background: #444;
+  height: clamp(14px, 5vh, 24px);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.tsw-shutdown-fill {
+  background: linear-gradient(to right, #04aa8e, #03c383);
+  height: 100%;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.tsw-shutdown-note {
+  color: #ccc;
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(12px, 4vmin, 20px);
+  line-height: 1.2;
+  text-align: center;
+}
+</style>
+
+<div class="tsw-shutdown-wrapper">
+  <div class="tsw-shutdown-center">
+    <div class="tsw-shutdown-box">
+      <div class="tsw-shutdown-head">
+        <div class="tsw-shutdown-left">
+          <span class="tsw-shutdown-title">System Shutdown in Progress</span>
+        </div>
+      </div>
+
+      <div class="tsw-shutdown-details">
+        <div class="tsw-shutdown-percentage">
+          <span class="tsw-shutdown-value" id="tsw-shutdown-value">0%</span> Complete
+        </div>
+      </div>
+
+      <div class="tsw-shutdown-progress">
+        <div class="tsw-shutdown-fill" id="tsw-shutdown-fill"></div>
+      </div>
+
+      <div class="tsw-shutdown-note" id="tsw-shutdown-note">
+        Estimated 0 Seconds Remaining...
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var progressSignal = "5";
+  var noteSignal = "6";
+
+  // Contract-name example:
+  // var progressSignal = "Shutdown.Progress";
+  // var noteSignal = "Shutdown.Note";
+
+  var defaultNote = "Estimated 0 Seconds Remaining...";
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var valueSpan = document.getElementById("tsw-shutdown-value");
+  var fill = document.getElementById("tsw-shutdown-fill");
+  var note = document.getElementById("tsw-shutdown-note");
+
+  function setProgress(value) {
+    var percent = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+
+    valueSpan.textContent = percent + "%";
+    fill.style.width = percent + "%";
+  }
+
+  setProgress(0);
+  note.textContent = defaultNote;
+
+  if (lib) {
+    lib.subscribeState("n", progressSignal, setProgress);
+
+    lib.subscribeState("s", noteSignal, function (value) {
+      note.textContent = value || defaultNote;
+    });
+  }
+})();
+</script>

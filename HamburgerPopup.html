@@ -1,0 +1,549 @@
+<style>
+html,
+body {
+  margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.menu-stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 4vw;
+  font-family: "Segoe UI", "Montserrat", sans-serif;
+}
+
+.list-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 170px;
+  min-height: 120px;
+  overflow: hidden;
+}
+
+.more-button {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  background-color: rgb(4, 170, 142);
+  box-shadow:
+    0 0 0 4px rgba(4, 170, 142, 0.25),
+    0 0 18px rgba(4, 170, 142, 0.45);
+  border-radius: 50%;
+  width: clamp(44px, 16vmin, 70px);
+  height: clamp(44px, 16vmin, 70px);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  z-index: 5;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.list-container.active .more-button {
+  background-color: rgb(4, 190, 160);
+  box-shadow:
+    0 0 0 6px rgba(4, 170, 142, 0.18),
+    0 0 22px rgba(4, 170, 142, 0.72);
+}
+
+.more-button:active {
+  transform: scale(0.94);
+}
+
+.menu-icon-wrapper {
+  width: 42%;
+  height: 36%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.menu-icon-line {
+  background-color: white;
+  border-radius: 2px;
+  width: 100%;
+  height: 2px;
+}
+
+.more-button-list {
+  position: absolute;
+  left: 0;
+  right: clamp(58px, 20vmin, 86px);
+  bottom: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(7px, 2.5vmin, 12px);
+  margin: 0;
+  padding: clamp(10px, 4vmin, 18px);
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.24),
+      rgba(52, 68, 68, 0.24) 42%,
+      rgba(4, 170, 142, 0.16)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -20px 34px rgba(4, 170, 142, 0.1),
+    0 0 14px rgba(4, 170, 142, 0.42),
+    0 8px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  opacity: 0;
+  transform: translateX(16px) scale(0.92);
+  transform-origin: right bottom;
+  pointer-events: none;
+  transition:
+    opacity 0.22s ease,
+    transform 0.28s ease;
+  z-index: 4;
+}
+
+.more-button-list::-webkit-scrollbar {
+  display: none;
+}
+
+.list-scroll-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: clamp(4px, 1.5vmin, 8px);
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(42, 42, 42, 0.38);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  z-index: 6;
+}
+
+.list-container.active.scrollable .list-scroll-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.list-scroll-thumb {
+  width: 100%;
+  height: 32px;
+  border-radius: inherit;
+  background: rgba(112, 112, 112, 0.76);
+  box-shadow:
+    0 0 4px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(0);
+}
+
+.more-button-list::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 13px;
+  background:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.22),
+      rgba(255, 255, 255, 0.06) 34%,
+      rgba(255, 255, 255, 0) 58%
+    );
+  pointer-events: none;
+}
+
+.list-container.active .more-button-list {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.more-button-list-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: clamp(42px, 16vmin, 62px);
+  border: none;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.18),
+      rgba(50, 60, 60, 0.28) 46%,
+      rgba(4, 170, 142, 0.14)
+    );
+  color: white;
+  padding: 10px 12px;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -12px 22px rgba(0, 0, 0, 0.16),
+    0 0 8px rgba(4, 170, 142, 0.26);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  font-family: inherit;
+  text-align: left;
+}
+
+.more-button-list-item.pressed {
+  transform: scale(0.97);
+  background-color: rgba(4, 170, 142, 0.28);
+  box-shadow:
+    inset 0 0 18px rgba(4, 170, 142, 0.28),
+    0 0 18px rgba(4, 170, 142, 0.58);
+}
+
+.more-button-list-item.selected {
+  color: white;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(4, 170, 142, 0.82),
+      rgba(4, 130, 112, 0.9)
+    );
+  box-shadow:
+    inset 0 0 14px rgba(255, 255, 255, 0.22),
+    0 0 18px rgba(4, 170, 142, 0.68);
+}
+
+.menu-item-icon {
+  flex: 0 0 auto;
+  width: clamp(16px, 6vmin, 24px);
+  height: clamp(16px, 6vmin, 24px);
+  color: currentColor;
+}
+
+.menu-item-label {
+  display: block;
+  min-width: 0;
+  flex: 1;
+  color: currentColor;
+  font-size: clamp(14px, 6vmin, 22px);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
+
+<div class="menu-stage">
+  <div class="list-container" id="list-container">
+    <div class="more-button-list" id="more-button-list"></div>
+    <div class="list-scroll-overlay" id="list-scroll-overlay">
+      <div class="list-scroll-thumb" id="list-scroll-thumb"></div>
+    </div>
+
+    <button class="more-button" id="more-button" type="button" aria-label="Menu Button">
+      <div class="menu-icon-wrapper">
+        <div class="menu-icon-line"></div>
+        <div class="menu-icon-line"></div>
+        <div class="menu-icon-line"></div>
+      </div>
+    </button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var itemCountSignal = "30";
+  var pressBaseSignal = "30";
+  var feedbackBaseSignal = "30";
+  var labelBaseSignal = "30";
+
+  var defaultItemCount = 5;
+  var maxItems = 12;
+  var allowZeroItems = false;
+
+  var defaultLabels = [
+    "Settings",
+    "Copy",
+    "Share",
+    "Delete",
+    "Item 4",
+    "Item 5",
+    "Item 6",
+    "Item 7",
+    "Item 8",
+    "Item 9",
+    "Item 10",
+    "Item 11"
+  ];
+
+  var itemCount = defaultItemCount;
+  var labels = defaultLabels.slice();
+  var selected = [];
+  var itemButtons = [];
+
+  function getCrComLib() {
+    try {
+      return window.CrComLib ||
+        (window.parent && window.parent.CrComLib) ||
+        (window.top && window.top.CrComLib) ||
+        null;
+    } catch (e) {
+      return window.CrComLib || null;
+    }
+  }
+
+  var lib = getCrComLib();
+  var container = document.getElementById("list-container");
+  var toggleButton = document.getElementById("more-button");
+  var list = document.getElementById("more-button-list");
+  var scrollOverlay = document.getElementById("list-scroll-overlay");
+  var scrollThumb = document.getElementById("list-scroll-thumb");
+  var isDraggingScrollThumb = false;
+  var dragStartY = 0;
+  var dragStartScrollTop = 0;
+
+  function clampCount(value) {
+    var count = Math.round(Number(value) || 0);
+
+    if (!allowZeroItems && count <= 0) {
+      return itemCount || defaultItemCount;
+    }
+
+    return Math.max(0, Math.min(maxItems, count));
+  }
+
+  function isTrue(value) {
+    return value === true || value === 1 || value === "1" || value === "true";
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function getSignal(baseSignal, index) {
+    if (baseSignal === "" || baseSignal === null || baseSignal === undefined) {
+      return "";
+    }
+
+    if (/^\d+$/.test(String(baseSignal))) {
+      return String(Number(baseSignal) + index);
+    }
+
+    return String(baseSignal) + "." + index;
+  }
+
+  function getIconSvg() {
+    return (
+      '<svg class="menu-item-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>' +
+        '<path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>' +
+      '</svg>'
+    );
+  }
+
+  function pulsePress(index) {
+    var signal = getSignal(pressBaseSignal, index);
+
+    if (!lib || !signal) return;
+
+    lib.publishEvent("b", signal, true);
+
+    setTimeout(function () {
+      lib.publishEvent("b", signal, false);
+    }, 100);
+  }
+
+  function applyFeedback(index) {
+    if (!itemButtons[index]) return;
+
+    itemButtons[index].classList.toggle("selected", !!selected[index]);
+  }
+
+  function updateScrollOverlay() {
+    var maxScroll = list.scrollHeight - list.clientHeight;
+
+    if (!scrollOverlay || !scrollThumb || maxScroll <= 1) {
+      container.classList.remove("scrollable");
+      return;
+    }
+
+    var inset = Math.min(8, Math.max(3, list.offsetWidth * 0.02));
+    var trackHeight = Math.max(0, list.offsetHeight - inset * 2);
+    var thumbHeight = clamp(
+      trackHeight * (list.clientHeight / list.scrollHeight),
+      28,
+      trackHeight
+    );
+    var maxThumbY = Math.max(0, trackHeight - thumbHeight);
+    var thumbY = maxScroll > 0
+      ? maxThumbY * (list.scrollTop / maxScroll)
+      : 0;
+
+    container.classList.add("scrollable");
+    scrollOverlay.style.left = (list.offsetLeft + list.offsetWidth - inset - scrollOverlay.offsetWidth) + "px";
+    scrollOverlay.style.top = (list.offsetTop + inset) + "px";
+    scrollOverlay.style.height = trackHeight + "px";
+    scrollThumb.style.height = thumbHeight + "px";
+    scrollThumb.style.transform = "translateY(" + thumbY + "px)";
+  }
+
+  function beginScrollThumbDrag(event) {
+    isDraggingScrollThumb = true;
+    dragStartY = event.clientY;
+    dragStartScrollTop = list.scrollTop;
+
+    if (scrollThumb.setPointerCapture) {
+      scrollThumb.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+  }
+
+  function dragScrollThumb(event) {
+    if (!isDraggingScrollThumb) return;
+
+    var maxScroll = list.scrollHeight - list.clientHeight;
+    var trackHeight = scrollOverlay.clientHeight;
+    var thumbHeight = scrollThumb.offsetHeight;
+    var maxThumbY = Math.max(1, trackHeight - thumbHeight);
+    var deltaY = event.clientY - dragStartY;
+
+    list.scrollTop = dragStartScrollTop + (deltaY / maxThumbY) * maxScroll;
+  }
+
+  function endScrollThumbDrag(event) {
+    if (!isDraggingScrollThumb) return;
+
+    isDraggingScrollThumb = false;
+
+    if (scrollThumb.releasePointerCapture) {
+      scrollThumb.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function renderItems() {
+    list.innerHTML = "";
+    itemButtons = [];
+
+    for (var index = 0; index < itemCount; index++) {
+      var button = document.createElement("button");
+      button.className = "more-button-list-item";
+      button.type = "button";
+
+      button.innerHTML =
+        getIconSvg() +
+        '<span class="menu-item-label"></span>';
+
+      button.querySelector(".menu-item-label").textContent =
+        labels[index] || ("Item " + index);
+
+      (function (itemIndex, itemButton) {
+        itemButton.addEventListener("pointerdown", function (event) {
+          itemButton.classList.add("pressed");
+          pulsePress(itemIndex);
+          event.preventDefault();
+        });
+
+        itemButton.addEventListener("pointerup", function () {
+          itemButton.classList.remove("pressed");
+        });
+
+        itemButton.addEventListener("pointerleave", function () {
+          itemButton.classList.remove("pressed");
+        });
+
+        itemButton.addEventListener("pointercancel", function () {
+          itemButton.classList.remove("pressed");
+        });
+      })(index, button);
+
+      list.appendChild(button);
+      itemButtons[index] = button;
+      applyFeedback(index);
+    }
+
+    requestAnimationFrame(updateScrollOverlay);
+  }
+
+  function setItemCount(value) {
+    itemCount = clampCount(value);
+    renderItems();
+  }
+
+  toggleButton.addEventListener("click", function () {
+    container.classList.toggle("active");
+    requestAnimationFrame(updateScrollOverlay);
+    setTimeout(updateScrollOverlay, 300);
+  });
+
+  setItemCount(defaultItemCount);
+  list.addEventListener("scroll", updateScrollOverlay, { passive: true });
+  scrollThumb.addEventListener("pointerdown", beginScrollThumbDrag);
+  scrollThumb.addEventListener("pointermove", dragScrollThumb);
+  scrollThumb.addEventListener("pointerup", endScrollThumbDrag);
+  scrollThumb.addEventListener("pointercancel", endScrollThumbDrag);
+
+  if (window.ResizeObserver) {
+    var resizeObserver = new ResizeObserver(updateScrollOverlay);
+    resizeObserver.observe(container);
+    resizeObserver.observe(list);
+  } else {
+    window.addEventListener("resize", updateScrollOverlay);
+  }
+
+  if (lib) {
+    if (itemCountSignal) {
+      lib.subscribeState("n", itemCountSignal, function (value) {
+        setItemCount(value);
+      });
+    }
+
+    for (var i = 0; i < maxItems; i++) {
+      (function (index) {
+        var feedbackSignal = getSignal(feedbackBaseSignal, index);
+        var labelSignal = getSignal(labelBaseSignal, index);
+
+        if (feedbackSignal) {
+          lib.subscribeState("b", feedbackSignal, function (value) {
+            selected[index] = isTrue(value);
+            applyFeedback(index);
+          });
+        }
+
+        if (labelSignal) {
+          lib.subscribeState("s", labelSignal, function (value) {
+            labels[index] = value || defaultLabels[index] || ("Item " + index);
+
+            if (itemButtons[index]) {
+              itemButtons[index].querySelector(".menu-item-label").textContent =
+                labels[index];
+              updateScrollOverlay();
+            }
+          });
+        }
+      })(i);
+    }
+  }
+})();
+</script>
