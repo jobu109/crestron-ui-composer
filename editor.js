@@ -30,8 +30,14 @@
   let historyIndex = -1,
     restoringHistory = false,
     historyTimer = 0;
-  const autosaveKey = "crestron-ui-composer-autosave-v3";
-  let autosaveEnabled = false;
+  const legacyAutosaveKey = "crestron-ui-composer-autosave-v3";
+  const autosaveKey = "crestron-ui-composer-recovery-v4";
+  const autosaveLimit = 10;
+  const autosaveInterval = 30000;
+  let autosaveEnabled = false,
+    autosaveTimer = 0,
+    projectDirty = false,
+    lastManualFingerprint = "";
   let componentClipboard = "";
   let snapEnabled = true,
     snapSize = 10;
@@ -69,19 +75,95 @@
     if (redo)
       redo.disabled = historyIndex < 0 || historyIndex >= history.length - 1;
   }
-  function writeAutosave(value) {
-    if (!autosaveEnabled) return;
+  function setAutosaveState(text, kind = "") {
+    const indicator = $("autosave-state");
+    if (!indicator) return;
+    indicator.textContent = text;
+    indicator.className = `autosave-state ${kind}`.trim();
+  }
+  function readRecoveryStore() {
     try {
-      localStorage.setItem(
-        autosaveKey,
-        JSON.stringify({
-          savedAt: new Date().toISOString(),
-          project: JSON.parse(value),
-        }),
+      const saved = JSON.parse(localStorage.getItem(autosaveKey) || "null");
+      if (saved && Array.isArray(saved.snapshots)) return saved;
+      const legacy = JSON.parse(
+        localStorage.getItem(legacyAutosaveKey) || "null",
+      );
+      if (legacy && legacy.project)
+        return {
+          version: 4,
+          snapshots: [
+            {
+              savedAt: legacy.savedAt || new Date().toISOString(),
+              project: legacy.project,
+            },
+          ],
+        };
+    } catch (_) {}
+    return { version: 4, snapshots: [] };
+  }
+  function clearRecovery() {
+    clearTimeout(autosaveTimer);
+    try {
+      localStorage.removeItem(autosaveKey);
+      localStorage.removeItem(legacyAutosaveKey);
+    } catch (_) {}
+    if (native) nativeRequest("clearRecovery").catch(() => {});
+  }
+  function persistAutosave(value, forceSnapshot = false) {
+    if (!autosaveEnabled || !projectDirty) return;
+    try {
+      const store = readRecoveryStore(),
+        now = new Date(),
+        latest = store.snapshots[0],
+        latestTime = latest ? new Date(latest.savedAt).getTime() : 0,
+        parsed = JSON.parse(value),
+        snapshot = { savedAt: now.toISOString(), project: parsed };
+      if (
+        forceSnapshot ||
+        !latest ||
+        now.getTime() - latestTime >= autosaveInterval
+      )
+        store.snapshots.unshift(snapshot);
+      else store.snapshots[0] = snapshot;
+      store.snapshots = store.snapshots.slice(0, autosaveLimit);
+      store.version = 4;
+      const serialized = JSON.stringify(store);
+      if (native) nativeRequest("writeRecovery", serialized).catch(() => {});
+      try {
+        localStorage.setItem(autosaveKey, serialized);
+        localStorage.removeItem(legacyAutosaveKey);
+      } catch (storageError) {
+        if (!native) throw storageError;
+        console.warn("Browser recovery mirror failed", storageError);
+      }
+      setAutosaveState(
+        `Autosaved ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`,
+        "dirty",
       );
     } catch (error) {
+      setAutosaveState("Autosave failed", "error");
       console.warn("Autosave failed", error);
     }
+  }
+  function writeAutosave(value) {
+    if (!autosaveEnabled) return;
+    projectDirty = value !== lastManualFingerprint;
+    if (!projectDirty) {
+      setAutosaveState("Saved");
+      return;
+    }
+    setAutosaveState("Unsaved changes", "dirty");
+    if (!autosaveTimer)
+      autosaveTimer = setTimeout(() => {
+        autosaveTimer = 0;
+        persistAutosave(historyState());
+      }, autosaveInterval);
+  }
+  function markProjectSaved() {
+    lastManualFingerprint = historyState();
+    projectDirty = false;
+    clearRecovery();
+    setAutosaveState("Saved");
   }
   function commitHistory(persist = true) {
     if (restoringHistory) return;
@@ -133,54 +215,88 @@
   function redo() {
     restoreHistory(historyIndex + 1);
   }
-  function recoverAutosave() {
-    let saved;
-    try {
-      saved = JSON.parse(localStorage.getItem(autosaveKey) || "null");
-    } catch (_) {
-      saved = null;
-    }
-    if (!saved || !saved.project) {
+  function recoveryDescription(snapshot) {
+    const p = snapshot.project || {},
+      pages = (p.pages || []).length,
+      items = (p.items || []).length,
+      device =
+        deviceProfiles.find((entry) => entry.id === p.targetDevice)?.name ||
+        p.targetDevice ||
+        "Custom panel";
+    return `${device} · ${pages} page${pages === 1 ? "" : "s"} · ${items} widget${items === 1 ? "" : "s"}`;
+  }
+  function restoreRecoveryProject(p, savedAt) {
+    state.items = normalizeItemStates(p.items);
+    state.assets = p.assets || [];
+    state.reusables = p.reusables || [];
+    state.pageTemplates = p.pageTemplates || [];
+    state.themes = p.themes || [];
+    state.pages = p.pages || [{ ...firstPage }];
+    state.activePage = p.activePage || state.pages[0].id;
+    state.targetDevice = p.targetDevice || "tsw-1070";
+    state.diagnostics = !!p.diagnostics;
+    state.width = Number(p.width) || 1920;
+    state.height = Number(p.height) || 1200;
+    $("target-device").value = state.targetDevice;
+    $("custom-size").hidden = state.targetDevice !== "custom";
+    $("panel-width").value = state.width;
+    $("panel-height").value = state.height;
+    resize(state.width, state.height);
+    renderPage();
+    commitHistory(false);
+    projectDirty = true;
+    setAutosaveState("Recovered · unsaved", "dirty");
+    setStatus("Recovered autosave from " + new Date(savedAt).toLocaleString());
+  }
+  async function recoverAutosave() {
+    let store = readRecoveryStore();
+    if (native)
+      try {
+        const desktopValue = await nativeRequest("readRecovery");
+        if (desktopValue) {
+          const desktopStore = JSON.parse(desktopValue),
+            browserLatest = store.snapshots[0]?.savedAt || "",
+            desktopLatest = desktopStore.snapshots?.[0]?.savedAt || "";
+          if (desktopLatest > browserLatest) store = desktopStore;
+        }
+      } catch (error) {
+        console.warn("Desktop recovery file could not be read", error);
+      }
+    const snapshots = store.snapshots.filter(
+      (entry) => entry && entry.project && entry.savedAt,
+    );
+    if (!snapshots.length) {
       autosaveEnabled = true;
+      lastManualFingerprint = historyState();
+      setAutosaveState("Saved");
       return;
     }
-    const p = saved.project,
-      when = saved.savedAt
-        ? new Date(saved.savedAt).toLocaleString()
-        : "an earlier session",
-      hasWork =
-        (p.items || []).length > 0 ||
-        (p.assets || []).length > 0 ||
-        (p.reusables || []).length > 0 ||
-        (p.pageTemplates || []).length > 0 ||
-        (p.themes || []).length > 0 ||
-        (p.pages || []).length > 1;
-    if (hasWork && confirm(`Recover the autosaved project from ${when}?`)) {
-      state.items = normalizeItemStates(p.items);
-      state.assets = p.assets || [];
-      state.reusables = p.reusables || [];
-      state.pageTemplates = p.pageTemplates || [];
-      state.themes = p.themes || [];
-      state.pages = p.pages || [{ ...firstPage }];
-      state.activePage = p.activePage || state.pages[0].id;
-      state.targetDevice = p.targetDevice || "tsw-1070";
-      state.diagnostics = !!p.diagnostics;
-      state.width = Number(p.width) || 1920;
-      state.height = Number(p.height) || 1200;
-      $("target-device").value = state.targetDevice;
-      $("custom-size").hidden = state.targetDevice !== "custom";
-      $("panel-width").value = state.width;
-      $("panel-height").value = state.height;
-      resize(state.width, state.height);
-      renderPage();
-      commitHistory(false);
-      setStatus("Recovered autosave from " + when);
-    } else {
-      try {
-        localStorage.removeItem(autosaveKey);
-      } catch (_) {}
-    }
-    autosaveEnabled = true;
+    const list = $("recovery-list");
+    list.innerHTML = snapshots
+      .map(
+        (entry, index) =>
+          `<label class="recovery-entry"><input type="radio" name="recovery-snapshot" value="${index}" ${index === 0 ? "checked" : ""}><span><strong>${new Date(entry.savedAt).toLocaleString()}${index === 0 ? " · Latest" : ""}</strong><small>${recoveryDescription(entry)}</small></span></label>`,
+      )
+      .join("");
+    $("recovery-restore").onclick = () => {
+      const selected = list.querySelector(
+          'input[name="recovery-snapshot"]:checked',
+        ),
+        snapshot = snapshots[Number(selected?.value || 0)];
+      $("recovery-dialog").close();
+      autosaveEnabled = true;
+      restoreRecoveryProject(snapshot.project, snapshot.savedAt);
+    };
+    $("recovery-discard").onclick = () => {
+      clearRecovery();
+      autosaveEnabled = true;
+      lastManualFingerprint = historyState();
+      projectDirty = false;
+      setAutosaveState("Saved");
+      $("recovery-dialog").close();
+      setStatus("Recovery history discarded");
+    };
+    $("recovery-dialog").showModal();
   }
   let deviceProfiles = [];
   let categoryOrder = [
@@ -2970,7 +3086,7 @@
           k === "height" ? +e.target.value : state.height,
         )),
   );
-  async function loadProjectText(text) {
+  async function loadProjectText(text, markClean = true) {
     const p = JSON.parse(text);
     state.items = normalizeItemStates(p.items);
     state.assets = p.assets || [];
@@ -3003,7 +3119,8 @@
     });
     resize(p.width, p.height);
     renderPage();
-    commitHistory();
+    commitHistory(false);
+    if (markClean) markProjectSaved();
     setStatus("Project opened for " + selectedDevice().name);
   }
   $("save-project").onclick = async () => {
@@ -3011,11 +3128,15 @@
     if (native) {
       try {
         const path = await nativeRequest("saveProject", text);
+        markProjectSaved();
         setStatus("Saved to " + path);
       } catch (error) {
         if (error.message !== "cancelled") setStatus(error.message);
       }
-    } else download("crestron-ui-project.cuiproj", text, "application/json");
+    } else {
+      download("crestron-ui-project.cuiproj", text, "application/json");
+      markProjectSaved();
+    }
   };
   $("validate-project").onclick = () => runValidation(true);
   $("signal-manager").onclick = () => {
@@ -3296,8 +3417,15 @@
     state.pages = [{ ...firstPage }];
     state.activePage = firstPage.id;
     state.diagnostics = false;
+    clearRecovery();
+    projectDirty = false;
     applyDevice(state.targetDevice);
     renderPage();
+    history.length = 0;
+    historyIndex = -1;
+    commitHistory(false);
+    lastManualFingerprint = historyState();
+    setAutosaveState("Saved");
   };
   $("undo").onclick = undo;
   $("redo").onclick = redo;
@@ -3354,6 +3482,12 @@
   document.addEventListener("change", scheduleHistory);
   document.addEventListener("click", scheduleHistory);
   addEventListener("pointerup", scheduleHistory);
+  addEventListener("beforeunload", () => {
+    clearTimeout(historyTimer);
+    clearTimeout(autosaveTimer);
+    if (!restoringHistory) commitHistory(false);
+    persistAutosave(historyState(), true);
+  });
   resize(1920, 1200);
   renderPages();
   renderPageInspector();

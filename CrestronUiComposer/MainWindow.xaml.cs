@@ -109,6 +109,15 @@ public partial class MainWindow : Window
                 case "openSettingsFolder":
                     OpenSettingsFolder(id);
                     break;
+                case "writeRecovery":
+                    WriteRecovery(id, root.GetProperty("payload").GetString() ?? "");
+                    break;
+                case "readRecovery":
+                    ReadRecovery(id);
+                    break;
+                case "clearRecovery":
+                    ClearRecovery(id);
+                    break;
                 default:
                     Respond(id, false, null, $"Unknown desktop command: {command}");
                     break;
@@ -126,6 +135,40 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         File.WriteAllText(dialog.FileName, contents);
         Respond(id, true, dialog.FileName, null);
+    }
+
+    private static string RecoveryFilePath()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "CrestronUiComposer",
+            "Recovery",
+            "recovery.json");
+    }
+
+    private void WriteRecovery(string id, string contents)
+    {
+        var path = RecoveryFilePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporaryPath = path + ".tmp";
+        File.WriteAllText(temporaryPath, contents);
+        File.Move(temporaryPath, path, true);
+        Respond(id, true, new { path }, null);
+    }
+
+    private void ReadRecovery(string id)
+    {
+        var path = RecoveryFilePath();
+        Respond(id, true, File.Exists(path) ? File.ReadAllText(path) : "", null);
+    }
+
+    private void ClearRecovery(string id)
+    {
+        var path = RecoveryFilePath();
+        if (File.Exists(path)) File.Delete(path);
+        var temporaryPath = path + ".tmp";
+        if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        Respond(id, true, true, null);
     }
 
     private void OpenProject(string id)

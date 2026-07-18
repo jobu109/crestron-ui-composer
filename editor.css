@@ -191,6 +191,60 @@ dialog form {
   display: flex;
   flex-direction: column;
 }
+
+.autosave-state {
+  display: inline-block;
+  margin-left: 8px;
+  color: #79c9bb;
+  font-weight: 500;
+}
+
+.autosave-state.dirty {
+  color: #ffd479;
+}
+
+.autosave-state.error {
+  color: #ff8585;
+}
+
+.recovery-dialog {
+  width: min(680px, 90vw);
+}
+
+.recovery-list {
+  display: grid;
+  gap: 8px;
+  max-height: 52vh;
+  margin: 16px 0;
+  overflow: auto;
+}
+
+.recovery-entry {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #38565b;
+  border-radius: 6px;
+  background: #142226;
+  cursor: pointer;
+}
+
+.recovery-entry:has(input:checked) {
+  border-color: #28c9b0;
+  box-shadow: 0 0 0 1px #28c9b0 inset;
+}
+
+.recovery-entry strong,
+.recovery-entry small {
+  display: block;
+}
+
+.recovery-entry small {
+  margin-top: 4px;
+  color: #8db7b1;
+}
 textarea {
   flex: 1;
   resize: none;

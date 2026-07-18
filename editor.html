@@ -170,6 +170,7 @@
     <header class="toolbar">
       <div class="brand">
         Crestron UI Composer <small id="status">Ready</small>
+        <small id="autosave-state" class="autosave-state">Saved</small>
       </div>
       <label
         >Target panel
@@ -483,6 +484,22 @@
           <button id="simulator-clear" type="button">Clear log</button
           ><button id="simulator-export" type="button">Export log</button
           ><button value="default">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="recovery-dialog" class="recovery-dialog">
+      <form method="dialog">
+        <h2>Recover unsaved work</h2>
+        <p class="hint">
+          Crestron UI Composer found autosaved work from an earlier session.
+          Choose a snapshot to restore, or discard the recovery history.
+        </p>
+        <div id="recovery-list" class="recovery-list"></div>
+        <div class="dialog-actions">
+          <button id="recovery-discard" type="button">Discard recovery</button>
+          <button id="recovery-restore" type="button" class="primary">
+            Recover selected
+          </button>
         </div>
       </form>
     </dialog>

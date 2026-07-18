@@ -36,6 +36,8 @@ The component library organizes snippets into Buttons, Sliders & Levels, Text, N
 
 Drag components onto the panel and select them to change position and size. The inspector automatically detects JavaScript variables whose names end in `Signal`. Each binding can independently be configured as a numeric join or a named contract signal. Use **Edit component HTML** for advanced changes. Save the editable JSON project regularly. **Export HTML** creates a standalone `index.html` suitable as the entry page of a Crestron HTML5 project.
 
+The Windows editor automatically captures unsaved work every 30 seconds and keeps up to ten recovery snapshots. After an interrupted or unsaved session, choose a timestamp from the recovery dialog at startup. Successful manual saves and confirmed new projects clear obsolete recovery data.
+
 The exported widgets run in isolated inline frames. Their existing `getCrComLib()` helpers locate `CrComLib` on the parent page, so their current publish/subscribe behavior is preserved on a panel. Preview mode is useful for layout but cannot simulate Crestron feedback without a CH5 runtime connection.
 
 ## Pages and navigation
