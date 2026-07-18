@@ -1859,33 +1859,38 @@
           `component:${component.instanceName}`,
         ),
         commands = [],
-        feedbacks = [],
-        byAttribute = new Map();
-      component.rows.forEach((row) => {
-        const id = stableContractId(
-            `${row.direction}:${row.type}:${row.value}`,
+        feedbacks = [];
+      ["digital", "analog", "serial"].forEach((type) => {
+        const states = component.rows.filter(
+            (row) => row.type === type && row.direction === "input",
           ),
-          entry = {
-            Errors: [],
-            name: row.attributeName,
-            siblingId: "",
-            dataType:
-              row.type === "digital" ? 1 : row.type === "analog" ? 2 : 3,
-            notes: `${row.page} · ${row.widget} · ${row.name}`,
-            id,
-            parentId: componentId,
-            attributeType: row.direction === "output" ? 0 : 1,
-          },
-          sibling = byAttribute.get(`${row.type}:${row.attributeName}`);
-        if (sibling) {
-          entry.siblingId = sibling.id;
-          sibling.entry.siblingId = id;
-        } else
-          byAttribute.set(`${row.type}:${row.attributeName}`, {
-            id,
-            entry,
-          });
-        (row.direction === "output" ? commands : feedbacks).push(entry);
+          events = component.rows.filter(
+            (row) => row.type === type && row.direction === "output",
+          ),
+          count = Math.max(states.length, events.length),
+          dataType = type === "digital" ? 1 : type === "analog" ? 2 : 3;
+        for (let index = 0; index < count; index++) {
+          const stateRow = states[index],
+            eventRow = events[index],
+            stateId = stableContractId(
+              `state:${component.instanceName}:${type}:${index}:${stateRow?.value || "empty"}`,
+            ),
+            eventId = stableContractId(
+              `event:${component.instanceName}:${type}:${index}:${eventRow?.value || "empty"}`,
+            ),
+            makeEntry = (row, id, siblingId, attributeType) => ({
+              Errors: [],
+              name: row?.attributeName || "",
+              siblingId,
+              dataType,
+              notes: row ? `${row.page} · ${row.widget} · ${row.name}` : "",
+              id,
+              parentId: componentId,
+              attributeType,
+            });
+          commands.push(makeEntry(stateRow, stateId, eventId, 0));
+          feedbacks.push(makeEntry(eventRow, eventId, stateId, 1));
+        }
       });
       cceComponents.push({
         Errors: [],
