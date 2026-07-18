@@ -18,6 +18,13 @@
       })
       .join(";");
   }
+  function contractPattern(value) {
+    return String(value || "").replace(
+      /^(.*)\.(Items|Slides|Cards|Buttons)\.\{(?:n|index)\}\.(.+)$/,
+      (_, prefix, collection, attribute) =>
+        `${prefix.replace(/\./g, "_")}_${collection}[{index}].${attribute.replace(/\./g, "_")}`,
+    );
+  }
   function widgetDocument(html, targetPage) {
     const bridge = targetPage
       ? `<script>document.addEventListener("pointerup",function(){parent.postMessage({type:"crestron-local-page",page:${JSON.stringify(targetPage)}},"*")});<\/script>`
@@ -69,7 +76,15 @@
           instance: item.master ? `${item.id}--${page.id}` : item.id,
           componentId: item.componentId,
           bindings: item.signalBindings || {},
-          properties: item.properties || {},
+          properties: Object.fromEntries(
+            Object.entries(item.properties || {}).map(([key, value]) => [
+              key,
+              item.properties?.bindingMode === "contract" &&
+              typeof value === "string"
+                ? contractPattern(value)
+                : value,
+            ]),
+          ),
           targetPage: item.targetPage || "",
         })),
     );
@@ -99,7 +114,20 @@
       })
       .join(",");
     const controller = `(function(){var pages=${config},items=${JSON.stringify(scopedItems)},definitions={${usedDefinitions}},debug=${JSON.stringify(diagnostics)},debugLog=document.getElementById('ch5-diagnostic-log');function diag(message){if(!debug)return;var line=new Date().toLocaleTimeString()+' '+message;if(debugLog){debugLog.textContent+=line+'\\n';debugLog.scrollTop=debugLog.scrollHeight}console.log('[CH5 Diagnostic]',message)}function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});diag('Page: '+id)}function code(type){return type==='digital'?'b':type==='analog'?'n':'s'}function appearance(root,p){var glow=Math.max(0,Number(p.glowStrength)||0),radius=Math.max(0,Number(p.cornerRadius)||0),font=Math.max(0,Number(p.fontSize)||0),style=document.createElement('style');style.textContent='[data-component] .panel,[data-component] .card,[data-component] .mic-card,[data-component] .shade-card{background-color:'+p.backgroundColor+'!important;border-color:'+p.borderColor+'!important;border-radius:'+radius+'px!important;box-shadow:0 0 '+glow+'px '+p.glowColor+'!important}[data-component] button,[data-component] .load,[data-component] .shade{background-color:'+p.buttonColor+'!important;border-color:'+p.borderColor+'!important;border-radius:'+radius+'px!important}[data-component] button.active,[data-component] button.selected,[data-component] .selected,[data-component] .pressed{border-color:'+p.accentColor+'!important;box-shadow:0 0 '+glow+'px '+p.glowColor+'!important}[data-component] button,[data-component] .label,[data-component] .name,[data-component] .note,[data-component] .big,[data-component] .value,[data-component] .position,[data-component] .status,[data-component] .btn-txt,[data-component] .mic-text,[data-component] .mic-label,[data-component] .shade-name{color:'+p.textColor+'!important;'+(font?'font-size:'+font+'px!important;':'')+'}';root.appendChild(style);if(p.localText){var values=String(p.localText).split('|'),targets=root.querySelectorAll('[data-local-text],.label,.name,.note,.big,.btn-txt,.mic-label,.shade-name,button');values.forEach(function(v,i){if(targets[i]&&v.trim())targets[i].textContent=v.trim()})}}var lib=null;try{lib=window.CrComLib||(window.parent&&window.parent.CrComLib)}catch(e){diag('CrComLib lookup error: '+e.message)}diag('CrComLib: '+(lib?'AVAILABLE':'MISSING'));diag('User agent: '+navigator.userAgent);function mount(item){var root=document.querySelector('[data-instance="'+item.instance+'"]'),def=definitions[item.componentId];if(!root||!def)return;root.dataset.component=item.componentId;root.innerHTML='<style>'+def.styles+'</style>'+def.template;function publishAddress(type,signal,value){diag('Publish '+code(type)+' '+signal+' = '+value);if(lib&&signal)lib.publishEvent(code(type),String(signal),value)}function subscribeAddress(type,signal,callback){diag('Subscribe '+code(type)+' '+signal);if(lib&&signal)lib.subscribeState(code(type),String(signal),function(value){diag('Feedback '+code(type)+' '+signal+' = '+JSON.stringify(value));callback(value)})}var signals={publish:function(key,value){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key];if(!spec||!binding||!binding.value){diag('Publish skipped: '+key+' has no binding');return}publishAddress(spec.type,binding.value,value)},subscribe:function(key,callback){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key];if(!spec||!binding||!binding.value)return;subscribeAddress(spec.type,binding.value,callback)},publishAddress:publishAddress,subscribeAddress:subscribeAddress};def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});appearance(root,item.properties||{})}window.addEventListener('message',function(e){if(e.data&&e.data.type==='crestron-local-page')show(e.data.page)});if(lib)pages.forEach(function(p){if(p.mode!=='none'&&p.signal)lib.subscribeState('b',String(p.signal),function(v){diag('Page feedback '+p.signal+' = '+v);if(v===true||v===1||v==='1')show(p.id)})});items.forEach(mount);show(${firstPage});})();`;
-    const restoredController = controller.replace(
+    const contractController = controller
+        .replace(
+          "function appearance(root,p){",
+          "function contractAddress(value){var address=String(value||'').replace(/^(.*)\\\\.(Items|Slides|Cards|Buttons)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,collection,index,attribute){return prefix.replace(/\\\\./g,'_')+'_'+collection+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/);if(array)return array[1]+'.'+array[2].replace(/\\\\./g,'_');var parts=address.split('.');return parts.length>2?parts.slice(0,-1).join('_')+'.'+parts[parts.length-1]:address}function appearance(root,p){",
+        )
+        .replace(
+          "function publishAddress(type,signal,value){",
+          "function publishAddress(type,signal,value){signal=contractAddress(signal);",
+        )
+        .replace(
+          "function subscribeAddress(type,signal,callback){",
+          "function subscribeAddress(type,signal,callback){signal=contractAddress(signal);",
+        ),
+      restoredController = contractController.replace(
       "function appearance(root,p){",
       "function appearance(root,p){return;",
     );

@@ -1811,19 +1811,49 @@
       });
     return rows;
   }
+  function contractSignalShape(row) {
+    const value = String(row.value || "").trim(),
+      legacy = value.match(
+        /^(.*)\.(Items|Slides|Cards|Buttons)\.\{(?:n|index)\}\.(.+)$/,
+      ),
+      array = value.match(
+        /^([A-Za-z_][A-Za-z0-9_]*)\[\{(?:n|index)\}\]\.(.+)$/,
+      );
+    if (row.range && legacy)
+      return {
+        instancePath: `${legacy[1]}_${legacy[2]}`,
+        attributePath: legacy[3],
+        instances: Math.max(1, Number(row.rangeCount) || 1),
+      };
+    if (row.range && array)
+      return {
+        instancePath: array[1],
+        attributePath: array[2],
+        instances: Math.max(1, Number(row.rangeCount) || 1),
+      };
+    const parts = value.split(".").filter(Boolean);
+    return {
+      instancePath: parts.slice(0, -1).join("."),
+      attributePath: parts[parts.length - 1] || "",
+      instances: 1,
+    };
+  }
   function contractBuildData() {
-    const rows = expandedContractSignals(),
+    const sourceRows = collectProjectSignals().filter(
+        (row) => row.mode === "contract" && String(row.value || "").trim(),
+      ),
+      rows = expandedContractSignals(),
       errors = [],
       paths = new Map(),
       components = new Map();
-    rows.forEach((row) => {
+    sourceRows.forEach((row) => {
       const value = row.value.trim(),
-        parts = value.split(".").filter(Boolean);
-      if (parts.length < 2) {
+        shape = contractSignalShape(row);
+      if (!shape.instancePath || !shape.attributePath) {
         errors.push(`“${value}” needs a component and signal name.`);
         return;
       }
-      if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(value)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_.{}\[\]-]*$/.test(value)) {
         errors.push(`“${value}” contains unsupported contract characters.`);
         return;
       }
@@ -1833,13 +1863,14 @@
           `“${value}” is assigned more than once (${prior.widget} and ${row.widget}).`,
         );
       else paths.set(value, row);
-      const instancePath = parts.slice(0, -1).join("."),
+      const instancePath = shape.instancePath,
         instanceName = simplIdentifier(instancePath),
-        attributeName = simplIdentifier(parts[parts.length - 1]),
+        attributeName = simplIdentifier(shape.attributePath),
         key = instanceName,
         component = components.get(key) || {
           instanceName,
           instancePath,
+          instances: shape.instances,
           rows: [],
         };
       if (component.instancePath !== instancePath) {
@@ -1848,6 +1879,7 @@
         );
         return;
       }
+      component.instances = Math.max(component.instances, shape.instances);
       component.rows.push({ ...row, attributeName });
       components.set(key, component);
     });
@@ -1908,7 +1940,7 @@
         id: stableContractId(`specification:${component.instanceName}`),
         componentId,
         instanceName: component.instanceName,
-        numberOfInstances: 1,
+        numberOfInstances: component.instances,
       });
     });
     const contract = {
@@ -2384,7 +2416,7 @@
       base.placeholder =
         bindingMode === "join"
           ? "First join number"
-          : "Example: Carousel.Slides.{n}.Press";
+          : "Example: Carousel_Items[{index}].Press";
       base.onchange = () => {
         item.properties = item.properties || {};
         item.properties[range.baseKey] =
@@ -2713,7 +2745,7 @@
           else expandedSignals.push({ ...row, value: String(expandedJoin) });
         }
       } else {
-        if (!/^[A-Za-z_][A-Za-z0-9_.{}-]*$/.test(value)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_.{}\[\]-]*$/.test(value)) {
           add(
             "error",
             `${row.page} · “${row.widget}” has invalid ${row.name} contract “${value}”.`,
