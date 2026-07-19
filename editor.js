@@ -1828,10 +1828,34 @@
   }
   function contractSignalShape(row) {
     const value = String(row.value || "").trim(),
+      item = row.itemId
+        ? state.items.find((entry) => entry.id === row.itemId)
+        : null,
       legacy = value.match(/^(.*)\.\{(?:n|index)\}\.(.+)$/),
       array = value.match(
         /^([A-Za-z_][A-Za-z0-9_]*)\[\{(?:n|index)\}\]\.(.+)$/,
       );
+    if (item?.componentId === "rolling-menu") {
+      const attributePath = /Selected item set/i.test(row.name)
+        ? "SelectedSet"
+        : /Selected item feedback/i.test(row.name)
+          ? "SelectedFeedback"
+          : /Number of items|Item count/i.test(row.name)
+            ? "ItemCount"
+            : value
+                .replace(
+                  /^RollingMenu(?:\.Items)?\.\{(?:n|index)\}\./,
+                  "",
+                )
+                .replace(/^RollingMenu\[\d+\]\./, "");
+      return {
+        instancePath: "RollingMenu",
+        attributePath,
+        instances: row.range
+          ? Math.max(1, Number(row.rangeCount) || 1)
+          : 1,
+      };
+    }
     if (row.range && legacy)
       return {
         instancePath: legacy[1],

@@ -25,6 +25,26 @@
         `${prefix.replace(/\./g, "_")}[{index}].${attribute.replace(/\./g, "_")}`,
     );
   }
+  function contractProperties(item) {
+    const properties = Object.fromEntries(
+      Object.entries(item.properties || {}).map(([key, value]) => [
+        key,
+        item.properties?.bindingMode === "contract" && typeof value === "string"
+          ? contractPattern(value)
+          : value,
+      ]),
+    );
+    if (item.componentId === "rolling-menu" && properties.bindingMode === "contract") {
+      properties.itemCountSignal = "RollingMenu[0].ItemCount";
+      properties.selectedSetSignal = "RollingMenu[0].SelectedSet";
+      properties.selectedOutSignal = "RollingMenu[0].SelectedFeedback";
+      ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
+        const attribute = String(properties[key] || "").split(".").pop();
+        properties[key] = `RollingMenu[{index}].${attribute}`;
+      });
+    }
+    return properties;
+  }
   function widgetDocument(html, targetPage) {
     const bridge = targetPage
       ? `<script>document.addEventListener("pointerup",function(){parent.postMessage({type:"crestron-local-page",page:${JSON.stringify(targetPage)}},"*")});<\/script>`
@@ -76,15 +96,7 @@
           instance: item.master ? `${item.id}--${page.id}` : item.id,
           componentId: item.componentId,
           bindings: item.signalBindings || {},
-          properties: Object.fromEntries(
-            Object.entries(item.properties || {}).map(([key, value]) => [
-              key,
-              item.properties?.bindingMode === "contract" &&
-              typeof value === "string"
-                ? contractPattern(value)
-                : value,
-            ]),
-          ),
+          properties: contractProperties(item),
           targetPage: item.targetPage || "",
         })),
     );

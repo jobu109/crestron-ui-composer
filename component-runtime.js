@@ -513,6 +513,16 @@
           typeof value === "string" ? contractPattern(value) : value,
         ]),
       );
+    if (id === "rolling-menu" && options.properties?.bindingMode === "contract") {
+      const p = options.properties;
+      p.itemCountSignal = "RollingMenu[0].ItemCount";
+      p.selectedSetSignal = "RollingMenu[0].SelectedSet";
+      p.selectedOutSignal = "RollingMenu[0].SelectedFeedback";
+      ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
+        const attribute = String(p[key] || "").split(".").pop();
+        p[key] = `RollingMenu[{index}].${attribute}`;
+      });
+    }
     root.dataset.component = id;
     Object.entries(options.properties || {}).forEach(([key, value]) => {
       const name = "--" + key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
