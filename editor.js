@@ -1544,6 +1544,17 @@
       configured = countKeys
         .map((key) => Number(p[key]))
         .find((value) => Number.isFinite(value) && value > 0),
+      labelCount = [
+        p.localLabels,
+        p.itemLabels,
+        p.menuLabels,
+        p.slideLabels,
+        p.buttonLabels,
+        p.displayLabels,
+      ]
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.split("|").length)
+        .find((value) => value > 0),
       capacity = [
         p.maxItems,
         p.maxCards,
@@ -1555,7 +1566,7 @@
         .find((value) => Number.isFinite(value) && value > 0);
     return Math.max(
       1,
-      Math.min(100, Math.round(configured || capacity || 1)),
+      Math.min(100, Math.round(configured || labelCount || capacity || 1)),
     );
   }
   function collectProjectSignals() {
@@ -1806,12 +1817,28 @@
       );
     return configuredRangeCount(item, range);
   }
+  function expandContractSubItems(row) {
+    if (!/\{source\}|\{sourceIndex\}/.test(String(row.value || "")))
+      return [row];
+    const item = state.items.find((entry) => entry.id === row.itemId),
+      count = Math.max(
+        1,
+        Math.min(20, Math.round(Number(item?.properties?.sourceCount) || 1)),
+      );
+    return Array.from({ length: count }, (_, index) => ({
+      ...row,
+      value: String(row.value)
+        .replace(/\{source\}/g, String(index + 1))
+        .replace(/\{sourceIndex\}/g, String(index)),
+    }));
+  }
   function expandedContractSignals() {
     const rows = [];
     collectProjectSignals()
       .filter(
         (row) => row.mode === "contract" && String(row.value || "").trim(),
       )
+      .flatMap(expandContractSubItems)
       .forEach((row) => {
         const count = /\{n\}|\{index\}/.test(row.value)
           ? contractRangeCount(row)
@@ -1828,57 +1855,38 @@
   }
   function contractSignalShape(row) {
     const value = String(row.value || "").trim(),
-      item = row.itemId
-        ? state.items.find((entry) => entry.id === row.itemId)
-        : null,
       legacy = value.match(/^(.*)\.\{(?:n|index)\}\.(.+)$/),
       array = value.match(
-        /^([A-Za-z_][A-Za-z0-9_]*)\[\{(?:n|index)\}\]\.(.+)$/,
+        /^([A-Za-z_][A-Za-z0-9_.]*)\[\{(?:n|index)\}\]\.(.+)$/,
       );
-    if (item?.componentId === "rolling-menu") {
-      const attributePath = /Selected item set/i.test(row.name)
-        ? "SelectedSet"
-        : /Selected item feedback/i.test(row.name)
-          ? "SelectedFeedback"
-          : /Number of items|Item count/i.test(row.name)
-            ? "ItemCount"
-            : value
-                .replace(
-                  /^RollingMenu(?:\.Items)?\.\{(?:n|index)\}\./,
-                  "",
-                )
-                .replace(/^RollingMenu\[\d+\]\./, "");
+    if (row.range && (legacy || array)) {
+      const match = legacy || array,
+        instancePath = match[1],
+        parts = instancePath.split(".").filter(Boolean);
       return {
-        instancePath: row.range ? "RollingMenu.Items" : "RollingMenu",
-        attributePath,
-        instances: row.range
-          ? Math.max(1, Number(row.rangeCount) || 1)
-          : 1,
+        instancePath,
+        parentPath: parts.length > 1 ? parts[0] : "",
+        nestedInstanceName:
+          parts.length > 1 ? parts.slice(1).join("_") : "",
+        attributePath: match[2],
+        instances: Math.max(1, Number(row.rangeCount) || 1),
       };
     }
-    if (row.range && legacy)
-      return {
-        instancePath: legacy[1],
-        attributePath: legacy[2],
-        instances: Math.max(1, Number(row.rangeCount) || 1),
-      };
-    if (row.range && array)
-      return {
-        instancePath: array[1],
-        attributePath: array[2],
-        instances: Math.max(1, Number(row.rangeCount) || 1),
-      };
     const parts = value.split(".").filter(Boolean);
     return {
-      instancePath: parts.slice(0, -1).join("."),
-      attributePath: parts[parts.length - 1] || "",
+      instancePath: parts[0] || "",
+      parentPath: "",
+      nestedInstanceName: "",
+      attributePath: parts.slice(1).join("_") || "",
       instances: 1,
     };
   }
   function contractBuildData() {
-    const sourceRows = collectProjectSignals().filter(
-        (row) => row.mode === "contract" && String(row.value || "").trim(),
-      ),
+    const sourceRows = collectProjectSignals()
+        .filter(
+          (row) => row.mode === "contract" && String(row.value || "").trim(),
+        )
+        .flatMap(expandContractSubItems),
       rows = expandedContractSignals(),
       errors = [],
       paths = new Map(),
@@ -1907,6 +1915,8 @@
         component = components.get(key) || {
           instanceName,
           instancePath,
+          parentPath: shape.parentPath,
+          nestedInstanceName: shape.nestedInstanceName,
           instances: shape.instances,
           rows: [],
         };
@@ -1920,6 +1930,20 @@
       component.rows.push({ ...row, attributeName });
       components.set(key, component);
     });
+    [...components.values()]
+      .filter((component) => component.parentPath)
+      .forEach((component) => {
+        const parentName = simplIdentifier(component.parentPath);
+        if (!components.has(parentName))
+          components.set(parentName, {
+            instanceName: parentName,
+            instancePath: component.parentPath,
+            parentPath: "",
+            nestedInstanceName: "",
+            instances: 1,
+            rows: [],
+          });
+      });
     const contractId = stableContractId(`contract:${state.contract.name}`),
       cceComponents = [],
       specifications = [],
@@ -1962,9 +1986,10 @@
           feedbacks.push(makeEntry(eventRow, eventId, stateId, 1));
         }
       });
-      const isRollingMenuItems = component.instancePath === "RollingMenu.Items",
-        exportedComponentName = isRollingMenuItems
-          ? "RollingMenuItem"
+      const isNested = !!component.parentPath,
+        parentName = simplIdentifier(component.parentPath),
+        exportedComponentName = isNested
+          ? `${parentName}${simplIdentifier(component.nestedInstanceName)}`
           : component.instanceName,
         exportedComponent = {
         Errors: [],
@@ -1979,23 +2004,31 @@
       cceComponents.push(exportedComponent);
       const specification = {
         Errors: [],
-        parentId: isRollingMenuItems
-          ? stableContractId("component:RollingMenu")
+        parentId: isNested
+          ? stableContractId(`component:${parentName}`)
           : contractId,
         id: stableContractId(`specification:${component.instanceName}`),
         componentId,
-        instanceName: isRollingMenuItems ? "Items" : component.instanceName,
+        instanceName: isNested
+          ? simplIdentifier(component.nestedInstanceName)
+          : component.instanceName,
         numberOfInstances: component.instances,
       };
-      if (isRollingMenuItems) nestedSpecifications.push(specification);
+      if (isNested)
+        nestedSpecifications.push({
+          parentId: stableContractId(`component:${parentName}`),
+          specification,
+        });
       else specifications.push(specification);
     });
     if (nestedSpecifications.length) {
-      const rollingMenu = cceComponents.find(
-        (component) => component.id === stableContractId("component:RollingMenu"),
-      );
-      if (rollingMenu) rollingMenu.specifications.push(...nestedSpecifications);
-      else errors.push("RollingMenu Items requires the RollingMenu parent component.");
+      nestedSpecifications.forEach((entry) => {
+        const parent = cceComponents.find(
+          (component) => component.id === entry.parentId,
+        );
+        if (parent) parent.specifications.push(entry.specification);
+        else errors.push("A repeated collection is missing its parent component.");
+      });
     }
     const contract = {
       Errors: [],
@@ -2766,7 +2799,7 @@
     });
 
     const expandedSignals = [];
-    collectProjectSignals().forEach((row) => {
+    collectProjectSignals().flatMap(expandContractSubItems).forEach((row) => {
       const value = String(row.value || "").trim(),
         count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1;
       if (!value) {

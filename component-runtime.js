@@ -36,7 +36,7 @@
       /^(.*)\.\{(?:n|index)\}\.(.+)$/,
       function (_, prefix, attribute) {
         return (
-          prefix.replace(/\./g, "_") +
+          prefix +
           "[{index}]." +
           attribute.replace(/\./g, "_")
         );
@@ -49,7 +49,7 @@
       function (_, prefix, index, attribute) {
         var number = Number(index);
         return (
-          prefix.replace(/\./g, "_") +
+          prefix +
           "[" +
           Math.max(0, number - 1) +
           "]." +
@@ -63,7 +63,7 @@
     if (array) return `${array[1]}.${array[2].replace(/\./g, "_")}`;
     const parts = address.split(".");
     return parts.length > 2
-      ? `${parts.slice(0, -1).join("_")}.${parts[parts.length - 1]}`
+      ? `${parts[0]}.${parts.slice(1).join("_")}`
       : address;
   }
   function library() {
@@ -381,7 +381,7 @@
       prop.signalSetting = true;
       if (!prop.defaultValue || /^\d+$/.test(String(prop.defaultValue)))
         prop.defaultValue =
-          namespace + "_Items[{index}]." + suffixes[key].replace(/\./g, "_");
+          namespace + ".Items[{index}]." + suffixes[key].replace(/\./g, "_");
       else prop.defaultValue = contractPattern(prop.defaultValue);
       const incrementKey = definition.properties.some(
         (p) => p.key === key.replace(/Base$/, "Increment"),
