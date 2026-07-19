@@ -1581,26 +1581,54 @@
     return name || "Main";
   }
   function contractWidgetInstance(item) {
-    const definition = item?.componentId
-        ? window.ComposerRuntime.get(item.componentId)
-        : null,
-      base = simplIdentifier(definition?.name || item?.name || "Widget"),
+    const base = simplIdentifier(item?.name || "Widget"),
       siblings = state.items.filter(
         (entry) =>
           entry.id !== item.id &&
           entry.pageId === item.pageId &&
           !!entry.master === !!item.master &&
-          simplIdentifier(
-            (entry.componentId
-              ? window.ComposerRuntime.get(entry.componentId)?.name
-              : entry.name) || "Widget",
-          ) === base,
+          simplIdentifier(entry.name || "Widget") === base,
       ),
       ordered = [...siblings, item].sort(
         (a, b) => state.items.indexOf(a) - state.items.indexOf(b),
       ),
       number = ordered.indexOf(item) + 1;
     return `${base}${number > 1 ? number : ""}`;
+  }
+  function rebaseItemContractNames(item) {
+    if (!item?.componentId || item.properties?.bindingMode !== "contract")
+      return;
+    const definition = window.ComposerRuntime.get(item.componentId),
+      root = simplIdentifier(item.name || definition?.name || "Widget"),
+      rebase = (value) => {
+        const text = String(value || "");
+        if (!text || /^\d+$/.test(text)) return text;
+        const separator = text.search(/[.[]/);
+        return separator < 0 ? `${root}.${text}` : root + text.slice(separator);
+      },
+      direct = (value, type, direction) => {
+        const leaf = String(value || "").split(".").pop() || "Signal";
+        return `${root}.${standardContractAttribute(type, direction, leaf)}`;
+      };
+    Object.entries(item.signalBindings || {}).forEach(([key, binding]) => {
+      const signal = definition?.signals?.find((entry) => entry.key === key);
+      if (binding.mode === "contract" && signal)
+        binding.value = direct(binding.value, signal.type, signal.direction);
+    });
+    (definition?.addressBindings || []).forEach((entry) => {
+      if (typeof item.properties?.[entry.key] === "string")
+        item.properties[entry.key] = direct(
+          item.properties[entry.key],
+          entry.type,
+          entry.direction,
+        );
+    });
+    (definition?.rangeBindings || []).forEach((entry) => {
+      if (typeof item.properties?.[entry.baseKey] === "string")
+        item.properties[entry.baseKey] = rebase(
+          item.properties[entry.baseKey],
+        );
+    });
   }
   function contractWidgetPrefix(item) {
     return `${contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
@@ -3308,7 +3336,9 @@
         const i = current();
         if (!i) return;
         i[k] = k === "name" ? e.target.value : Number(e.target.value);
+        if (k === "name") rebaseItemContractNames(i);
         renderItem(i);
+        if (k === "name") renderBindings(i);
         if (k === "name" || k === "z") renderLayers();
       }),
   );

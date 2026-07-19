@@ -61,8 +61,7 @@
       pageName = item.master
         ? "Global"
         : contractIdentifier(configuredPageName) || "Main",
-      definition = global.ComposerRuntime.get(item.componentId),
-      base = contractIdentifier(definition?.name || item.name || "Widget"),
+      base = contractIdentifier(item.name || "Widget"),
       peers = project.items.filter(
         (entry) =>
           entry.componentId === item.componentId &&
