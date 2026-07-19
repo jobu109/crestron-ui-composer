@@ -464,6 +464,7 @@ public partial class MainWindow : Window
         var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
         var package = payload.GetProperty("packagePath").GetString() ?? "";
         var slowMode = payload.TryGetProperty("slowMode", out var slow) && slow.GetBoolean();
+        var deploymentType = DeploymentType(payload);
         if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
         ValidateCh5Archive(package);
         var cli = FindCh5Cli() ?? throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before deploying.");
@@ -471,10 +472,10 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(backupRoot);
         var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
         File.Copy(package, backupPath, true);
-        var command = $"\"{cli}\" deploy -p -H \"{host}\" -t touchscreen \"{package}\"{(slowMode ? " --slow-mode" : "")}";
+        var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\"{(slowMode ? " --slow-mode" : "")}";
         var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") { UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal };
         var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
-        Respond(id, true, new { started = true, processId = process.Id, host, packagePath = package, backupPath, slowMode }, null);
+        Respond(id, true, new { started = true, processId = process.Id, host, packagePath = package, backupPath, slowMode, deploymentType }, null);
     }
 
     private async void DeployCh5PackageWait(string id, JsonElement payload)
@@ -484,6 +485,7 @@ public partial class MainWindow : Window
             var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
             var package = payload.GetProperty("packagePath").GetString() ?? "";
             var slowMode = payload.TryGetProperty("slowMode", out var slow) && slow.GetBoolean();
+            var deploymentType = DeploymentType(payload);
             if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
             ValidateCh5Archive(package);
             var cli = FindCh5Cli() ?? throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before deploying.");
@@ -491,7 +493,7 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(backupRoot);
             var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
             File.Copy(package, backupPath, true);
-            var command = $"\"{cli}\" deploy -p -H \"{host}\" -t touchscreen \"{package}\"{(slowMode ? " --slow-mode" : "")}";
+            var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\"{(slowMode ? " --slow-mode" : "")}";
             var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") {
                 UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal
             };
@@ -499,10 +501,16 @@ public partial class MainWindow : Window
             await process.WaitForExitAsync();
             Respond(id, true, new {
                 success = process.ExitCode == 0, exitCode = process.ExitCode, host,
-                packagePath = package, backupPath, slowMode
+                packagePath = package, backupPath, slowMode, deploymentType
             }, null);
         }
         catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private static string DeploymentType(JsonElement payload)
+    {
+        var value = payload.TryGetProperty("deploymentType", out var type) ? type.GetString() : "touchscreen";
+        return value is "touchscreen" or "mobile" or "web" ? value : "touchscreen";
     }
 
     private void SystemDiagnostics(string id)

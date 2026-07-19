@@ -646,7 +646,7 @@
     </dialog>
     <dialog id="deployment-dialog" class="deployment-dialog">
       <form method="dialog">
-        <h2>TSW Deployment</h2>
+        <h2>CH5 Deployment</h2>
         <p class="hint">
           Deploys through Crestron ch5-cli. Credentials are entered only in the
           official terminal prompt and are never stored by this editor.
@@ -660,6 +660,7 @@
         <div class="deployment-grid">
           <label>Profile name<input id="deploy-profile-name" placeholder="Conference Room" /></label>
           <label>Panel model<select id="deploy-profile-device"></select></label>
+          <label>Deployment destination<select id="deploy-target-type"><option value="touchscreen">Touchscreen</option><option value="mobile">CH5 Mobile / Crestron ONE</option><option value="web">CH5 Web XPanel</option></select></label>
           <label
             >Panel IP or host<input
               id="deploy-host"

@@ -3495,6 +3495,9 @@
   function deploymentProfiles() {
     return deploymentSettings().profiles || [];
   }
+  function defaultDeploymentType(deviceId) {
+    return deviceId === "ipad-landscape" ? "mobile" : deviceId === "monitor-4k" ? "web" : "touchscreen";
+  }
   function activeDeploymentProfile() {
     const id = $("deploy-profile")?.value || deploymentSettings().activeProfileId || "";
     return deploymentProfiles().find((profile) => profile.id === id) || null;
@@ -3535,7 +3538,7 @@
       select.value = profile.id;
       select.checked = hadEntries ? checked.has(profile.id) : true;
       name.textContent = profile.name;
-      target.textContent = `${profile.host || "No host"} · ${device?.model || "Unknown model"} · ${profile.packagePath ? profile.packagePath.split(/[\\/]/).pop() : "No package"}`;
+      target.textContent = `${profile.host || "No host"} · ${device?.model || "Unknown model"} · ${profile.deploymentType || defaultDeploymentType(profile.deviceId)} · ${profile.packagePath ? profile.packagePath.split(/[\\/]/).pop() : "No package"}`;
       stateLabel.className = "deployment-queue-state";
       stateLabel.textContent = queue?.message || "Not checked";
       row.append(select, name, target, stateLabel);
@@ -3555,6 +3558,7 @@
     const profile = deploymentProfiles().find((entry) => entry.id === id), settings = deploymentSettings();
     $("deploy-profile-name").value = profile?.name || "";
     $("deploy-profile-device").value = profile?.deviceId || state.targetDevice;
+    $("deploy-target-type").value = profile?.deploymentType || defaultDeploymentType(profile?.deviceId || state.targetDevice);
     $("deploy-host").value = profile?.host || settings.host || "";
     $("deploy-username").value = profile?.username || "";
     $("deploy-slow").checked = profile ? !!profile.slowMode : !!settings.slowMode;
@@ -3571,6 +3575,7 @@
       id: selected?.id || uid("deploy-"), name, host,
       username: $("deploy-username").value.trim(),
       deviceId: $("deploy-profile-device").value,
+      deploymentType: $("deploy-target-type").value,
       packagePath: $("deploy-package").value,
       slowMode: $("deploy-slow").checked,
       updatedAt: new Date().toISOString(),
@@ -3611,7 +3616,7 @@
           `Rollback package selected: ${entry.backupPath}`;
       };
       title.textContent = `${entry.success === false ? "FAILED · " : entry.success === true ? "SUCCESS · " : ""}${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · ${entry.slowMode ? "slow mode" : "normal mode"}`;
-      detail.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.device || "Touchscreen"}${entry.resolution ? ` · ${entry.resolution}` : ""} · ${entry.packagePath}`;
+      detail.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.device || "Touchscreen"}${entry.deploymentType ? ` · ${entry.deploymentType}` : ""}${entry.resolution ? ` · ${entry.resolution}` : ""} · ${entry.packagePath}`;
       row.append(rollback, title, detail);
       host.appendChild(row);
     });
@@ -6146,10 +6151,14 @@
     $("deployment-dialog").showModal();
   };
   $("deploy-profile").onchange = (event) => loadDeploymentProfile(event.target.value);
+  $("deploy-profile-device").onchange = (event) => {
+    $("deploy-target-type").value = defaultDeploymentType(event.target.value);
+  };
   $("deploy-profile-new").onclick = () => {
     $("deploy-profile").value = "";
     $("deploy-profile-name").value = "";
     $("deploy-profile-device").value = state.targetDevice;
+    $("deploy-target-type").value = defaultDeploymentType(state.targetDevice);
     $("deploy-host").value = "";
     $("deploy-username").value = "";
     $("deploy-package").value = "";
@@ -6216,7 +6225,7 @@
     }
     if (
       !confirm(
-        `Deploy ${packagePath}\n\nto TSW panel ${host}?\n\nA terminal will request the panel credentials.`,
+        `Deploy ${packagePath}\n\nto ${$("deploy-target-type").selectedOptions[0]?.textContent || "CH5 target"} at ${host}?\n\nA terminal will request the device credentials.`,
       )
     )
       return;
@@ -6227,6 +6236,7 @@
         host,
         packagePath,
         slowMode,
+        deploymentType: activeDeploymentProfile()?.deploymentType || defaultDeploymentType(activeDeploymentProfile()?.deviceId || state.targetDevice),
       });
       const settings = deploymentSettings(),
         profile = activeDeploymentProfile(),
@@ -6239,13 +6249,14 @@
             slowMode,
             profileId: profile?.id || "",
             profileName: profile?.name || "",
+            deploymentType: result.deploymentType || profile?.deploymentType || "touchscreen",
             device: deviceProfiles.find((device) => device.id === profile?.deviceId)?.name || selectedDevice().name,
             resolution: `${state.width} × ${state.height}`,
           },
           ...(settings.history || []),
         ].slice(0, 20);
       saveDeploymentSettings({ host, packagePath, slowMode, history });
-      updateActiveDeploymentProfile({ host, packagePath, slowMode });
+      updateActiveDeploymentProfile({ host, packagePath, slowMode, deploymentType: result.deploymentType });
       renderDeploymentHistory();
       $("deploy-status").textContent =
         "Deployment terminal opened. Enter credentials there and watch for “Success. Restarting UI”.";
@@ -6292,6 +6303,7 @@
         time: new Date().toISOString(), host: profile.host, packagePath: profile.packagePath,
         backupPath: result?.backupPath || "", slowMode: !!profile.slowMode,
         profileId: profile.id, profileName: profile.name, device: device?.name || profile.deviceId,
+        deploymentType: profile.deploymentType || defaultDeploymentType(profile.deviceId),
         resolution: device ? `${device.width} × ${device.height}` : "", success, message,
       }, ...(settings.history || [])].slice(0, 50);
     saveDeploymentSettings({ history });
@@ -6307,6 +6319,7 @@
       try {
         const result = await nativeRequest("deployCh5PackageWait", {
           host: profile.host, packagePath: profile.packagePath, slowMode: !!profile.slowMode,
+          deploymentType: profile.deploymentType || defaultDeploymentType(profile.deviceId),
         });
         if (result.success) {
           successes++;
