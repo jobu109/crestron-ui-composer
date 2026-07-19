@@ -55,8 +55,12 @@ input {
   background: #087e6c !important;
 }
 .workspace {
+  --sidebar-width: 220px;
+  --inspector-width: 230px;
   display: grid;
-  grid-template-columns: 220px 1fr 230px;
+  grid-template-columns:
+    var(--sidebar-width) 6px minmax(0, 1fr) 6px
+    var(--inspector-width);
   height: calc(100vh - 56px);
 }
 .sidebar,
@@ -70,6 +74,30 @@ input {
 }
 .inspector {
   border-left: 1px solid #324347;
+}
+.pane-resizer {
+  position: relative;
+  z-index: 5;
+  background: #243638;
+  cursor: col-resize;
+  touch-action: none;
+}
+.pane-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: #496361;
+}
+.pane-resizer:hover,
+.pane-resizer.dragging {
+  background: #087e6c;
+}
+.pane-resizer:hover::after,
+.pane-resizer.dragging::after {
+  background: #54e4cb;
 }
 h2 {
   font-size: 14px;
@@ -97,6 +125,7 @@ h2 {
   text-overflow: ellipsis;
 }
 .stage-wrap {
+  position: relative;
   overflow: auto;
   padding: 32px;
   background-color: #0c1113;
@@ -104,6 +133,36 @@ h2 {
     linear-gradient(#172124 1px, transparent 1px),
     linear-gradient(90deg, #172124 1px, transparent 1px);
   background-size: 20px 20px;
+}
+.stage-tools {
+  position: sticky;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  display: flex;
+  width: max-content;
+  gap: 4px;
+  margin: -24px 0 10px -24px;
+  padding: 5px;
+  border: 1px solid #46605f;
+  border-radius: 7px;
+  background: #172225ee;
+  box-shadow: 0 3px 12px #0008;
+}
+.stage-tools button {
+  min-width: 34px;
+  padding: 5px 9px;
+  border: 1px solid #46605f;
+  border-radius: 5px;
+  background: #253436;
+  color: #fff;
+  cursor: pointer;
+}
+.stage-tools button:hover {
+  border-color: #14d4b4;
+}
+#zoom-level {
+  min-width: 58px;
 }
 .stage {
   position: relative;
@@ -384,16 +443,8 @@ textarea {
 }
 @media (max-width: 900px) {
   .workspace {
-    grid-template-columns: 180px 1fr;
-  }
-  .inspector {
-    position: absolute;
-    right: 0;
-    top: 56px;
-    width: 220px;
-    height: calc(100vh - 56px);
-    z-index: 3;
-    opacity: 0.96;
+    --sidebar-width: 180px;
+    --inspector-width: 220px;
   }
 }
 .property-text-list {

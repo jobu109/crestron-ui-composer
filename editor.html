@@ -322,9 +322,29 @@
         <p class="hint">Drag layers to change z-index.</p>
         <div id="layers-list" class="layers-list"></div>
       </aside>
+      <div
+        id="sidebar-resizer"
+        class="pane-resizer"
+        role="separator"
+        aria-label="Resize component sidebar"
+        title="Drag to resize · Double-click to reset"
+      ></div>
       <section class="stage-wrap">
+        <div class="stage-tools" aria-label="Panel zoom controls">
+          <button id="zoom-out" type="button" title="Zoom out">−</button>
+          <button id="zoom-level" type="button" title="Reset zoom to 100%">100%</button>
+          <button id="zoom-in" type="button" title="Zoom in">+</button>
+          <button id="zoom-fit" type="button" title="Fit the entire panel in the workspace">Fit panel</button>
+        </div>
         <div id="stage" class="stage" tabindex="0"></div>
       </section>
+      <div
+        id="inspector-resizer"
+        class="pane-resizer"
+        role="separator"
+        aria-label="Resize inspector sidebar"
+        title="Drag to resize · Double-click to reset"
+      ></div>
       <aside class="inspector">
         <h2>Inspector</h2>
         <div id="empty-inspector" class="hint">

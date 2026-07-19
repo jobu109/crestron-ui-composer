@@ -48,6 +48,7 @@
     lastManualFingerprint = "";
   let componentClipboard = "";
   let activeColorInput = null;
+  let panelZoom = 1;
   let snapEnabled = true,
     snapSize = 10;
   const snap = (value) =>
@@ -55,6 +56,57 @@
       ? Math.round(Number(value) / Math.max(1, snapSize)) *
         Math.max(1, snapSize)
       : Math.round(Number(value));
+  function setPanelZoom(value) {
+    panelZoom = Math.max(0.1, Math.min(2, Math.round(value * 100) / 100));
+    stage.style.zoom = panelZoom;
+    $("zoom-level").textContent = `${Math.round(panelZoom * 100)}%`;
+    localStorage.setItem("crestron-ui-composer-panel-zoom", panelZoom);
+  }
+  function fitPanel() {
+    const viewport = document.querySelector(".stage-wrap"),
+      horizontalPadding = 64,
+      verticalPadding = 82,
+      widthZoom = (viewport.clientWidth - horizontalPadding) / state.width,
+      heightZoom = (viewport.clientHeight - verticalPadding) / state.height;
+    setPanelZoom(Math.min(widthZoom, heightZoom, 1));
+    viewport.scrollTo({ left: 0, top: 0 });
+  }
+  function wirePaneResizer(id, property, side, defaultWidth) {
+    const handle = $(id),
+      workspace = document.querySelector(".workspace");
+    const saved = Number(localStorage.getItem(`crestron-ui-composer-${property}`));
+    if (Number.isFinite(saved) && saved >= 160)
+      workspace.style.setProperty(`--${property}`, `${saved}px`);
+    handle.ondblclick = () => {
+      workspace.style.setProperty(`--${property}`, `${defaultWidth}px`);
+      localStorage.removeItem(`crestron-ui-composer-${property}`);
+    };
+    handle.onpointerdown = (event) => {
+      event.preventDefault();
+      handle.classList.add("dragging");
+      const startX = event.clientX,
+        current = parseFloat(
+          getComputedStyle(workspace).getPropertyValue(`--${property}`),
+        );
+      function move(moveEvent) {
+        const delta = (moveEvent.clientX - startX) * side,
+          maximum = Math.max(260, Math.min(640, window.innerWidth * 0.42)),
+          width = Math.max(160, Math.min(maximum, current + delta));
+        workspace.style.setProperty(`--${property}`, `${width}px`);
+      }
+      function up() {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+        handle.classList.remove("dragging");
+        const width = parseFloat(
+          getComputedStyle(workspace).getPropertyValue(`--${property}`),
+        );
+        localStorage.setItem(`crestron-ui-composer-${property}`, width);
+      }
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    };
+  }
   function normalizeHexColor(value) {
     const text = String(value || "").trim();
     if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
@@ -2853,20 +2905,22 @@
       bottom: Math.max(...starts.map((entry) => entry.y + entry.h)),
     };
     function move(ev) {
+      const pointerX = (ev.clientX - sx) / panelZoom,
+        pointerY = (ev.clientY - sy) / panelZoom;
       if (resize) {
         if (movingItems.length === 1) {
-          item.w = Math.max(20, snap(start.w + ev.clientX - sx));
-          item.h = Math.max(20, snap(start.h + ev.clientY - sy));
+          item.w = Math.max(20, snap(start.w + pointerX));
+          item.h = Math.max(20, snap(start.h + pointerY));
         } else {
           const originalWidth = Math.max(1, bounds.right - bounds.left),
             originalHeight = Math.max(1, bounds.bottom - bounds.top),
             scaleX = Math.max(
               0.05,
-              (originalWidth + ev.clientX - sx) / originalWidth,
+              (originalWidth + pointerX) / originalWidth,
             ),
             scaleY = Math.max(
               0.05,
-              (originalHeight + ev.clientY - sy) / originalHeight,
+              (originalHeight + pointerY) / originalHeight,
             );
           starts.forEach((entry) => {
             entry.item.x = snap(bounds.left + (entry.x - bounds.left) * scaleX);
@@ -2876,8 +2930,8 @@
           });
         }
       } else {
-        const dx = snap(ev.clientX - sx),
-          dy = snap(ev.clientY - sy);
+        const dx = snap(pointerX),
+          dy = snap(pointerY);
         starts.forEach((entry) => {
           entry.item.x = entry.x + dx;
           entry.item.y = entry.y + dy;
@@ -3227,8 +3281,8 @@
   stage.onpointerdown = (e) => {
     if (e.target !== stage || e.button !== 0) return;
     const rect = stage.getBoundingClientRect(),
-      startX = e.clientX - rect.left,
-      startY = e.clientY - rect.top,
+      startX = (e.clientX - rect.left) / panelZoom,
+      startY = (e.clientY - rect.top) / panelZoom,
       prior = e.shiftKey ? (state.selectedIds || []).slice() : [],
       marquee = document.createElement("div");
     marquee.className = "selection-marquee";
@@ -3237,8 +3291,8 @@
     stage.appendChild(marquee);
     if (!e.shiftKey) select(null);
     function move(event) {
-      const x = event.clientX - rect.left,
-        y = event.clientY - rect.top,
+      const x = (event.clientX - rect.left) / panelZoom,
+        y = (event.clientY - rect.top) / panelZoom,
         left = Math.min(startX, x),
         top = Math.min(startY, y),
         right = Math.max(startX, x),
@@ -3278,13 +3332,17 @@
     const r = stage.getBoundingClientRect();
     const assetId = e.dataTransfer.getData("text/asset");
     if (assetId) {
-      createAssetItem(assetId, e.clientX - r.left, e.clientY - r.top);
+      createAssetItem(
+        assetId,
+        (e.clientX - r.left) / panelZoom,
+        (e.clientY - r.top) / panelZoom,
+      );
       return;
     }
     createItem(
       e.dataTransfer.getData("text/component"),
-      e.clientX - r.left,
-      e.clientY - r.top,
+      (e.clientX - r.left) / panelZoom,
+      (e.clientY - r.top) / panelZoom,
     );
   };
   $("snippet-files").onchange = async (e) => {
@@ -4204,6 +4262,21 @@
   };
   $("undo").onclick = undo;
   $("redo").onclick = redo;
+  wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
+  wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
+  $("zoom-out").onclick = () => setPanelZoom(panelZoom - 0.1);
+  $("zoom-in").onclick = () => setPanelZoom(panelZoom + 0.1);
+  $("zoom-level").onclick = () => setPanelZoom(1);
+  $("zoom-fit").onclick = fitPanel;
+  document.querySelector(".stage-wrap").addEventListener(
+    "wheel",
+    (event) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setPanelZoom(panelZoom + (event.deltaY < 0 ? 0.1 : -0.1));
+    },
+    { passive: false },
+  );
   document.querySelectorAll("dialog").forEach((dialog) => {
     const form = dialog.querySelector("form");
     if (!form || form.querySelector(":scope > .dialog-close")) return;
@@ -4318,6 +4391,9 @@
     persistAutosave(historyState(), true);
   });
   resize(1920, 1200);
+  setPanelZoom(
+    Number(localStorage.getItem("crestron-ui-composer-panel-zoom")) || 1,
+  );
   renderPages();
   renderPageInspector();
   commitHistory(false);
