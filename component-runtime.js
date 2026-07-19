@@ -75,6 +75,13 @@
       structured = parts.length > 2
         ? `${parts[0]}.${parts.slice(1).join("_")}`
         : address;
+    const legacyCollection = structured.match(
+      /^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\[\d+\])\.([A-Za-z0-9_.]+)$/,
+    );
+    if (prefix && legacyCollection) {
+      structured = `${prefix}.${legacyCollection[1]}${legacyCollection[2]}.${legacyCollection[3]}`;
+      prefix = "";
+    }
     if (prefix && structured.includes(".")) {
       const rootEnd = structured.indexOf("."),
         remainder = structured.includes("[")

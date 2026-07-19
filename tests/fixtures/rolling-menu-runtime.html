@@ -1,0 +1,18 @@
+<!doctype html>
+<html><body><div id="root" style="width:340px;height:420px"></div><pre id="result">RUNNING</pre>
+<script>window.ResizeObserver=window.ResizeObserver||class{observe(){}disconnect(){}};</script>
+<script src="../../component-runtime.js"></script>
+<script src="../../rolling-menu.component.js"></script>
+<script>
+const definition=ComposerRuntime.get("rolling-menu"),properties=Object.fromEntries(definition.properties.map(p=>[p.key,p.defaultValue]));
+properties.bindingMode="contract";properties.defaultCount="4";properties.itemCountSignal="Sources.ItemCountFeedback";properties.selectedSetSignal="Sources.SelectedSetFeedback";properties.selectedOutSignal="Sources.SelectedFeedbackValueSet";properties.pressBase="Sources.Items[{index}].Press";properties.feedbackBase="Sources.Items[{index}].Selected";properties.labelBase="Sources.Items[{index}].Name";
+ComposerRuntime.mount(document.getElementById("root"),"rolling-menu",{properties,bindings:{},contractPrefix:"Home.Sources",lib:null});
+const set=(type,address,value)=>ComposerRuntime.simulator.set(type,address,value),active=()=>[...document.querySelectorAll(".rm-item")].findIndex(el=>el.classList.contains("active"));
+set("n","Home.Sources.ItemCountFeedback",4);
+set("s","Home.Sources.Items[2].Name","Laptop");
+set("n","Home.Sources.SelectedSetFeedback",1);
+const analog=active();
+set("b","Home.Sources.Items[2].Selected",true);
+const digital=active(),label=document.querySelectorAll(".rm-item")[2]?.textContent;
+document.getElementById("result").textContent=JSON.stringify({analog,digital,label,count:document.querySelectorAll(".rm-item").length,pass:analog===1&&digital===2&&label==="Laptop"});
+</script></body></html>

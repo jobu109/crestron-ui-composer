@@ -102,6 +102,7 @@ run("exported action runtime is valid JavaScript", () => {
     end = html.lastIndexOf("</script>");
   assert.ok(html.includes("Room.Level"));
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
+  assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
   new Function(html.slice(start, end));
 });
 
@@ -134,6 +135,15 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
   );
   assert.equal(
     ComposerRuntime.resolveAddress(
+      "RollingMenu_Items[2].Selected",
+      "digital",
+      "input",
+      "Home.RollingMenu",
+    ),
+    "Home.RollingMenu.Items[2].Selected",
+  );
+  assert.equal(
+    ComposerRuntime.resolveAddress(
       "Sources.SelectedSetFeedback",
       "analog",
       "input",
@@ -141,6 +151,25 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
     ),
     "Home.Sources.SelectedSetFeedback",
   );
+});
+
+run("migration repairs legacy Rolling Menu collection paths", () => {
+  const result = ComposerProjectMigrations.migrate({
+    version: 4,
+    pages: [{ id: "home", name: "Home" }],
+    activePage: "home",
+    items: [{
+      id: "rolling",
+      pageId: "home",
+      componentId: "rolling-menu",
+      properties: {
+        pressBase: "RollingMenu_Items[{index}].Press",
+        feedbackBase: "RollingMenu_Items[{index}].Selected",
+        labelBase: "RollingMenu_Items[{index}].Name",
+      },
+    }],
+  });
+  assert.equal(result.project.items[0].properties.feedbackBase, "RollingMenu.Items[{index}].Selected");
 });
 
 if (process.exitCode) process.exit(process.exitCode);

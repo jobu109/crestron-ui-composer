@@ -51,6 +51,15 @@
       };
       item.locked = item.locked === true || item.locked === "true";
       item.hidden = item.hidden === true || item.hidden === "true";
+      if (item.componentId === "rolling-menu") {
+        ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
+          const value = String(item.properties[key] || "");
+          item.properties[key] = value.replace(
+            /^([A-Za-z_][A-Za-z0-9_]*)_Items(\[\{index\}\])\./,
+            "$1.Items$2.",
+          );
+        });
+      }
     });
     ["assets", "reusables", "pageTemplates", "themes", "customComponents"].forEach(
       (key) => (project[key] = Array.isArray(project[key]) ? project[key] : []),
