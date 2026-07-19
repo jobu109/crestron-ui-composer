@@ -2109,9 +2109,6 @@
     $("empty-inspector").textContent = multiple
       ? `${selection.length} components selected. Use the canvas commands to move, align, group, copy, lock, or delete them.`
       : "Select an item on the panel.";
-    if ($("align-component")) $("align-component").disabled = !item || locked;
-    if ($("layer-component"))
-      $("layer-component").disabled = !item || locked || multiple;
     if (item && !multiple) {
       $("prop-name").value = item.name;
       $("prop-x").value = item.x;
@@ -5026,10 +5023,9 @@
     e.target.value = snapSize;
     setStatus(`Grid size: ${snapSize}px`);
   };
-  $("align-component").onchange = (e) => {
+  function alignSelected(mode) {
     const items = selectedItems(),
-      item = current(),
-      mode = e.target.value;
+      item = current();
     if (!item || !mode) return;
     const bounds = {
       left: Math.min(...items.map((entry) => entry.x)),
@@ -5094,12 +5090,11 @@
     setStatus(
       `${mode.startsWith("distribute") ? "Distributed" : "Aligned"} ${items.length === 1 ? `“${item.name}”` : `${items.length} components`} ${mode}`,
     );
-    e.target.value = "";
-  };
-  $("layer-component").onchange = (e) => {
+  }
+  function changeSelectedLayer(mode) {
     const item = current(),
-      mode = e.target.value;
-    if (!item || !mode) return;
+      selection = selectedItems();
+    if (!item || !mode || selection.length !== 1) return;
     const pageItems = state.items
         .filter((x) => x.pageId === state.activePage || x.master)
         .sort((a, b) => (Number(a.z) || 0) - (Number(b.z) || 0)),
@@ -5129,8 +5124,7 @@
     select(item.id);
     commitHistory();
     setStatus(`Layer changed: “${item.name}”`);
-    e.target.value = "";
-  };
+  }
   function toggleSelectedLock() {
     const items = selectedItems();
     if (!items.length) return;
@@ -5195,6 +5189,14 @@
       selection.some((entry) => entry.locked);
     $("context-delete").disabled =
       !selection.length || selection.some((entry) => entry.locked);
+    const contextAlign = $("context-align"), contextLayer = $("context-layer");
+    contextAlign.value = "";
+    contextLayer.value = "";
+    contextAlign.disabled = !selection.length || selection.some((entry) => entry.locked);
+    [...contextAlign.options].forEach((option) => {
+      if (option.value.startsWith("distribute")) option.disabled = selection.length < 3;
+    });
+    contextLayer.disabled = selection.length !== 1 || selection.some((entry) => entry.locked);
     $("context-save-reusable").disabled = !selection.length;
     $("context-update-reusable").disabled =
       !selection.length || !selection[0]?.reusableId;
@@ -5214,6 +5216,18 @@
   };
   $("context-paste").onclick = () => {
     pasteComponent();
+    hideContextMenu();
+  };
+  $("context-align").onchange = (event) => {
+    const mode = event.target.value;
+    if (mode) alignSelected(mode);
+    event.target.value = "";
+    hideContextMenu();
+  };
+  $("context-layer").onchange = (event) => {
+    const mode = event.target.value;
+    if (mode) changeSelectedLayer(mode);
+    event.target.value = "";
     hideContextMenu();
   };
   $("context-lock").onclick = () => {

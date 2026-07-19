@@ -182,28 +182,6 @@
       <button id="new-project">New</button>
       <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
       <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
-      <select id="align-component" title="Align selected components" disabled>
-        <option value="">Align…</option>
-        <option value="left">Left</option>
-        <option value="center">Horizontal center</option>
-        <option value="right">Right</option>
-        <option value="top">Top</option>
-        <option value="middle">Vertical center</option>
-        <option value="bottom">Bottom</option>
-        <option value="distribute-h">Distribute horizontally</option>
-        <option value="distribute-v">Distribute vertically</option>
-      </select>
-      <select
-        id="layer-component"
-        title="Change selected component layer"
-        disabled
-      >
-        <option value="">Layer…</option>
-        <option value="front">Bring to front</option>
-        <option value="forward">Bring forward</option>
-        <option value="backward">Send backward</option>
-        <option value="back">Send to back</option>
-      </select>
       <label title="Snap movement and resizing to a grid"
         ><input id="snap-grid" type="checkbox" checked /> Snap
         <input
@@ -1072,6 +1050,25 @@ Preview signal activity appears here.</pre
       <button id="context-lock" type="button">Lock</button>
       <button id="context-group" type="button">Group</button>
       <button id="context-ungroup" type="button">Ungroup</button>
+      <div class="context-menu-separator"></div>
+      <select id="context-align" aria-label="Align selected components">
+        <option value="">Align &amp; distribute…</option>
+        <option value="left">Align left</option>
+        <option value="center">Align horizontal center</option>
+        <option value="right">Align right</option>
+        <option value="top">Align top</option>
+        <option value="middle">Align vertical center</option>
+        <option value="bottom">Align bottom</option>
+        <option value="distribute-h">Distribute horizontally</option>
+        <option value="distribute-v">Distribute vertically</option>
+      </select>
+      <select id="context-layer" aria-label="Change selected component z-index">
+        <option value="">Z-index…</option>
+        <option value="front">Bring to front</option>
+        <option value="forward">Bring forward</option>
+        <option value="backward">Send backward</option>
+        <option value="back">Send to back</option>
+      </select>
       <div class="context-menu-separator"></div>
       <button id="context-save-reusable" type="button">Save as reusable</button>
       <button id="context-update-reusable" type="button">
