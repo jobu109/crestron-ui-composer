@@ -54,13 +54,9 @@
   }
   function contractPrefix(project, item) {
     const page = project.pages.find((entry) => entry.id === item.pageId),
-      configuredPageName =
-        page?.bindingMode === "contract" && String(page.binding || "").trim()
-          ? String(page.binding).trim().replace(/\.Selected$/i, "")
-          : page?.name || "Main",
       pageName = item.master
         ? "Global"
-        : contractIdentifier(configuredPageName) || "Main",
+        : contractIdentifier(page?.name || "Main") || "Main",
       base = contractIdentifier(item.name || "Widget"),
       peers = project.items.filter(
         (entry) =>

@@ -1617,10 +1617,14 @@
   function contractPageInstance(pageId) {
     if (!pageId) return "Global";
     const page = state.pages.find((entry) => entry.id === pageId),
-      configured =
-        page?.bindingMode === "contract" && String(page.binding || "").trim()
-          ? String(page.binding).trim().replace(/\.Selected$/i, "")
-          : page?.name || "Page",
+      name = simplIdentifier(page?.name || "Page");
+    return name || "Main";
+  }
+  function contractPageSelectionInstance(pageId) {
+    const page = state.pages.find((entry) => entry.id === pageId),
+      configured = String(page?.binding || page?.name || "Page")
+        .trim()
+        .replace(/\.Selected$/i, ""),
       name = simplIdentifier(configured);
     return name || "Main";
   }
@@ -2048,7 +2052,7 @@
       };
     }
     if (row.pageId) {
-      const pagePath = contractPageInstance(row.pageId);
+      const pagePath = contractPageSelectionInstance(row.pageId);
       return {
         instancePath: pagePath,
         parentPath: "",
