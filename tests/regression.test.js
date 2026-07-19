@@ -21,6 +21,7 @@ function run(name, fn) {
 
 global.window = global;
 vm.runInThisContext(read("project-migrations.js"), { filename: "project-migrations.js" });
+vm.runInThisContext(read("responsive-layout.js"), { filename: "responsive-layout.js" });
 
 run("legacy projects migrate without mutating the source", () => {
   const legacy = {
@@ -41,7 +42,7 @@ run("legacy projects migrate without mutating the source", () => {
 
 run("current projects survive a save/load round trip", () => {
   const current = ComposerProjectMigrations.migrate({
-    version: 4,
+    version: ComposerProjectMigrations.CURRENT_VERSION,
     width: 1920,
     height: 1200,
     pages: [{ id: "home", name: "Home", background: "#000", bindingMode: "none" }],
@@ -53,6 +54,36 @@ run("current projects survive a save/load round trip", () => {
   const roundTrip = ComposerProjectMigrations.migrate(JSON.parse(JSON.stringify(current)));
   assert.equal(roundTrip.migrated, false);
   assert.deepEqual(roundTrip.project, current);
+});
+
+run("responsive anchors and panel overrides migrate safely", () => {
+  const migrated = ComposerProjectMigrations.migrate({
+    version: 4, width: 1920, height: 1200,
+    pages: [{ id: "home", name: "Home" }], activePage: "home",
+    items: [{ id: "one", pageId: "home", x: 100, y: 100, w: 200, h: 100 }],
+  }).project;
+  assert.equal(migrated.items[0].layout.anchorX, "left");
+  assert.deepEqual(migrated.items[0].deviceOverrides, {});
+});
+
+run("responsive layout honors right, center, stretch, and proportional rules", () => {
+  assert.deepEqual(
+    ComposerResponsiveLayout.adaptRect(
+      { x: 1620, y: 100, w: 200, h: 100 }, { width: 1920, height: 1200 },
+      { width: 1280, height: 800 }, { anchorX: "right", anchorY: "top", scaleMode: "fixed" },
+    ),
+    { x: 980, y: 100, w: 200, h: 100 },
+  );
+  assert.deepEqual(
+    ComposerResponsiveLayout.adaptRect(
+      { x: 100, y: 100, w: 200, h: 100 }, { width: 1000, height: 500 },
+      { width: 2000, height: 1000 }, { anchorX: "left", anchorY: "top", scaleMode: "proportional" },
+    ),
+    { x: 200, y: 200, w: 400, h: 200 },
+  );
+  assert.equal(ComposerResponsiveLayout.fitsSafeArea(
+    { x: 20, y: 20, w: 100, h: 100 }, { width: 200, height: 200 }, 20,
+  ), true);
 });
 
 run("all shipped JavaScript files pass syntax validation", () => {

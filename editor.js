@@ -841,17 +841,55 @@
       }
     );
   }
+  function layoutDefaults(item) {
+    item.layout = Object.assign(
+      { anchorX: "left", anchorY: "top", scaleMode: "fixed", safeMargin: 0 },
+      item.layout || {},
+    );
+    item.deviceOverrides ||= {};
+    return item.layout;
+  }
+  function panelLayoutKey(id = state.targetDevice, width = state.width, height = state.height) {
+    return id === "custom" ? `custom:${width}x${height}` : id;
+  }
+  function savePanelLayouts(id = state.targetDevice, width = state.width, height = state.height) {
+    const key = panelLayoutKey(id, width, height);
+    state.items.forEach((item) => {
+      layoutDefaults(item);
+      item.deviceOverrides[key] = { x: item.x, y: item.y, w: item.w, h: item.h, panelWidth: width, panelHeight: height };
+    });
+  }
+  function applyResponsiveSize(width, height, destinationKey) {
+    const from = { width: state.width, height: state.height };
+    state.items.forEach((item) => {
+      const layout = layoutDefaults(item), saved = item.deviceOverrides[destinationKey];
+      const rect = saved || window.ComposerResponsiveLayout.adaptRect(item, from, { width, height }, layout);
+      Object.assign(item, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
+    });
+    resize(width, height);
+    renderPage();
+  }
   function applyDevice(id) {
+    const previousId = state.targetDevice, previousWidth = state.width, previousHeight = state.height;
+    savePanelLayouts(previousId, previousWidth, previousHeight);
     state.targetDevice = id;
     const device = selectedDevice(),
       custom = id === "custom";
     $("custom-size").hidden = !custom;
     if (!custom) {
-      resize(device.width, device.height);
+      applyResponsiveSize(device.width, device.height, panelLayoutKey(id, device.width, device.height));
       $("panel-width").value = device.width;
       $("panel-height").value = device.height;
       setStatus(`${device.name}: ${device.width} × ${device.height}`);
-    } else setStatus("Custom panel profile — CH5 compatibility unverified");
+    } else {
+      const returningToCustom = previousId === "custom",
+        width = returningToCustom ? Number($("panel-width").value) || device.width : device.width,
+        height = returningToCustom ? Number($("panel-height").value) || device.height : device.height;
+      $("panel-width").value = width;
+      $("panel-height").value = height;
+      applyResponsiveSize(width, height, panelLayoutKey(id, width, height));
+      setStatus("Custom panel profile — CH5 compatibility unverified");
+    }
   }
   function createItem(name, x, y, data) {
     const c = state.components.find((v) => v.name === name);
@@ -896,6 +934,8 @@
           easing: "ease-out",
         },
         actions: [],
+        layout: { anchorX: "left", anchorY: "top", scaleMode: "fixed", safeMargin: 0 },
+        deviceOverrides: {},
       },
       data || {},
     );
@@ -2088,8 +2128,31 @@
       renderProperties(item);
       renderBindings(item);
       renderInteractionEditor(item);
+      renderResponsiveEditor(item);
     }
     renderLayers();
+  }
+  function renderResponsiveEditor(item) {
+    const layout = layoutDefaults(item), key = panelLayoutKey();
+    ["anchor-x", "anchor-y", "scale-mode", "safe-margin"].forEach((suffix) => {
+      const property = { "anchor-x": "anchorX", "anchor-y": "anchorY", "scale-mode": "scaleMode", "safe-margin": "safeMargin" }[suffix],
+        input = $("layout-" + suffix);
+      input.value = layout[property];
+      input.oninput = () => {
+        layout[property] = property === "safeMargin" ? Math.max(0, Number(input.value) || 0) : input.value;
+        scheduleHistory();
+      };
+    });
+    $("layout-override-status").textContent = item.deviceOverrides[key]
+      ? `Saved override for ${key}` : `Using responsive rules for ${key}`;
+    $("layout-save-override").onclick = () => {
+      item.deviceOverrides[key] = { x: item.x, y: item.y, w: item.w, h: item.h, panelWidth: state.width, panelHeight: state.height };
+      renderResponsiveEditor(item); commitHistory(); setStatus(`Saved “${item.name}” layout for ${key}`);
+    };
+    $("layout-reset-override").onclick = () => {
+      delete item.deviceOverrides[key]; renderResponsiveEditor(item); commitHistory();
+      setStatus(`Reset “${item.name}” override for ${key}`);
+    };
   }
   function playPageTransition(page = currentPage()) {
     const transition = page.transition || "none";
@@ -4086,6 +4149,11 @@
           "error",
           `“${item.name}” is outside the ${state.width} × ${state.height} panel bounds.`,
         );
+      const safeMargin = Math.max(0, Number(item.layout?.safeMargin) || 0);
+      if (safeMargin && !window.ComposerResponsiveLayout.fitsSafeArea(
+        item, { width: state.width, height: state.height }, safeMargin,
+      ))
+        add("warning", `“${item.name}” crosses its ${safeMargin}px safe margin.`);
       if (item.w < 20 || item.h < 20)
         add("error", `“${item.name}” is smaller than the editor minimum.`);
       if (![item.x, item.y, item.w, item.h, item.z].every(Number.isFinite))
@@ -4596,6 +4664,12 @@
         renderItem(i);
         if (k === "name") renderBindings(i);
         if (k === "name" || k === "z") renderLayers();
+        if (["x", "y", "w", "h"].includes(k)) {
+          const key = panelLayoutKey();
+          layoutDefaults(i);
+          i.deviceOverrides[key] = { x: i.x, y: i.y, w: i.w, h: i.h, panelWidth: state.width, panelHeight: state.height };
+          renderResponsiveEditor(i);
+        }
       }),
   );
   $("prop-target").onchange = (e) => {
@@ -5519,11 +5593,12 @@
   $("target-device").onchange = (e) => applyDevice(e.target.value);
   ["width", "height"].forEach(
     (k) =>
-      ($("panel-" + k).oninput = (e) =>
-        resize(
-          k === "width" ? +e.target.value : state.width,
-          k === "height" ? +e.target.value : state.height,
-        )),
+      ($("panel-" + k).oninput = (e) => {
+        const width = k === "width" ? +e.target.value : state.width,
+          height = k === "height" ? +e.target.value : state.height;
+        savePanelLayouts(state.targetDevice, state.width, state.height);
+        applyResponsiveSize(width, height, panelLayoutKey(state.targetDevice, width, height));
+      }),
   );
   async function loadProjectText(text, markClean = true, sourcePath = "") {
     const parsed = JSON.parse(text),

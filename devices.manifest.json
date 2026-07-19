@@ -15,6 +15,42 @@
       "validationStatus": "hardware-test-target"
     },
     {
+      "id": "tsw-770",
+      "manufacturer": "Crestron",
+      "model": "TSW-770",
+      "name": "Crestron TSW-770",
+      "width": 1280,
+      "height": 800,
+      "aspectRatio": "16:10",
+      "colorDepth": 24,
+      "supportsCh5": true,
+      "validationStatus": "manufacturer-verified"
+    },
+    {
+      "id": "tsw-570",
+      "manufacturer": "Crestron",
+      "model": "TSW-570",
+      "name": "Crestron TSW-570",
+      "width": 1280,
+      "height": 720,
+      "aspectRatio": "16:9",
+      "colorDepth": 24,
+      "supportsCh5": true,
+      "validationStatus": "manufacturer-verified"
+    },
+    {
+      "id": "tsw-570pr",
+      "manufacturer": "Crestron",
+      "model": "TSW-570PR",
+      "name": "Crestron TSW-570PR (Portrait)",
+      "width": 720,
+      "height": 1280,
+      "aspectRatio": "9:16",
+      "colorDepth": 24,
+      "supportsCh5": true,
+      "validationStatus": "manufacturer-verified"
+    },
+    {
       "id": "custom",
       "manufacturer": "Custom",
       "model": "Custom",

@@ -386,6 +386,17 @@
             ><label>Height<input id="prop-h" type="number" min="20" /></label>
           </div>
           <label>Z-index<input id="prop-z" type="number" min="1" /></label>
+          <section class="signal-section">
+            <h2>Responsive layout</h2>
+            <div class="grid2">
+              <label>Horizontal anchor<select id="layout-anchor-x"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="stretch">Stretch</option></select></label>
+              <label>Vertical anchor<select id="layout-anchor-y"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option><option value="stretch">Stretch</option></select></label>
+            </div>
+            <label>Panel scaling<select id="layout-scale-mode"><option value="fixed">Fixed size</option><option value="proportional">Proportional</option></select></label>
+            <label>Safe margin<input id="layout-safe-margin" type="number" min="0" value="0" /></label>
+            <div class="grid2"><button id="layout-save-override" type="button">Save panel layout</button><button id="layout-reset-override" type="button">Reset panel layout</button></div>
+            <p id="layout-override-status" class="hint"></p>
+          </section>
           <label
             >Local navigation<select id="prop-target">
               <option value="">No page change</option>
@@ -995,6 +1006,7 @@ Preview signal activity appears here.</pre
       </form>
     </dialog>
     <script src="project-migrations.js"></script>
+    <script src="responsive-layout.js"></script>
     <script src="component-runtime.js"></script>
     <script src="standard-button.component.js"></script>
     <script src="button-components.js"></script>

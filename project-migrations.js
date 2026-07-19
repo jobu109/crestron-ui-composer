@@ -1,6 +1,6 @@
 (function (global) {
   "use strict";
-  const CURRENT_VERSION = 4;
+  const CURRENT_VERSION = 5;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -41,6 +41,12 @@
       item.properties ||= {};
       item.signalBindings ||= {};
       item.actions ||= [];
+      item.layout = Object.assign(
+        { anchorX: "left", anchorY: "top", scaleMode: "fixed", safeMargin: 0 },
+        item.layout || {},
+      );
+      item.deviceOverrides = item.deviceOverrides && typeof item.deviceOverrides === "object"
+        ? item.deviceOverrides : {};
       item.interaction ||= {
         trigger: "none",
         preset: "fade",
@@ -92,6 +98,7 @@
     if (fromVersion < 2) notes.push("Converted the legacy single-page project structure.");
     if (fromVersion < 3) notes.push("Normalized component state, assets, and contract metadata.");
     if (fromVersion < 4) notes.push("Added action workflows, extended themes, and custom-component metadata.");
+    if (fromVersion < 5) notes.push("Added responsive anchors and per-panel layout overrides.");
     project.version = CURRENT_VERSION;
     return {
       project,
