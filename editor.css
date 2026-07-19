@@ -1317,6 +1317,26 @@ textarea {
   grid-template-columns: 1fr 150px;
   gap: 10px;
 }
+.deployment-profile-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: end;
+  margin: 12px 0;
+}
+.deployment-profile-toolbar button {
+  min-height: 34px;
+}
+.deployment-profile-toolbar select,
+.deployment-grid select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px;
+  border: 1px solid #415557;
+  border-radius: 4px;
+  color: #fff;
+  background: #101719;
+}
 .deployment-dialog label {
   display: block;
   margin: 9px 0;

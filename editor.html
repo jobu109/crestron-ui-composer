@@ -651,12 +651,21 @@
           Deploys through Crestron ch5-cli. Credentials are entered only in the
           official terminal prompt and are never stored by this editor.
         </p>
+        <div class="deployment-profile-toolbar">
+          <label>Deployment profile<select id="deploy-profile"><option value="">Unsaved profile</option></select></label>
+          <button id="deploy-profile-new" type="button">New</button>
+          <button id="deploy-profile-save" type="button">Save</button>
+          <button id="deploy-profile-delete" type="button">Delete</button>
+        </div>
         <div class="deployment-grid">
+          <label>Profile name<input id="deploy-profile-name" placeholder="Conference Room" /></label>
+          <label>Panel model<select id="deploy-profile-device"></select></label>
           <label
             >Panel IP or host<input
               id="deploy-host"
               placeholder="192.168.1.100" /></label
-          ><label class="deploy-slow"
+          ><label>Username <span class="hint">(reference only)</span><input id="deploy-username" autocomplete="off" /></label>
+          <label class="deploy-slow"
             ><input id="deploy-slow" type="checkbox" /> Slow mode</label
           >
         </div>

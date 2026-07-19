@@ -3491,6 +3491,72 @@
     localStorage.setItem(deploymentSettingsKey, JSON.stringify(settings));
     return settings;
   }
+  function deploymentProfiles() {
+    return deploymentSettings().profiles || [];
+  }
+  function activeDeploymentProfile() {
+    const id = $("deploy-profile")?.value || deploymentSettings().activeProfileId || "";
+    return deploymentProfiles().find((profile) => profile.id === id) || null;
+  }
+  function renderDeploymentProfiles(selectedId = deploymentSettings().activeProfileId || "") {
+    const profileSelect = $("deploy-profile"), deviceSelect = $("deploy-profile-device"),
+      profiles = deploymentProfiles();
+    profileSelect.innerHTML = '<option value="">Unsaved profile</option>';
+    profiles.forEach((profile) => {
+      const option = document.createElement("option");
+      option.value = profile.id;
+      option.textContent = `${profile.name} — ${profile.host || "No host"}`;
+      profileSelect.appendChild(option);
+    });
+    deviceSelect.innerHTML = "";
+    deviceProfiles.filter((device) => device.id !== "custom").forEach((device) => {
+      const option = document.createElement("option");
+      option.value = device.id;
+      option.textContent = device.name;
+      deviceSelect.appendChild(option);
+    });
+    profileSelect.value = profiles.some((profile) => profile.id === selectedId) ? selectedId : "";
+    loadDeploymentProfile(profileSelect.value);
+  }
+  function loadDeploymentProfile(id) {
+    const profile = deploymentProfiles().find((entry) => entry.id === id), settings = deploymentSettings();
+    $("deploy-profile-name").value = profile?.name || "";
+    $("deploy-profile-device").value = profile?.deviceId || state.targetDevice;
+    $("deploy-host").value = profile?.host || settings.host || "";
+    $("deploy-username").value = profile?.username || "";
+    $("deploy-slow").checked = profile ? !!profile.slowMode : !!settings.slowMode;
+    $("deploy-package").value = profile?.packagePath || settings.packagePath || "";
+    $("deploy-profile-delete").disabled = !profile;
+    saveDeploymentSettings({ activeProfileId: profile?.id || "" });
+  }
+  function saveCurrentDeploymentProfile() {
+    const settings = deploymentSettings(), profiles = deploymentProfiles(), selected = activeDeploymentProfile(),
+      name = $("deploy-profile-name").value.trim(), host = $("deploy-host").value.trim();
+    if (!name) { alert("Enter a deployment profile name."); return; }
+    if (!host) { alert("Enter the panel IP address or host name."); return; }
+    const profile = {
+      id: selected?.id || uid("deploy-"), name, host,
+      username: $("deploy-username").value.trim(),
+      deviceId: $("deploy-profile-device").value,
+      packagePath: $("deploy-package").value,
+      slowMode: $("deploy-slow").checked,
+      updatedAt: new Date().toISOString(),
+      lastCheck: selected?.lastCheck || null,
+    };
+    const next = selected ? profiles.map((entry) => entry.id === selected.id ? profile : entry) : [...profiles, profile];
+    saveDeploymentSettings({ ...settings, profiles: next, activeProfileId: profile.id, host, packagePath: profile.packagePath, slowMode: profile.slowMode });
+    renderDeploymentProfiles(profile.id);
+    $("deploy-status").textContent = `Saved deployment profile “${profile.name}”.`;
+  }
+  function updateActiveDeploymentProfile(patch) {
+    const selected = activeDeploymentProfile();
+    if (!selected) return;
+    saveDeploymentSettings({
+      profiles: deploymentProfiles().map((profile) => profile.id === selected.id
+        ? { ...profile, ...patch, updatedAt: new Date().toISOString() } : profile),
+    });
+    renderDeploymentProfiles(selected.id);
+  }
   function renderDeploymentHistory() {
     const host = $("deployment-history"),
       settings = deploymentSettings(),
@@ -3510,7 +3576,7 @@
         $("deploy-status").textContent =
           `Rollback package selected: ${entry.backupPath}`;
       };
-      title.textContent = `${entry.host} · ${entry.slowMode ? "slow mode" : "normal mode"}`;
+      title.textContent = `${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · ${entry.slowMode ? "slow mode" : "normal mode"}`;
       detail.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.device || "Touchscreen"}${entry.resolution ? ` · ${entry.resolution}` : ""} · ${entry.packagePath}`;
       row.append(rollback, title, detail);
       host.appendChild(row);
@@ -5961,6 +6027,7 @@
       if (result.paths?.length) {
         $("deploy-package").value = result.paths[0];
         saveDeploymentSettings({ packagePath: result.paths[0] });
+        updateActiveDeploymentProfile({ packagePath: result.paths[0] });
       }
       $("contract-status").textContent = `Built ${result.paths.length} packages in ${result.folder}`;
       setStatus(`Built ${result.paths.length} panel packages`);
@@ -6017,6 +6084,7 @@
       });
       $("deploy-package").value = result.path;
       saveDeploymentSettings({ packagePath: result.path });
+      updateActiveDeploymentProfile({ packagePath: result.path });
       $("contract-status").textContent =
         "Built " + result.path + " for " + device.name;
       setStatus("Built " + result.path + " for " + device.name);
@@ -6032,13 +6100,34 @@
       alert("Panel deployment is available in the Windows application.");
       return;
     }
-    const settings = deploymentSettings();
-    $("deploy-host").value = settings.host || "";
-    $("deploy-slow").checked = !!settings.slowMode;
-    $("deploy-package").value = settings.packagePath || "";
+    renderDeploymentProfiles();
     $("deploy-status").textContent = "Ready. Check the panel, then deploy.";
     renderDeploymentHistory();
     $("deployment-dialog").showModal();
+  };
+  $("deploy-profile").onchange = (event) => loadDeploymentProfile(event.target.value);
+  $("deploy-profile-new").onclick = () => {
+    $("deploy-profile").value = "";
+    $("deploy-profile-name").value = "";
+    $("deploy-profile-device").value = state.targetDevice;
+    $("deploy-host").value = "";
+    $("deploy-username").value = "";
+    $("deploy-package").value = "";
+    $("deploy-slow").checked = false;
+    $("deploy-profile-delete").disabled = true;
+    saveDeploymentSettings({ activeProfileId: "" });
+    $("deploy-profile-name").focus();
+  };
+  $("deploy-profile-save").onclick = saveCurrentDeploymentProfile;
+  $("deploy-profile-delete").onclick = () => {
+    const selected = activeDeploymentProfile();
+    if (!selected || !confirm(`Delete deployment profile “${selected.name}”?`)) return;
+    saveDeploymentSettings({
+      profiles: deploymentProfiles().filter((profile) => profile.id !== selected.id),
+      activeProfileId: "",
+    });
+    renderDeploymentProfiles("");
+    $("deploy-status").textContent = `Deleted deployment profile “${selected.name}”.`;
   };
   $("deploy-host").onchange = () =>
     saveDeploymentSettings({ host: $("deploy-host").value.trim() });
@@ -6053,6 +6142,10 @@
         ? `${host} is reachable · ${result.roundtripMs} ms`
         : `${host} did not respond · ${result.status}`;
       saveDeploymentSettings({ host });
+      updateActiveDeploymentProfile({
+        host,
+        lastCheck: { time: new Date().toISOString(), reachable: result.reachable, roundtripMs: result.roundtripMs, status: result.status },
+      });
     } catch (error) {
       $("deploy-status").textContent =
         `Reachability check failed: ${error.message}`;
@@ -6063,6 +6156,7 @@
       const result = await nativeRequest("selectCh5Package");
       $("deploy-package").value = result.path;
       saveDeploymentSettings({ packagePath: result.path });
+      updateActiveDeploymentProfile({ packagePath: result.path });
       $("deploy-status").textContent =
         `Selected ${(result.size / 1024 / 1024).toFixed(2)} MB package.`;
     } catch (error) {
@@ -6095,6 +6189,7 @@
         slowMode,
       });
       const settings = deploymentSettings(),
+        profile = activeDeploymentProfile(),
         history = [
           {
             time: new Date().toISOString(),
@@ -6102,12 +6197,15 @@
             packagePath,
             backupPath: result.backupPath,
             slowMode,
-            device: selectedDevice().name,
+            profileId: profile?.id || "",
+            profileName: profile?.name || "",
+            device: deviceProfiles.find((device) => device.id === profile?.deviceId)?.name || selectedDevice().name,
             resolution: `${state.width} × ${state.height}`,
           },
           ...(settings.history || []),
         ].slice(0, 20);
       saveDeploymentSettings({ host, packagePath, slowMode, history });
+      updateActiveDeploymentProfile({ host, packagePath, slowMode });
       renderDeploymentHistory();
       $("deploy-status").textContent =
         "Deployment terminal opened. Enter credentials there and watch for “Success. Restarting UI”.";
