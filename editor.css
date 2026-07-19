@@ -1264,6 +1264,25 @@ textarea {
   border-radius: 6px;
   background: #111d21;
 }
+.build-panel-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 150px;
+  margin: 8px 0 14px;
+  overflow: auto;
+}
+.build-panel-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #315057;
+  border-radius: 6px;
+  background: #111d21;
+}
+.build-panel-option input { margin: 0; }
+.build-panel-option small { margin-left: auto; color: #829b9d; }
 
 .contract-summary-row {
   display: grid;

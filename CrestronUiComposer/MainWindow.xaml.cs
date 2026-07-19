@@ -94,6 +94,9 @@ public partial class MainWindow : Window
                 case "buildCh5Package":
                     BuildCh5Package(id, root.GetProperty("payload"));
                     break;
+                case "buildCh5Packages":
+                    BuildCh5Packages(id, root.GetProperty("payload"));
+                    break;
                 case "selectCh5Package":
                     SelectCh5Package(id);
                     break;
@@ -312,6 +315,74 @@ public partial class MainWindow : Window
             ValidateCh5Archive(archive);
             File.Copy(archive, saveDialog.FileName, true);
             Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null }, null);
+        }
+        finally
+        {
+            try { Directory.Delete(workRoot, true); } catch { }
+        }
+    }
+
+    private void BuildCh5Packages(string id, JsonElement payload)
+    {
+        var packages = payload.GetProperty("packages").EnumerateArray().ToArray();
+        if (packages.Length == 0) throw new InvalidOperationException("Select at least one panel package.");
+        var usesContracts = payload.TryGetProperty("usesContracts", out var contractFlag) && contractFlag.GetBoolean();
+        string? contractPath = null;
+        if (usesContracts)
+        {
+            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping for all panel packages", Filter = "Crestron contract mapping (*.cse2j)|*.cse2j", Multiselect = false };
+            if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+            contractPath = contractDialog.FileName;
+        }
+
+        var folderDialog = new OpenFolderDialog { Title = "Select the multi-panel package output folder", Multiselect = false };
+        if (folderDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        var cli = FindCh5Cli();
+        if (cli is null) throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before building panel packages.");
+        var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
+        if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
+
+        var paths = new List<string>();
+        foreach (var package in packages)
+        {
+            var requestedName = package.GetProperty("projectName").GetString() ?? "CrestronUi";
+            var projectName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_').ToArray());
+            if (string.IsNullOrWhiteSpace(projectName)) throw new InvalidOperationException("A package name must contain letters or numbers.");
+            var html = package.GetProperty("html").GetString() ?? "";
+            var deviceJson = package.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
+            var destination = Path.Combine(folderDialog.FolderName, projectName + ".ch5z");
+            CreateCh5Archive(cli, runtime, html, projectName, deviceJson, contractPath, destination);
+            paths.Add(destination);
+        }
+        Respond(id, true, new { folder = folderDialog.FolderName, paths }, null);
+    }
+
+    private static void CreateCh5Archive(string cli, string runtime, string html, string projectName, string deviceJson, string? contractPath, string destination)
+    {
+        var workRoot = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(workRoot, "project");
+        var output = Path.Combine(workRoot, "output");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(output);
+        try
+        {
+            File.WriteAllText(Path.Combine(source, "index.html"), html);
+            File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
+            File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
+            var runtimeLicense = Path.Combine(Path.GetDirectoryName(runtime)!, "cr-com-lib.js.LICENSE.txt");
+            if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
+            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\"";
+            if (contractPath is not null) arguments += $" -c \"{contractPath}\"";
+            arguments += "\"";
+            var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
+            var stdOut = process.StandardOutput.ReadToEnd();
+            var stdErr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0) throw new InvalidOperationException("Crestron ch5-cli failed:\n" + stdErr + "\n" + stdOut);
+            var archive = Path.Combine(output, projectName + ".ch5z");
+            ValidateCh5Archive(archive);
+            File.Copy(archive, destination, true);
         }
         finally
         {

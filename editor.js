@@ -4608,6 +4608,43 @@
   function exportHtml() {
     return window.ComposerExporter.exportProject(project());
   }
+  function projectForDevice(device) {
+    const output = structuredClone(project()),
+      key = panelLayoutKey(device.id, device.width, device.height),
+      currentKey = panelLayoutKey();
+    output.width = device.width;
+    output.height = device.height;
+    output.targetDevice = device.id;
+    output.targetDeviceProfile = { ...device };
+    output.items = state.items.map((item) => {
+      const copy = structuredClone(item),
+        saved = key === currentKey ? item : item.deviceOverrides?.[key],
+        rect = saved || window.ComposerResponsiveLayout.adaptRect(
+          item, { width: state.width, height: state.height },
+          { width: device.width, height: device.height }, layoutDefaults(item),
+        );
+      Object.assign(copy, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
+      return copy;
+    });
+    return output;
+  }
+  function renderBuildPanelList() {
+    const host = $("build-panel-list");
+    host.innerHTML = "";
+    deviceProfiles.filter((device) => device.id !== "custom").forEach((device) => {
+      const label = document.createElement("label"), input = document.createElement("input"),
+        name = document.createElement("span"), size = document.createElement("small");
+      label.className = "build-panel-option";
+      input.type = "checkbox";
+      input.value = device.id;
+      input.checked = device.id === state.targetDevice;
+      input.disabled = device.supportsCh5 === false;
+      name.textContent = device.name;
+      size.textContent = `${device.width}×${device.height}`;
+      label.append(input, name, size);
+      host.appendChild(label);
+    });
+  }
   function syncPageBinding() {
     const mode = $("page-binding-mode").value,
       label = $("page-binding-label"),
@@ -5880,7 +5917,56 @@
   $("build-ch5").onclick = () => {
     syncContractMetadata();
     renderContractSummary();
+    renderBuildPanelList();
     $("build-project-dialog").showModal();
+  };
+  $("build-project-multi").onclick = async () => {
+    if (!native) { alert("CH5 packaging is available in the Windows application."); return; }
+    if (!approveExport()) return;
+    syncContractMetadata();
+    const projectName = state.contract.name.trim(),
+      selectedIds = [...document.querySelectorAll("#build-panel-list input:checked")].map((input) => input.value),
+      devices = selectedIds.map((id) => deviceProfiles.find((device) => device.id === id)).filter(Boolean);
+    if (!projectName) { alert("Enter a project / contract name."); return; }
+    if (!devices.length) { alert("Select at least one panel package."); return; }
+    const packages = [], buildProblems = [];
+    devices.forEach((device) => {
+      if (device.supportsCh5 === false) {
+        buildProblems.push(`${device.name} does not support CH5 projects.`);
+        return;
+      }
+      const targetProject = projectForDevice(device),
+        html = window.ComposerExporter.exportProject(targetProject);
+      targetProject.items.forEach((item) => {
+        const margin = Math.max(0, Number(item.layout?.safeMargin) || 0);
+        if (!window.ComposerResponsiveLayout.fitsSafeArea(
+          item, { width: device.width, height: device.height }, margin,
+        )) buildProblems.push(`${device.name}: “${item.name}” does not fit${margin ? ` its ${margin}px safe margin` : " the panel"}.`);
+      });
+      if (device.maximumProjectSizeMb && new TextEncoder().encode(html).length > device.maximumProjectSizeMb * 1024 * 1024)
+        buildProblems.push(`${device.name}: generated project exceeds the ${device.maximumProjectSizeMb} MB limit.`);
+      packages.push({ projectName: `${projectName}-${device.model}`, device, html });
+    });
+    if (buildProblems.length) {
+      alert(`Multi-panel build cannot continue:\n\n${buildProblems.join("\n")}`);
+      return;
+    }
+    const usesContracts = state.pages.some((page) => page.bindingMode === "contract") ||
+      state.items.some((item) => Object.values(item.signalBindings || {}).some((binding) => binding.mode === "contract") ||
+        Object.entries(item.properties || {}).some(([key, value]) => /bindingmode$/i.test(key) && value === "contract"));
+    $("contract-status").textContent = `Building ${packages.length} panel packages…`;
+    setStatus(`Building ${packages.length} panel packages…`);
+    try {
+      const result = await nativeRequest("buildCh5Packages", { packages, usesContracts });
+      if (result.paths?.length) {
+        $("deploy-package").value = result.paths[0];
+        saveDeploymentSettings({ packagePath: result.paths[0] });
+      }
+      $("contract-status").textContent = `Built ${result.paths.length} packages in ${result.folder}`;
+      setStatus(`Built ${result.paths.length} panel packages`);
+    } catch (error) {
+      if (error.message !== "cancelled") { setStatus("Multi-panel build failed"); alert(error.message); }
+    }
   };
   $("contract-export").onclick = () => saveContractEditorProject(false);
   $("contract-open").onclick = () => saveContractEditorProject(true);
