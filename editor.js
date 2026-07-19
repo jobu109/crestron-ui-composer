@@ -1961,7 +1961,7 @@
         instancePath: widgetPath,
         parentPath: widgetPath.slice(0, -(widgetName.length + 1)),
         nestedInstanceName: widgetName,
-        attributePath: parts.slice(1).join("_") || parts[0] || "Signal",
+        attributePath: parts[parts.length - 1] || "Signal",
         instances: 1,
       };
     }

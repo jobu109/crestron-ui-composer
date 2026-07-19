@@ -76,7 +76,9 @@
         : address;
     if (prefix && structured.includes(".")) {
       const rootEnd = structured.indexOf("."),
-        remainder = structured.slice(rootEnd + 1);
+        remainder = structured.includes("[")
+          ? structured.slice(rootEnd + 1)
+          : address.split(".").pop();
       structured = `${prefix}.${remainder}`;
     }
     const separator = structured.lastIndexOf(".");
