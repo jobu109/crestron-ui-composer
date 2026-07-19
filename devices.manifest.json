@@ -65,6 +65,19 @@
       "validationStatus": "manufacturer-verified"
     },
     {
+      "id": "monitor-4k",
+      "manufacturer": "Generic",
+      "model": "4K-Monitor",
+      "name": "4K Monitor (Landscape)",
+      "width": 3840,
+      "height": 2160,
+      "aspectRatio": "16:9",
+      "colorDepth": 24,
+      "supportsCh5": true,
+      "deploymentPlatform": "CH5 XPanel / Browser",
+      "validationStatus": "standard-display-resolution"
+    },
+    {
       "id": "custom",
       "manufacturer": "Custom",
       "model": "Custom",
