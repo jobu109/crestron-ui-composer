@@ -104,5 +104,16 @@ run("exported action runtime is valid JavaScript", () => {
   new Function(html.slice(start, end));
 });
 
+run("simulator and mounted widgets share resolved contract addresses", () => {
+  assert.equal(
+    ComposerRuntime.resolveAddress("RollingToggle.Selected", "digital", "input", "Home.RollingToggle"),
+    "Home.RollingToggle.Selected",
+  );
+  assert.equal(
+    ComposerRuntime.resolveAddress("1", "digital", "input", "Home.RollingToggle"),
+    "1",
+  );
+});
+
 if (process.exitCode) process.exit(process.exitCode);
 console.log("All regression checks passed.");

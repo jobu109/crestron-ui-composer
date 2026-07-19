@@ -3470,9 +3470,10 @@
   }
   function setSimulatedSignal(row, value) {
     if (!row.value) return;
+    const address = simulatedSignalAddress(row);
     window.ComposerRuntime.simulator.set(
       signalTypeCode(row.type),
-      String(row.value),
+      address,
       value,
     );
     if (
@@ -3484,6 +3485,16 @@
       renderPage();
     }
     refreshSimulatorEvents();
+  }
+  function simulatedSignalAddress(row) {
+    if (!row.itemId) return String(row.value || "");
+    const item = state.items.find((candidate) => candidate.id === row.itemId);
+    return window.ComposerRuntime.resolveAddress(
+      String(row.value || ""),
+      row.type,
+      row.direction,
+      item ? contractWidgetPrefix(item) : "",
+    );
   }
   function renderSignalSimulator() {
     const query = String($("simulator-search").value || "")
@@ -3513,7 +3524,7 @@
         tr.appendChild(td);
       });
       const controlCell = document.createElement("td"),
-        key = `${signalTypeCode(row.type)}:${row.value}`;
+        key = `${signalTypeCode(row.type)}:${simulatedSignalAddress(row)}`;
       if (!row.value) controlCell.textContent = "—";
       else if (row.type === "digital" && row.direction === "output") {
         const button = document.createElement("button");

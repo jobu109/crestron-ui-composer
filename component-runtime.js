@@ -746,5 +746,13 @@
         });
     });
   }
-  global.ComposerRuntime = { register, get, mount, definitions, simulator };
+  global.ComposerRuntime = {
+    register,
+    get,
+    mount,
+    definitions,
+    simulator,
+    resolveAddress: contractAddress,
+    typeCode,
+  };
 })(window);
