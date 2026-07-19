@@ -53,6 +53,7 @@
   let activeColorInput = null;
   let panelZoom = 1;
   let lastRenderedPageId = "";
+  let customEditingId = "";
   let snapEnabled = true,
     snapSize = 10;
   const snap = (value) =>
@@ -1847,7 +1848,14 @@
         (key) => ($("prop-" + key).disabled = locked),
       );
       $("edit-source").disabled = !!item.componentId;
-      $("create-custom-component").disabled = !!item.componentId;
+      const editableCustom = state.customComponents.some(
+        (entry) => entry.id === item.componentId,
+      );
+      $("create-custom-component").disabled =
+        !!item.componentId && !editableCustom;
+      $("create-custom-component").textContent = editableCustom
+        ? "Edit palette component"
+        : "Create palette component";
       refreshTargets();
       renderProperties(item);
       renderBindings(item);
@@ -4401,70 +4409,204 @@
       $("source-dialog").showModal();
     }
   };
+  function splitCustomSource(source) {
+    const documentValue = new DOMParser().parseFromString(
+        String(source || ""),
+        "text/html",
+      ),
+      css = [...documentValue.querySelectorAll("style")]
+        .map((element) => element.textContent)
+        .join("\n"),
+      javascript = [...documentValue.querySelectorAll("script")]
+        .map((element) => element.textContent)
+        .join("\n");
+    documentValue.querySelectorAll("style,script").forEach((element) =>
+      element.remove(),
+    );
+    return { html: documentValue.body.innerHTML, css, javascript };
+  }
+  function composeCustomSource() {
+    const html = $("custom-source-html").value,
+      css = $("custom-source-css").value,
+      javascript = $("custom-source-javascript").value;
+    return `${css ? `<style>${css}</style>` : ""}${html}${javascript ? `<script>${javascript}<\/script>` : ""}`;
+  }
+  function addCustomPropertyRow(property = {}) {
+    const row = document.createElement("div");
+    row.className = "custom-property-row";
+    row.innerHTML =
+      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
+    row.querySelector('[data-field="key"]').value = property.key || "";
+    row.querySelector('[data-field="name"]').value = property.name || "";
+    row.querySelector('[data-field="type"]').value = property.type || "text";
+    row.querySelector('[data-field="defaultValue"]').value =
+      property.type === "select"
+        ? (property.options || []).map((option) => option.value).join(",")
+        : property.defaultValue ?? "";
+    row.querySelector("button").onclick = () => {
+      row.remove();
+      refreshCustomPreview();
+    };
+    row.querySelectorAll("input,select").forEach(
+      (input) => (input.oninput = refreshCustomPreview),
+    );
+    $("custom-property-list").appendChild(row);
+  }
+  function addCustomSignalRow(signal = {}) {
+    const row = document.createElement("div");
+    row.className = "custom-signal-row";
+    row.innerHTML =
+      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>digital</option><option>analog</option><option>serial</option></select><select data-field="direction"><option>output</option><option>input</option></select><input data-field="defaultValue" placeholder="Join / contract"><button type="button" class="custom-row-delete">×</button>';
+    ["key", "name", "type", "direction", "defaultValue"].forEach((key) => {
+      row.querySelector(`[data-field="${key}"]`).value = signal[key] || "";
+    });
+    row.querySelector("button").onclick = () => row.remove();
+    $("custom-signal-list").appendChild(row);
+  }
+  function collectCustomProperties() {
+    return [...$("custom-property-list").children]
+      .map((row) => {
+        const value = (key) => row.querySelector(`[data-field="${key}"]`).value,
+          key = value("key").replace(/[^A-Za-z0-9_$]/g, "_"),
+          type = value("type"),
+          rawDefault = value("defaultValue");
+        if (!key) return null;
+        return {
+          key,
+          name: value("name") || key,
+          type,
+          defaultValue:
+            type === "number"
+              ? Number(rawDefault) || 0
+              : type === "select"
+                ? rawDefault.split(",")[0] || ""
+                : rawDefault,
+          ...(type === "select"
+            ? {
+                options: rawDefault
+                  .split(",")
+                  .map((option) => option.trim())
+                  .filter(Boolean)
+                  .map((option) => ({ value: option, label: option })),
+              }
+            : {}),
+        };
+      })
+      .filter(Boolean);
+  }
+  function collectCustomSignals() {
+    return [...$("custom-signal-list").children]
+      .map((row) => {
+        const value = (key) => row.querySelector(`[data-field="${key}"]`).value,
+          key = value("key").replace(/[^A-Za-z0-9_$]/g, "_");
+        return key
+          ? {
+              key,
+              name: value("name") || key,
+              type: value("type"),
+              direction: value("direction"),
+              defaultValue: value("defaultValue").trim(),
+            }
+          : null;
+      })
+      .filter(Boolean);
+  }
+  function refreshCustomPreview() {
+    let source = composeCustomSource();
+    collectCustomProperties().forEach((property) => {
+      source = source.replaceAll(
+        `{{${property.key}}}`,
+        String(property.defaultValue ?? ""),
+      );
+    });
+    $("custom-component-preview").srcdoc = safeDoc(source, "");
+  }
+  function openCustomBuilder(item, entry = null) {
+    customEditingId = entry?.id || "";
+    const source = splitCustomSource(entry?.html || item.source),
+      properties = entry?.properties || [],
+      signals = entry?.signals || [];
+    $("custom-component-title").textContent = entry
+      ? "Edit palette component"
+      : "Create palette component";
+    $("custom-component-save").textContent = entry
+      ? "Update component"
+      : "Create component";
+    $("custom-component-name").value = entry?.name || item.name || "Custom component";
+    $("custom-component-category").value = entry?.category || "Custom";
+    $("custom-source-html").value = source.html;
+    $("custom-source-css").value = source.css;
+    $("custom-source-javascript").value = source.javascript;
+    $("custom-property-list").innerHTML = "";
+    $("custom-signal-list").innerHTML = "";
+    properties.forEach(addCustomPropertyRow);
+    signals.forEach(addCustomSignalRow);
+    refreshCustomPreview();
+    $("custom-component-dialog").showModal();
+  }
   $("create-custom-component").onclick = () => {
     const item = current();
-    if (!item || item.componentId) return;
-    $("custom-component-name").value = item.name || "Custom component";
-    $("custom-component-category").value = "Custom";
-    $("custom-component-properties").value = "";
-    $("custom-component-signals").value = "";
-    $("custom-component-dialog").showModal();
+    if (!item) return;
+    const entry = state.customComponents.find(
+      (candidate) => candidate.id === item.componentId,
+    );
+    if (item.componentId && !entry) return;
+    openCustomBuilder(item, entry || null);
   };
+  $("custom-property-add").onclick = () => addCustomPropertyRow();
+  $("custom-signal-add").onclick = () => addCustomSignalRow();
+  $("custom-preview-refresh").onclick = refreshCustomPreview;
+  ["custom-source-html", "custom-source-css", "custom-source-javascript"].forEach(
+    (id) => ($(id).oninput = refreshCustomPreview),
+  );
+  document.querySelectorAll("[data-custom-tab]").forEach((button) => {
+    button.onclick = () => {
+      document.querySelectorAll("[data-custom-tab]").forEach((entry) =>
+        entry.classList.toggle("active", entry === button),
+      );
+      ["html", "css", "javascript"].forEach(
+        (name) =>
+          ($("custom-source-" + name).hidden = button.dataset.customTab !== name),
+      );
+    };
+  });
   $("custom-component-save").onclick = () => {
     const item = current(),
       name = $("custom-component-name").value.trim();
     if (!item || !name) return;
-    const propertyTypes = new Set(["text", "number", "color", "select"]),
-      signalTypes = new Set(["digital", "analog", "serial"]),
-      parseLines = (id) =>
-        $(id)
-          .value.split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => line.split("|").map((part) => part.trim())),
-      properties = parseLines("custom-component-properties").map(
-        ([key, label, type, defaultValue, options]) => ({
-          key: key.replace(/[^A-Za-z0-9_$]/g, "_"),
-          name: label || key,
-          type: propertyTypes.has(type) ? type : "text",
-          defaultValue:
-            type === "number" ? Number(defaultValue) || 0 : defaultValue || "",
-          ...(type === "select"
-            ? {
-                options: String(options || defaultValue || "")
-                  .split(",")
-                  .filter(Boolean)
-                  .map((value) => ({ value, label: value })),
-              }
-            : {}),
-        }),
-      ),
-      signals = parseLines("custom-component-signals").map(
-        ([key, label, type, direction, defaultValue]) => ({
-          key: key.replace(/[^A-Za-z0-9_$]/g, "_"),
-          name: label || key,
-          type: signalTypes.has(type) ? type : "digital",
-          direction: direction === "input" ? "input" : "output",
-          defaultValue: defaultValue || "",
-        }),
-      ),
-      id = `custom-${name
+    let entry = state.customComponents.find(
+      (candidate) => candidate.id === customEditingId,
+    );
+    if (!entry) {
+      const id = `custom-${name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")}-${uid().slice(-6)}`,
-      entry = {
-        id,
-        name,
-        category: $("custom-component-category").value.trim() || "Custom",
-        html: item.source,
-        defaultSize: { width: item.w, height: item.h },
-        properties,
-        signals,
-      };
-    state.customComponents.push(entry);
+        .replace(/^-+|-+$/g, "")}-${uid().slice(-6)}`;
+      entry = { id };
+      state.customComponents.push(entry);
+    }
+    Object.assign(entry, {
+      name,
+      category: $("custom-component-category").value.trim() || "Custom",
+      html: composeCustomSource(),
+      defaultSize: entry.defaultSize || { width: item.w, height: item.h },
+      properties: collectCustomProperties(),
+      signals: collectCustomSignals(),
+    });
+    const libraryEntry = state.components.find(
+      (component) => component.componentId === entry.id,
+    );
+    if (libraryEntry) {
+      libraryEntry.displayName = entry.name;
+      libraryEntry.category = entry.category;
+    }
     registerCustomComponent(entry);
+    state.items
+      .filter((candidate) => candidate.componentId === entry.id)
+      .forEach(renderItem);
+    renderComponentLibrary();
     commitHistory();
-    setStatus(`Created palette component “${name}”`);
+    setStatus(`${customEditingId ? "Updated" : "Created"} palette component “${name}”`);
   };
   $("apply-source").onclick = () => {
     if (current()) {

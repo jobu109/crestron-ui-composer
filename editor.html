@@ -751,32 +751,51 @@
     </dialog>
     <dialog id="custom-component-dialog" class="custom-component-dialog">
       <form method="dialog">
-        <h2>Create palette component</h2>
+        <h2 id="custom-component-title">Create palette component</h2>
         <p class="hint">
           Use {{propertyKey}} tokens in the selected HTML. JavaScript can call
           ComposerComponent.publish("signalKey", value) and receive feedback
           through composer-signal window messages.
         </p>
-        <div class="grid2">
-          <label>Name<input id="custom-component-name" /></label>
-          <label>Category<input id="custom-component-category" value="Custom" /></label>
+        <div class="custom-builder-layout">
+          <section class="custom-builder-controls">
+            <div class="grid2">
+              <label>Name<input id="custom-component-name" /></label>
+              <label>Category<input id="custom-component-category" value="Custom" /></label>
+            </div>
+            <div class="custom-builder-heading">
+              <h2>Editable properties</h2>
+              <button id="custom-property-add" type="button">+ Property</button>
+            </div>
+            <div class="custom-column-labels custom-property-columns">
+              <span>Key</span><span>Label</span><span>Type</span><span>Default</span><span></span>
+            </div>
+            <div id="custom-property-list" class="custom-builder-list"></div>
+            <div class="custom-builder-heading">
+              <h2>Signal bindings</h2>
+              <button id="custom-signal-add" type="button">+ Signal</button>
+            </div>
+            <div class="custom-column-labels custom-signal-columns">
+              <span>Key</span><span>Label</span><span>Type</span><span>Direction</span><span>Default</span><span></span>
+            </div>
+            <div id="custom-signal-list" class="custom-builder-list"></div>
+          </section>
+          <section class="custom-source-panel">
+            <div class="custom-source-tabs">
+              <button type="button" data-custom-tab="html" class="active">HTML</button>
+              <button type="button" data-custom-tab="css">CSS</button>
+              <button type="button" data-custom-tab="javascript">JavaScript</button>
+            </div>
+            <textarea id="custom-source-html" class="custom-source-editor"></textarea>
+            <textarea id="custom-source-css" class="custom-source-editor" hidden></textarea>
+            <textarea id="custom-source-javascript" class="custom-source-editor" hidden></textarea>
+            <div class="custom-preview-heading">
+              <h2>Live preview</h2>
+              <button id="custom-preview-refresh" type="button">Refresh</button>
+            </div>
+            <iframe id="custom-component-preview" sandbox="allow-scripts"></iframe>
+          </section>
         </div>
-        <label
-          >Editable properties
-          <textarea
-            id="custom-component-properties"
-            class="custom-definition-editor"
-            placeholder="label|Label|text|Room name&#10;accentColor|Accent color|color|#04aa8e"
-          ></textarea>
-        </label>
-        <label
-          >Signal bindings
-          <textarea
-            id="custom-component-signals"
-            class="custom-definition-editor"
-            placeholder="press|Press|digital|output|Custom.Press&#10;selected|Selected|digital|input|Custom.Selected"
-          ></textarea>
-        </label>
         <div class="dialog-actions">
           <button value="cancel">Cancel</button>
           <button id="custom-component-save" value="default" class="primary">

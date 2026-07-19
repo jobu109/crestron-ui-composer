@@ -285,11 +285,98 @@ h2 {
   margin-top: 2px;
 }
 .custom-component-dialog {
-  width: min(760px, 92vw);
+  width: min(1180px, 95vw);
 }
-.custom-definition-editor {
-  min-height: 150px;
+.custom-builder-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.15fr) minmax(380px, 0.85fr);
+  gap: 14px;
+  min-height: 0;
+  flex: 1;
+}
+.custom-builder-controls,
+.custom-source-panel {
+  min-height: 0;
+  overflow: auto;
+}
+.custom-builder-heading,
+.custom-preview-heading,
+.custom-source-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+.custom-builder-heading h2,
+.custom-preview-heading h2 {
+  margin: 0;
+}
+.custom-builder-heading button,
+.custom-preview-heading button,
+.custom-source-tabs button {
+  padding: 5px 9px;
+  border: 1px solid #46605f;
+  border-radius: 4px;
+  background: #253436;
+  color: #fff;
+}
+.custom-source-tabs button.active {
+  border-color: #14d4b4;
+  background: #155448;
+}
+.custom-builder-list {
+  display: grid;
+  gap: 5px;
   margin-top: 4px;
+}
+.custom-property-row,
+.custom-property-columns {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 88px 1fr 32px;
+  gap: 5px;
+}
+.custom-signal-row,
+.custom-signal-columns {
+  display: grid;
+  grid-template-columns: 0.9fr 1fr 78px 85px 1fr 32px;
+  gap: 5px;
+}
+.custom-column-labels {
+  margin-top: 7px;
+  color: #789b97;
+  font-size: 10px;
+}
+.custom-builder-list input,
+.custom-builder-list select {
+  min-width: 0;
+  width: 100%;
+  padding: 5px;
+  border: 1px solid #415557;
+  border-radius: 4px;
+  background: #0d1517;
+  color: #fff;
+}
+.custom-builder-list .custom-row-delete {
+  padding: 3px;
+  color: #ffb3b3;
+}
+.custom-source-panel {
+  display: flex;
+  flex-direction: column;
+}
+.custom-source-editor {
+  min-height: 180px;
+  margin-top: 6px;
+  flex: 0 0 220px;
+}
+#custom-component-preview {
+  width: 100%;
+  min-height: 220px;
+  flex: 1;
+  border: 1px solid #46605f;
+  border-radius: 6px;
+  background: #182126;
 }
 .timeline-dialog {
   width: min(1100px, 94vw);
