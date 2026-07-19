@@ -517,6 +517,8 @@ public partial class MainWindow : Window
     {
         var settingsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer");
         var cli = FindCh5Cli();
+        var nodePath = FindNodeExecutable();
+        var npmCli = nodePath is null ? null : Path.Combine(Path.GetDirectoryName(nodePath)!, "node_modules", "npm", "bin", "npm-cli.js");
         Respond(id, true, new
         {
             appVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown",
@@ -524,14 +526,25 @@ public partial class MainWindow : Window
             architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
             dotnet = Environment.Version.ToString(),
             webView2 = EditorView.CoreWebView2.Environment.BrowserVersionString,
-            node = RunVersion("node", "--version"),
-            npm = RunVersion("npm.cmd", "--version"),
+            node = nodePath is null ? null : RunVersion(nodePath, "--version"),
+            npm = nodePath is not null && File.Exists(npmCli) ? RunVersion(nodePath, $"\"{npmCli}\" --version") : null,
             ch5Cli = cli is null ? null : RunVersion(cli, "--version"),
             ch5CliPath = cli,
             settingsFolder,
             installFolder = AppContext.BaseDirectory,
             portable = !AppContext.BaseDirectory.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), StringComparison.OrdinalIgnoreCase)
         }, null);
+    }
+
+    private static string? FindNodeExecutable()
+    {
+        var candidates = new List<string> {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "nodejs", "node.exe")
+        };
+        var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+        candidates.AddRange(path.Split(Path.PathSeparator).Where(folder => !string.IsNullOrWhiteSpace(folder)).Select(folder => Path.Combine(folder.Trim('"'), "node.exe")));
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static string? RunVersion(string fileName, string arguments)
