@@ -1976,6 +1976,13 @@
       .replace(/^_+|_+$/g, "");
     return /^[A-Za-z_]/.test(identifier) ? identifier : `_${identifier}`;
   }
+  function contractInstancePath(value) {
+    return String(value || "")
+      .split(".")
+      .filter(Boolean)
+      .map(simplIdentifier)
+      .join(".");
+  }
   function standardContractAttribute(type, direction, value) {
     if (/^Visibility$/i.test(simplIdentifier(value))) return "Visibility";
     const suffix =
@@ -2144,7 +2151,7 @@
         return;
       }
       const instancePath = shape.instancePath,
-        instanceName = simplIdentifier(instancePath),
+        instanceName = contractInstancePath(instancePath),
         attributeName = standardContractAttribute(
           row.type,
           row.direction,
@@ -2197,7 +2204,7 @@
       [...components.values()]
         .filter((component) => component.parentPath)
         .forEach((component) => {
-          const parentName = simplIdentifier(component.parentPath);
+          const parentName = contractInstancePath(component.parentPath);
           if (components.has(parentName)) return;
           const parts = component.parentPath.split(".").filter(Boolean),
             grandparentPath = parts.slice(0, -1).join(".");
@@ -2255,10 +2262,8 @@
         }
       });
       const isNested = !!component.parentPath,
-        parentName = simplIdentifier(component.parentPath),
-        exportedComponentName = isNested
-          ? `${parentName}${simplIdentifier(component.nestedInstanceName)}`
-          : component.instanceName,
+        parentName = contractInstancePath(component.parentPath),
+        exportedComponentName = component.instanceName,
         exportedComponent = {
         Errors: [],
         parentId: contractId,
