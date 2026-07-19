@@ -58,7 +58,7 @@
       },
     );
     const array = address.match(
-      /^([A-Za-z_][A-Za-z0-9_]*\[\d+\])\.([A-Za-z0-9_.]+)$/,
+      /^([A-Za-z_][A-Za-z0-9_.]*\[\d+\])\.([A-Za-z0-9_.]+)$/,
     );
     if (array) return `${array[1]}.${array[2].replace(/\./g, "_")}`;
     const parts = address.split(".");
@@ -515,12 +515,12 @@
       );
     if (id === "rolling-menu" && options.properties?.bindingMode === "contract") {
       const p = options.properties;
-      p.itemCountSignal = "RollingMenu[0].ItemCount";
-      p.selectedSetSignal = "RollingMenu[0].SelectedSet";
-      p.selectedOutSignal = "RollingMenu[0].SelectedFeedback";
+      p.itemCountSignal = "RollingMenu.ItemCount";
+      p.selectedSetSignal = "RollingMenu.SelectedSet";
+      p.selectedOutSignal = "RollingMenu.SelectedFeedback";
       ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
         const attribute = String(p[key] || "").split(".").pop();
-        p[key] = `RollingMenu[{index}].${attribute}`;
+        p[key] = `RollingMenu.Items[{index}].${attribute}`;
       });
     }
     root.dataset.component = id;

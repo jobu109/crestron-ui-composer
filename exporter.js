@@ -35,12 +35,12 @@
       ]),
     );
     if (item.componentId === "rolling-menu" && properties.bindingMode === "contract") {
-      properties.itemCountSignal = "RollingMenu[0].ItemCount";
-      properties.selectedSetSignal = "RollingMenu[0].SelectedSet";
-      properties.selectedOutSignal = "RollingMenu[0].SelectedFeedback";
+      properties.itemCountSignal = "RollingMenu.ItemCount";
+      properties.selectedSetSignal = "RollingMenu.SelectedSet";
+      properties.selectedOutSignal = "RollingMenu.SelectedFeedback";
       ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
         const attribute = String(properties[key] || "").split(".").pop();
-        properties[key] = `RollingMenu[{index}].${attribute}`;
+        properties[key] = `RollingMenu.Items[{index}].${attribute}`;
       });
     }
     return properties;
@@ -129,7 +129,7 @@
     const contractController = controller
         .replace(
           "function appearance(root,p){",
-          "function contractAddress(value){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix.replace(/\\\\./g,'_')+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/);if(array)return array[1]+'.'+array[2].replace(/\\\\./g,'_');var parts=address.split('.');return parts.length>2?parts.slice(0,-1).join('_')+'.'+parts[parts.length-1]:address}function appearance(root,p){",
+          "function contractAddress(value){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix.replace(/\\\\./g,'_')+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/);if(array)return array[1]+'.'+array[2].replace(/\\\\./g,'_');var parts=address.split('.');return parts.length>2?parts.slice(0,-1).join('_')+'.'+parts[parts.length-1]:address}function appearance(root,p){",
         )
         .replace(
           "function publishAddress(type,signal,value){",

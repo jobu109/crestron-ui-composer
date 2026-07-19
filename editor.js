@@ -1849,7 +1849,7 @@
                 )
                 .replace(/^RollingMenu\[\d+\]\./, "");
       return {
-        instancePath: "RollingMenu",
+        instancePath: row.range ? "RollingMenu.Items" : "RollingMenu",
         attributePath,
         instances: row.range
           ? Math.max(1, Number(row.rangeCount) || 1)
@@ -1922,7 +1922,8 @@
     });
     const contractId = stableContractId(`contract:${state.contract.name}`),
       cceComponents = [],
-      specifications = [];
+      specifications = [],
+      nestedSpecifications = [];
     components.forEach((component) => {
       const componentId = stableContractId(
           `component:${component.instanceName}`,
@@ -1961,25 +1962,41 @@
           feedbacks.push(makeEntry(eventRow, eventId, stateId, 1));
         }
       });
-      cceComponents.push({
+      const isRollingMenuItems = component.instancePath === "RollingMenu.Items",
+        exportedComponentName = isRollingMenuItems
+          ? "RollingMenuItem"
+          : component.instanceName,
+        exportedComponent = {
         Errors: [],
         parentId: contractId,
         id: componentId,
-        name: component.instanceName,
+        name: exportedComponentName,
         description: `Generated from Crestron UI Composer (${component.rows[0]?.page || "Project"})`,
         commands,
         feedbacks,
         specifications: [],
-      });
-      specifications.push({
+      };
+      cceComponents.push(exportedComponent);
+      const specification = {
         Errors: [],
-        parentId: contractId,
+        parentId: isRollingMenuItems
+          ? stableContractId("component:RollingMenu")
+          : contractId,
         id: stableContractId(`specification:${component.instanceName}`),
         componentId,
-        instanceName: component.instanceName,
+        instanceName: isRollingMenuItems ? "Items" : component.instanceName,
         numberOfInstances: component.instances,
-      });
+      };
+      if (isRollingMenuItems) nestedSpecifications.push(specification);
+      else specifications.push(specification);
     });
+    if (nestedSpecifications.length) {
+      const rollingMenu = cceComponents.find(
+        (component) => component.id === stableContractId("component:RollingMenu"),
+      );
+      if (rollingMenu) rollingMenu.specifications.push(...nestedSpecifications);
+      else errors.push("RollingMenu Items requires the RollingMenu parent component.");
+    }
     const contract = {
       Errors: [],
       id: contractId,
