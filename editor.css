@@ -237,6 +237,32 @@ dialog form {
   box-shadow: 0 0 14px #04dcb944 inset;
 }
 
+.color-native-row {
+  display: grid;
+  grid-template-columns: 1fr 52px;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.color-native-row button {
+  padding: 9px 12px;
+  border: 1px solid #557271;
+  border-radius: 5px;
+  background: #253436;
+  color: #fff;
+  cursor: pointer;
+}
+
+.color-native-input {
+  width: 52px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid #557271;
+  border-radius: 5px;
+  background: #172225;
+  cursor: pointer;
+}
+
 .color-dialog input[type="text"] {
   width: 100%;
   box-sizing: border-box;

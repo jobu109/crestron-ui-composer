@@ -598,6 +598,16 @@
       <form method="dialog">
         <h2 id="color-dialog-title">Choose color</h2>
         <div id="color-preview" class="color-preview"></div>
+        <div class="color-native-row">
+          <button id="color-native-open" type="button">Open color picker</button>
+          <input
+            id="color-native-input"
+            class="color-native-input"
+            type="color"
+            data-native-color-picker
+            aria-label="Native color picker"
+          />
+        </div>
         <label
           >Hex color<input
             id="color-hex"

@@ -83,6 +83,7 @@
       $("color-" + channel + "-value").value = [red, green, blue][index];
     });
     $("color-preview").style.background = value;
+    $("color-native-input").value = value;
     if (updateTarget && activeColorInput) {
       activeColorInput.value = value;
       activeColorInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -4232,6 +4233,9 @@
     const value = normalizeHexColor(event.target.value);
     if (value) setColorDialogValue(value);
   };
+  $("color-native-open").onclick = () => $("color-native-input").click();
+  $("color-native-input").oninput = (event) =>
+    setColorDialogValue(event.target.value);
   $("color-dialog").addEventListener("close", () => {
     activeColorInput = null;
   });
@@ -4239,7 +4243,7 @@
     "click",
     (event) => {
       const input = event.target.closest('input[type="color"]');
-      if (!input) return;
+      if (!input || input.hasAttribute("data-native-color-picker")) return;
       event.preventDefault();
       openColorDialog(input);
     },
@@ -4247,7 +4251,7 @@
   );
   document.addEventListener("keydown", (event) => {
     if (
-      event.target.matches?.('input[type="color"]') &&
+      event.target.matches?.('input[type="color"]:not([data-native-color-picker])') &&
       (event.key === "Enter" || event.key === " ")
     ) {
       event.preventDefault();
