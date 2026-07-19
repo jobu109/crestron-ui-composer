@@ -272,6 +272,8 @@
         return `Changed ${item.name} navigation`;
       if (JSON.stringify(old.interaction) !== JSON.stringify(item.interaction))
         return `Changed ${item.name} interaction`;
+      if (JSON.stringify(old.interactions) !== JSON.stringify(item.interactions))
+        return `Changed ${item.name} timeline`;
       return `Changed ${item.name}`;
     }
     if (previous.width !== next.width || previous.height !== next.height)
@@ -901,41 +903,87 @@
       element.style.removeProperty(name),
     );
   }
-  function playItemInteraction(item, reverse = false) {
+  function playItemInteraction(
+    item,
+    reverse = false,
+    interactionOverride = null,
+    keepAnimations = false,
+  ) {
     const element = stage.querySelector(`.widget[data-id="${item.id}"]`),
-      interaction = item.interaction || {};
+      interaction = interactionOverride || item.interaction || {};
     if (!element) return;
-    resetItemInteraction(item);
+    if (!keepAnimations) resetItemInteraction(item);
     element.animate(interactionFrames(interaction, reverse), {
       duration: Math.max(50, Number(interaction.duration) || 300),
-      delay: reverse ? 0 : Math.max(0, Number(interaction.delay) || 0),
+      delay: reverse
+        ? 0
+        : Math.max(
+            0,
+            Number(interaction.start ?? interaction.delay) || 0,
+          ),
       easing: interaction.easing || "ease-out",
     });
+  }
+  function interactionList(item) {
+    return item.interactions?.length
+      ? item.interactions
+      : item.interaction
+        ? [item.interaction]
+        : [];
+  }
+  function playItemTimeline(item) {
+    const tracks = interactionList(item);
+    resetItemInteraction(item);
+    tracks.forEach((track) =>
+      playItemInteraction(item, false, track, true),
+    );
   }
   function wireItemInteraction(element, item) {
     clearTimeout(element.interactionTimer);
     if (element.interactionAbort) element.interactionAbort.abort();
     element.interactionAbort = new AbortController();
     const listenerOptions = { signal: element.interactionAbort.signal };
-    const interaction = item.interaction || {};
-    if (!interaction.trigger || interaction.trigger === "none") return;
-    if (interaction.trigger === "page-enter")
-      element.interactionTimer = setTimeout(() => playItemInteraction(item), 0);
-    if (interaction.trigger === "delayed")
-      element.interactionTimer = setTimeout(() => playItemInteraction(item), 0);
+    const interactions = interactionList(item).filter(
+      (interaction) => interaction.trigger && interaction.trigger !== "none",
+    );
+    if (!interactions.length) return;
+    interactions
+      .filter((interaction) => interaction.trigger === "page-enter")
+      .forEach((interaction) =>
+        playItemInteraction(item, false, interaction, true),
+      );
+    interactions
+      .filter((interaction) => interaction.trigger === "delayed")
+      .forEach((interaction) =>
+        playItemInteraction(item, false, interaction, true),
+      );
     element.addEventListener(
       "pointerdown",
       () => {
-        if (interaction.trigger === "press") playItemInteraction(item);
+        interactions
+          .filter((interaction) => interaction.trigger === "press")
+          .forEach((interaction) =>
+            playItemInteraction(item, false, interaction, true),
+          );
       },
       listenerOptions,
     );
     element.addEventListener(
       "pointerup",
       () => {
-        if (interaction.trigger === "release") playItemInteraction(item);
-        if (interaction.trigger === "press" && interaction.preset === "press")
-          playItemInteraction(item, true);
+        interactions
+          .filter((interaction) => interaction.trigger === "release")
+          .forEach((interaction) =>
+            playItemInteraction(item, false, interaction, true),
+          );
+        interactions
+          .filter(
+            (interaction) =>
+              interaction.trigger === "press" && interaction.preset === "press",
+          )
+          .forEach((interaction) =>
+            playItemInteraction(item, true, interaction, true),
+          );
       },
       listenerOptions,
     );
@@ -1856,6 +1904,146 @@
       item.interaction = original;
     };
     $("interaction-reset").onclick = () => resetItemInteraction(item);
+    $("interaction-timeline-open").onclick = () => openTimeline(item);
+  }
+  function timelineOptions(values, selected) {
+    return values
+      .map(
+        ([value, label]) =>
+          `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`,
+      )
+      .join("");
+  }
+  function openTimeline(item) {
+    if (!item.interactions?.length) {
+      const source = item.interaction || {
+        trigger: "press",
+        preset: "press",
+        direction: "left",
+        duration: 180,
+        delay: 0,
+        easing: "ease-out",
+      };
+      item.interactions = [{ ...source, start: Number(source.delay) || 0 }];
+    }
+    $("timeline-widget-name").textContent = item.name;
+    renderTimeline(item);
+    $("timeline-dialog").showModal();
+  }
+  function renderTimeline(item) {
+    const host = $("timeline-tracks");
+    host.innerHTML = "";
+    (item.interactions || []).forEach((track, index) => {
+      const row = document.createElement("div"),
+        trigger = document.createElement("select"),
+        preset = document.createElement("select"),
+        direction = document.createElement("select"),
+        start = document.createElement("input"),
+        duration = document.createElement("input"),
+        easing = document.createElement("select"),
+        bar = document.createElement("div"),
+        fill = document.createElement("i"),
+        remove = document.createElement("button");
+      row.className = "timeline-track";
+      trigger.innerHTML = timelineOptions(
+        [
+          ["press", "Press"],
+          ["release", "Release"],
+          ["page-enter", "Page enter"],
+          ["delayed", "Delayed"],
+        ],
+        track.trigger,
+      );
+      preset.innerHTML = timelineOptions(
+        [
+          ["fade", "Fade"],
+          ["slide", "Slide"],
+          ["scale", "Scale"],
+          ["glow", "Glow"],
+          ["press", "Press state"],
+        ],
+        track.preset,
+      );
+      direction.innerHTML = timelineOptions(
+        [
+          ["left", "From left"],
+          ["right", "From right"],
+          ["up", "From above"],
+          ["down", "From below"],
+        ],
+        track.direction || "left",
+      );
+      easing.innerHTML = timelineOptions(
+        [
+          ["ease-out", "Ease out"],
+          ["ease-in-out", "Ease in/out"],
+          ["linear", "Linear"],
+          ["cubic-bezier(.2,.8,.2,1)", "Smooth"],
+        ],
+        track.easing,
+      );
+      start.type = duration.type = "number";
+      start.min = "0";
+      duration.min = "50";
+      start.value = track.start ?? track.delay ?? 0;
+      duration.value = track.duration || 300;
+      start.title = "Start offset (ms)";
+      duration.title = "Duration (ms)";
+      bar.className = "timeline-track-bar";
+      bar.appendChild(fill);
+      remove.type = "button";
+      remove.className = "timeline-delete";
+      remove.textContent = "×";
+      function updateBar() {
+        const startValue = Math.max(0, Number(track.start) || 0),
+          durationValue = Math.max(50, Number(track.duration) || 300);
+        fill.style.left = `${Math.min(95, (startValue / 2000) * 100)}%`;
+        fill.style.width = `${Math.max(2, Math.min(100 - (startValue / 2000) * 100, (durationValue / 2000) * 100))}%`;
+      }
+      trigger.onchange = () => {
+        track.trigger = trigger.value;
+        scheduleHistory();
+      };
+      preset.onchange = () => {
+        track.preset = preset.value;
+        scheduleHistory();
+      };
+      direction.onchange = () => {
+        track.direction = direction.value;
+        scheduleHistory();
+      };
+      easing.onchange = () => {
+        track.easing = easing.value;
+        scheduleHistory();
+      };
+      start.oninput = () => {
+        track.start = Math.max(0, Number(start.value) || 0);
+        updateBar();
+        scheduleHistory();
+      };
+      duration.oninput = () => {
+        track.duration = Math.max(50, Number(duration.value) || 300);
+        updateBar();
+        scheduleHistory();
+      };
+      remove.onclick = () => {
+        item.interactions.splice(index, 1);
+        renderTimeline(item);
+        commitHistory();
+      };
+      updateBar();
+      row.append(
+        trigger,
+        preset,
+        direction,
+        start,
+        duration,
+        easing,
+        bar,
+        remove,
+      );
+      host.appendChild(row);
+    });
   }
   function renderProperties(item) {
     const section = $("component-properties-section"),
@@ -4709,6 +4897,29 @@
   };
   $("undo").onclick = undo;
   $("redo").onclick = redo;
+  $("timeline-add").onclick = () => {
+    const item = current();
+    if (!item) return;
+    item.interactions = item.interactions || [];
+    item.interactions.push({
+      trigger: "press",
+      preset: "fade",
+      direction: "left",
+      start: 0,
+      duration: 300,
+      easing: "ease-out",
+    });
+    renderTimeline(item);
+    commitHistory();
+  };
+  $("timeline-play").onclick = () => {
+    const item = current();
+    if (item) playItemTimeline(item);
+  };
+  $("timeline-reset").onclick = () => {
+    const item = current();
+    if (item) resetItemInteraction(item);
+  };
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
   $("zoom-out").onclick = () => setPanelZoom(panelZoom - 0.1);

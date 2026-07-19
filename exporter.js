@@ -135,6 +135,7 @@
           instance: item.master ? `${item.id}--${page.id}` : item.id,
           pageId: page.id,
           interaction: item.interaction || null,
+          interactions: item.interactions || [],
         })),
     );
     const usedDefinitions = [
@@ -166,12 +167,12 @@
     const interactionRuntime =
         `var interactionItems=${JSON.stringify(interactionItems)};` +
         "function motion(c,reverse){c=c||{};var preset=c.preset||'fade',direction=c.direction||'left',move={left:'translateX(-48px)',right:'translateX(48px)',up:'translateY(-48px)',down:'translateY(48px)'},frames=preset==='slide'?[{opacity:0,transform:move[direction]},{opacity:1,transform:'translate(0,0)'}]:preset==='scale'?[{opacity:.35,transform:'scale(.72)'},{opacity:1,transform:'scale(1)'}]:preset==='glow'?[{filter:'drop-shadow(0 0 0 rgba(4,220,185,0))'},{filter:'drop-shadow(0 0 18px rgba(4,220,185,.95))'},{filter:'drop-shadow(0 0 0 rgba(4,220,185,0))'}]:preset==='press'?[{transform:'scale(1)',filter:'brightness(1)'},{transform:'scale(.94)',filter:'brightness(1.14)'}]:[{opacity:0},{opacity:1}];return reverse?frames.reverse():frames}" +
-        "function play(root,c,reverse){if(!root||!c||c.trigger==='none')return;root.getAnimations().forEach(function(a){a.cancel()});root.animate(motion(c,reverse),{duration:Math.max(50,Number(c.duration)||300),delay:reverse?0:Math.max(0,Number(c.delay)||0),easing:c.easing||'ease-out'})}" +
-        "function runInteraction(root,c,phase){if(!root||!c)return;if(phase==='press'&&c.trigger==='press')play(root,c);if(phase==='release'&&c.trigger==='release')play(root,c);if(phase==='release'&&c.trigger==='press'&&c.preset==='press')play(root,c,true)}function wireInteraction(entry){var root=document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c=entry.interaction;if(!root||!c||c.trigger==='none')return;if(c.trigger==='delayed')play(root,c);root.addEventListener('pointerdown',function(){runInteraction(root,c,'press')});root.addEventListener('pointerup',function(){runInteraction(root,c,'release')})}",
+        "function play(root,c,reverse){if(!root||!c||c.trigger==='none')return;root.animate(motion(c,reverse),{duration:Math.max(50,Number(c.duration)||300),delay:reverse?0:Math.max(0,Number(c.start==null?c.delay:c.start)||0),easing:c.easing||'ease-out'})}" +
+        "function tracks(entry){return entry.interactions&&entry.interactions.length?entry.interactions:(entry.interaction?[entry.interaction]:[])}function runInteraction(root,c,phase){if(!root||!c)return;if(phase==='press'&&c.trigger==='press')play(root,c);if(phase==='release'&&c.trigger==='release')play(root,c);if(phase==='release'&&c.trigger==='press'&&c.preset==='press')play(root,c,true)}function wireInteraction(entry){var root=document.querySelector('[data-instance=\"'+entry.instance+'\"]'),list=tracks(entry);if(!root||!list.length)return;list.forEach(function(c){if(c.trigger==='delayed')play(root,c)});root.addEventListener('pointerdown',function(){list.forEach(function(c){runInteraction(root,c,'press')})});root.addEventListener('pointerup',function(){list.forEach(function(c){runInteraction(root,c,'release')})})}",
       originalShow =
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});diag('Page: '+id)}",
       animatedShow =
-        "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id&&entry.interaction&&entry.interaction.trigger==='page-enter')play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),entry.interaction)});diag('Page: '+id)}",
+        "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id)tracks(entry).filter(function(c){return c.trigger==='page-enter'}).forEach(function(c){play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c)})});diag('Page: '+id)}",
       animatedController = controller
         .replace("function show(id){", interactionRuntime + "function show(id){")
         .replace(originalShow, animatedShow)
@@ -181,7 +182,7 @@
         )
         .replace(
           "window.addEventListener('message',function(e){",
-          "window.addEventListener('message',function(e){if(e.data&&e.data.type==='composer-interaction'){var root=Array.prototype.find.call(document.querySelectorAll('[data-instance]'),function(el){return el.contentWindow===e.source||(el.querySelector&&el.querySelector('iframe')&&el.querySelector('iframe').contentWindow===e.source)}),entry=root&&interactionItems.find(function(item){return item.instance===root.dataset.instance});if(entry)runInteraction(root,entry.interaction,e.data.phase)}",
+          "window.addEventListener('message',function(e){if(e.data&&e.data.type==='composer-interaction'){var root=Array.prototype.find.call(document.querySelectorAll('[data-instance]'),function(el){return el.contentWindow===e.source||(el.querySelector&&el.querySelector('iframe')&&el.querySelector('iframe').contentWindow===e.source)}),entry=root&&interactionItems.find(function(item){return item.instance===root.dataset.instance});if(entry)tracks(entry).forEach(function(c){runInteraction(root,c,e.data.phase)})}",
         );
     const contractController = animatedController
         .replace(

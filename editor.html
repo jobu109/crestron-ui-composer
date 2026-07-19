@@ -433,6 +433,9 @@
               <button id="interaction-preview" type="button">Play</button>
               <button id="interaction-reset" type="button">Reset</button>
             </div>
+            <button id="interaction-timeline-open" type="button">
+              Open timeline
+            </button>
           </section>
           <section class="signal-section">
             <h2>Signal bindings</h2>
@@ -780,6 +783,26 @@
             Create component
           </button>
         </div>
+      </form>
+    </dialog>
+    <dialog id="timeline-dialog" class="timeline-dialog">
+      <form method="dialog">
+        <div class="timeline-header">
+          <div>
+            <h2>Interaction timeline</h2>
+            <p id="timeline-widget-name" class="hint"></p>
+          </div>
+          <div class="timeline-toolbar">
+            <button id="timeline-add" type="button">+ Add track</button>
+            <button id="timeline-play" type="button" class="primary">Play all</button>
+            <button id="timeline-reset" type="button">Reset</button>
+          </div>
+        </div>
+        <div class="timeline-ruler" aria-hidden="true">
+          <span>0 ms</span><span>500</span><span>1000</span><span>1500</span><span>2000+</span>
+        </div>
+        <div id="timeline-tracks" class="timeline-tracks"></div>
+        <div class="dialog-actions"><button value="default">Done</button></div>
       </form>
     </dialog>
     <script src="component-runtime.js"></script>
