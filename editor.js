@@ -2263,7 +2263,10 @@
       });
       const isNested = !!component.parentPath,
         parentName = contractInstancePath(component.parentPath),
-        exportedComponentName = component.instanceName,
+        exportedComponentName = component.instanceName
+          .split(".")
+          .map(simplIdentifier)
+          .join("_"),
         exportedComponent = {
         Errors: [],
         parentId: contractId,
