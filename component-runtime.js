@@ -33,12 +33,10 @@
   }
   function contractPattern(value) {
     return String(value || "").replace(
-      /^(.*)\.(Items|Slides|Cards|Buttons)\.\{(?:n|index)\}\.(.+)$/,
-      function (_, prefix, collection, attribute) {
+      /^(.*)\.\{(?:n|index)\}\.(.+)$/,
+      function (_, prefix, attribute) {
         return (
           prefix.replace(/\./g, "_") +
-          "_" +
-          collection +
           "[{index}]." +
           attribute.replace(/\./g, "_")
         );
@@ -47,13 +45,11 @@
   }
   function contractAddress(value) {
     const address = String(value || "").replace(
-      /^(.*)\.(Items|Slides|Cards|Buttons)\.(\d+)\.(.+)$/,
-      function (_, prefix, collection, index, attribute) {
+      /^(.*)\.(\d+)\.(.+)$/,
+      function (_, prefix, index, attribute) {
         var number = Number(index);
         return (
           prefix.replace(/\./g, "_") +
-          "_" +
-          collection +
           "[" +
           Math.max(0, number - 1) +
           "]." +
@@ -498,6 +494,10 @@
       });
       if (sizes.css) definition.styles = (definition.styles || "") + sizes.css;
     }
+    definition.properties.forEach((property) => {
+      if (property.signalSetting && typeof property.defaultValue === "string")
+        property.defaultValue = contractPattern(property.defaultValue);
+    });
     definitions.set(definition.id, definition);
   }
   function get(id) {

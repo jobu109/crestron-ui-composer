@@ -20,9 +20,9 @@
   }
   function contractPattern(value) {
     return String(value || "").replace(
-      /^(.*)\.(Items|Slides|Cards|Buttons)\.\{(?:n|index)\}\.(.+)$/,
-      (_, prefix, collection, attribute) =>
-        `${prefix.replace(/\./g, "_")}_${collection}[{index}].${attribute.replace(/\./g, "_")}`,
+      /^(.*)\.\{(?:n|index)\}\.(.+)$/,
+      (_, prefix, attribute) =>
+        `${prefix.replace(/\./g, "_")}[{index}].${attribute.replace(/\./g, "_")}`,
     );
   }
   function widgetDocument(html, targetPage) {
@@ -117,7 +117,7 @@
     const contractController = controller
         .replace(
           "function appearance(root,p){",
-          "function contractAddress(value){var address=String(value||'').replace(/^(.*)\\\\.(Items|Slides|Cards|Buttons)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,collection,index,attribute){return prefix.replace(/\\\\./g,'_')+'_'+collection+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/);if(array)return array[1]+'.'+array[2].replace(/\\\\./g,'_');var parts=address.split('.');return parts.length>2?parts.slice(0,-1).join('_')+'.'+parts[parts.length-1]:address}function appearance(root,p){",
+          "function contractAddress(value){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix.replace(/\\\\./g,'_')+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/);if(array)return array[1]+'.'+array[2].replace(/\\\\./g,'_');var parts=address.split('.');return parts.length>2?parts.slice(0,-1).join('_')+'.'+parts[parts.length-1]:address}function appearance(root,p){",
         )
         .replace(
           "function publishAddress(type,signal,value){",

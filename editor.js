@@ -1524,6 +1524,40 @@
       item.source.slice(match.end);
     renderItem(item);
   }
+  function configuredRangeCount(item, range = {}) {
+    const p = item?.properties || {},
+      baseKey = String(range.baseKey || ""),
+      countKeys = [
+        range.countKey,
+        /^primary/i.test(baseKey) ? "primaryCount" : "",
+        /^submenu/i.test(baseKey) ? "submenuCount" : "",
+        "defaultSlideCount",
+        "defaultCount",
+        "defaultItemCount",
+        "itemCount",
+        "slideCount",
+        "cardCount",
+        "buttonCount",
+        "loadCount",
+        "shadeCount",
+      ].filter(Boolean),
+      configured = countKeys
+        .map((key) => Number(p[key]))
+        .find((value) => Number.isFinite(value) && value > 0),
+      capacity = [
+        p.maxItems,
+        p.maxCards,
+        p.maxSlides,
+        p.maxButtons,
+        p.maxCount,
+      ]
+        .map(Number)
+        .find((value) => Number.isFinite(value) && value > 0);
+    return Math.max(
+      1,
+      Math.min(100, Math.round(configured || capacity || 1)),
+    );
+  }
   function collectProjectSignals() {
     const rows = [];
     state.pages.forEach((page) => {
@@ -1608,23 +1642,7 @@
             value: String(item.properties[range.baseKey] || ""),
             itemId: item.id,
             range: true,
-            rangeCount: Math.max(
-              1,
-              Math.min(
-                100,
-                Math.round(
-                  Number(
-                    item.properties.maxItems ||
-                      item.properties.maxCards ||
-                      item.properties.maxSlides ||
-                      item.properties.maxButtons ||
-                      item.properties.maxCount ||
-                      item.properties.defaultCount ||
-                      1,
-                  ) || 1,
-                ),
-              ),
-            ),
+            rangeCount: configuredRangeCount(item, range),
             rangeIncrement: Math.max(
               1,
               Math.round(Number(item.properties[range.incrementKey] || 1) || 1),
@@ -1780,16 +1798,13 @@
   function contractRangeCount(row) {
     if (!row.range || !row.itemId) return 1;
     const item = state.items.find((entry) => entry.id === row.itemId),
-      p = (item && item.properties) || {},
-      preferred = [
-        p.maxItems,
-        p.maxCards,
-        p.maxSlides,
-        p.maxButtons,
-        p.maxCount,
-        p.defaultCount,
-      ].find((value) => Number(value) > 0);
-    return Math.max(1, Math.min(100, Math.round(Number(preferred) || 1)));
+      definition = item?.componentId
+        ? window.ComposerRuntime.get(item.componentId)
+        : null,
+      range = (definition?.rangeBindings || []).find(
+        (entry) => String(item.properties?.[entry.baseKey] || "") === row.value,
+      );
+    return configuredRangeCount(item, range);
   }
   function expandedContractSignals() {
     const rows = [];
@@ -1813,16 +1828,14 @@
   }
   function contractSignalShape(row) {
     const value = String(row.value || "").trim(),
-      legacy = value.match(
-        /^(.*)\.(Items|Slides|Cards|Buttons)\.\{(?:n|index)\}\.(.+)$/,
-      ),
+      legacy = value.match(/^(.*)\.\{(?:n|index)\}\.(.+)$/),
       array = value.match(
         /^([A-Za-z_][A-Za-z0-9_]*)\[\{(?:n|index)\}\]\.(.+)$/,
       );
     if (row.range && legacy)
       return {
-        instancePath: `${legacy[1]}_${legacy[2]}`,
-        attributePath: legacy[3],
+        instancePath: legacy[1],
+        attributePath: legacy[2],
         instances: Math.max(1, Number(row.rangeCount) || 1),
       };
     if (row.range && array)
