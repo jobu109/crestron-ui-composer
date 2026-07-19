@@ -31,21 +31,6 @@
       "validationStatus": "manufacturer-verified"
     },
     {
-      "id": "tst-1070",
-      "manufacturer": "Crestron",
-      "model": "TST-1070",
-      "name": "Crestron TST-1070",
-      "width": 1280,
-      "height": 800,
-      "nativeWidth": 1920,
-      "nativeHeight": 1080,
-      "aspectRatio": "16:10",
-      "colorDepth": 24,
-      "supportsCh5": true,
-      "maximumProjectSizeMb": 512,
-      "validationStatus": "user-verified-viewport"
-    },
-    {
       "id": "tsw-770",
       "manufacturer": "Crestron",
       "model": "TSW-770",

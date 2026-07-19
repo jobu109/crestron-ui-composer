@@ -124,7 +124,7 @@ run("device presets use their effective Construct viewports", () => {
       device,
     ]),
   );
-  ["tsw-770", "tsw-880", "tsw-1070", "tsw-1080", "tst-1070", "tst-1080"].forEach(
+  ["tsw-770", "tsw-880", "tsw-1070", "tsw-1080", "tst-1080"].forEach(
     (id) => assert.deepEqual([devices.get(id)?.width, devices.get(id)?.height], [1280, 800]),
   );
   assert.deepEqual([devices.get("monitor-4k")?.width, devices.get("monitor-4k")?.height], [2560, 1440]);
