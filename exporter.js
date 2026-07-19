@@ -129,15 +129,15 @@
     const contractController = controller
         .replace(
           "function appearance(root,p){",
-          "function contractAddress(value){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/);if(array)return array[1]+'.'+array[2].replace(/\\\\./g,'_');var parts=address.split('.');return parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address}function appearance(root,p){",
+          "function standardAttribute(type,direction,value){var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Name'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=String(value||'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,'');if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix+suffix}function contractAddress(value,type,direction){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
         )
         .replace(
           "function publishAddress(type,signal,value){",
-          "function publishAddress(type,signal,value){signal=contractAddress(signal);",
+          "function publishAddress(type,signal,value){signal=contractAddress(signal,type,'output');",
         )
         .replace(
           "function subscribeAddress(type,signal,callback){",
-          "function subscribeAddress(type,signal,callback){signal=contractAddress(signal);",
+          "function subscribeAddress(type,signal,callback){signal=contractAddress(signal,type,'input');",
         ),
       restoredController = contractController.replace(
       "function appearance(root,p){",

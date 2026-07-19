@@ -1806,6 +1806,33 @@
       .replace(/^_+|_+$/g, "");
     return /^[A-Za-z_]/.test(identifier) ? identifier : `_${identifier}`;
   }
+  function standardContractAttribute(type, direction, value) {
+    const suffix =
+        type === "digital"
+          ? direction === "output"
+            ? "Press"
+            : "Selected"
+          : type === "analog"
+            ? direction === "output"
+              ? "ValueSet"
+              : "Feedback"
+            : direction === "output"
+              ? "Text"
+              : "Name",
+      patterns = {
+        digital: /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i,
+        analog:
+          direction === "output"
+            ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i
+            : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i,
+        serial: /(?:_?(?:IndirectText|Label|Name|Text))$/i,
+      },
+      generic = /^(?:Level|Value|Position|Selected|Indirect|Signal)$/i;
+    let prefix = simplIdentifier(value).replace(patterns[type], "");
+    prefix = prefix.replace(/_+$/g, "");
+    if (generic.test(prefix)) prefix = "";
+    return `${prefix}${suffix}`;
+  }
   function contractRangeCount(row) {
     if (!row.range || !row.itemId) return 1;
     const item = state.items.find((entry) => entry.id === row.itemId),
@@ -1910,7 +1937,11 @@
       else paths.set(value, row);
       const instancePath = shape.instancePath,
         instanceName = simplIdentifier(instancePath),
-        attributeName = simplIdentifier(shape.attributePath),
+        attributeName = standardContractAttribute(
+          row.type,
+          row.direction,
+          shape.attributePath,
+        ),
         key = instanceName,
         component = components.get(key) || {
           instanceName,
@@ -1923,6 +1954,19 @@
       if (component.instancePath !== instancePath) {
         errors.push(
           `“${instancePath}” and “${component.instancePath}” both become the SIMPL name “${instanceName}”. Rename one of the contract paths.`,
+        );
+        return;
+      }
+      if (
+        component.rows.some(
+          (entry) =>
+            entry.type === row.type &&
+            entry.direction === row.direction &&
+            entry.attributeName === attributeName,
+        )
+      ) {
+        errors.push(
+          `“${value}” becomes duplicate Contract attribute “${instanceName}.${attributeName}”.`,
         );
         return;
       }

@@ -43,7 +43,14 @@
       },
     );
   }
-  function contractAddress(value) {
+  function standardContractAttribute(type, direction, value) {
+    const suffix = type === "digital" ? (direction === "output" ? "Press" : "Selected") : type === "analog" ? (direction === "output" ? "ValueSet" : "Feedback") : direction === "output" ? "Text" : "Name",
+      pattern = type === "digital" ? /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i : type === "analog" ? direction === "output" ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i : /(?:_?(?:IndirectText|Label|Name|Text))$/i;
+    let prefix = String(value || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").replace(pattern, "").replace(/_+$/g, "");
+    if (/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix)) prefix = "";
+    return prefix + suffix;
+  }
+  function contractAddress(value, type, direction) {
     const address = String(value || "").replace(
       /^(.*)\.(\d+)\.(.+)$/,
       function (_, prefix, index, attribute) {
@@ -60,11 +67,27 @@
     const array = address.match(
       /^([A-Za-z_][A-Za-z0-9_.]*\[\d+\])\.([A-Za-z0-9_.]+)$/,
     );
-    if (array) return `${array[1]}.${array[2].replace(/\./g, "_")}`;
+    let structured;
+    if (array) structured = `${array[1]}.${array[2].replace(/\./g, "_")}`;
     const parts = address.split(".");
-    return parts.length > 2
-      ? `${parts[0]}.${parts.slice(1).join("_")}`
-      : address;
+    if (!structured)
+      structured = parts.length > 2
+        ? `${parts[0]}.${parts.slice(1).join("_")}`
+        : address;
+    const separator = structured.lastIndexOf(".");
+    return separator < 0 || !type || !direction
+      ? structured
+      : `${structured.slice(0, separator)}.${standardContractAttribute(type, direction, structured.slice(separator + 1))}`;
+  }
+  function standardContractPattern(value, type, direction) {
+    const pattern = contractPattern(value),
+      array = pattern.match(/^(.*\[\{index\}\])\.(.+)$/),
+      parts = pattern.split(".");
+    if (array)
+      return `${array[1]}.${standardContractAttribute(type, direction, array[2].replace(/\./g, "_"))}`;
+    return parts.length > 1
+      ? `${parts[0]}.${standardContractAttribute(type, direction, parts.slice(1).join("_"))}`
+      : pattern;
   }
   function library() {
     try {
@@ -498,6 +521,27 @@
       if (property.signalSetting && typeof property.defaultValue === "string")
         property.defaultValue = contractPattern(property.defaultValue);
     });
+    definition.signals.forEach((signal) => {
+      if (typeof signal.defaultValue === "string")
+        signal.defaultValue = standardContractPattern(
+          signal.defaultValue,
+          signal.type,
+          signal.direction,
+        );
+    });
+    [...(definition.addressBindings || []), ...(definition.rangeBindings || [])].forEach(
+      (binding) => {
+        const property = definition.properties.find(
+          (entry) => entry.key === (binding.key || binding.baseKey),
+        );
+        if (property && typeof property.defaultValue === "string")
+          property.defaultValue = standardContractPattern(
+            property.defaultValue,
+            binding.type,
+            binding.direction,
+          );
+      },
+    );
     definitions.set(definition.id, definition);
   }
   function get(id) {
@@ -543,14 +587,14 @@
     const signals = {
       publish(key, value) {
         const spec = definition.signals.find((s) => s.key === key),
-          signal = contractAddress(binding(key));
+          signal = contractAddress(binding(key), spec?.type, "output");
         if (!spec || !signal) return;
         if (lib) lib.publishEvent(typeCode(spec.type), signal, value);
         else simulator.publish(typeCode(spec.type), signal, value);
       },
       subscribe(key, callback) {
         const spec = definition.signals.find((s) => s.key === key),
-          signal = contractAddress(binding(key));
+          signal = contractAddress(binding(key), spec?.type, "input");
         if (!spec || !signal) return;
         if (lib) {
           const result = lib.subscribeState(
@@ -566,13 +610,13 @@
       },
       publishAddress(type, signal, value) {
         if (!signal) return;
-        signal = contractAddress(signal);
+        signal = contractAddress(signal, type, "output");
         if (lib) lib.publishEvent(typeCode(type), String(signal), value);
         else simulator.publish(typeCode(type), String(signal), value);
       },
       subscribeAddress(type, signal, callback) {
         if (!signal) return;
-        signal = contractAddress(signal);
+        signal = contractAddress(signal, type, "input");
         if (lib) {
           const result = lib.subscribeState(
             typeCode(type),
