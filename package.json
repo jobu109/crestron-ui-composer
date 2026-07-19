@@ -3,6 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test": "node tests/regression.test.js"
+    "test": "node tests/regression.test.js && node tests/widget-audit.test.js"
   }
 }
