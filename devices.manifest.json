@@ -63,15 +63,15 @@
       "validationStatus": "manufacturer-verified"
     },
     {
-      "id": "tst-902",
+      "id": "tst-1080",
       "manufacturer": "Crestron",
-      "model": "TST-902",
-      "name": "Crestron TST-902 (Smart Graphics only)",
-      "width": 1008,
-      "height": 588,
-      "aspectRatio": "12:7",
+      "model": "TST-1080",
+      "name": "Crestron TST-1080",
+      "width": 1920,
+      "height": 1200,
+      "aspectRatio": "16:10",
       "colorDepth": 24,
-      "supportsCh5": false,
+      "supportsCh5": true,
       "maximumProjectSizeMb": 512,
       "validationStatus": "manufacturer-verified"
     },
