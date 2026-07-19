@@ -1028,7 +1028,14 @@ textarea {
   color: #91a6a5;
   font-size: 9px;
 }
-.theme-grid input {
+.theme-grid label > input[type="checkbox"] {
+  display: inline-block;
+  width: auto;
+  height: auto;
+  margin: 0 4px 0 0;
+}
+.theme-grid input:not([type="checkbox"]),
+.theme-grid select {
   display: block;
   width: 100%;
   height: 28px;
@@ -1036,6 +1043,12 @@ textarea {
   border: 1px solid #3b5553;
   border-radius: 4px;
   background: #142124;
+}
+.theme-grid .theme-wide {
+  grid-column: 1 / -1;
+}
+.theme-grid .theme-token-disabled {
+  opacity: 0.48;
 }
 .theme-actions {
   display: grid;

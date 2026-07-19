@@ -292,26 +292,32 @@
         <h2 style="margin-top: 24px">Themes</h2>
         <div class="theme-grid">
           <label
-            >Page<input id="theme-page" type="color" value="#182126"
+            ><input id="theme-page-enabled" type="checkbox" checked /> Page<input id="theme-page" type="color" value="#182126"
           /></label>
           <label
-            >Surface<input id="theme-surface" type="color" value="#253436"
+            ><input id="theme-surface-enabled" type="checkbox" checked /> Surface<input id="theme-surface" type="color" value="#253436"
           /></label>
           <label
-            >Accent<input id="theme-accent" type="color" value="#04aa8e"
+            ><input id="theme-accent-enabled" type="checkbox" checked /> Accent<input id="theme-accent" type="color" value="#04aa8e"
           /></label>
           <label
-            >Text<input id="theme-text" type="color" value="#ffffff"
+            ><input id="theme-text-enabled" type="checkbox" checked /> Text<input id="theme-text" type="color" value="#ffffff"
           /></label>
           <label
-            >Glow<input id="theme-glow" type="color" value="#04dcb9"
+            ><input id="theme-glow-enabled" type="checkbox" checked /> Glow<input id="theme-glow" type="color" value="#04dcb9"
           /></label>
           <label
-            >Border<input id="theme-border" type="color" value="#ffffff"
+            ><input id="theme-border-enabled" type="checkbox" checked /> Border<input id="theme-border" type="color" value="#ffffff"
           /></label>
+          <label><input id="theme-font-size-enabled" type="checkbox" /> Text size<input id="theme-font-size" type="number" min="1" max="200" value="18" /></label>
+          <label><input id="theme-corner-radius-enabled" type="checkbox" /> Corners<input id="theme-corner-radius" type="number" min="0" max="200" value="8" /></label>
+          <label><input id="theme-glow-strength-enabled" type="checkbox" /> Glow size<input id="theme-glow-strength" type="number" min="0" max="100" value="12" /></label>
+          <label><input id="theme-animation-duration-enabled" type="checkbox" /> Motion ms<input id="theme-animation-duration" type="number" min="50" max="10000" value="300" /></label>
+          <label class="theme-wide"><input id="theme-animation-easing-enabled" type="checkbox" /> Motion easing<select id="theme-animation-easing"><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in/out</option><option value="linear">Linear</option><option value="cubic-bezier(.2,.8,.2,1)">Smooth</option></select></label>
         </div>
         <div class="theme-actions">
           <button id="theme-selection" type="button">Selection</button>
+          <button id="theme-component-type" type="button">Component type</button>
           <button id="theme-page-apply" type="button">Page</button>
           <button id="theme-project" type="button">Project</button>
           <button id="theme-save" type="button">Save theme</button>

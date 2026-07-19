@@ -1809,6 +1809,10 @@
       templateHost.innerHTML = '<p class="hint">No page templates.</p>';
   }
   function currentTheme() {
+    const tokenKeys = [
+      "page", "surface", "accent", "text", "glow", "border", "font-size",
+      "corner-radius", "glow-strength", "animation-duration", "animation-easing",
+    ];
     return {
       page: $("theme-page").value,
       surface: $("theme-surface").value,
@@ -1816,31 +1820,51 @@
       text: $("theme-text").value,
       glow: $("theme-glow").value,
       border: $("theme-border").value,
+      fontSize: Math.max(1, Number($("theme-font-size").value) || 18),
+      cornerRadius: Math.max(0, Number($("theme-corner-radius").value) || 0),
+      glowStrength: Math.max(0, Number($("theme-glow-strength").value) || 0),
+      animationDuration: Math.max(50, Number($("theme-animation-duration").value) || 300),
+      animationEasing: $("theme-animation-easing").value,
+      enabled: Object.fromEntries(tokenKeys.map((key) => [key, $("theme-" + key + "-enabled").checked])),
     };
   }
   function loadTheme(theme) {
     ["page", "surface", "accent", "text", "glow", "border"].forEach((key) => {
       if (theme[key]) $("theme-" + key).value = theme[key];
     });
+    const extended = {
+      "font-size": theme.fontSize,
+      "corner-radius": theme.cornerRadius,
+      "glow-strength": theme.glowStrength,
+      "animation-duration": theme.animationDuration,
+      "animation-easing": theme.animationEasing,
+    };
+    Object.entries(extended).forEach(([key, value]) => {
+      if (value !== undefined) $("theme-" + key).value = value;
+    });
+    ["page", "surface", "accent", "text", "glow", "border", ...Object.keys(extended)].forEach((key) => {
+      const legacyColor = ["page", "surface", "accent", "text", "glow", "border"].includes(key);
+      $("theme-" + key + "-enabled").checked = theme.enabled?.[key] ?? legacyColor;
+    });
     setStatus(`Loaded theme “${theme.name || "palette"}”`);
   }
   function themeValueFor(key, theme) {
     const name = key.toLowerCase();
     if (!/color/.test(name)) return "";
-    if (/glow/.test(name)) return theme.glow;
-    if (/border|outline/.test(name)) return theme.border;
-    if (/text|label|status|value/.test(name)) return theme.text;
+    if (/glow/.test(name)) return theme.enabled.glow ? theme.glow : "";
+    if (/border|outline/.test(name)) return theme.enabled.border ? theme.border : "";
+    if (/text|label|status|value/.test(name)) return theme.enabled.text ? theme.text : "";
     if (
       /off|background|surface|face|button|card|frame|panel|track|knob|shade/.test(
         name,
       )
     )
-      return theme.surface;
+      return theme.enabled.surface ? theme.surface : "";
     if (
       /accent|selected|pressed|active|on|high|gauge|wave|fill|level/.test(name)
     )
-      return theme.accent;
-    return theme.accent;
+      return theme.enabled.accent ? theme.accent : "";
+    return theme.enabled.accent ? theme.accent : "";
   }
   function applyThemeToItems(items, theme) {
     items.forEach((item) => {
@@ -1849,6 +1873,22 @@
         const value = themeValueFor(key, theme);
         if (value) item.properties[key] = value;
       });
+      Object.keys(item.properties).forEach((key) => {
+        if (theme.enabled["font-size"] && /^(?:fontSize|textSize)$/i.test(key))
+          item.properties[key] = theme.fontSize;
+        if (theme.enabled["corner-radius"] && /^(?:cornerRadius|borderRadius)$/i.test(key))
+          item.properties[key] = theme.cornerRadius;
+        if (theme.enabled["glow-strength"] && /^(?:glowStrength|glowSize)$/i.test(key))
+          item.properties[key] = theme.glowStrength;
+      });
+      if (theme.enabled["animation-duration"]) {
+        item.interaction = { ...(item.interaction || {}), duration: theme.animationDuration };
+        (item.interactions || []).forEach((track) => (track.duration = theme.animationDuration));
+      }
+      if (theme.enabled["animation-easing"]) {
+        item.interaction = { ...(item.interaction || {}), easing: theme.animationEasing };
+        (item.interactions || []).forEach((track) => (track.easing = theme.animationEasing));
+      }
       renderItem(item);
     });
   }
@@ -1856,15 +1896,25 @@
     const theme = currentTheme();
     let items = [];
     if (scope === "selection") items = selectedItems();
+    if (scope === "component-type") {
+      const selected = current();
+      if (!selected) {
+        setStatus("Select a component type first");
+        return;
+      }
+      items = state.items.filter((item) =>
+        selected.componentId ? item.componentId === selected.componentId : !item.componentId && item.name === selected.name,
+      );
+    }
     if (scope === "page") {
       items = state.items.filter(
         (item) => item.pageId === state.activePage || item.master,
       );
-      currentPage().background = theme.page;
+      if (theme.enabled.page) currentPage().background = theme.page;
     }
     if (scope === "project") {
       items = state.items;
-      state.pages.forEach((page) => (page.background = theme.page));
+      if (theme.enabled.page) state.pages.forEach((page) => (page.background = theme.page));
     }
     if (!items.length && scope === "selection") {
       setStatus("Select one or more components first");
@@ -1874,7 +1924,7 @@
     renderPage();
     commitHistory();
     setStatus(
-      `Applied theme to ${scope === "selection" ? `${items.length} selected component${items.length === 1 ? "" : "s"}` : scope}`,
+      `Applied theme to ${scope === "selection" ? `${items.length} selected component${items.length === 1 ? "" : "s"}` : scope === "component-type" ? `${items.length} matching component${items.length === 1 ? "" : "s"}` : scope}`,
     );
   }
   function renderThemes() {
@@ -5350,6 +5400,7 @@
   $("save-reusable").onclick = saveReusableSelection;
   $("save-page-template").onclick = savePageTemplate;
   $("theme-selection").onclick = () => applyTheme("selection");
+  $("theme-component-type").onclick = () => applyTheme("component-type");
   $("theme-page-apply").onclick = () => applyTheme("page");
   $("theme-project").onclick = () => applyTheme("project");
   $("theme-save").onclick = () => {
@@ -5364,6 +5415,18 @@
     commitHistory();
     setStatus(`Saved theme “${name.trim()}”`);
   };
+  [
+    "page", "surface", "accent", "text", "glow", "border", "font-size",
+    "corner-radius", "glow-strength", "animation-duration", "animation-easing",
+  ].forEach((key) => {
+    const checkbox = $("theme-" + key + "-enabled"), control = $("theme-" + key);
+    const sync = () => {
+      control.disabled = !checkbox.checked;
+      control.closest("label")?.classList.toggle("theme-token-disabled", !checkbox.checked);
+    };
+    checkbox.onchange = sync;
+    sync();
+  });
   $("page-name").oninput = (e) => {
     currentPage().name = e.target.value;
     renderPages();
