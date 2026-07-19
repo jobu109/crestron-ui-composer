@@ -1905,6 +1905,7 @@
         for (let index = 0; index < count; index++)
           rows.push({
             ...row,
+            contractIndex: index,
             value: String(row.value)
               .replace(/\{n\}/g, String(index + 1))
               .replace(/\{index\}/g, String(index)),
@@ -1921,6 +1922,23 @@
       array = value.match(
         /^([A-Za-z_][A-Za-z0-9_.]*)\[\{(?:n|index)\}\]\.(.+)$/,
       );
+    if (item && row.range && Number.isInteger(row.contractIndex)) {
+      const expandedArray = value.match(/^(.*)\[\d+\]\.(.+)$/),
+        expandedLegacy = value.match(/^(.*)\.\d+\.(.+)$/),
+        match = expandedArray || expandedLegacy;
+      if (match) {
+        const originalParts = match[1].split(".").filter(Boolean),
+          childPath = originalParts.slice(1).join("_") || "Items",
+          widgetPath = contractWidgetPrefix(item);
+        return {
+          instancePath: `${widgetPath}.${childPath}[${row.contractIndex}]`,
+          parentPath: widgetPath,
+          nestedInstanceName: childPath,
+          attributePath: match[2],
+          instances: 1,
+        };
+      }
+    }
     if (item && row.range && (legacy || array)) {
       const match = legacy || array,
         originalParts = match[1].split(".").filter(Boolean),
@@ -2958,6 +2976,7 @@
         for (let index = 0; index < count; index++)
           expandedSignals.push({
             ...row,
+            contractIndex: index,
             value: value
               .replace(/\{n\}/g, String(index + 1))
               .replace(/\{index\}/g, String(index)),
