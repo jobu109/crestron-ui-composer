@@ -15,6 +15,18 @@
       "validationStatus": "hardware-test-target"
     },
     {
+      "id": "tsw-1080",
+      "manufacturer": "Crestron",
+      "model": "TSW-1080",
+      "name": "Crestron TSW-1080",
+      "width": 1920,
+      "height": 1200,
+      "aspectRatio": "16:10",
+      "colorDepth": 24,
+      "supportsCh5": true,
+      "validationStatus": "manufacturer-verified"
+    },
+    {
       "id": "tsw-770",
       "manufacturer": "Crestron",
       "model": "TSW-770",
@@ -48,6 +60,19 @@
       "aspectRatio": "9:16",
       "colorDepth": 24,
       "supportsCh5": true,
+      "validationStatus": "manufacturer-verified"
+    },
+    {
+      "id": "tst-902",
+      "manufacturer": "Crestron",
+      "model": "TST-902",
+      "name": "Crestron TST-902 (Smart Graphics only)",
+      "width": 1008,
+      "height": 588,
+      "aspectRatio": "12:7",
+      "colorDepth": 24,
+      "supportsCh5": false,
+      "maximumProjectSizeMb": 512,
       "validationStatus": "manufacturer-verified"
     },
     {
