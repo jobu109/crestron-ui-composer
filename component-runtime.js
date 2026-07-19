@@ -677,11 +677,22 @@
       });
     }
     options.definitionData = definition.data || {};
-    const dispose = definition.mount(root, {
-      signals,
-      navigate: options.navigate || function () {},
-      options,
-    });
+    let dispose;
+    try {
+      dispose = definition.mount(root, {
+        signals,
+        navigate: options.navigate || function () {},
+        options,
+      });
+    } catch (error) {
+      console.error(`Component “${definition.name || definition.id}” failed to mount`, error);
+      root.innerHTML = "";
+      const fallback = document.createElement("div");
+      fallback.style.cssText =
+        "height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto";
+      fallback.textContent = `Component error: ${error.message || error}`;
+      root.appendChild(fallback);
+    }
     if (typeof dispose === "function") cleanups.push(dispose);
     if (options.properties && options.properties.localLabels) {
       const apply = () =>

@@ -642,6 +642,7 @@
       runtime: metadata.runtime || "legacy",
       displayName: metadata.name || name.replace(/\.html$/i, ""),
       category: metadata.category || componentCategory(name),
+      icon: metadata.icon || "",
       width: metadata.width || 220,
       height: metadata.height || 120,
     });
@@ -652,6 +653,7 @@
       id: entry.id,
       name: entry.name,
       category: entry.category || "Custom",
+      icon: entry.icon || "🧩",
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
       properties: entry.properties || [],
       signals: entry.signals || [],
@@ -668,7 +670,7 @@
           resolved = raw.replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
             String(properties[key] ?? ""),
           ),
-          bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
+          bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
           documentText = /<\/body>/i.test(resolved)
             ? resolved.replace(/<\/body>/i, bridge + "</body>")
             : resolved + bridge;
@@ -676,6 +678,10 @@
         frame.srcdoc = documentText;
         host.appendChild(frame);
         function receive(event) {
+          if (event.source === frame.contentWindow && event.data?.type === "composer-custom-error") {
+            host.innerHTML = `<div class="custom-component-error" style="padding:12px;color:#ffc1c1;background:#291718;border:1px solid #a65050">Component error: ${String(event.data.message || "Unknown error")}</div>`;
+            return;
+          }
           if (
             event.source === frame.contentWindow &&
             event.data?.type === "composer-custom-publish"
@@ -703,6 +709,7 @@
       runtime: "scoped",
       name: entry.name,
       category: entry.category || "Custom",
+      icon: entry.icon || "🧩",
       width: entry.defaultSize?.width || 320,
       height: entry.defaultSize?.height || 180,
     });
@@ -735,7 +742,12 @@
       components.forEach((c) => {
         const el = document.createElement("div");
         el.className = "component";
-        el.textContent = c.displayName;
+        if (c.icon) {
+          const icon = document.createElement("span");
+          icon.className = "component-icon";
+          icon.textContent = c.icon;
+          el.append(icon, document.createTextNode(c.displayName));
+        } else el.textContent = c.displayName;
         el.draggable = true;
         el.addEventListener("dragstart", (e) =>
           e.dataTransfer.setData("text/component", c.name),
@@ -4469,7 +4481,13 @@
     ["key", "name", "type", "direction", "defaultValue"].forEach((key) => {
       row.querySelector(`[data-field="${key}"]`).value = signal[key] || "";
     });
-    row.querySelector("button").onclick = () => row.remove();
+    row.querySelector("button").onclick = () => {
+      row.remove();
+      refreshCustomPreview();
+    };
+    row.querySelectorAll("input,select").forEach(
+      (input) => (input.oninput = refreshCustomPreview),
+    );
     $("custom-signal-list").appendChild(row);
   }
   function collectCustomProperties() {
@@ -4520,6 +4538,61 @@
       })
       .filter(Boolean);
   }
+  function validateCustomComponent() {
+    const name = $("custom-component-name").value.trim(),
+      version = $("custom-component-version").value.trim(),
+      html = $("custom-source-html").value,
+      javascript = $("custom-source-javascript").value,
+      properties = collectCustomProperties(),
+      signals = collectCustomSignals(),
+      errors = [],
+      warnings = [],
+      duplicateKeys = (values) =>
+        [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
+    if (!name) errors.push("Component name is required.");
+    if (!/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(version))
+      errors.push("Version must use semantic versioning, such as 1.0.0.");
+    if (!html.trim()) errors.push("HTML cannot be empty.");
+    duplicateKeys(properties.map((entry) => entry.key)).forEach((key) =>
+      errors.push(`Duplicate property key: ${key}.`),
+    );
+    duplicateKeys(signals.map((entry) => entry.key)).forEach((key) =>
+      errors.push(`Duplicate signal key: ${key}.`),
+    );
+    const knownProperties = new Set(properties.map((entry) => entry.key));
+    [...html.matchAll(/\{\{([^}]+)\}\}/g)].forEach((match) => {
+      if (!knownProperties.has(match[1]))
+        errors.push(`HTML uses undefined property token {{${match[1]}}}.`);
+    });
+    properties.forEach((property) => {
+      if (!html.includes(`{{${property.key}}}`))
+        warnings.push(`Property “${property.key}” is not used in the HTML.`);
+    });
+    try {
+      new Function(javascript);
+    } catch (error) {
+      errors.push(`JavaScript syntax: ${error.message}`);
+    }
+    const result = { errors: [...new Set(errors)], warnings: [...new Set(warnings)] },
+      panel = $("custom-validation");
+    panel.classList.toggle("invalid", !!result.errors.length);
+    panel.innerHTML = result.errors.length
+      ? `<strong>${result.errors.length} error(s)</strong><br>${result.errors.map((value) => `• ${value}`).join("<br>")}`
+      : result.warnings.length
+        ? `<strong>Valid with ${result.warnings.length} warning(s)</strong><br>${result.warnings.map((value) => `• ${value}`).join("<br>")}`
+        : "Component validation passed.";
+    return result;
+  }
+  function refreshCustomSignalTester() {
+    const selected = $("custom-preview-signal").value,
+      signals = collectCustomSignals().filter((signal) => signal.direction === "input");
+    $("custom-preview-signal").innerHTML = signals.length
+      ? signals.map((signal) => `<option value="${signal.key}">${signal.name} (${signal.type})</option>`).join("")
+      : '<option value="">No input signals</option>';
+    if (signals.some((signal) => signal.key === selected))
+      $("custom-preview-signal").value = selected;
+    $("custom-preview-send").disabled = !signals.length;
+  }
   function refreshCustomPreview() {
     let source = composeCustomSource();
     collectCustomProperties().forEach((property) => {
@@ -4528,7 +4601,10 @@
         String(property.defaultValue ?? ""),
       );
     });
-    $("custom-component-preview").srcdoc = safeDoc(source, "");
+    const previewBridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});<\/script>`;
+    $("custom-component-preview").srcdoc = safeDoc(previewBridge + source, "");
+    refreshCustomSignalTester();
+    validateCustomComponent();
   }
   function openCustomBuilder(item, entry = null) {
     customEditingId = entry?.id || "";
@@ -4553,11 +4629,16 @@
     $("custom-component-delete").hidden = !entry;
     $("custom-component-name").value = entry?.name || item.name || "Custom component";
     $("custom-component-category").value = entry?.category || "Custom";
+    $("custom-component-icon").value = entry?.icon || "🧩";
+    $("custom-component-version").value = entry?.version || "1.0.0";
+    $("custom-component-author").value = entry?.author || "";
+    $("custom-component-description").value = entry?.description || "";
     $("custom-source-html").value = source.html;
     $("custom-source-css").value = source.css;
     $("custom-source-javascript").value = source.javascript;
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
+    $("custom-preview-log").textContent = "Preview signal activity appears here.";
     properties.forEach(addCustomPropertyRow);
     signals.forEach(addCustomSignalRow);
     refreshCustomPreview();
@@ -4574,6 +4655,30 @@
   $("custom-property-add").onclick = () => addCustomPropertyRow();
   $("custom-signal-add").onclick = () => addCustomSignalRow();
   $("custom-preview-refresh").onclick = refreshCustomPreview;
+  $("custom-preview-send").onclick = () => {
+    const key = $("custom-preview-signal").value,
+      raw = $("custom-preview-value").value,
+      signal = collectCustomSignals().find((entry) => entry.key === key);
+    if (!signal) return;
+    const value = signal.type === "digital"
+      ? /^(true|1|on)$/i.test(raw)
+      : signal.type === "analog"
+        ? Number(raw) || 0
+        : raw;
+    $("custom-component-preview").contentWindow?.postMessage(
+      { type: "composer-signal", key, value },
+      "*",
+    );
+    $("custom-preview-log").textContent += `\nFeedback ${key} = ${JSON.stringify(value)}`;
+  };
+  window.addEventListener("message", (event) => {
+    if (event.source !== $("custom-component-preview").contentWindow) return;
+    if (event.data?.type === "composer-custom-publish")
+      $("custom-preview-log").textContent += `\nPublish ${event.data.key} = ${JSON.stringify(event.data.value)}`;
+    if (event.data?.type === "composer-preview-error")
+      $("custom-preview-log").textContent += `\nERROR: ${event.data.message}`;
+    $("custom-preview-log").scrollTop = $("custom-preview-log").scrollHeight;
+  });
   $("custom-component-export").onclick = () => {
     const entry = state.customComponents.find(
       (candidate) => candidate.id === customEditingId,
@@ -4581,7 +4686,7 @@
     if (!entry) return;
     const packageValue = {
       format: "crestron-ui-composer-component",
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       component: structuredClone(entry),
     };
@@ -4623,6 +4728,13 @@
   ["custom-source-html", "custom-source-css", "custom-source-javascript"].forEach(
     (id) => ($(id).oninput = refreshCustomPreview),
   );
+  [
+    "custom-component-name",
+    "custom-component-category",
+    "custom-component-version",
+    "custom-component-author",
+    "custom-component-description",
+  ].forEach((id) => ($(id).oninput = validateCustomComponent));
   document.querySelectorAll("[data-custom-tab]").forEach((button) => {
     button.onclick = () => {
       document.querySelectorAll("[data-custom-tab]").forEach((entry) =>
@@ -4638,6 +4750,11 @@
     const item = current(),
       name = $("custom-component-name").value.trim();
     if (!item || !name) return;
+    const validation = validateCustomComponent();
+    if (validation.errors.length) {
+      alert("Fix the custom component validation errors before saving.");
+      return;
+    }
     let entry = state.customComponents.find(
       (candidate) => candidate.id === customEditingId,
     );
@@ -4652,6 +4769,10 @@
     Object.assign(entry, {
       name,
       category: $("custom-component-category").value.trim() || "Custom",
+      icon: $("custom-component-icon").value || "🧩",
+      version: $("custom-component-version").value.trim() || "1.0.0",
+      author: $("custom-component-author").value.trim(),
+      description: $("custom-component-description").value.trim(),
       html: composeCustomSource(),
       defaultSize: entry.defaultSize || { width: item.w, height: item.h },
       properties: collectCustomProperties(),
@@ -4663,6 +4784,7 @@
     if (libraryEntry) {
       libraryEntry.displayName = entry.name;
       libraryEntry.category = entry.category;
+      libraryEntry.icon = entry.icon;
     }
     registerCustomComponent(entry);
     state.items
@@ -4681,7 +4803,7 @@
         imported = packageValue.component;
       if (
         packageValue.format !== "crestron-ui-composer-component" ||
-        packageValue.version !== 1 ||
+        ![1, 2].includes(packageValue.version) ||
         !imported?.id ||
         !imported?.name ||
         typeof imported.html !== "string" ||
@@ -4706,6 +4828,7 @@
       if (libraryEntry) {
         libraryEntry.displayName = entry.name;
         libraryEntry.category = entry.category || "Custom";
+        libraryEntry.icon = entry.icon || "🧩";
       }
       registerCustomComponent(entry);
       state.items

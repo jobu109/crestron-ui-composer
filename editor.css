@@ -394,6 +394,50 @@ h2 {
   border-radius: 6px;
   background: #182126;
 }
+.custom-preview-test {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 1fr) auto;
+  gap: 6px;
+  margin-top: 7px;
+}
+.custom-preview-test select,
+.custom-preview-test input {
+  min-width: 0;
+}
+.custom-preview-log {
+  min-height: 44px;
+  max-height: 90px;
+  margin: 6px 0 0;
+  padding: 7px;
+  overflow: auto;
+  border: 1px solid #304446;
+  border-radius: 5px;
+  background: #0b1214;
+  color: #9fe7dc;
+  font: 11px/1.35 Consolas, monospace;
+  white-space: pre-wrap;
+}
+.custom-validation {
+  max-height: 105px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid #34514e;
+  border-radius: 5px;
+  color: #a8d8d1;
+  background: #10201f;
+}
+.custom-validation.invalid {
+  border-color: #a65050;
+  color: #ffc1c1;
+  background: #291718;
+}
+.component-icon {
+  display: inline-block;
+  width: 23px;
+  margin-right: 5px;
+  text-align: center;
+}
 .timeline-dialog {
   width: min(1100px, 94vw);
 }

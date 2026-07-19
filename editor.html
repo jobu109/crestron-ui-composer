@@ -770,6 +770,17 @@
             <div class="grid2">
               <label>Name<input id="custom-component-name" /></label>
               <label>Category<input id="custom-component-category" value="Custom" /></label>
+              <label>Palette icon
+                <select id="custom-component-icon">
+                  <option value="🧩">🧩 Component</option><option value="🔘">🔘 Button</option>
+                  <option value="🎚️">🎚️ Control</option><option value="📝">📝 Text</option>
+                  <option value="🧭">🧭 Navigation</option><option value="💡">💡 Lighting</option>
+                  <option value="🔊">🔊 Audio</option><option value="📺">📺 Display</option>
+                </select>
+              </label>
+              <label>Version<input id="custom-component-version" value="1.0.0" /></label>
+              <label>Author<input id="custom-component-author" /></label>
+              <label>Description<input id="custom-component-description" /></label>
             </div>
             <div class="custom-builder-heading">
               <h2>Editable properties</h2>
@@ -802,8 +813,15 @@
               <button id="custom-preview-refresh" type="button">Refresh</button>
             </div>
             <iframe id="custom-component-preview" sandbox="allow-scripts"></iframe>
+            <div class="custom-preview-test">
+              <select id="custom-preview-signal"></select>
+              <input id="custom-preview-value" placeholder="Feedback value" />
+              <button id="custom-preview-send" type="button">Send feedback</button>
+            </div>
+            <pre id="custom-preview-log" class="custom-preview-log">Preview signal activity appears here.</pre>
           </section>
         </div>
+        <div id="custom-validation" class="custom-validation" aria-live="polite"></div>
         <div class="dialog-actions">
           <button id="custom-component-export" type="button" hidden>
             Export package

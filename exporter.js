@@ -187,6 +187,10 @@
           "items.forEach(mount);interactionItems.forEach(wireInteraction);show(",
         )
         .replace(
+          "def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});appearance(root,item.properties||{})",
+          "try{def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}})}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}appearance(root,item.properties||{})",
+        )
+        .replace(
           "window.addEventListener('message',function(e){",
           "window.addEventListener('message',function(e){if(e.data&&e.data.type==='composer-interaction'){var root=Array.prototype.find.call(document.querySelectorAll('[data-instance]'),function(el){return el.contentWindow===e.source||(el.querySelector&&el.querySelector('iframe')&&el.querySelector('iframe').contentWindow===e.source)}),entry=root&&interactionItems.find(function(item){return item.instance===root.dataset.instance});if(entry)tracks(entry).forEach(function(c){runInteraction(root,c,e.data.phase)})}",
         );
