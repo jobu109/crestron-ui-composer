@@ -224,7 +224,7 @@
           accept="application/json,.json,.cuiproj"
       /></label>
       <button id="preview">Preview</button>
-      <button id="validate-project">Validate</button>
+      <button id="validate-project">Health check</button>
       <button id="signal-manager">Signals</button>
       <button id="signal-simulator">Simulate</button>
       <button id="export">Export HTML</button>
@@ -983,6 +983,18 @@ Preview signal activity appears here.</pre
         </div>
       </form>
     </dialog>
+    <dialog id="health-dialog" class="health-dialog">
+      <form method="dialog">
+        <h2>Project health report</h2>
+        <p id="health-summary" class="hint"></p>
+        <pre id="health-report" class="health-report"></pre>
+        <div class="dialog-actions">
+          <button id="health-export" type="button">Export report</button>
+          <button value="default">Done</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="project-migrations.js"></script>
     <script src="component-runtime.js"></script>
     <script src="standard-button.component.js"></script>
     <script src="button-components.js"></script>

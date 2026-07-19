@@ -446,6 +446,21 @@ h2 {
 .action-editor-dialog {
   width: min(1380px, 96vw);
 }
+.health-dialog {
+  width: min(900px, 92vw);
+}
+.health-report {
+  min-height: 320px;
+  max-height: 60vh;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #34514e;
+  border-radius: 6px;
+  background: #0b1214;
+  color: #d5e9e6;
+  font: 12px/1.5 Consolas, monospace;
+  white-space: pre-wrap;
+}
 .action-column-labels,
 .action-row {
   display: grid;

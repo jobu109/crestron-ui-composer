@@ -1,0 +1,8 @@
+{
+  "name": "crestron-ui-composer",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node tests/regression.test.js"
+  }
+}

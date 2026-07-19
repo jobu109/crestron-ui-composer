@@ -45,3 +45,9 @@ The exported widgets run in isolated inline frames. Their existing `getCrComLib(
 Use **Add page** in the left sidebar to create pages. A page may be selected externally with either a digital join or a contract signal: select the page, choose the external selection mode, and enter its signal. The exported interface shows that page when the signal goes high.
 
 For navigation that does not involve SIMPL Windows, select a button or other component and set **Local navigation** to its destination page. A successful pointer release on that component changes pages entirely in the browser. External and local navigation can be mixed in the same project.
+
+## Regression checks and project migration
+
+Run `npm test` before packaging. The suite checks project migrations and save/load stability, shipped JavaScript syntax, component-manifest integrity, and generated HTML action-runtime syntax.
+
+Project files use a versioned format. Opening an older project in the Windows application creates a timestamped backup beside the original before applying automatic migrations. Use **Health check** in the toolbar to review or export the current project report.

@@ -85,6 +85,9 @@ public partial class MainWindow : Window
                 case "openProject":
                     OpenProject(id);
                     break;
+                case "backupProject":
+                    BackupProject(id, root.GetProperty("payload"));
+                    break;
                 case "importSnippets":
                     ImportSnippets(id);
                     break;
@@ -234,6 +237,19 @@ public partial class MainWindow : Window
         var dialog = new OpenFileDialog { Filter = "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json|All files (*.*)|*.*", Multiselect = false };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         Respond(id, true, new { path = dialog.FileName, contents = File.ReadAllText(dialog.FileName) }, null);
+    }
+
+    private void BackupProject(string id, JsonElement payload)
+    {
+        var sourcePath = payload.GetProperty("path").GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+            throw new FileNotFoundException("The original project could not be found for backup.", sourcePath);
+        var folder = Path.GetDirectoryName(sourcePath) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var name = Path.GetFileNameWithoutExtension(sourcePath);
+        var extension = Path.GetExtension(sourcePath);
+        var backupPath = Path.Combine(folder, $"{name}.pre-migration-{DateTime.Now:yyyyMMdd-HHmmss}{extension}");
+        File.Copy(sourcePath, backupPath, false);
+        Respond(id, true, backupPath, null);
     }
 
     private void ImportSnippets(string id)

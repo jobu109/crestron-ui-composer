@@ -51,6 +51,7 @@
     lastManualFingerprint = "";
   let componentClipboard = "";
   let actionClipboard = [];
+  let lastHealthReport = "";
   let activeColorInput = null;
   let panelZoom = 1;
   let lastRenderedPageId = "";
@@ -499,6 +500,7 @@
     return `${device} · ${pages} page${pages === 1 ? "" : "s"} · ${items} widget${items === 1 ? "" : "s"}`;
   }
   function restoreRecoveryProject(p, savedAt) {
+    p = window.ComposerProjectMigrations.migrate(p).project;
     state.items = normalizeItemStates(p.items);
     state.assets = p.assets || [];
     state.reusables = p.reusables || [];
@@ -596,7 +598,7 @@
     native.addEventListener("message", (event) => {
       const m = event.data;
       if (m && m.type === "openProjectFile") {
-        loadProjectText(m.contents).then(() => setStatus("Opened " + m.path));
+        loadProjectText(m.contents, true, m.path).then(() => setStatus("Opened " + m.path));
         return;
       }
       if (!m || m.type !== "nativeResponse") return;
@@ -4309,12 +4311,22 @@
   function runValidation(interactive = true) {
     const issues = validateProject(),
       errors = issues.filter((x) => x.severity === "error");
-    if (interactive)
-      alert(
-        issues.length
-          ? validationReport(issues)
-          : "Validation passed. No project issues were found.",
-      );
+    lastHealthReport = [
+      "CRESTRON UI COMPOSER — PROJECT HEALTH REPORT",
+      `Generated: ${new Date().toLocaleString()}`,
+      `Project format: v${window.ComposerProjectMigrations.CURRENT_VERSION}`,
+      `Target: ${selectedDevice().name} (${state.width} × ${state.height})`,
+      `Pages: ${state.pages.length}   Widgets: ${state.items.length}   Assets: ${state.assets.length}`,
+      "",
+      issues.length ? validationReport(issues) : "0 error(s), 0 warning(s)\n\nValidation passed. No project issues were found.",
+    ].join("\n");
+    if (interactive) {
+      $("health-summary").textContent = issues.length
+        ? `${errors.length} error(s), ${issues.length - errors.length} warning(s)`
+        : "No project issues were found.";
+      $("health-report").textContent = lastHealthReport;
+      $("health-dialog").showModal();
+    }
     setStatus(
       issues.length
         ? `${errors.length} validation errors, ${issues.length - errors.length} warnings`
@@ -4337,7 +4349,7 @@
   }
   function project() {
     return {
-      version: 3,
+      version: window.ComposerProjectMigrations.CURRENT_VERSION,
       width: state.width,
       height: state.height,
       targetDevice: state.targetDevice,
@@ -5468,8 +5480,25 @@
           k === "height" ? +e.target.value : state.height,
         )),
   );
-  async function loadProjectText(text, markClean = true) {
-    const p = JSON.parse(text);
+  async function loadProjectText(text, markClean = true, sourcePath = "") {
+    const parsed = JSON.parse(text),
+      migration = window.ComposerProjectMigrations.migrate(parsed),
+      p = migration.project;
+    if (migration.migrated) {
+      let backupName = "";
+      if (native && sourcePath) {
+        try {
+          backupName = await nativeRequest("backupProject", { path: sourcePath });
+        } catch (error) {
+          throw new Error(`The project needs migration, but its backup could not be created: ${error.message}`);
+        }
+      } else {
+        const baseName = sourcePath ? sourcePath.split(/[\\/]/).pop() : "crestron-ui-project.cuiproj";
+        backupName = baseName.replace(/(\.[^.]+)?$/, `.pre-migration-v${migration.fromVersion}$1`);
+        download(backupName, text, "application/json");
+      }
+      setStatus(`Migrated project v${migration.fromVersion} → v${migration.toVersion}; backup: ${backupName}`);
+    }
     state.items = normalizeItemStates(p.items);
     state.assets = p.assets || [];
     state.reusables = p.reusables || [];
@@ -5508,7 +5537,7 @@
     historyIndex = -1;
     commitHistory(false);
     if (markClean) markProjectSaved();
-    setStatus("Project opened for " + selectedDevice().name);
+    if (!migration.migrated) setStatus("Project opened for " + selectedDevice().name);
   }
   $("save-project").onclick = async () => {
     const text = JSON.stringify(project(), null, 2);
@@ -5526,6 +5555,8 @@
     }
   };
   $("validate-project").onclick = () => runValidation(true);
+  $("health-export").onclick = () =>
+    download("crestron-ui-project-health.txt", lastHealthReport || "No report has been generated.", "text/plain");
   $("signal-manager").onclick = () => {
     $("signal-search").value = "";
     renderSignalManager();
@@ -5783,13 +5814,13 @@
     w.document.close();
   };
   $("open-project").onchange = async (e) =>
-    loadProjectText(await e.target.files[0].text());
+    loadProjectText(await e.target.files[0].text(), true, e.target.files[0].name);
   $("open-project-label").onclick = async (e) => {
     if (!native) return;
     e.preventDefault();
     try {
       const result = await nativeRequest("openProject");
-      await loadProjectText(result.contents);
+      await loadProjectText(result.contents, true, result.path);
       setStatus("Opened " + result.path);
     } catch (error) {
       if (error.message !== "cancelled") setStatus(error.message);
