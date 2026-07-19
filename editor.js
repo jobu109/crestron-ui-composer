@@ -1,7 +1,7 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id),
-    stage = $("stage"),
+      stage = $("stage"),
     list = $("component-list");
   const firstPage = {
     id: "page-home",
@@ -633,6 +633,12 @@
   function setStatus(s) {
     $("status").textContent = s;
   }
+  const topToolbar = document.querySelector(".toolbar");
+  topToolbar.addEventListener("wheel", (event) => {
+    if (topToolbar.scrollWidth <= topToolbar.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+    topToolbar.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, { passive: false });
   function safeDoc(html, target) {
     const bridge = target
       ? `<script>document.addEventListener("pointerup",function(){parent.postMessage({type:"crestron-local-page",page:${JSON.stringify(target)}},"*")});<\/script>`

@@ -13,14 +13,26 @@ body {
   overflow: hidden;
 }
 .toolbar {
-  height: 56px;
+  height: 66px;
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 8px 14px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #54706f #172225;
   background: #172225;
   border-bottom: 1px solid #324347;
 }
+.toolbar > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.toolbar::-webkit-scrollbar { height: 8px; }
+.toolbar::-webkit-scrollbar-track { background: #172225; }
+.toolbar::-webkit-scrollbar-thumb { border-radius: 99px; background: #54706f; }
 .brand {
   font-size: 18px;
   font-weight: 700;
@@ -77,7 +89,7 @@ input {
   grid-template-columns:
     var(--sidebar-width) 6px minmax(0, 1fr) 6px
     var(--inspector-width);
-  height: calc(100vh - 56px);
+  height: calc(100vh - 66px);
 }
 .sidebar,
 .inspector {
