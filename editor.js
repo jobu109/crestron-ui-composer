@@ -4434,6 +4434,7 @@
       issues.length ? validationReport(issues) : "0 error(s), 0 warning(s)\n\nValidation passed. No project issues were found.",
     ].join("\n");
     if (interactive) {
+      $("health-title").textContent = "Project health report";
       $("health-summary").textContent = issues.length
         ? `${errors.length} error(s), ${issues.length - errors.length} warning(s)`
         : "No project issues were found.";
@@ -4446,6 +4447,45 @@
         : "Validation passed",
     );
     return { issues, errors };
+  }
+  function runPanelCompatibility() {
+    const profiles = deviceProfiles.filter((device) => device.id !== "custom"),
+      lines = [
+        "CRESTRON UI COMPOSER — PANEL COMPATIBILITY REPORT",
+        `Generated: ${new Date().toLocaleString()}`,
+        `Source layout: ${selectedDevice().name} (${state.width} × ${state.height})`,
+        `Pages: ${state.pages.length}   Widgets: ${state.items.length}`,
+        "",
+      ];
+    let problemCount = 0;
+    profiles.forEach((device) => {
+      const key = panelLayoutKey(device.id, device.width, device.height), problems = [];
+      state.items.forEach((item) => {
+        const layout = layoutDefaults(item), saved = item.deviceOverrides[key],
+          rect = saved || window.ComposerResponsiveLayout.adaptRect(
+            item, { width: state.width, height: state.height },
+            { width: device.width, height: device.height }, layout,
+          ),
+          margin = Math.max(0, Number(layout.safeMargin) || 0),
+          page = state.pages.find((entry) => entry.id === item.pageId)?.name || "Unknown page";
+        if (!window.ComposerResponsiveLayout.fitsSafeArea(
+          rect, { width: device.width, height: device.height }, margin,
+        )) problems.push(`${page} / ${item.name}: ${rect.x},${rect.y} ${rect.w}×${rect.h}${margin ? ` (safe margin ${margin}px)` : ""}`);
+      });
+      if (device.supportsCh5 === false) problems.unshift("This panel does not support CH5 projects.");
+      problemCount += problems.length;
+      lines.push(`${device.name} — ${device.width} × ${device.height}: ${problems.length ? `${problems.length} issue(s)` : "PASS"}`);
+      problems.forEach((problem) => lines.push(`  - ${problem}`));
+      lines.push("");
+    });
+    lastHealthReport = lines.join("\n");
+    $("health-title").textContent = "Panel compatibility report";
+    $("health-summary").textContent = problemCount
+      ? `${problemCount} layout issue(s) across ${profiles.length} panel profiles.`
+      : `All ${profiles.length} panel profiles fit.`;
+    $("health-report").textContent = lastHealthReport;
+    $("health-dialog").showModal();
+    setStatus(problemCount ? `${problemCount} panel fit issues found` : "All panel profiles fit");
   }
   function approveExport() {
     const result = runValidation(false);
@@ -5675,6 +5715,7 @@
     }
   };
   $("validate-project").onclick = () => runValidation(true);
+  $("panel-compatibility").onclick = runPanelCompatibility;
   $("health-export").onclick = () =>
     download("crestron-ui-project-health.txt", lastHealthReport || "No report has been generated.", "text/plain");
   $("signal-manager").onclick = () => {
