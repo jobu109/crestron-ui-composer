@@ -34,20 +34,6 @@
           : value,
       ]),
     );
-    if (
-      item.componentId === "rolling-menu" &&
-      properties.bindingMode === "contract"
-    ) {
-      properties.itemCountSignal = "RollingMenu.ItemCount";
-      properties.selectedSetSignal = "RollingMenu.SelectedSet";
-      properties.selectedOutSignal = "RollingMenu.SelectedFeedback";
-      ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
-        const attribute = String(properties[key] || "")
-          .split(".")
-          .pop();
-        properties[key] = `RollingMenu.Items[{index}].${attribute}`;
-      });
-    }
     return properties;
   }
   function contractIdentifier(value) {
@@ -225,9 +211,9 @@
           "if(item.properties.visibilityEnabled){root.style.visibility='visible';signals.subscribe('visibility',function(value){root.style.visibility=value===true||value===1||value==='1'?'visible':'hidden'})}def.mount(root,{signals:signals",
         ),
       restoredController = contractController.replace(
-        "function appearance(root,p){",
-        "function appearance(root,p){return;",
-      );
+      "function appearance(root,p){",
+      "function appearance(root,p){return;",
+    ).replace("Number(index)-1", "Number(index)");
     return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:500px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{color:#55f2d7}#ch5-diagnostic-log{height:400px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${restoredController}<\/script></body></html>`;
   }
   global.ComposerExporter = { exportProject };

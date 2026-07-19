@@ -101,6 +101,7 @@ run("exported action runtime is valid JavaScript", () => {
     start = html.lastIndexOf("<script>") + 8,
     end = html.lastIndexOf("</script>");
   assert.ok(html.includes("Room.Level"));
+  assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   new Function(html.slice(start, end));
 });
 
@@ -121,6 +122,24 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
       "Home.LightingControl",
     ),
     "Home.LightingControl.Items[0].Feedback",
+  );
+  assert.equal(
+    ComposerRuntime.resolveAddress(
+      "Sources.Items.2.Name",
+      "serial",
+      "input",
+      "Home.Sources",
+    ),
+    "Home.Sources.Items[2].Name",
+  );
+  assert.equal(
+    ComposerRuntime.resolveAddress(
+      "Sources.SelectedSetFeedback",
+      "analog",
+      "input",
+      "Home.Sources",
+    ),
+    "Home.Sources.SelectedSetFeedback",
   );
 });
 

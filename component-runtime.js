@@ -59,7 +59,7 @@
         return (
           prefix +
           "[" +
-          Math.max(0, number - 1) +
+          Math.max(0, number) +
           "]." +
           attribute.replace(/\./g, "_")
         );
@@ -582,16 +582,6 @@
           typeof value === "string" ? contractPattern(value) : value,
         ]),
       );
-    if (id === "rolling-menu" && options.properties?.bindingMode === "contract") {
-      const p = options.properties;
-      p.itemCountSignal = "RollingMenu.ItemCount";
-      p.selectedSetSignal = "RollingMenu.SelectedSet";
-      p.selectedOutSignal = "RollingMenu.SelectedFeedback";
-      ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
-        const attribute = String(p[key] || "").split(".").pop();
-        p[key] = `RollingMenu.Items[{index}].${attribute}`;
-      });
-    }
     root.dataset.component = id;
     Object.entries(options.properties || {}).forEach(([key, value]) => {
       const name = "--" + key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
