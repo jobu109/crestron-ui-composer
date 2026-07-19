@@ -276,6 +276,21 @@ h2 {
   background: #253436;
   color: #fff;
 }
+.interaction-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.interaction-actions button {
+  margin-top: 2px;
+}
+.custom-component-dialog {
+  width: min(760px, 92vw);
+}
+.custom-definition-editor {
+  min-height: 150px;
+  margin-top: 4px;
+}
 .danger {
   color: #ffb3b3 !important;
   border-color: #744 !important;

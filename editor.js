@@ -9,6 +9,8 @@
     background: "#182126",
     bindingMode: "none",
     binding: "",
+    transition: "none",
+    transitionDuration: 350,
   };
   const state = {
     width: 1920,
@@ -23,6 +25,7 @@
     reusables: [],
     pageTemplates: [],
     themes: [],
+    customComponents: [],
     contract: {
       name: "MyCrestronUI",
       description: "",
@@ -49,6 +52,7 @@
   let componentClipboard = "";
   let activeColorInput = null;
   let panelZoom = 1;
+  let lastRenderedPageId = "";
   let snapEnabled = true,
     snapSize = 10;
   const snap = (value) =>
@@ -171,6 +175,7 @@
       reusables: state.reusables,
       pageTemplates: state.pageTemplates,
       themes: state.themes,
+      customComponents: state.customComponents,
       contract: state.contract,
     });
   }
@@ -265,6 +270,8 @@
       }
       if (old.targetPage !== item.targetPage)
         return `Changed ${item.name} navigation`;
+      if (JSON.stringify(old.interaction) !== JSON.stringify(item.interaction))
+        return `Changed ${item.name} interaction`;
       return `Changed ${item.name}`;
     }
     if (previous.width !== next.width || previous.height !== next.height)
@@ -435,6 +442,8 @@
     state.reusables = saved.reusables || [];
     state.pageTemplates = saved.pageTemplates || [];
     state.themes = saved.themes || [];
+    state.customComponents = saved.customComponents || [];
+    state.customComponents.forEach(registerCustomComponent);
     state.contract = { ...state.contract, ...(saved.contract || {}) };
     state.selected = null;
     state.selectedIds = [];
@@ -474,6 +483,8 @@
     state.reusables = p.reusables || [];
     state.pageTemplates = p.pageTemplates || [];
     state.themes = p.themes || [];
+    state.customComponents = p.customComponents || [];
+    state.customComponents.forEach(registerCustomComponent);
     state.contract = {
       ...state.contract,
       ...(p.contract || {}),
@@ -632,10 +643,70 @@
     });
     renderComponentLibrary();
   }
+  function registerCustomComponent(entry) {
+    window.ComposerRuntime.register({
+      id: entry.id,
+      name: entry.name,
+      category: entry.category || "Custom",
+      defaultSize: entry.defaultSize || { width: 320, height: 180 },
+      properties: entry.properties || [],
+      signals: entry.signals || [],
+      template: '<div class="custom-component-host"></div>',
+      styles:
+        '[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}',
+      data: { html: entry.html },
+      mount(root, context) {
+        const host = root.querySelector(".custom-component-host"),
+          frame = document.createElement("iframe"),
+          properties = context.options.properties || {},
+          signals = context.options.definitionData.signals || [],
+          raw = String(context.options.definitionData.html || ""),
+          resolved = raw.replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
+            String(properties[key] ?? ""),
+          ),
+          bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
+          documentText = /<\/body>/i.test(resolved)
+            ? resolved.replace(/<\/body>/i, bridge + "</body>")
+            : resolved + bridge;
+        frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        frame.srcdoc = documentText;
+        host.appendChild(frame);
+        function receive(event) {
+          if (
+            event.source === frame.contentWindow &&
+            event.data?.type === "composer-custom-publish"
+          )
+            context.signals.publish(event.data.key, event.data.value);
+        }
+        addEventListener("message", receive);
+        signals
+          .filter((signal) => signal.direction === "input")
+          .forEach((signal) =>
+            context.signals.subscribe(signal.key, (value) =>
+              frame.contentWindow?.postMessage(
+                { type: "composer-signal", key: signal.key, value },
+                "*",
+              ),
+            ),
+          );
+        return () => removeEventListener("message", receive);
+      },
+    });
+    const definition = window.ComposerRuntime.get(entry.id);
+    definition.data.signals = entry.signals || [];
+    addComponent(`${entry.id}.html`, "", {
+      componentId: entry.id,
+      runtime: "scoped",
+      name: entry.name,
+      category: entry.category || "Custom",
+      width: entry.defaultSize?.width || 320,
+      height: entry.defaultSize?.height || 180,
+    });
+  }
   function renderComponentLibrary() {
     const query = $("component-search").value.trim().toLowerCase();
     list.innerHTML = "";
-    categoryOrder.forEach((category) => {
+    [...new Set([...categoryOrder, ...state.components.map((c) => c.category)])].forEach((category) => {
       const components = state.components
         .filter(
           (c) =>
@@ -773,12 +844,101 @@
         h: snap(c.height),
         z: state.items.length + 1,
         targetPage: "",
+        interaction: {
+          trigger: "none",
+          preset: "fade",
+          direction: "left",
+          duration: 300,
+          delay: 0,
+          easing: "ease-out",
+        },
       },
       data || {},
     );
     state.items.push(item);
     renderItem(item);
     select(item.id);
+  }
+  function interactionFrames(interaction, reverse = false) {
+    const preset = interaction?.preset || "fade",
+      direction = interaction?.direction || "left",
+      movement = {
+        left: "translateX(-48px)",
+        right: "translateX(48px)",
+        up: "translateY(-48px)",
+        down: "translateY(48px)",
+      },
+      frames =
+        preset === "slide"
+          ? [
+              { opacity: 0, transform: movement[direction] },
+              { opacity: 1, transform: "translate(0,0)" },
+            ]
+          : preset === "scale"
+            ? [
+                { opacity: 0.35, transform: "scale(.72)" },
+                { opacity: 1, transform: "scale(1)" },
+              ]
+            : preset === "glow"
+              ? [
+                  { filter: "drop-shadow(0 0 0 rgba(4,220,185,0))" },
+                  { filter: "drop-shadow(0 0 18px rgba(4,220,185,.95))" },
+                  { filter: "drop-shadow(0 0 0 rgba(4,220,185,0))" },
+                ]
+              : preset === "press"
+                ? [
+                    { transform: "scale(1)", filter: "brightness(1)" },
+                    { transform: "scale(.94)", filter: "brightness(1.14)" },
+                  ]
+                : [{ opacity: 0 }, { opacity: 1 }];
+    return reverse ? frames.slice().reverse() : frames;
+  }
+  function resetItemInteraction(item) {
+    const element = stage.querySelector(`.widget[data-id="${item.id}"]`);
+    if (!element) return;
+    element.getAnimations().forEach((animation) => animation.cancel());
+    ["opacity", "transform", "filter"].forEach((name) =>
+      element.style.removeProperty(name),
+    );
+  }
+  function playItemInteraction(item, reverse = false) {
+    const element = stage.querySelector(`.widget[data-id="${item.id}"]`),
+      interaction = item.interaction || {};
+    if (!element) return;
+    resetItemInteraction(item);
+    element.animate(interactionFrames(interaction, reverse), {
+      duration: Math.max(50, Number(interaction.duration) || 300),
+      delay: reverse ? 0 : Math.max(0, Number(interaction.delay) || 0),
+      easing: interaction.easing || "ease-out",
+    });
+  }
+  function wireItemInteraction(element, item) {
+    clearTimeout(element.interactionTimer);
+    if (element.interactionAbort) element.interactionAbort.abort();
+    element.interactionAbort = new AbortController();
+    const listenerOptions = { signal: element.interactionAbort.signal };
+    const interaction = item.interaction || {};
+    if (!interaction.trigger || interaction.trigger === "none") return;
+    if (interaction.trigger === "page-enter")
+      element.interactionTimer = setTimeout(() => playItemInteraction(item), 0);
+    if (interaction.trigger === "delayed")
+      element.interactionTimer = setTimeout(() => playItemInteraction(item), 0);
+    element.addEventListener(
+      "pointerdown",
+      () => {
+        if (interaction.trigger === "press") playItemInteraction(item);
+      },
+      listenerOptions,
+    );
+    element.addEventListener(
+      "pointerup",
+      () => {
+        if (interaction.trigger === "release") playItemInteraction(item);
+        if (interaction.trigger === "press" && interaction.preset === "press")
+          playItemInteraction(item, true);
+      },
+      listenerOptions,
+    );
   }
   function renderItem(item) {
     let el = stage.querySelector('.widget[data-id="' + item.id + '"]');
@@ -828,6 +988,7 @@
         },
       );
     else el.querySelector("iframe").srcdoc = safeDoc(item.source, "");
+    wireItemInteraction(el, item);
   }
   function renderPage() {
     stage.innerHTML = "";
@@ -844,6 +1005,9 @@
     state.items
       .filter((i) => i.pageId === state.activePage || i.master)
       .forEach(renderItem);
+    if (lastRenderedPageId && lastRenderedPageId !== page.id)
+      playPageTransition(page);
+    lastRenderedPageId = page.id;
     select(null);
     renderPages();
     renderPageInspector();
@@ -1568,6 +1732,8 @@
     $("page-background").value = p.background;
     $("page-binding-mode").value = p.bindingMode;
     $("page-binding").value = p.binding;
+    $("page-transition").value = p.transition || "none";
+    $("page-transition-duration").value = p.transitionDuration || 350;
     syncPageBinding();
   }
   function refreshTargets() {
@@ -1633,11 +1799,63 @@
         (key) => ($("prop-" + key).disabled = locked),
       );
       $("edit-source").disabled = !!item.componentId;
+      $("create-custom-component").disabled = !!item.componentId;
       refreshTargets();
       renderProperties(item);
       renderBindings(item);
+      renderInteractionEditor(item);
     }
     renderLayers();
+  }
+  function playPageTransition(page = currentPage()) {
+    const transition = page.transition || "none";
+    if (transition === "none") return;
+    stage.getAnimations().forEach((animation) => animation.cancel());
+    stage.animate(
+      interactionFrames({
+        preset: transition.startsWith("slide") ? "slide" : transition,
+        direction: transition === "slide-right" ? "right" : "left",
+      }),
+      {
+        duration: Math.max(50, Number(page.transitionDuration) || 350),
+        easing: "ease-out",
+      },
+    );
+  }
+  function renderInteractionEditor(item) {
+    const defaults = {
+      trigger: "none",
+      preset: "fade",
+      direction: "left",
+      duration: 300,
+      delay: 0,
+      easing: "ease-out",
+    };
+    const interaction = { ...defaults, ...(item.interaction || {}) };
+    ["trigger", "preset", "direction", "duration", "delay", "easing"].forEach(
+      (key) => {
+        const input = $("interaction-" + key);
+        input.value = interaction[key];
+        input.oninput = () => {
+          interaction[key] = /duration|delay/.test(key)
+            ? Number(input.value)
+            : input.value;
+          item.interaction = { ...interaction };
+          $("interaction-direction-label").hidden =
+            interaction.preset !== "slide";
+          scheduleHistory();
+        };
+      },
+    );
+    $("interaction-direction-label").hidden =
+      interaction.preset !== "slide";
+    $("interaction-preview").onclick = () => {
+      const original = item.interaction;
+      item.interaction = interaction;
+      playItemInteraction(item);
+      item.interaction = original;
+    };
+    $("interaction-reset").onclick = () => resetItemInteraction(item);
   }
   function renderProperties(item) {
     const section = $("component-properties-section"),
@@ -3409,6 +3627,7 @@
       reusables: state.reusables,
       pageTemplates: state.pageTemplates,
       themes: state.themes,
+      customComponents: state.customComponents,
       contract: state.contract,
     };
   }
@@ -3994,6 +4213,71 @@
       $("source-dialog").showModal();
     }
   };
+  $("create-custom-component").onclick = () => {
+    const item = current();
+    if (!item || item.componentId) return;
+    $("custom-component-name").value = item.name || "Custom component";
+    $("custom-component-category").value = "Custom";
+    $("custom-component-properties").value = "";
+    $("custom-component-signals").value = "";
+    $("custom-component-dialog").showModal();
+  };
+  $("custom-component-save").onclick = () => {
+    const item = current(),
+      name = $("custom-component-name").value.trim();
+    if (!item || !name) return;
+    const propertyTypes = new Set(["text", "number", "color", "select"]),
+      signalTypes = new Set(["digital", "analog", "serial"]),
+      parseLines = (id) =>
+        $(id)
+          .value.split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => line.split("|").map((part) => part.trim())),
+      properties = parseLines("custom-component-properties").map(
+        ([key, label, type, defaultValue, options]) => ({
+          key: key.replace(/[^A-Za-z0-9_$]/g, "_"),
+          name: label || key,
+          type: propertyTypes.has(type) ? type : "text",
+          defaultValue:
+            type === "number" ? Number(defaultValue) || 0 : defaultValue || "",
+          ...(type === "select"
+            ? {
+                options: String(options || defaultValue || "")
+                  .split(",")
+                  .filter(Boolean)
+                  .map((value) => ({ value, label: value })),
+              }
+            : {}),
+        }),
+      ),
+      signals = parseLines("custom-component-signals").map(
+        ([key, label, type, direction, defaultValue]) => ({
+          key: key.replace(/[^A-Za-z0-9_$]/g, "_"),
+          name: label || key,
+          type: signalTypes.has(type) ? type : "digital",
+          direction: direction === "input" ? "input" : "output",
+          defaultValue: defaultValue || "",
+        }),
+      ),
+      id = `custom-${name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")}-${uid().slice(-6)}`,
+      entry = {
+        id,
+        name,
+        category: $("custom-component-category").value.trim() || "Custom",
+        html: item.source,
+        defaultSize: { width: item.w, height: item.h },
+        properties,
+        signals,
+      };
+    state.customComponents.push(entry);
+    registerCustomComponent(entry);
+    commitHistory();
+    setStatus(`Created palette component “${name}”`);
+  };
   $("apply-source").onclick = () => {
     if (current()) {
       current().source = $("source-editor").value;
@@ -4032,6 +4316,18 @@
   };
   $("page-binding").oninput = (e) =>
     (currentPage().binding = e.target.value.trim());
+  $("page-transition").onchange = (e) => {
+    currentPage().transition = e.target.value;
+    playPageTransition();
+    scheduleHistory();
+  };
+  $("page-transition-duration").oninput = (e) => {
+    currentPage().transitionDuration = Math.max(
+      50,
+      Number(e.target.value) || 350,
+    );
+    scheduleHistory();
+  };
   function resize(w, h) {
     state.width = w;
     state.height = h;
@@ -4054,6 +4350,8 @@
     state.reusables = p.reusables || [];
     state.pageTemplates = p.pageTemplates || [];
     state.themes = p.themes || [];
+    state.customComponents = p.customComponents || [];
+    state.customComponents.forEach(registerCustomComponent);
     state.contract = { ...state.contract, ...(p.contract || {}) };
     state.pages = p.pages || [
       { ...firstPage, background: p.background || firstPage.background },
@@ -4387,6 +4685,7 @@
     state.reusables = [];
     state.pageTemplates = [];
     state.themes = [];
+    state.customComponents = [];
     state.contract = {
       name: "MyCrestronUI",
       description: "",

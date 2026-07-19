@@ -377,6 +377,63 @@
             <h2>Component properties</h2>
             <div id="component-properties"></div>
           </section>
+          <section class="signal-section interaction-section">
+            <h2>Interaction & animation</h2>
+            <label
+              >Trigger<select id="interaction-trigger">
+                <option value="none">None</option>
+                <option value="press">Press</option>
+                <option value="release">Release</option>
+                <option value="page-enter">Page enter</option>
+                <option value="delayed">Delayed start</option>
+              </select></label
+            >
+            <label
+              >Preset<select id="interaction-preset">
+                <option value="fade">Fade</option>
+                <option value="slide">Slide</option>
+                <option value="scale">Scale</option>
+                <option value="glow">Glow</option>
+                <option value="press">Press state</option>
+              </select></label
+            >
+            <label id="interaction-direction-label"
+              >Direction<select id="interaction-direction">
+                <option value="left">From left</option>
+                <option value="right">From right</option>
+                <option value="up">From above</option>
+                <option value="down">From below</option>
+              </select></label
+            >
+            <div class="grid2">
+              <label
+                >Duration (ms)<input
+                  id="interaction-duration"
+                  type="number"
+                  min="50"
+                  max="10000"
+              /></label>
+              <label
+                >Delay (ms)<input
+                  id="interaction-delay"
+                  type="number"
+                  min="0"
+                  max="60000"
+              /></label>
+            </div>
+            <label
+              >Easing<select id="interaction-easing">
+                <option value="ease-out">Ease out</option>
+                <option value="ease-in-out">Ease in/out</option>
+                <option value="linear">Linear</option>
+                <option value="cubic-bezier(.2,.8,.2,1)">Smooth</option>
+              </select></label
+            >
+            <div class="interaction-actions">
+              <button id="interaction-preview" type="button">Play</button>
+              <button id="interaction-reset" type="button">Reset</button>
+            </div>
+          </section>
           <section class="signal-section">
             <h2>Signal bindings</h2>
             <p class="hint">
@@ -385,6 +442,9 @@
             <div id="signal-bindings"></div>
           </section>
           <button id="edit-source" type="button">Edit component HTML</button>
+          <button id="create-custom-component" type="button">
+            Create palette component
+          </button>
           <button id="duplicate" type="button">Duplicate</button>
           <button id="delete" class="danger" type="button">Delete</button>
         </form>
@@ -402,6 +462,23 @@
         >
         <label id="page-binding-label" hidden
           >Signal<input id="page-binding"
+        /></label>
+        <label
+          >Page transition<select id="page-transition">
+            <option value="none">None</option>
+            <option value="fade">Fade</option>
+            <option value="slide-left">Slide from left</option>
+            <option value="slide-right">Slide from right</option>
+            <option value="scale">Scale</option>
+          </select></label
+        >
+        <label
+          >Transition duration (ms)<input
+            id="page-transition-duration"
+            type="number"
+            min="50"
+            max="10000"
+            value="350"
         /></label>
         <div id="custom-size" class="grid2" hidden>
           <label
@@ -667,6 +744,42 @@
           <button type="button" data-color="#cc3333" aria-label="Red"></button>
         </div>
         <div class="dialog-actions"><button value="default">Done</button></div>
+      </form>
+    </dialog>
+    <dialog id="custom-component-dialog" class="custom-component-dialog">
+      <form method="dialog">
+        <h2>Create palette component</h2>
+        <p class="hint">
+          Use {{propertyKey}} tokens in the selected HTML. JavaScript can call
+          ComposerComponent.publish("signalKey", value) and receive feedback
+          through composer-signal window messages.
+        </p>
+        <div class="grid2">
+          <label>Name<input id="custom-component-name" /></label>
+          <label>Category<input id="custom-component-category" value="Custom" /></label>
+        </div>
+        <label
+          >Editable properties
+          <textarea
+            id="custom-component-properties"
+            class="custom-definition-editor"
+            placeholder="label|Label|text|Room name&#10;accentColor|Accent color|color|#04aa8e"
+          ></textarea>
+        </label>
+        <label
+          >Signal bindings
+          <textarea
+            id="custom-component-signals"
+            class="custom-definition-editor"
+            placeholder="press|Press|digital|output|Custom.Press&#10;selected|Selected|digital|input|Custom.Selected"
+          ></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel">Cancel</button>
+          <button id="custom-component-save" value="default" class="primary">
+            Create component
+          </button>
+        </div>
       </form>
     </dialog>
     <script src="component-runtime.js"></script>
