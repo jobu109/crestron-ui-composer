@@ -147,6 +147,14 @@ run("exported action runtime is valid JavaScript", () => {
     html.includes('<style id="composer-component-styles">'),
     "Export must keep component CSS in the static document head",
   );
+  assert.ok(
+    html.includes('<div class="scoped-preview"></div>'),
+    "Exported widgets must use the same inner mount container as the editor",
+  );
+  assert.ok(
+    html.includes("holder&&holder.querySelector('.scoped-preview')"),
+    "Export runtime must mount components inside the inner preview container",
+  );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
   new Function(html.slice(start, end));

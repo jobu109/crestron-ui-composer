@@ -78,7 +78,7 @@
           .filter((item) => item.pageId === page.id || item.master)
           .map((item) =>
             item.componentId
-              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${propertyStyle(item.properties)}"></div>`
+              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div></div>`
               : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`,
           )
           .join("\n");
@@ -177,7 +177,11 @@
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});diag('Page: '+id)}",
       animatedShow =
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id){tracks(entry).filter(function(c){return c.trigger==='page-enter'}).forEach(function(c){play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c)});runActions(entry,'page-enter')}});diag('Page: '+id)}",
-      animatedController = controller
+      layeredController = controller.replace(
+        "function mount(item){var root=document.querySelector('[data-instance=\"'+item.instance+'\"]'),def=definitions[item.componentId];",
+        "function mount(item){var holder=document.querySelector('[data-instance=\"'+item.instance+'\"]'),root=holder&&holder.querySelector('.scoped-preview'),def=definitions[item.componentId];",
+      ),
+      animatedController = layeredController
         .replace(
           "root.innerHTML='<style>'+def.styles+'</style>'+def.template;",
           "root.innerHTML='<style>'+(item.stylesOverride||def.styles)+'</style>'+(item.templateOverride||def.template);",
@@ -220,15 +224,16 @@
           "def.mount(root,{signals:signals",
           "if(item.properties.visibilityEnabled){root.style.visibility='visible';signals.subscribe('visibility',function(value){root.style.visibility=value===true||value===1||value==='1'?'visible':'hidden'})}def.mount(root,{signals:signals",
         ),
-      restoredController = contractController.replace(
-      "function appearance(root,p){",
-      "function appearance(root,p){return;",
-    )
-      .replace("Number(index)-1", "Number(index)")
-      .replace(
-        "if(prefix&&structured.indexOf('.')>=0)",
-        "var legacyCollection=structured.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/);if(prefix&&legacyCollection){structured=prefix+'.'+legacyCollection[1]+legacyCollection[2]+'.'+legacyCollection[3];prefix=''}if(prefix&&structured.indexOf('.')>=0)",
-      );
+      restoredController = contractController
+        .replace(
+          "function appearance(root,p){",
+          "function appearance(root,p){return;",
+        )
+        .replace("Number(index)-1", "Number(index)")
+        .replace(
+          "if(prefix&&structured.indexOf('.')>=0)",
+          "var legacyCollection=structured.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/);if(prefix&&legacyCollection){structured=prefix+'.'+legacyCollection[1]+legacyCollection[2]+'.'+legacyCollection[3];prefix=''}if(prefix&&structured.indexOf('.')>=0)",
+        );
     return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:500px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{color:#55f2d7}#ch5-diagnostic-log{height:400px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${restoredController}<\/script></body></html>`;
   }
   global.ComposerExporter = { exportProject };
