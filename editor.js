@@ -587,6 +587,7 @@
         {
           bindings: item.signalBindings,
           properties: item.properties || {},
+          contractPrefix: contractWidgetPrefix(item),
           targetPage: item.targetPage,
           navigate: () => {},
         },
@@ -1569,6 +1570,37 @@
       Math.min(100, Math.round(configured || labelCount || capacity || 1)),
     );
   }
+  function contractPageInstance(pageId) {
+    if (!pageId) return "Global";
+    const page = state.pages.find((entry) => entry.id === pageId),
+      name = simplIdentifier(page?.name || "Page");
+    return `Page${name.replace(/^Page/i, "") || "Main"}`;
+  }
+  function contractWidgetInstance(item) {
+    const definition = item?.componentId
+        ? window.ComposerRuntime.get(item.componentId)
+        : null,
+      base = simplIdentifier(definition?.name || item?.name || "Widget"),
+      siblings = state.items.filter(
+        (entry) =>
+          entry.id !== item.id &&
+          entry.pageId === item.pageId &&
+          !!entry.master === !!item.master &&
+          simplIdentifier(
+            (entry.componentId
+              ? window.ComposerRuntime.get(entry.componentId)?.name
+              : entry.name) || "Widget",
+          ) === base,
+      ),
+      ordered = [...siblings, item].sort(
+        (a, b) => state.items.indexOf(a) - state.items.indexOf(b),
+      ),
+      number = ordered.indexOf(item) + 1;
+    return `${base}${number > 1 ? number : ""}`;
+  }
+  function contractWidgetPrefix(item) {
+    return `${contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
+  }
   function collectProjectSignals() {
     const rows = [];
     state.pages.forEach((page) => {
@@ -1882,24 +1914,49 @@
   }
   function contractSignalShape(row) {
     const value = String(row.value || "").trim(),
+      item = row.itemId
+        ? state.items.find((entry) => entry.id === row.itemId)
+        : null,
       legacy = value.match(/^(.*)\.\{(?:n|index)\}\.(.+)$/),
       array = value.match(
         /^([A-Za-z_][A-Za-z0-9_.]*)\[\{(?:n|index)\}\]\.(.+)$/,
       );
-    if (row.range && (legacy || array)) {
+    if (item && row.range && (legacy || array)) {
       const match = legacy || array,
-        instancePath = match[1],
-        parts = instancePath.split(".").filter(Boolean);
+        originalParts = match[1].split(".").filter(Boolean),
+        childPath = originalParts.slice(1).join("_") || "Items",
+        widgetPath = contractWidgetPrefix(item),
+        instancePath = `${widgetPath}.${childPath}`;
       return {
         instancePath,
-        parentPath: parts.length > 1 ? parts[0] : "",
-        nestedInstanceName:
-          parts.length > 1 ? parts.slice(1).join("_") : "",
+        parentPath: widgetPath,
+        nestedInstanceName: childPath,
         attributePath: match[2],
         instances: Math.max(1, Number(row.rangeCount) || 1),
       };
     }
     const parts = value.split(".").filter(Boolean);
+    if (item) {
+      const widgetPath = contractWidgetPrefix(item),
+        widgetName = widgetPath.split(".").pop();
+      return {
+        instancePath: widgetPath,
+        parentPath: widgetPath.slice(0, -(widgetName.length + 1)),
+        nestedInstanceName: widgetName,
+        attributePath: parts.slice(1).join("_") || parts[0] || "Signal",
+        instances: 1,
+      };
+    }
+    if (row.pageId) {
+      const pagePath = contractPageInstance(row.pageId);
+      return {
+        instancePath: pagePath,
+        parentPath: "",
+        nestedInstanceName: "",
+        attributePath: parts.slice(1).join("_") || "Selected",
+        instances: 1,
+      };
+    }
     return {
       instancePath: parts[0] || "",
       parentPath: "",
@@ -1929,12 +1986,6 @@
         errors.push(`“${value}” contains unsupported contract characters.`);
         return;
       }
-      const prior = paths.get(value);
-      if (prior)
-        errors.push(
-          `“${value}” is assigned more than once (${prior.widget} and ${row.widget}).`,
-        );
-      else paths.set(value, row);
       const instancePath = shape.instancePath,
         instanceName = simplIdentifier(instancePath),
         attributeName = standardContractAttribute(
@@ -1951,6 +2002,15 @@
           instances: shape.instances,
           rows: [],
         };
+      const canonicalPath = `${instancePath}.${attributeName}`,
+        prior = paths.get(canonicalPath);
+      if (prior) {
+        errors.push(
+          `“${canonicalPath}” is assigned more than once (${prior.widget} and ${row.widget}).`,
+        );
+        return;
+      }
+      paths.set(canonicalPath, row);
       if (component.instancePath !== instancePath) {
         errors.push(
           `“${instancePath}” and “${component.instancePath}” both become the SIMPL name “${instanceName}”. Rename one of the contract paths.`,
@@ -1974,20 +2034,27 @@
       component.rows.push({ ...row, attributeName });
       components.set(key, component);
     });
-    [...components.values()]
-      .filter((component) => component.parentPath)
-      .forEach((component) => {
-        const parentName = simplIdentifier(component.parentPath);
-        if (!components.has(parentName))
+    let missingParents = true;
+    while (missingParents) {
+      missingParents = false;
+      [...components.values()]
+        .filter((component) => component.parentPath)
+        .forEach((component) => {
+          const parentName = simplIdentifier(component.parentPath);
+          if (components.has(parentName)) return;
+          const parts = component.parentPath.split(".").filter(Boolean),
+            grandparentPath = parts.slice(0, -1).join(".");
           components.set(parentName, {
             instanceName: parentName,
             instancePath: component.parentPath,
-            parentPath: "",
-            nestedInstanceName: "",
+            parentPath: grandparentPath,
+            nestedInstanceName: parts[parts.length - 1] || parentName,
             instances: 1,
             rows: [],
           });
-      });
+          missingParents = true;
+        });
+    }
     const contractId = stableContractId(`contract:${state.contract.name}`),
       cceComponents = [],
       specifications = [],
@@ -2898,12 +2965,16 @@
       }
     });
     expandedSignals.forEach((row) => {
-      const signalKey = key(row.type, row.direction, row.value),
+      const shape = row.mode === "contract" ? contractSignalShape(row) : null,
+        canonicalValue = shape
+          ? `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`
+          : row.value,
+        signalKey = key(row.type, row.direction, canonicalValue),
         owner = `${row.page} · “${row.widget}” ${row.name}`;
       if (used.has(signalKey))
         add(
           "warning",
-          `${owner} duplicates ${row.mode} signal ${row.value} used by ${used.get(signalKey)}.`,
+          `${owner} duplicates ${row.mode} signal ${canonicalValue} used by ${used.get(signalKey)}.`,
         );
       else used.set(signalKey, owner);
     });

@@ -45,6 +45,29 @@
     }
     return properties;
   }
+  function contractIdentifier(value) {
+    const clean = String(value || "")
+      .replace(/[^A-Za-z0-9_]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return /^[A-Za-z_]/.test(clean) ? clean : `_${clean}`;
+  }
+  function contractPrefix(project, item) {
+    const page = project.pages.find((entry) => entry.id === item.pageId),
+      pageName = item.master
+        ? "Global"
+        : `Page${contractIdentifier(page?.name || "Main").replace(/^Page/i, "") || "Main"}`,
+      definition = global.ComposerRuntime.get(item.componentId),
+      base = contractIdentifier(definition?.name || item.name || "Widget"),
+      peers = project.items.filter(
+        (entry) =>
+          entry.componentId === item.componentId &&
+          entry.pageId === item.pageId &&
+          !!entry.master === !!item.master,
+      ),
+      number = peers.indexOf(item) + 1;
+    return `${pageName}.${base}${number > 1 ? number : ""}`;
+  }
   function widgetDocument(html, targetPage) {
     const bridge = targetPage
       ? `<script>document.addEventListener("pointerup",function(){parent.postMessage({type:"crestron-local-page",page:${JSON.stringify(targetPage)}},"*")});<\/script>`
@@ -78,7 +101,10 @@
       project.pages.map((page) => ({
         id: page.id,
         mode: page.bindingMode,
-        signal: page.binding,
+        signal:
+          page.bindingMode === "contract"
+            ? `Page${contractIdentifier(page.name || "Main").replace(/^Page/i, "") || "Main"}.Selected`
+            : page.binding,
       })),
     );
     const firstPage = JSON.stringify(project.pages[0].id);
@@ -97,6 +123,7 @@
           componentId: item.componentId,
           bindings: item.signalBindings || {},
           properties: contractProperties(item),
+          contractPrefix: contractPrefix(project, item),
           targetPage: item.targetPage || "",
         })),
     );
@@ -129,15 +156,19 @@
     const contractController = controller
         .replace(
           "function appearance(root,p){",
-          "function standardAttribute(type,direction,value){var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Name'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=String(value||'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,'');if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix+suffix}function contractAddress(value,type,direction){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
+          "function standardAttribute(type,direction,value){var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Name'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=String(value||'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,'');if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix+suffix}function contractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;if(prefix&&structured.indexOf('.')>=0)structured=prefix+'.'+structured.slice(structured.indexOf('.')+1);var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
         )
         .replace(
           "function publishAddress(type,signal,value){",
-          "function publishAddress(type,signal,value){signal=contractAddress(signal,type,'output');",
+          "function publishAddress(type,signal,value){signal=contractAddress(signal,type,'output',item.contractPrefix);",
         )
         .replace(
           "function subscribeAddress(type,signal,callback){",
-          "function subscribeAddress(type,signal,callback){signal=contractAddress(signal,type,'input');",
+          "function subscribeAddress(type,signal,callback){signal=contractAddress(signal,type,'input',item.contractPrefix);",
+        )
+        .replace(
+          "properties:item.properties||{},definitionData:def.data||{}",
+          "properties:item.properties||{},contractPrefix:item.contractPrefix||'',definitionData:def.data||{}",
         ),
       restoredController = contractController.replace(
       "function appearance(root,p){",

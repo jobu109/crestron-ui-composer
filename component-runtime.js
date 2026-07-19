@@ -50,7 +50,7 @@
     if (/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix)) prefix = "";
     return prefix + suffix;
   }
-  function contractAddress(value, type, direction) {
+  function contractAddress(value, type, direction, prefix) {
     const address = String(value || "").replace(
       /^(.*)\.(\d+)\.(.+)$/,
       function (_, prefix, index, attribute) {
@@ -74,6 +74,11 @@
       structured = parts.length > 2
         ? `${parts[0]}.${parts.slice(1).join("_")}`
         : address;
+    if (prefix && structured.includes(".")) {
+      const rootEnd = structured.indexOf("."),
+        remainder = structured.slice(rootEnd + 1);
+      structured = `${prefix}.${remainder}`;
+    }
     const separator = structured.lastIndexOf(".");
     return separator < 0 || !type || !direction
       ? structured
@@ -580,21 +585,32 @@
       "<style>" + definition.styles + "</style>" + definition.template;
     const cleanups = [],
       lib = options.lib === undefined ? library() : options.lib,
-      bindings = options.bindings || {};
+      bindings = options.bindings || {},
+      contractPrefix = options.contractPrefix || "";
     function binding(key) {
       return bindings[key] && bindings[key].value ? bindings[key].value : "";
     }
     const signals = {
       publish(key, value) {
         const spec = definition.signals.find((s) => s.key === key),
-          signal = contractAddress(binding(key), spec?.type, "output");
+          signal = contractAddress(
+            binding(key),
+            spec?.type,
+            "output",
+            contractPrefix,
+          );
         if (!spec || !signal) return;
         if (lib) lib.publishEvent(typeCode(spec.type), signal, value);
         else simulator.publish(typeCode(spec.type), signal, value);
       },
       subscribe(key, callback) {
         const spec = definition.signals.find((s) => s.key === key),
-          signal = contractAddress(binding(key), spec?.type, "input");
+          signal = contractAddress(
+            binding(key),
+            spec?.type,
+            "input",
+            contractPrefix,
+          );
         if (!spec || !signal) return;
         if (lib) {
           const result = lib.subscribeState(
@@ -610,13 +626,13 @@
       },
       publishAddress(type, signal, value) {
         if (!signal) return;
-        signal = contractAddress(signal, type, "output");
+        signal = contractAddress(signal, type, "output", contractPrefix);
         if (lib) lib.publishEvent(typeCode(type), String(signal), value);
         else simulator.publish(typeCode(type), String(signal), value);
       },
       subscribeAddress(type, signal, callback) {
         if (!signal) return;
-        signal = contractAddress(signal, type, "input");
+        signal = contractAddress(signal, type, "input", contractPrefix);
         if (lib) {
           const result = lib.subscribeState(
             typeCode(type),
