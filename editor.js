@@ -3496,11 +3496,29 @@
       item ? contractWidgetPrefix(item) : "",
     );
   }
+  function simulatorSignalRows() {
+    return collectProjectSignals().flatMap((row) => {
+      if (!row.range) return [row];
+      const count = Math.max(1, Math.min(100, Number(row.rangeCount) || 1));
+      return Array.from({ length: count }, (_, index) => ({
+        ...row,
+        name: `${row.name} [${index}]`,
+        range: false,
+        contractIndex: index,
+        value:
+          row.mode === "join"
+            ? String((Number(row.value) || 0) + index * (row.rangeIncrement || 1))
+            : String(row.value || "")
+                .replace(/\{n\}/g, String(index + 1))
+                .replace(/\{index\}/g, String(index)),
+      }));
+    });
+  }
   function renderSignalSimulator() {
     const query = String($("simulator-search").value || "")
         .trim()
         .toLowerCase(),
-      rows = collectProjectSignals().filter(
+      rows = simulatorSignalRows().filter(
         (row) =>
           !query ||
           `${row.page} ${row.widget} ${row.name} ${row.type} ${row.value}`
@@ -3553,13 +3571,23 @@
           button.textContent = next ? "TRUE" : "FALSE";
         };
         controlCell.appendChild(button);
+      } else if (row.type === "analog" && row.direction === "output") {
+        const value = document.createElement("span");
+        value.className = "simulator-output-value";
+        value.dataset.simulatorKey = key;
+        value.textContent = simulator.values.has(key)
+          ? String(simulator.values.get(key))
+          : "Interact with widget";
+        controlCell.appendChild(value);
       } else {
         const input = document.createElement("input");
         input.type = row.type === "analog" ? "number" : "text";
         input.value = simulator.values.get(key) ?? "";
         input.placeholder =
           row.type === "analog"
-            ? "0–65535"
+            ? /count|number of|items/i.test(row.name)
+              ? "Count"
+              : "0–65535 (50% = 32768)"
             : row.direction === "output"
               ? "Publish serial"
               : "Serial value";
@@ -3567,7 +3595,7 @@
           input.min = "0";
           input.max = "65535";
         }
-        input.onchange = () =>
+        input.oninput = () =>
           setSimulatedSignal(
             row,
             row.type === "analog"
@@ -3600,6 +3628,12 @@
       host.scrollTop + host.clientHeight >= host.scrollHeight - 12;
     host.textContent = simulatorLogText() || "No signal events yet.";
     if (atBottom) host.scrollTop = host.scrollHeight;
+    document.querySelectorAll("[data-simulator-key]").forEach((element) => {
+      const value = window.ComposerRuntime.simulator.values.get(
+        element.dataset.simulatorKey,
+      );
+      if (value !== undefined) element.textContent = String(value);
+    });
   }
   function renderBindings(item) {
     if (item.componentId) {

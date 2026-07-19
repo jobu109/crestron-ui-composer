@@ -113,6 +113,15 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
     ComposerRuntime.resolveAddress("1", "digital", "input", "Home.RollingToggle"),
     "1",
   );
+  assert.equal(
+    ComposerRuntime.resolveAddress(
+      "LightingControl.Items.0.Feedback",
+      "analog",
+      "input",
+      "Home.LightingControl",
+    ),
+    "Home.LightingControl.Items[0].Feedback",
+  );
 });
 
 if (process.exitCode) process.exit(process.exitCode);
