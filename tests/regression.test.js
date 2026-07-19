@@ -143,6 +143,10 @@ run("exported action runtime is valid JavaScript", () => {
     start = html.lastIndexOf("<script>") + 8,
     end = html.lastIndexOf("</script>");
   assert.ok(html.includes("Room.Level"));
+  assert.ok(
+    html.includes('<style id="composer-component-styles">'),
+    "Export must keep component CSS in the static document head",
+  );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
   new Function(html.slice(start, end));

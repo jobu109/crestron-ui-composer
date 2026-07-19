@@ -132,9 +132,19 @@
           actions: item.actions || [],
         })),
     );
-    const usedDefinitions = [
+    const usedComponentIds = [
       ...new Set(scopedItems.map((item) => item.componentId)),
-    ]
+    ];
+    // Keep the base component CSS in the document head as well as beside each
+    // mounted template. Some WebView/browser paths can briefly or permanently
+    // lose styles created through an innerHTML mount, which leaves controls
+    // such as the oval buttons and toggles rendered as bare native content.
+    // A static copy also makes Preview use the same dependable stylesheet path
+    // as the editor canvas.
+    const componentCss = usedComponentIds
+      .map((id) => global.ComposerRuntime.get(id)?.styles || "")
+      .join("\n");
+    const usedDefinitions = usedComponentIds
       .map((id) => {
         const d = global.ComposerRuntime.get(id);
         let mount = d.mount.toString().replace(/^mount/, "function");
@@ -219,7 +229,7 @@
         "if(prefix&&structured.indexOf('.')>=0)",
         "var legacyCollection=structured.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/);if(prefix&&legacyCollection){structured=prefix+'.'+legacyCollection[1]+legacyCollection[2]+'.'+legacyCollection[3];prefix=''}if(prefix&&structured.indexOf('.')>=0)",
       );
-    return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:500px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{color:#55f2d7}#ch5-diagnostic-log{height:400px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${restoredController}<\/script></body></html>`;
+    return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:500px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{color:#55f2d7}#ch5-diagnostic-log{height:400px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${restoredController}<\/script></body></html>`;
   }
   global.ComposerExporter = { exportProject };
 })(window);
