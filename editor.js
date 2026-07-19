@@ -4435,6 +4435,9 @@
     ].join("\n");
     if (interactive) {
       $("health-title").textContent = "Project health report";
+      $("compatibility-device").hidden = true;
+      $("compatibility-preview").hidden = true;
+      $("compatibility-autofit").hidden = true;
       $("health-summary").textContent = issues.length
         ? `${errors.length} error(s), ${issues.length - errors.length} warning(s)`
         : "No project issues were found.";
@@ -4480,12 +4483,62 @@
     });
     lastHealthReport = lines.join("\n");
     $("health-title").textContent = "Panel compatibility report";
+    const profileSelect = $("compatibility-device");
+    profileSelect.innerHTML = profiles.map((device) =>
+      `<option value="${device.id}">${device.name} — ${device.width} × ${device.height}</option>`,
+    ).join("");
+    profileSelect.value = profiles.some((device) => device.id === state.targetDevice)
+      ? state.targetDevice : profiles[0]?.id || "";
+    profileSelect.hidden = false;
+    $("compatibility-preview").hidden = false;
+    $("compatibility-autofit").hidden = false;
     $("health-summary").textContent = problemCount
       ? `${problemCount} layout issue(s) across ${profiles.length} panel profiles.`
       : `All ${profiles.length} panel profiles fit.`;
     $("health-report").textContent = lastHealthReport;
     $("health-dialog").showModal();
     setStatus(problemCount ? `${problemCount} panel fit issues found` : "All panel profiles fit");
+  }
+  function selectedCompatibilityDevice() {
+    return deviceProfiles.find((device) => device.id === $("compatibility-device").value);
+  }
+  function previewCompatibilityDevice() {
+    const device = selectedCompatibilityDevice();
+    if (!device) return;
+    $("target-device").value = device.id;
+    applyDevice(device.id);
+    $("health-dialog").close();
+    commitHistory();
+  }
+  function autoFitCompatibilityPage() {
+    const device = selectedCompatibilityDevice();
+    if (!device) return;
+    if (state.targetDevice !== device.id) {
+      $("target-device").value = device.id;
+      applyDevice(device.id);
+    }
+    const key = panelLayoutKey(device.id, device.width, device.height),
+      items = state.items.filter((item) => item.master || item.pageId === state.activePage);
+    let changed = 0;
+    items.forEach((item) => {
+      const margin = Math.max(0, Number(layoutDefaults(item).safeMargin) || 0),
+        availableWidth = Math.max(20, state.width - margin * 2),
+        availableHeight = Math.max(20, state.height - margin * 2),
+        before = `${item.x},${item.y},${item.w},${item.h}`;
+      item.w = Math.min(item.w, availableWidth);
+      item.h = Math.min(item.h, availableHeight);
+      item.x = Math.max(margin, Math.min(item.x, state.width - margin - item.w));
+      item.y = Math.max(margin, Math.min(item.y, state.height - margin - item.h));
+      item.deviceOverrides[key] = {
+        x: item.x, y: item.y, w: item.w, h: item.h,
+        panelWidth: state.width, panelHeight: state.height,
+      };
+      if (before !== `${item.x},${item.y},${item.w},${item.h}`) changed++;
+    });
+    renderPage();
+    commitHistory();
+    runPanelCompatibility();
+    setStatus(`Auto-fit ${changed} widget${changed === 1 ? "" : "s"} on ${currentPage().name} for ${device.name}`);
   }
   function approveExport() {
     const result = runValidation(false);
@@ -5716,6 +5769,8 @@
   };
   $("validate-project").onclick = () => runValidation(true);
   $("panel-compatibility").onclick = runPanelCompatibility;
+  $("compatibility-preview").onclick = previewCompatibilityDevice;
+  $("compatibility-autofit").onclick = autoFitCompatibilityPage;
   $("health-export").onclick = () =>
     download("crestron-ui-project-health.txt", lastHealthReport || "No report has been generated.", "text/plain");
   $("signal-manager").onclick = () => {
