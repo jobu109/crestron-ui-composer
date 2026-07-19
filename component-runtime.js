@@ -44,6 +44,7 @@
     );
   }
   function standardContractAttribute(type, direction, value) {
+    if (/^Visibility$/i.test(String(value || "").replace(/[^A-Za-z0-9_]/g, "_"))) return "Visibility";
     const suffix = type === "digital" ? (direction === "output" ? "Press" : "Selected") : type === "analog" ? (direction === "output" ? "ValueSet" : "Feedback") : direction === "output" ? "Text" : "Name",
       pattern = type === "digital" ? /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i : type === "analog" ? direction === "output" ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i : /(?:_?(?:IndirectText|Label|Name|Text))$/i;
     let prefix = String(value || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").replace(pattern, "").replace(/_+$/g, "");
@@ -347,6 +348,23 @@
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join("");
+    if (!definition.properties.some((property) => property.key === "visibilityEnabled"))
+      definition.properties.push({
+        key: "visibilityEnabled",
+        name: "Enable visibility signal",
+        type: "checkbox",
+        defaultValue: false,
+        signalSetting: true,
+      });
+    if (!definition.signals.some((signal) => signal.key === "visibility"))
+      definition.signals.push({
+        key: "visibility",
+        name: "Visibility",
+        type: "digital",
+        direction: "input",
+        defaultValue: `${namespace}.Visibility`,
+        optionalProperty: "visibilityEnabled",
+      });
     let mode = definition.properties.find((p) => p.key === "bindingMode");
     if (!mode) {
       mode = {
@@ -648,6 +666,13 @@
           );
       },
     };
+    if (options.properties?.visibilityEnabled) {
+      root.style.visibility = "visible";
+      signals.subscribe("visibility", (value) => {
+        root.style.visibility =
+          value === true || value === 1 || value === "1" ? "visible" : "hidden";
+      });
+    }
     options.definitionData = definition.data || {};
     const dispose = definition.mount(root, {
       signals,

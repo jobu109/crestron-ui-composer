@@ -54,9 +54,13 @@
   }
   function contractPrefix(project, item) {
     const page = project.pages.find((entry) => entry.id === item.pageId),
+      configuredPageName =
+        page?.bindingMode === "contract" && String(page.binding || "").trim()
+          ? String(page.binding).trim().replace(/\.Selected$/i, "")
+          : page?.name || "Main",
       pageName = item.master
         ? "Global"
-        : contractIdentifier(page?.name || "Main") || "Main",
+        : contractIdentifier(configuredPageName) || "Main",
       definition = global.ComposerRuntime.get(item.componentId),
       base = contractIdentifier(definition?.name || item.name || "Widget"),
       peers = project.items.filter(
@@ -103,7 +107,7 @@
         mode: page.bindingMode,
         signal:
           page.bindingMode === "contract"
-            ? `${contractIdentifier(page.name || "Main") || "Main"}.Selected`
+            ? `${contractIdentifier(String(page.binding || page.name || "Main").replace(/\.Selected$/i, "")) || "Main"}.Selected`
             : page.binding,
       })),
     );
@@ -156,7 +160,7 @@
     const contractController = controller
         .replace(
           "function appearance(root,p){",
-          "function standardAttribute(type,direction,value){var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Name'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=String(value||'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,'');if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix+suffix}function contractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;if(prefix&&structured.indexOf('.')>=0)structured=prefix+'.'+(structured.indexOf('[')>=0?structured.slice(structured.indexOf('.')+1):address.split('.').pop());var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
+          "function standardAttribute(type,direction,value){if(/^Visibility$/i.test(String(value||'').replace(/[^A-Za-z0-9_]/g,'_')))return 'Visibility';var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Name'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=String(value||'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,'');if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix+suffix}function contractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;if(prefix&&structured.indexOf('.')>=0)structured=prefix+'.'+(structured.indexOf('[')>=0?structured.slice(structured.indexOf('.')+1):address.split('.').pop());var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
         )
         .replace(
           "function publishAddress(type,signal,value){",
@@ -169,6 +173,10 @@
         .replace(
           "properties:item.properties||{},definitionData:def.data||{}",
           "properties:item.properties||{},contractPrefix:item.contractPrefix||'',definitionData:def.data||{}",
+        )
+        .replace(
+          "def.mount(root,{signals:signals",
+          "if(item.properties.visibilityEnabled){root.style.visibility='visible';signals.subscribe('visibility',function(value){root.style.visibility=value===true||value===1||value==='1'?'visible':'hidden'})}def.mount(root,{signals:signals",
         ),
       restoredController = contractController.replace(
       "function appearance(root,p){",

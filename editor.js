@@ -1573,7 +1573,11 @@
   function contractPageInstance(pageId) {
     if (!pageId) return "Global";
     const page = state.pages.find((entry) => entry.id === pageId),
-      name = simplIdentifier(page?.name || "Page");
+      configured =
+        page?.bindingMode === "contract" && String(page.binding || "").trim()
+          ? String(page.binding).trim().replace(/\.Selected$/i, "")
+          : page?.name || "Page",
+      name = simplIdentifier(configured);
     return name || "Main";
   }
   function contractWidgetInstance(item) {
@@ -1633,6 +1637,11 @@
         const overall =
           (item.properties && item.properties.bindingMode) || "contract";
         (definition.signals || []).forEach((signal) => {
+          if (
+            signal.optionalProperty &&
+            !item.properties?.[signal.optionalProperty]
+          )
+            return;
           const binding =
             item.signalBindings[signal.key] ||
             (item.signalBindings[signal.key] = { mode: overall, value: "" });
@@ -1839,6 +1848,7 @@
     return /^[A-Za-z_]/.test(identifier) ? identifier : `_${identifier}`;
   }
   function standardContractAttribute(type, direction, value) {
+    if (/^Visibility$/i.test(simplIdentifier(value))) return "Visibility";
     const suffix =
         type === "digital"
           ? direction === "output"
@@ -1971,7 +1981,7 @@
         instancePath: pagePath,
         parentPath: "",
         nestedInstanceName: "",
-        attributePath: parts.slice(1).join("_") || "Selected",
+        attributePath: "Selected",
         instances: 1,
       };
     }
@@ -2531,7 +2541,40 @@
         ? (item.properties && item.properties.bindingMode) || "join"
         : "";
     host.innerHTML = "";
+    const visibilityEnabled = document.createElement("label"),
+      visibilityCheckbox = document.createElement("input");
+    visibilityEnabled.className = "signal-optional-toggle";
+    visibilityCheckbox.type = "checkbox";
+    visibilityCheckbox.checked = !!item.properties?.visibilityEnabled;
+    visibilityCheckbox.onchange = () => {
+      item.properties = item.properties || {};
+      item.properties.visibilityEnabled = visibilityCheckbox.checked;
+      const visibility = definition.signals.find(
+        (signal) => signal.key === "visibility",
+      );
+      if (
+        visibilityCheckbox.checked &&
+        visibility &&
+        !item.signalBindings.visibility?.value
+      )
+        item.signalBindings.visibility = {
+          mode: overall || "contract",
+          value: (overall || "contract") === "contract"
+            ? visibility.defaultValue || "Visibility"
+            : "",
+        };
+      renderBindings(item);
+      renderItem(item);
+      scheduleHistory();
+    };
+    visibilityEnabled.append(visibilityCheckbox, " Enable visibility signal");
+    host.appendChild(visibilityEnabled);
     definition.signals.forEach((signal) => {
+      if (
+        signal.optionalProperty &&
+        !item.properties?.[signal.optionalProperty]
+      )
+        return;
       const binding =
           item.signalBindings[signal.key] ||
           (item.signalBindings[signal.key] = {
