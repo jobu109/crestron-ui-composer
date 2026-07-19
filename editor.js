@@ -4549,6 +4549,8 @@
     $("custom-component-save").textContent = entry
       ? "Update component"
       : "Create component";
+    $("custom-component-export").hidden = !entry;
+    $("custom-component-delete").hidden = !entry;
     $("custom-component-name").value = entry?.name || item.name || "Custom component";
     $("custom-component-category").value = entry?.category || "Custom";
     $("custom-source-html").value = source.html;
@@ -4572,6 +4574,52 @@
   $("custom-property-add").onclick = () => addCustomPropertyRow();
   $("custom-signal-add").onclick = () => addCustomSignalRow();
   $("custom-preview-refresh").onclick = refreshCustomPreview;
+  $("custom-component-export").onclick = () => {
+    const entry = state.customComponents.find(
+      (candidate) => candidate.id === customEditingId,
+    );
+    if (!entry) return;
+    const packageValue = {
+      format: "crestron-ui-composer-component",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      component: structuredClone(entry),
+    };
+    download(
+      `${entry.name.replace(/[^A-Za-z0-9_-]+/g, "-") || "component"}.cuicomponent`,
+      JSON.stringify(packageValue, null, 2),
+      "application/json",
+    );
+    setStatus(`Exported component package “${entry.name}”`);
+  };
+  $("custom-component-delete").onclick = () => {
+    const entry = state.customComponents.find(
+      (candidate) => candidate.id === customEditingId,
+    );
+    if (!entry) return;
+    const instances = state.items.filter(
+      (item) => item.componentId === entry.id,
+    );
+    if (
+      !confirm(
+        `Delete “${entry.name}” from the palette${instances.length ? ` and remove its ${instances.length} canvas instance${instances.length === 1 ? "" : "s"}` : ""}?`,
+      )
+    )
+      return;
+    state.customComponents = state.customComponents.filter(
+      (candidate) => candidate.id !== entry.id,
+    );
+    state.components = state.components.filter(
+      (component) => component.componentId !== entry.id,
+    );
+    state.items = state.items.filter((item) => item.componentId !== entry.id);
+    $("custom-component-dialog").close();
+    customEditingId = "";
+    renderComponentLibrary();
+    renderPage();
+    commitHistory();
+    setStatus(`Deleted custom component “${entry.name}”`);
+  };
   ["custom-source-html", "custom-source-css", "custom-source-javascript"].forEach(
     (id) => ($(id).oninput = refreshCustomPreview),
   );
@@ -4623,6 +4671,52 @@
     renderComponentLibrary();
     commitHistory();
     setStatus(`${customEditingId ? "Updated" : "Created"} palette component “${name}”`);
+  };
+  $("custom-package-file").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const packageValue = JSON.parse(await file.text()),
+        imported = packageValue.component;
+      if (
+        packageValue.format !== "crestron-ui-composer-component" ||
+        packageValue.version !== 1 ||
+        !imported?.id ||
+        !imported?.name ||
+        typeof imported.html !== "string" ||
+        !Array.isArray(imported.properties) ||
+        !Array.isArray(imported.signals)
+      )
+        throw new Error("This is not a valid Crestron UI Composer component package.");
+      const existingIndex = state.customComponents.findIndex(
+        (entry) => entry.id === imported.id,
+      );
+      if (
+        existingIndex >= 0 &&
+        !confirm(`Replace the existing “${state.customComponents[existingIndex].name}” component?`)
+      )
+        return;
+      const entry = structuredClone(imported);
+      if (existingIndex >= 0) state.customComponents[existingIndex] = entry;
+      else state.customComponents.push(entry);
+      const libraryEntry = state.components.find(
+        (component) => component.componentId === entry.id,
+      );
+      if (libraryEntry) {
+        libraryEntry.displayName = entry.name;
+        libraryEntry.category = entry.category || "Custom";
+      }
+      registerCustomComponent(entry);
+      state.items
+        .filter((item) => item.componentId === entry.id)
+        .forEach(renderItem);
+      renderComponentLibrary();
+      commitHistory();
+      setStatus(`Imported component package “${entry.name}”`);
+    } catch (error) {
+      alert(`Component package import failed.\n\n${error.message}`);
+    }
   };
   $("apply-source").onclick = () => {
     if (current()) {

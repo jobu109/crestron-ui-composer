@@ -243,6 +243,12 @@
             accept="text/html,.html"
             multiple
         /></label>
+        <label class="button custom-package-import"
+          >Import component package<input
+            id="custom-package-file"
+            type="file"
+            accept=".cuicomponent,application/json"
+        /></label>
         <input
           id="component-search"
           class="library-search"
@@ -797,6 +803,12 @@
           </section>
         </div>
         <div class="dialog-actions">
+          <button id="custom-component-export" type="button" hidden>
+            Export package
+          </button>
+          <button id="custom-component-delete" type="button" class="danger" hidden>
+            Delete component
+          </button>
           <button value="cancel">Cancel</button>
           <button id="custom-component-save" value="default" class="primary">
             Create component
