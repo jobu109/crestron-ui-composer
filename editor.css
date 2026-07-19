@@ -1337,6 +1337,30 @@ textarea {
   color: #fff;
   background: #101719;
 }
+.deployment-profile-list {
+  display: grid;
+  gap: 7px;
+  max-height: 230px;
+  margin: 8px 0 14px;
+  overflow: auto;
+}
+.deployment-queue-entry {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) minmax(150px, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #315057;
+  border-radius: 6px;
+  background: #111d21;
+}
+.deployment-queue-entry strong,
+.deployment-queue-entry small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deployment-queue-entry small { color: #829b9d; }
+.deployment-queue-state { color: #c8dcda; font-size: 12px; }
+.deployment-queue-entry.ready { border-color: #239b7f; }
+.deployment-queue-entry.failed { border-color: #b95555; }
+.deployment-queue-entry.running { border-color: #d2a22e; }
 .deployment-dialog label {
   display: block;
   margin: 9px 0;

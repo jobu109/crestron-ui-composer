@@ -103,8 +103,14 @@ public partial class MainWindow : Window
                 case "checkPanel":
                     CheckPanel(id, root.GetProperty("payload").GetString() ?? "");
                     break;
+                case "checkDeploymentProfile":
+                    CheckDeploymentProfile(id, root.GetProperty("payload"));
+                    break;
                 case "deployCh5Package":
                     DeployCh5Package(id, root.GetProperty("payload"));
+                    break;
+                case "deployCh5PackageWait":
+                    DeployCh5PackageWait(id, root.GetProperty("payload"));
                     break;
                 case "systemDiagnostics":
                     SystemDiagnostics(id);
@@ -419,6 +425,40 @@ public partial class MainWindow : Window
         catch (Exception ex) { Respond(id, false, null, ex.Message); }
     }
 
+    private async void CheckDeploymentProfile(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
+            var package = payload.GetProperty("packagePath").GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
+            var packageValid = true;
+            var packageStatus = "Valid CH5 package";
+            string? targetDeviceId = null;
+            long size = 0;
+            try
+            {
+                ValidateCh5Archive(package);
+                size = new FileInfo(package).Length;
+                targetDeviceId = ReadCh5TargetDeviceId(package);
+            }
+            catch (Exception ex)
+            {
+                packageValid = false;
+                packageStatus = ex.Message;
+            }
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync(host, 3000);
+            Respond(id, true, new {
+                reachable = reply.Status == IPStatus.Success,
+                status = reply.Status.ToString(),
+                roundtripMs = reply.Status == IPStatus.Success ? reply.RoundtripTime : -1,
+                packageValid, packageStatus, targetDeviceId, size
+            }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
     private void DeployCh5Package(string id, JsonElement payload)
     {
         var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
@@ -435,6 +475,34 @@ public partial class MainWindow : Window
         var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") { UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal };
         var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
         Respond(id, true, new { started = true, processId = process.Id, host, packagePath = package, backupPath, slowMode }, null);
+    }
+
+    private async void DeployCh5PackageWait(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
+            var package = payload.GetProperty("packagePath").GetString() ?? "";
+            var slowMode = payload.TryGetProperty("slowMode", out var slow) && slow.GetBoolean();
+            if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
+            ValidateCh5Archive(package);
+            var cli = FindCh5Cli() ?? throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before deploying.");
+            var backupRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "DeploymentBackups");
+            Directory.CreateDirectory(backupRoot);
+            var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
+            File.Copy(package, backupPath, true);
+            var command = $"\"{cli}\" deploy -p -H \"{host}\" -t touchscreen \"{package}\"{(slowMode ? " --slow-mode" : "")}";
+            var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") {
+                UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal
+            };
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
+            await process.WaitForExitAsync();
+            Respond(id, true, new {
+                success = process.ExitCode == 0, exitCode = process.ExitCode, host,
+                packagePath = package, backupPath, slowMode
+            }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
     }
 
     private void SystemDiagnostics(string id)
@@ -505,6 +573,22 @@ public partial class MainWindow : Window
         using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing index.html.");
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("cr-com-lib.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing CrComLib.");
+    }
+
+    private static string? ReadCh5TargetDeviceId(string path)
+    {
+        using var zip = ZipFile.OpenRead(path);
+        var ch5Entry = zip.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".ch5", StringComparison.OrdinalIgnoreCase));
+        if (ch5Entry is null) return null;
+        using var payloadMemory = new MemoryStream();
+        using (var payloadStream = ch5Entry.Open()) payloadStream.CopyTo(payloadMemory);
+        payloadMemory.Position = 0;
+        using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
+        var target = payload.Entries.FirstOrDefault(entry => entry.FullName.EndsWith("composer-target.json", StringComparison.OrdinalIgnoreCase));
+        if (target is null) return null;
+        using var stream = target.Open();
+        using var document = JsonDocument.Parse(stream);
+        return document.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
     }
 
     private void Respond(string id, bool ok, object? data, string? error)

@@ -3477,6 +3477,7 @@
     type === "digital" ? "b" : type === "analog" ? "n" : "s";
   let simulatorTimer = 0;
   const deploymentSettingsKey = "crestron-ui-composer-deployment-v1";
+  const deploymentQueueStatus = new Map();
   function deploymentSettings() {
     try {
       return (
@@ -3517,6 +3518,38 @@
     });
     profileSelect.value = profiles.some((profile) => profile.id === selectedId) ? selectedId : "";
     loadDeploymentProfile(profileSelect.value);
+    renderDeploymentQueue();
+  }
+  function renderDeploymentQueue() {
+    const host = $("deployment-profile-list");
+    if (!host) return;
+    const hadEntries = host.querySelectorAll("input").length > 0,
+      checked = new Set([...host.querySelectorAll("input:checked")].map((input) => input.value));
+    host.innerHTML = "";
+    deploymentProfiles().forEach((profile) => {
+      const row = document.createElement("label"), select = document.createElement("input"),
+        name = document.createElement("strong"), target = document.createElement("small"), stateLabel = document.createElement("span"),
+        device = deviceProfiles.find((entry) => entry.id === profile.deviceId), queue = deploymentQueueStatus.get(profile.id);
+      row.className = `deployment-queue-entry ${queue?.state || ""}`;
+      select.type = "checkbox";
+      select.value = profile.id;
+      select.checked = hadEntries ? checked.has(profile.id) : true;
+      name.textContent = profile.name;
+      target.textContent = `${profile.host || "No host"} · ${device?.model || "Unknown model"} · ${profile.packagePath ? profile.packagePath.split(/[\\/]/).pop() : "No package"}`;
+      stateLabel.className = "deployment-queue-state";
+      stateLabel.textContent = queue?.message || "Not checked";
+      row.append(select, name, target, stateLabel);
+      host.appendChild(row);
+    });
+    if (!deploymentProfiles().length) host.innerHTML = '<p class="hint">Create and save a deployment profile to use the queue.</p>';
+  }
+  function selectedDeploymentQueueProfiles() {
+    const ids = new Set([...document.querySelectorAll("#deployment-profile-list input:checked")].map((input) => input.value));
+    return deploymentProfiles().filter((profile) => ids.has(profile.id));
+  }
+  function setDeploymentQueueState(profileId, state, message, details = {}) {
+    deploymentQueueStatus.set(profileId, { state, message, ...details });
+    renderDeploymentQueue();
   }
   function loadDeploymentProfile(id) {
     const profile = deploymentProfiles().find((entry) => entry.id === id), settings = deploymentSettings();
@@ -3570,13 +3603,14 @@
       row.className = "deployment-entry";
       rollback.type = "button";
       rollback.textContent = "Use backup";
+      rollback.disabled = !entry.backupPath;
       rollback.onclick = () => {
         $("deploy-package").value = entry.backupPath;
         saveDeploymentSettings({ packagePath: entry.backupPath });
         $("deploy-status").textContent =
           `Rollback package selected: ${entry.backupPath}`;
       };
-      title.textContent = `${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · ${entry.slowMode ? "slow mode" : "normal mode"}`;
+      title.textContent = `${entry.success === false ? "FAILED · " : entry.success === true ? "SUCCESS · " : ""}${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · ${entry.slowMode ? "slow mode" : "normal mode"}`;
       detail.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.device || "Touchscreen"}${entry.resolution ? ` · ${entry.resolution}` : ""} · ${entry.packagePath}`;
       row.append(rollback, title, detail);
       host.appendChild(row);
@@ -6024,6 +6058,12 @@
     setStatus(`Building ${packages.length} panel packages…`);
     try {
       const result = await nativeRequest("buildCh5Packages", { packages, usesContracts });
+      const builtByDevice = new Map(packages.map((entry, index) => [entry.device.id, result.paths?.[index] || ""]));
+      if (result.paths?.length) saveDeploymentSettings({
+        profiles: deploymentProfiles().map((profile) => builtByDevice.get(profile.deviceId)
+          ? { ...profile, packagePath: builtByDevice.get(profile.deviceId), updatedAt: new Date().toISOString() }
+          : profile),
+      });
       if (result.paths?.length) {
         $("deploy-package").value = result.paths[0];
         saveDeploymentSettings({ packagePath: result.paths[0] });
@@ -6213,6 +6253,84 @@
       $("deploy-status").textContent =
         `Deployment failed to start: ${error.message}`;
     }
+  };
+  async function checkDeploymentQueue(profiles = selectedDeploymentQueueProfiles()) {
+    if (!profiles.length) { $("deploy-status").textContent = "Select at least one deployment profile."; return []; }
+    const ready = [];
+    for (const profile of profiles) {
+      setDeploymentQueueState(profile.id, "running", "Checking…");
+      try {
+        const result = await nativeRequest("checkDeploymentProfile", {
+          host: profile.host, packagePath: profile.packagePath, deviceId: profile.deviceId,
+        });
+        const mismatch = result.targetDeviceId && result.targetDeviceId !== profile.deviceId;
+        if (result.reachable && result.packageValid && !mismatch) {
+          const message = `Ready · ${result.roundtripMs} ms · ${(result.size / 1024 / 1024).toFixed(2)} MB${result.targetDeviceId ? "" : " · target untagged"}`;
+          setDeploymentQueueState(profile.id, "ready", message, result);
+          ready.push(profile);
+        } else {
+          const message = mismatch ? `Package targets ${result.targetDeviceId}` : !result.packageValid ? result.packageStatus : `Unreachable · ${result.status}`;
+          setDeploymentQueueState(profile.id, "failed", message, result);
+        }
+      } catch (error) {
+        setDeploymentQueueState(profile.id, "failed", error.message);
+      }
+    }
+    const checkedAt = new Date().toISOString();
+    saveDeploymentSettings({ profiles: deploymentProfiles().map((profile) => {
+      const status = deploymentQueueStatus.get(profile.id);
+      return profiles.some((entry) => entry.id === profile.id)
+        ? { ...profile, lastCheck: { time: checkedAt, state: status?.state, message: status?.message } }
+        : profile;
+    }) });
+    $("deploy-status").textContent = `${ready.length} of ${profiles.length} selected profiles are ready.`;
+    return ready;
+  }
+  function appendDeploymentHistory(profile, result, success, message) {
+    const settings = deploymentSettings(), device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
+      history = [{
+        time: new Date().toISOString(), host: profile.host, packagePath: profile.packagePath,
+        backupPath: result?.backupPath || "", slowMode: !!profile.slowMode,
+        profileId: profile.id, profileName: profile.name, device: device?.name || profile.deviceId,
+        resolution: device ? `${device.width} × ${device.height}` : "", success, message,
+      }, ...(settings.history || [])].slice(0, 50);
+    saveDeploymentSettings({ history });
+    renderDeploymentHistory();
+  }
+  async function deployProfileQueue(profiles) {
+    const ready = await checkDeploymentQueue(profiles);
+    if (!ready.length) return;
+    if (!confirm(`Deploy ${ready.length} ready profile${ready.length === 1 ? "" : "s"} sequentially?\n\nEach panel opens a Crestron terminal for its credential prompt.`)) return;
+    let successes = 0;
+    for (const profile of ready) {
+      setDeploymentQueueState(profile.id, "running", "Deploying — complete the terminal prompt…");
+      try {
+        const result = await nativeRequest("deployCh5PackageWait", {
+          host: profile.host, packagePath: profile.packagePath, slowMode: !!profile.slowMode,
+        });
+        if (result.success) {
+          successes++;
+          setDeploymentQueueState(profile.id, "ready", "Deployment succeeded", result);
+          appendDeploymentHistory(profile, result, true, "Deployment succeeded");
+        } else {
+          setDeploymentQueueState(profile.id, "failed", `Deployment failed · exit ${result.exitCode}`, result);
+          appendDeploymentHistory(profile, result, false, `CLI exit code ${result.exitCode}`);
+        }
+      } catch (error) {
+        setDeploymentQueueState(profile.id, "failed", error.message);
+        appendDeploymentHistory(profile, null, false, error.message);
+      }
+    }
+    $("deploy-status").textContent = `${successes} of ${ready.length} deployments succeeded.`;
+  }
+  $("deploy-check-all").onclick = () => checkDeploymentQueue();
+  $("deploy-start-selected").onclick = () => deployProfileQueue(selectedDeploymentQueueProfiles());
+  $("deploy-retry-failed").onclick = () => {
+    const failedIds = new Set([...deploymentQueueStatus].filter(([, status]) => status.state === "failed").map(([id]) => id));
+    document.querySelectorAll("#deployment-profile-list input").forEach((input) => { input.checked = failedIds.has(input.value); });
+    const failed = deploymentProfiles().filter((profile) => failedIds.has(profile.id));
+    if (!failed.length) { $("deploy-status").textContent = "There are no failed deployments to retry."; return; }
+    deployProfileQueue(failed);
   };
   $("system-diagnostics").onclick = () => {
     if (!native) {
