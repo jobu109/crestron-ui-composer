@@ -47,6 +47,7 @@
     projectDirty = false,
     lastManualFingerprint = "";
   let componentClipboard = "";
+  let activeColorInput = null;
   let snapEnabled = true,
     snapSize = 10;
   const snap = (value) =>
@@ -54,6 +55,49 @@
       ? Math.round(Number(value) / Math.max(1, snapSize)) *
         Math.max(1, snapSize)
       : Math.round(Number(value));
+  function normalizeHexColor(value) {
+    const text = String(value || "").trim();
+    if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
+    if (/^#[0-9a-f]{3}$/i.test(text))
+      return (
+        "#" +
+        text
+          .slice(1)
+          .split("")
+          .map((part) => part + part)
+          .join("")
+      ).toLowerCase();
+    return "";
+  }
+  function colorChannels(hex) {
+    const value = normalizeHexColor(hex) || "#000000";
+    return [1, 3, 5].map((index) => parseInt(value.slice(index, index + 2), 16));
+  }
+  function setColorDialogValue(hex, updateTarget = true) {
+    const value = normalizeHexColor(hex);
+    if (!value) return false;
+    const [red, green, blue] = colorChannels(value);
+    $("color-hex").value = value.toUpperCase();
+    ["red", "green", "blue"].forEach((channel, index) => {
+      $("color-" + channel).value = [red, green, blue][index];
+      $("color-" + channel + "-value").value = [red, green, blue][index];
+    });
+    $("color-preview").style.background = value;
+    if (updateTarget && activeColorInput) {
+      activeColorInput.value = value;
+      activeColorInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return true;
+  }
+  function openColorDialog(input) {
+    activeColorInput = input;
+    const label = input.closest("label")?.textContent.trim();
+    $("color-dialog-title").textContent = label
+      ? `Choose ${label.toLowerCase()}`
+      : "Choose color";
+    setColorDialogValue(input.value, false);
+    if (!$("color-dialog").open) $("color-dialog").showModal();
+  }
   function normalizeItemStates(items) {
     (items || []).forEach((item) => {
       item.locked = item.locked === true || item.locked === "true";
@@ -4155,6 +4199,57 @@
   };
   $("undo").onclick = undo;
   $("redo").onclick = redo;
+  document.querySelectorAll("dialog").forEach((dialog) => {
+    const form = dialog.querySelector("form");
+    if (!form || form.querySelector(":scope > .dialog-close")) return;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "dialog-close";
+    close.setAttribute("aria-label", "Close");
+    close.title = "Close";
+    close.textContent = "×";
+    close.onclick = () => dialog.close();
+    form.prepend(close);
+  });
+  document.querySelectorAll(".color-swatches [data-color]").forEach((button) => {
+    button.style.setProperty("--swatch", button.dataset.color);
+    button.onclick = () => setColorDialogValue(button.dataset.color);
+  });
+  ["red", "green", "blue"].forEach((channel) => {
+    $("color-" + channel).oninput = () => {
+      const toHex = (value) =>
+        Number(value).toString(16).padStart(2, "0");
+      setColorDialogValue(
+        `#${toHex($("color-red").value)}${toHex($("color-green").value)}${toHex($("color-blue").value)}`,
+      );
+    };
+  });
+  $("color-hex").oninput = (event) => {
+    const value = normalizeHexColor(event.target.value);
+    if (value) setColorDialogValue(value);
+  };
+  $("color-dialog").addEventListener("close", () => {
+    activeColorInput = null;
+  });
+  document.addEventListener(
+    "click",
+    (event) => {
+      const input = event.target.closest('input[type="color"]');
+      if (!input) return;
+      event.preventDefault();
+      openColorDialog(input);
+    },
+    true,
+  );
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.target.matches?.('input[type="color"]') &&
+      (event.key === "Enter" || event.key === " ")
+    ) {
+      event.preventDefault();
+      openColorDialog(event.target);
+    }
+  });
   addEventListener("keydown", (e) => {
     const editing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName),
       key = e.key.toLowerCase();

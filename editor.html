@@ -594,6 +594,48 @@
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
+    <dialog id="color-dialog" class="color-dialog">
+      <form method="dialog">
+        <h2 id="color-dialog-title">Choose color</h2>
+        <div id="color-preview" class="color-preview"></div>
+        <label
+          >Hex color<input
+            id="color-hex"
+            type="text"
+            maxlength="7"
+            spellcheck="false"
+            autocomplete="off"
+        /></label>
+        <div class="color-channel-list">
+          <label
+            ><span>Red</span><input id="color-red" type="range" min="0" max="255" /><output
+              id="color-red-value"
+            ></output
+          ></label>
+          <label
+            ><span>Green</span><input id="color-green" type="range" min="0" max="255" /><output
+              id="color-green-value"
+            ></output
+          ></label>
+          <label
+            ><span>Blue</span><input id="color-blue" type="range" min="0" max="255" /><output
+              id="color-blue-value"
+            ></output
+          ></label>
+        </div>
+        <div class="color-swatches" aria-label="Common colors">
+          <button type="button" data-color="#000000" aria-label="Black"></button>
+          <button type="button" data-color="#ffffff" aria-label="White"></button>
+          <button type="button" data-color="#182126" aria-label="Dark page"></button>
+          <button type="button" data-color="#253436" aria-label="Dark surface"></button>
+          <button type="button" data-color="#04aa8e" aria-label="Teal"></button>
+          <button type="button" data-color="#04dcb9" aria-label="Bright teal"></button>
+          <button type="button" data-color="#0066cc" aria-label="Blue"></button>
+          <button type="button" data-color="#cc3333" aria-label="Red"></button>
+        </div>
+        <div class="dialog-actions"><button value="default">Done</button></div>
+      </form>
+    </dialog>
     <script src="component-runtime.js"></script>
     <script src="standard-button.component.js"></script>
     <script src="button-components.js"></script>
