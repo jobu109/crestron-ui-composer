@@ -174,12 +174,138 @@
       contract: state.contract,
     });
   }
+  function describeHistoryChange(previousValue, nextValue) {
+    if (!previousValue) return "Initial project state";
+    const previous = JSON.parse(previousValue),
+      next = JSON.parse(nextValue),
+      oldItems = new Map((previous.items || []).map((item) => [item.id, item])),
+      newItems = new Map((next.items || []).map((item) => [item.id, item])),
+      addedItems = [...newItems.values()].filter((item) => !oldItems.has(item.id)),
+      removedItems = [...oldItems.values()].filter((item) => !newItems.has(item.id));
+    if (addedItems.length)
+      return addedItems.length === 1
+        ? `Added ${addedItems[0].name}`
+        : `Added ${addedItems.length} widgets`;
+    if (removedItems.length)
+      return removedItems.length === 1
+        ? `Deleted ${removedItems[0].name}`
+        : `Deleted ${removedItems.length} widgets`;
+    if ((next.pages || []).length !== (previous.pages || []).length)
+      return (next.pages || []).length > (previous.pages || []).length
+        ? "Added page"
+        : "Deleted page";
+    const changedPage = (next.pages || []).find((page) => {
+      const old = (previous.pages || []).find((entry) => entry.id === page.id);
+      return old && JSON.stringify(old) !== JSON.stringify(page);
+    });
+    if (changedPage) {
+      const old = (previous.pages || []).find(
+        (entry) => entry.id === changedPage.id,
+      );
+      if (old.name !== changedPage.name)
+        return `Renamed page to ${changedPage.name}`;
+      if (old.background !== changedPage.background)
+        return `Changed ${changedPage.name} background`;
+      return `Changed ${changedPage.name} page settings`;
+    }
+    if (previous.activePage !== next.activePage) {
+      const page = (next.pages || []).find(
+        (entry) => entry.id === next.activePage,
+      );
+      return `Opened ${page?.name || "page"}`;
+    }
+    const changed = [...newItems.values()].filter((item) => {
+      const old = oldItems.get(item.id);
+      return old && JSON.stringify(old) !== JSON.stringify(item);
+    });
+    if (changed.length > 1) {
+      const grouped = changed.every(
+          (item) => oldItems.get(item.id)?.groupId !== item.groupId,
+        ),
+        locked = changed.every(
+          (item) => oldItems.get(item.id)?.locked !== item.locked,
+        );
+      if (grouped)
+        return `${changed.every((item) => item.groupId) ? "Grouped" : "Ungrouped"} ${changed.length} widgets`;
+      if (locked)
+        return `${changed.every((item) => item.locked) ? "Locked" : "Unlocked"} ${changed.length} widgets`;
+      return `Changed ${changed.length} widgets`;
+    }
+    if (changed.length === 1) {
+      const item = changed[0],
+        old = oldItems.get(item.id);
+      if (old.name !== item.name) return `Renamed ${old.name} to ${item.name}`;
+      if (old.x !== item.x || old.y !== item.y) return `Moved ${item.name}`;
+      if (old.w !== item.w || old.h !== item.h) return `Resized ${item.name}`;
+      if (old.locked !== item.locked)
+        return `${item.locked ? "Locked" : "Unlocked"} ${item.name}`;
+      if (old.hidden !== item.hidden)
+        return `${item.hidden ? "Hid" : "Showed"} ${item.name}`;
+      if (old.groupId !== item.groupId)
+        return `${item.groupId ? "Grouped" : "Ungrouped"} ${item.name}`;
+      if (old.master !== item.master)
+        return `${item.master ? "Made global" : "Removed global"}: ${item.name}`;
+      if (JSON.stringify(old.signalBindings) !== JSON.stringify(item.signalBindings))
+        return `Changed ${item.name} bindings`;
+      if (JSON.stringify(old.properties) !== JSON.stringify(item.properties)) {
+        const oldProperties = old.properties || {},
+          newProperties = item.properties || {},
+          keys = new Set([
+            ...Object.keys(oldProperties),
+            ...Object.keys(newProperties),
+          ]),
+          changedKeys = [...keys].filter(
+            (key) => oldProperties[key] !== newProperties[key],
+          );
+        return changedKeys.some((key) =>
+          /binding|signal|join|base|increment/i.test(key),
+        )
+          ? `Changed ${item.name} bindings`
+          : `Styled ${item.name}`;
+      }
+      if (old.targetPage !== item.targetPage)
+        return `Changed ${item.name} navigation`;
+      return `Changed ${item.name}`;
+    }
+    if (previous.width !== next.width || previous.height !== next.height)
+      return "Changed panel size";
+    if (previous.targetDevice !== next.targetDevice)
+      return "Changed target panel";
+    if (JSON.stringify(previous.assets) !== JSON.stringify(next.assets))
+      return "Changed project assets";
+    if (JSON.stringify(previous.themes) !== JSON.stringify(next.themes))
+      return "Changed themes";
+    if (JSON.stringify(previous.contract) !== JSON.stringify(next.contract))
+      return "Changed contract settings";
+    return "Changed project";
+  }
+  function renderHistory() {
+    const host = $("history-list");
+    if (!host) return;
+    host.innerHTML = "";
+    history.forEach((entry, index) => {
+      const button = document.createElement("button"),
+        marker = document.createElement("span"),
+        label = document.createElement("span");
+      button.type = "button";
+      button.className = `history-entry${index === historyIndex ? " current" : ""}${index > historyIndex ? " future" : ""}`;
+      button.title = `${entry.label} · ${new Date(entry.time).toLocaleTimeString()}`;
+      marker.className = "history-entry-index";
+      marker.textContent = index === historyIndex ? "●" : index > historyIndex ? "○" : "✓";
+      label.className = "history-entry-label";
+      label.textContent = entry.label;
+      button.append(marker, label);
+      button.onclick = () => restoreHistory(index);
+      host.appendChild(button);
+    });
+  }
   function updateHistoryButtons() {
     const undo = $("undo"),
       redo = $("redo");
     if (undo) undo.disabled = historyIndex <= 0;
     if (redo)
       redo.disabled = historyIndex < 0 || historyIndex >= history.length - 1;
+    renderHistory();
   }
   function setAutosaveState(text, kind = "") {
     const indicator = $("autosave-state");
@@ -274,9 +400,14 @@
   function commitHistory(persist = true) {
     if (restoringHistory) return;
     const value = historyState();
-    if (historyIndex >= 0 && history[historyIndex] === value) return;
+    if (historyIndex >= 0 && history[historyIndex].state === value) return;
+    const previous = historyIndex >= 0 ? history[historyIndex].state : "";
     history.splice(historyIndex + 1);
-    history.push(value);
+    history.push({
+      state: value,
+      label: describeHistoryChange(previous, value),
+      time: new Date().toISOString(),
+    });
     if (history.length > 100) history.shift();
     historyIndex = history.length - 1;
     updateHistoryButtons();
@@ -285,12 +416,14 @@
   function scheduleHistory() {
     if (restoringHistory) return;
     clearTimeout(historyTimer);
-    historyTimer = setTimeout(commitHistory, 0);
+    historyTimer = setTimeout(commitHistory, 250);
   }
   function restoreHistory(index) {
     if (index < 0 || index >= history.length || index === historyIndex) return;
     restoringHistory = true;
-    const saved = JSON.parse(history[index]);
+    const priorIndex = historyIndex,
+      entry = history[index],
+      saved = JSON.parse(entry.state);
     state.width = saved.width;
     state.height = saved.height;
     state.targetDevice = saved.targetDevice;
@@ -314,7 +447,10 @@
     renderPage();
     updateHistoryButtons();
     restoringHistory = false;
-    setStatus(index === history.length - 1 ? "Redo complete" : "Undo complete");
+    writeAutosave(entry.state);
+    setStatus(
+      `${index < priorIndex ? "Undo" : index > priorIndex ? "Redo" : "History"}: ${entry.label}`,
+    );
   }
   function undo() {
     restoreHistory(historyIndex - 1);
@@ -354,6 +490,8 @@
     $("panel-height").value = state.height;
     resize(state.width, state.height);
     renderPage();
+    history.length = 0;
+    historyIndex = -1;
     commitHistory(false);
     projectDirty = true;
     setAutosaveState("Recovered · unsaved", "dirty");
@@ -3943,6 +4081,8 @@
     });
     resize(p.width, p.height);
     renderPage();
+    history.length = 0;
+    historyIndex = -1;
     commitHistory(false);
     if (markClean) markProjectSaved();
     setStatus("Project opened for " + selectedDevice().name);
