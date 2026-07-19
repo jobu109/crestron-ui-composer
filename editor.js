@@ -2129,8 +2129,22 @@
       renderBindings(item);
       renderInteractionEditor(item);
       renderResponsiveEditor(item);
-    }
+    } else renderSafeMarginGuide(null);
     renderLayers();
+  }
+  function renderSafeMarginGuide(item) {
+    stage.querySelector(".responsive-safe-guide")?.remove();
+    const margin = Math.max(0, Number(item?.layout?.safeMargin) || 0);
+    if (!item || !margin) return;
+    const guide = document.createElement("div");
+    guide.className = "responsive-safe-guide";
+    guide.dataset.label = `${margin}px safe margin`;
+    Object.assign(guide.style, {
+      left: margin + "px", top: margin + "px",
+      width: Math.max(0, state.width - margin * 2) + "px",
+      height: Math.max(0, state.height - margin * 2) + "px",
+    });
+    stage.appendChild(guide);
   }
   function renderResponsiveEditor(item) {
     const layout = layoutDefaults(item), key = panelLayoutKey();
@@ -2140,6 +2154,7 @@
       input.value = layout[property];
       input.oninput = () => {
         layout[property] = property === "safeMargin" ? Math.max(0, Number(input.value) || 0) : input.value;
+        if (property === "safeMargin") renderSafeMarginGuide(item);
         scheduleHistory();
       };
     });
@@ -2153,6 +2168,20 @@
       delete item.deviceOverrides[key]; renderResponsiveEditor(item); commitHistory();
       setStatus(`Reset “${item.name}” override for ${key}`);
     };
+    function applyRules(scope) {
+      const targets = state.items.filter((entry) =>
+        scope === "project" || entry.master || entry.pageId === state.activePage,
+      );
+      const label = scope === "project" ? "the entire project" : `page “${currentPage().name}”`;
+      if (!confirm(`Apply these responsive rules to ${targets.length} widgets on ${label}?`)) return;
+      targets.forEach((entry) => { entry.layout = { ...layout }; });
+      renderSafeMarginGuide(item);
+      commitHistory();
+      setStatus(`Applied responsive rules to ${targets.length} widgets on ${label}`);
+    }
+    $("layout-apply-page").onclick = () => applyRules("page");
+    $("layout-apply-project").onclick = () => applyRules("project");
+    renderSafeMarginGuide(item);
   }
   function playPageTransition(page = currentPage()) {
     const transition = page.transition || "none";
