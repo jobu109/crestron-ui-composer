@@ -54,6 +54,7 @@
   let panelZoom = 1;
   let lastRenderedPageId = "";
   let customEditingId = "";
+  let sourceEditingComponent = false;
   let snapEnabled = true,
     snapSize = 10;
   const snap = (value) =>
@@ -1031,6 +1032,8 @@
         {
           bindings: item.signalBindings,
           properties: item.properties || {},
+          templateOverride: item.componentTemplate || "",
+          stylesOverride: item.componentStyles || "",
           contractPrefix: contractWidgetPrefix(item),
           targetPage: item.targetPage,
           navigate: () => {},
@@ -1847,12 +1850,11 @@
       ["x", "y", "w", "h", "z"].forEach(
         (key) => ($("prop-" + key).disabled = locked),
       );
-      $("edit-source").disabled = !!item.componentId;
+      $("edit-source").disabled = false;
       const editableCustom = state.customComponents.some(
         (entry) => entry.id === item.componentId,
       );
-      $("create-custom-component").disabled =
-        !!item.componentId && !editableCustom;
+      $("create-custom-component").disabled = false;
       $("create-custom-component").textContent = editableCustom
         ? "Edit palette component"
         : "Create palette component";
@@ -4404,8 +4406,15 @@
     pasteComponent();
   };
   $("edit-source").onclick = () => {
-    if (current()) {
-      $("source-editor").value = current().source;
+    const item = current();
+    if (item) {
+      const definition = item.componentId
+        ? window.ComposerRuntime.get(item.componentId)
+        : null;
+      sourceEditingComponent = !!definition;
+      $("source-editor").value = definition
+        ? `<style>${item.componentStyles || definition.styles || ""}</style>\n${item.componentTemplate || definition.template || ""}`
+        : item.source;
       $("source-dialog").showModal();
     }
   };
@@ -4523,7 +4532,15 @@
   }
   function openCustomBuilder(item, entry = null) {
     customEditingId = entry?.id || "";
-    const source = splitCustomSource(entry?.html || item.source),
+    const definition = item.componentId
+        ? window.ComposerRuntime.get(item.componentId)
+        : null,
+      initialSource = entry?.html
+        ? entry.html
+        : definition
+          ? `<style>${item.componentStyles || definition.styles || ""}</style>${item.componentTemplate || definition.template || ""}`
+          : item.source,
+      source = splitCustomSource(initialSource),
       properties = entry?.properties || [],
       signals = entry?.signals || [];
     $("custom-component-title").textContent = entry
@@ -4550,7 +4567,6 @@
     const entry = state.customComponents.find(
       (candidate) => candidate.id === item.componentId,
     );
-    if (item.componentId && !entry) return;
     openCustomBuilder(item, entry || null);
   };
   $("custom-property-add").onclick = () => addCustomPropertyRow();
@@ -4610,8 +4626,13 @@
   };
   $("apply-source").onclick = () => {
     if (current()) {
-      current().source = $("source-editor").value;
+      if (sourceEditingComponent) {
+        const source = splitCustomSource($("source-editor").value);
+        current().componentTemplate = source.html;
+        current().componentStyles = source.css;
+      } else current().source = $("source-editor").value;
       renderItem(current());
+      scheduleHistory();
     }
   };
   $("add-page").onclick = addPage;

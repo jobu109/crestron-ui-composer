@@ -126,6 +126,8 @@
           targetPage: item.targetPage || "",
           interaction: item.interaction || null,
           pageId: page.id,
+          templateOverride: item.componentTemplate || "",
+          stylesOverride: item.componentStyles || "",
         })),
     );
     const interactionItems = project.pages.flatMap((page) =>
@@ -174,6 +176,10 @@
       animatedShow =
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id)tracks(entry).filter(function(c){return c.trigger==='page-enter'}).forEach(function(c){play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c)})});diag('Page: '+id)}",
       animatedController = controller
+        .replace(
+          "root.innerHTML='<style>'+def.styles+'</style>'+def.template;",
+          "root.innerHTML='<style>'+(item.stylesOverride||def.styles)+'</style>'+(item.templateOverride||def.template);",
+        )
         .replace("function show(id){", interactionRuntime + "function show(id){")
         .replace(originalShow, animatedShow)
         .replace(

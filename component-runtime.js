@@ -602,7 +602,10 @@
       }
     });
     root.innerHTML =
-      "<style>" + definition.styles + "</style>" + definition.template;
+      "<style>" +
+      (options.stylesOverride || definition.styles) +
+      "</style>" +
+      (options.templateOverride || definition.template);
     const cleanups = [],
       lib = options.lib === undefined ? library() : options.lib,
       bindings = options.bindings || {},
