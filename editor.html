@@ -444,6 +444,9 @@
             <button id="interaction-timeline-open" type="button">
               Open timeline
             </button>
+            <button id="action-editor-open" type="button">
+              Open action editor
+            </button>
           </section>
           <section class="signal-section">
             <h2>Signal bindings</h2>
@@ -854,6 +857,23 @@
         </div>
         <div id="timeline-tracks" class="timeline-tracks"></div>
         <div class="dialog-actions"><button value="default">Done</button></div>
+      </form>
+    </dialog>
+    <dialog id="action-editor-dialog" class="action-editor-dialog">
+      <form method="dialog">
+        <div class="timeline-header">
+          <div><h2>Event actions</h2><p id="action-widget-name" class="hint"></p></div>
+          <button id="action-add" type="button" class="primary">+ Add action</button>
+        </div>
+        <p class="hint">Actions run top-to-bottom. “After previous” waits for the preceding action and its delay; “Parallel” starts from the event time.</p>
+        <div class="action-column-labels">
+          <span>Event</span><span>Trigger signal</span><span>Action</span><span>Target</span><span>Value</span><span>Delay</span><span>Timing</span><span></span>
+        </div>
+        <div id="action-rows" class="action-rows"></div>
+        <div class="dialog-actions">
+          <button id="action-preview" type="button">Preview event</button>
+          <button value="default">Done</button>
+        </div>
       </form>
     </dialog>
     <script src="component-runtime.js"></script>

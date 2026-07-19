@@ -276,6 +276,8 @@
         return `Changed ${item.name} interaction`;
       if (JSON.stringify(old.interactions) !== JSON.stringify(item.interactions))
         return `Changed ${item.name} timeline`;
+      if (JSON.stringify(old.actions) !== JSON.stringify(item.actions))
+        return `Changed ${item.name} actions`;
       return `Changed ${item.name}`;
     }
     if (previous.width !== next.width || previous.height !== next.height)
@@ -868,6 +870,7 @@
           delay: 0,
           easing: "ease-out",
         },
+        actions: [],
       },
       data || {},
     );
@@ -960,7 +963,7 @@
     const interactions = interactionList(item).filter(
       (interaction) => interaction.trigger && interaction.trigger !== "none",
     );
-    if (!interactions.length) return;
+    const actions = item.actions || [];
     interactions
       .filter((interaction) => interaction.trigger === "page-enter")
       .forEach((interaction) =>
@@ -971,6 +974,22 @@
       .forEach((interaction) =>
         playItemInteraction(item, false, interaction, true),
       );
+    if (actions.some((action) => action.event === "page-enter"))
+      runItemActions(item, "page-enter");
+    if (actions.some((action) => action.event === "timer"))
+      runItemActions(item, "timer");
+    actions
+      .filter((action) => action.event === "signal-change" && action.triggerSignal)
+      .forEach((action) => {
+        const type = action.triggerType || "digital";
+        const dispose = window.ComposerRuntime.simulator.subscribe(
+          type === "digital" ? "b" : type === "analog" ? "n" : "s",
+          action.triggerSignal,
+          () => runItemActions(item, "signal-change", action.triggerSignal),
+        );
+        element.interactionAbort.signal.addEventListener("abort", dispose, { once: true });
+      });
+    let holdTimer = 0;
     element.addEventListener(
       "pointerdown",
       () => {
@@ -979,12 +998,16 @@
           .forEach((interaction) =>
             playItemInteraction(item, false, interaction, true),
           );
+        runItemActions(item, "press");
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => runItemActions(item, "hold"), 600);
       },
       listenerOptions,
     );
     element.addEventListener(
       "pointerup",
       () => {
+        clearTimeout(holdTimer);
         interactions
           .filter((interaction) => interaction.trigger === "release")
           .forEach((interaction) =>
@@ -998,9 +1021,69 @@
           .forEach((interaction) =>
             playItemInteraction(item, true, interaction, true),
           );
+        runItemActions(item, "release");
       },
       listenerOptions,
     );
+  }
+  function actionTargetItem(action) {
+    return state.items.find((candidate) => candidate.id === action.target);
+  }
+  function parseActionValue(value, type = "serial") {
+    if (type === "digital") return /^(true|1|on|yes)$/i.test(String(value));
+    if (type === "analog") return Number(value) || 0;
+    return String(value ?? "");
+  }
+  function executeItemAction(source, action) {
+    const target = actionTargetItem(action), value = String(action.value ?? "");
+    if (action.type === "navigate") {
+      if (state.pages.some((page) => page.id === action.target)) {
+        state.activePage = action.target;
+        renderPage();
+      }
+      return;
+    }
+    if (/^signal-/.test(action.type)) {
+      const type = action.type.slice(7), code = type === "digital" ? "b" : type === "analog" ? "n" : "s";
+      if (action.target)
+        window.ComposerRuntime.simulator.publish(code, action.target, parseActionValue(value, type));
+      return;
+    }
+    if (!target) return;
+    const element = stage.querySelector(`.widget[data-id="${target.id}"]`);
+    if (action.type === "show" || action.type === "hide") {
+      target.hidden = action.type === "hide";
+      if (element) element.style.display = target.hidden ? "none" : "block";
+    } else if (action.type === "animate") playItemTimeline(target);
+    else if (action.type === "text") {
+      target.properties = target.properties || {};
+      target.properties.localText = value;
+      renderItem(target);
+    } else if (action.type === "property") {
+      const separator = value.indexOf("="), key = separator < 0 ? "localText" : value.slice(0, separator).trim();
+      target.properties = target.properties || {};
+      target.properties[key] = separator < 0 ? value : value.slice(separator + 1);
+      renderItem(target);
+    } else if (action.type === "enable" || action.type === "disable") {
+      target.actionDisabled = action.type === "disable";
+      if (element) {
+        element.style.pointerEvents = target.actionDisabled ? "none" : "";
+        element.style.opacity = target.actionDisabled ? ".45" : "";
+      }
+    } else if (action.type === "select") {
+      if (element) element.classList.toggle("action-selected", parseActionValue(value || "true", "digital"));
+    }
+  }
+  function runItemActions(item, eventName, triggerSignal = "") {
+    let sequenceAt = 0;
+    (item.actions || [])
+      .filter((action) => action.event === eventName && (!triggerSignal || action.triggerSignal === triggerSignal))
+      .forEach((action) => {
+        const delay = Math.max(0, Number(action.delay) || 0);
+        if (action.timing === "after") sequenceAt += delay;
+        const start = action.timing === "after" ? sequenceAt : delay;
+        setTimeout(() => executeItemAction(item, action), start);
+      });
   }
   function renderItem(item) {
     let el = stage.querySelector('.widget[data-id="' + item.id + '"]');
@@ -1029,6 +1112,8 @@
       : '<iframe sandbox="allow-scripts allow-same-origin"></iframe><i class="handle"></i>';
     el.querySelector(".handle").addEventListener("pointerdown", startResize);
     el.style.cssText = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"}`;
+    el.style.pointerEvents = item.actionDisabled ? "none" : "";
+    el.style.opacity = item.actionDisabled ? ".45" : "";
     const backgroundAsset = state.assets.find(
       (asset) => asset.id === item.backgroundAsset,
     );
@@ -1927,6 +2012,7 @@
     };
     $("interaction-reset").onclick = () => resetItemInteraction(item);
     $("interaction-timeline-open").onclick = () => openTimeline(item);
+    $("action-editor-open").onclick = () => openActionEditor(item);
   }
   function timelineOptions(values, selected) {
     return values
@@ -1951,6 +2037,79 @@
     $("timeline-widget-name").textContent = item.name;
     renderTimeline(item);
     $("timeline-dialog").showModal();
+  }
+  function actionOptions(values, selected) {
+    return values.map(([value, label]) => `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`).join("");
+  }
+  function openActionEditor(item) {
+    item.actions = item.actions || [];
+    $("action-widget-name").textContent = item.name;
+    renderActionEditor(item);
+    $("action-editor-dialog").showModal();
+  }
+  function renderActionEditor(item) {
+    const host = $("action-rows");
+    host.innerHTML = "";
+    (item.actions || []).forEach((action, index) => {
+      const row = document.createElement("div");
+      row.className = "action-row";
+      const event = document.createElement("select"), triggerSignal = document.createElement("input"),
+        type = document.createElement("select"), target = document.createElement("input"),
+        value = document.createElement("input"), delay = document.createElement("input"),
+        timing = document.createElement("select"), remove = document.createElement("button");
+      event.innerHTML = actionOptions([
+        ["press", "Press"], ["release", "Release"], ["hold", "Hold"],
+        ["page-enter", "Page enter"], ["timer", "Timer"], ["signal-change", "Signal change"],
+      ], action.event || "press");
+      type.innerHTML = actionOptions([
+        ["navigate", "Navigate page"], ["show", "Show widget"], ["hide", "Hide widget"],
+        ["animate", "Play timeline"], ["signal-digital", "Set digital"],
+        ["signal-analog", "Set analog"], ["signal-serial", "Set serial"],
+        ["text", "Change local text"], ["property", "Set property"],
+        ["enable", "Enable widget"], ["disable", "Disable widget"], ["select", "Select widget"],
+      ], action.type || "navigate");
+      timing.innerHTML = actionOptions([["parallel", "Parallel"], ["after", "After previous"]], action.timing || "parallel");
+      triggerSignal.placeholder = "Signal address";
+      triggerSignal.value = action.triggerSignal || "";
+      triggerSignal.hidden = event.value !== "signal-change";
+      target.placeholder = "Page, widget, or signal";
+      target.value = action.target || "";
+      target.setAttribute("list", "action-target-options");
+      value.placeholder = type.value === "property" ? "property=value" : "Value";
+      value.value = action.value ?? "";
+      delay.type = "number";
+      delay.min = "0";
+      delay.value = Number(action.delay) || 0;
+      remove.type = "button";
+      remove.textContent = "×";
+      const update = () => {
+        Object.assign(action, {
+          event: event.value, triggerSignal: triggerSignal.value.trim(), type: type.value,
+          target: target.value.trim(), value: value.value, delay: Math.max(0, Number(delay.value) || 0), timing: timing.value,
+        });
+        triggerSignal.hidden = event.value !== "signal-change";
+        value.placeholder = type.value === "property" ? "property=value" : "Value";
+        scheduleHistory();
+      };
+      [event, triggerSignal, type, target, value, delay, timing].forEach((control) => control.oninput = update);
+      remove.onclick = () => {
+        item.actions.splice(index, 1);
+        renderActionEditor(item);
+        commitHistory();
+      };
+      row.append(event, triggerSignal, type, target, value, delay, timing, remove);
+      host.appendChild(row);
+    });
+    let datalist = $("action-target-options");
+    if (!datalist) {
+      datalist = document.createElement("datalist");
+      datalist.id = "action-target-options";
+      document.body.appendChild(datalist);
+    }
+    datalist.innerHTML = [
+      ...state.pages.map((page) => `<option value="${page.id}">${page.name} page</option>`),
+      ...state.items.map((entry) => `<option value="${entry.id}">${entry.name}</option>`),
+    ].join("");
   }
   function renderTimeline(item) {
     const host = $("timeline-tracks");
@@ -5299,6 +5458,27 @@
   $("timeline-reset").onclick = () => {
     const item = current();
     if (item) resetItemInteraction(item);
+  };
+  $("action-add").onclick = () => {
+    const item = current();
+    if (!item) return;
+    item.actions = item.actions || [];
+    item.actions.push({
+      event: "press",
+      triggerSignal: "",
+      triggerType: "digital",
+      type: "navigate",
+      target: state.pages.find((page) => page.id !== state.activePage)?.id || state.activePage,
+      value: "",
+      delay: 0,
+      timing: "parallel",
+    });
+    renderActionEditor(item);
+    commitHistory();
+  };
+  $("action-preview").onclick = () => {
+    const item = current(), first = item?.actions?.[0];
+    if (item && first) runItemActions(item, first.event, first.triggerSignal || "");
   };
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
