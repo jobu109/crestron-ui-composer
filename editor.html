@@ -236,19 +236,21 @@
       <aside class="sidebar">
         <h2>Components</h2>
         <p class="hint">Drag a component onto the panel.</p>
-        <label id="snippet-files-label" class="button primary"
-          >Import snippets<input
-            id="snippet-files"
-            type="file"
-            accept="text/html,.html"
-            multiple
-        /></label>
-        <label class="button custom-package-import"
-          >Import component package<input
-            id="custom-package-file"
-            type="file"
-            accept=".cuicomponent,application/json"
-        /></label>
+        <div class="component-import-actions">
+          <label id="snippet-files-label" class="button primary"
+            >Import snippets<input
+              id="snippet-files"
+              type="file"
+              accept="text/html,.html"
+              multiple
+          /></label>
+          <label class="button custom-package-import"
+            >Import component package<input
+              id="custom-package-file"
+              type="file"
+              accept=".cuicomponent,application/json"
+          /></label>
+        </div>
         <input
           id="component-search"
           class="library-search"
