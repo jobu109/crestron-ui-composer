@@ -343,9 +343,17 @@
       <section class="stage-wrap">
         <div class="stage-tools" aria-label="Panel zoom controls">
           <button id="zoom-out" type="button" title="Zoom out">−</button>
-          <button id="zoom-level" type="button" title="Reset zoom to 100%">100%</button>
+          <button id="zoom-level" type="button" title="Reset zoom to 100%">
+            100%
+          </button>
           <button id="zoom-in" type="button" title="Zoom in">+</button>
-          <button id="zoom-fit" type="button" title="Fit the entire panel in the workspace">Fit panel</button>
+          <button
+            id="zoom-fit"
+            type="button"
+            title="Fit the entire panel in the workspace"
+          >
+            Fit panel
+          </button>
         </div>
         <div id="stage" class="stage" tabindex="0"></div>
       </section>
@@ -713,7 +721,9 @@
         <h2 id="color-dialog-title">Choose color</h2>
         <div id="color-preview" class="color-preview"></div>
         <div class="color-native-row">
-          <button id="color-native-open" type="button">Open color picker</button>
+          <button id="color-native-open" type="button">
+            Open color picker
+          </button>
           <input
             id="color-native-input"
             class="color-native-input"
@@ -732,28 +742,51 @@
         /></label>
         <div class="color-channel-list">
           <label
-            ><span>Red</span><input id="color-red" type="range" min="0" max="255" /><output
+            ><span>Red</span
+            ><input id="color-red" type="range" min="0" max="255" /><output
               id="color-red-value"
             ></output
           ></label>
           <label
-            ><span>Green</span><input id="color-green" type="range" min="0" max="255" /><output
+            ><span>Green</span
+            ><input id="color-green" type="range" min="0" max="255" /><output
               id="color-green-value"
             ></output
           ></label>
           <label
-            ><span>Blue</span><input id="color-blue" type="range" min="0" max="255" /><output
+            ><span>Blue</span
+            ><input id="color-blue" type="range" min="0" max="255" /><output
               id="color-blue-value"
             ></output
           ></label>
         </div>
         <div class="color-swatches" aria-label="Common colors">
-          <button type="button" data-color="#000000" aria-label="Black"></button>
-          <button type="button" data-color="#ffffff" aria-label="White"></button>
-          <button type="button" data-color="#182126" aria-label="Dark page"></button>
-          <button type="button" data-color="#253436" aria-label="Dark surface"></button>
+          <button
+            type="button"
+            data-color="#000000"
+            aria-label="Black"
+          ></button>
+          <button
+            type="button"
+            data-color="#ffffff"
+            aria-label="White"
+          ></button>
+          <button
+            type="button"
+            data-color="#182126"
+            aria-label="Dark page"
+          ></button>
+          <button
+            type="button"
+            data-color="#253436"
+            aria-label="Dark surface"
+          ></button>
           <button type="button" data-color="#04aa8e" aria-label="Teal"></button>
-          <button type="button" data-color="#04dcb9" aria-label="Bright teal"></button>
+          <button
+            type="button"
+            data-color="#04dcb9"
+            aria-label="Bright teal"
+          ></button>
           <button type="button" data-color="#0066cc" aria-label="Blue"></button>
           <button type="button" data-color="#cc3333" aria-label="Red"></button>
         </div>
@@ -772,25 +805,37 @@
           <section class="custom-builder-controls">
             <div class="grid2">
               <label>Name<input id="custom-component-name" /></label>
-              <label>Category<input id="custom-component-category" value="Custom" /></label>
-              <label>Palette icon
+              <label
+                >Category<input id="custom-component-category" value="Custom"
+              /></label>
+              <label
+                >Palette icon
                 <select id="custom-component-icon">
-                  <option value="🧩">🧩 Component</option><option value="🔘">🔘 Button</option>
-                  <option value="🎚️">🎚️ Control</option><option value="📝">📝 Text</option>
-                  <option value="🧭">🧭 Navigation</option><option value="💡">💡 Lighting</option>
-                  <option value="🔊">🔊 Audio</option><option value="📺">📺 Display</option>
+                  <option value="🧩">🧩 Component</option>
+                  <option value="🔘">🔘 Button</option>
+                  <option value="🎚️">🎚️ Control</option>
+                  <option value="📝">📝 Text</option>
+                  <option value="🧭">🧭 Navigation</option>
+                  <option value="💡">💡 Lighting</option>
+                  <option value="🔊">🔊 Audio</option>
+                  <option value="📺">📺 Display</option>
                 </select>
               </label>
-              <label>Version<input id="custom-component-version" value="1.0.0" /></label>
+              <label
+                >Version<input id="custom-component-version" value="1.0.0"
+              /></label>
               <label>Author<input id="custom-component-author" /></label>
-              <label>Description<input id="custom-component-description" /></label>
+              <label
+                >Description<input id="custom-component-description"
+              /></label>
             </div>
             <div class="custom-builder-heading">
               <h2>Editable properties</h2>
               <button id="custom-property-add" type="button">+ Property</button>
             </div>
             <div class="custom-column-labels custom-property-columns">
-              <span>Key</span><span>Label</span><span>Type</span><span>Default</span><span></span>
+              <span>Key</span><span>Label</span><span>Type</span
+              ><span>Default</span><span></span>
             </div>
             <div id="custom-property-list" class="custom-builder-list"></div>
             <div class="custom-builder-heading">
@@ -798,38 +843,70 @@
               <button id="custom-signal-add" type="button">+ Signal</button>
             </div>
             <div class="custom-column-labels custom-signal-columns">
-              <span>Key</span><span>Label</span><span>Type</span><span>Direction</span><span>Default</span><span></span>
+              <span>Key</span><span>Label</span><span>Type</span
+              ><span>Direction</span><span>Default</span><span></span>
             </div>
             <div id="custom-signal-list" class="custom-builder-list"></div>
           </section>
           <section class="custom-source-panel">
             <div class="custom-source-tabs">
-              <button type="button" data-custom-tab="html" class="active">HTML</button>
+              <button type="button" data-custom-tab="html" class="active">
+                HTML
+              </button>
               <button type="button" data-custom-tab="css">CSS</button>
-              <button type="button" data-custom-tab="javascript">JavaScript</button>
+              <button type="button" data-custom-tab="javascript">
+                JavaScript
+              </button>
             </div>
-            <textarea id="custom-source-html" class="custom-source-editor"></textarea>
-            <textarea id="custom-source-css" class="custom-source-editor" hidden></textarea>
-            <textarea id="custom-source-javascript" class="custom-source-editor" hidden></textarea>
+            <textarea
+              id="custom-source-html"
+              class="custom-source-editor"
+            ></textarea>
+            <textarea
+              id="custom-source-css"
+              class="custom-source-editor"
+              hidden
+            ></textarea>
+            <textarea
+              id="custom-source-javascript"
+              class="custom-source-editor"
+              hidden
+            ></textarea>
             <div class="custom-preview-heading">
               <h2>Live preview</h2>
               <button id="custom-preview-refresh" type="button">Refresh</button>
             </div>
-            <iframe id="custom-component-preview" sandbox="allow-scripts"></iframe>
+            <iframe
+              id="custom-component-preview"
+              sandbox="allow-scripts"
+            ></iframe>
             <div class="custom-preview-test">
               <select id="custom-preview-signal"></select>
               <input id="custom-preview-value" placeholder="Feedback value" />
-              <button id="custom-preview-send" type="button">Send feedback</button>
+              <button id="custom-preview-send" type="button">
+                Send feedback
+              </button>
             </div>
-            <pre id="custom-preview-log" class="custom-preview-log">Preview signal activity appears here.</pre>
+            <pre id="custom-preview-log" class="custom-preview-log">
+Preview signal activity appears here.</pre
+            >
           </section>
         </div>
-        <div id="custom-validation" class="custom-validation" aria-live="polite"></div>
+        <div
+          id="custom-validation"
+          class="custom-validation"
+          aria-live="polite"
+        ></div>
         <div class="dialog-actions">
           <button id="custom-component-export" type="button" hidden>
             Export package
           </button>
-          <button id="custom-component-delete" type="button" class="danger" hidden>
+          <button
+            id="custom-component-delete"
+            type="button"
+            class="danger"
+            hidden
+          >
             Delete component
           </button>
           <button value="cancel">Cancel</button>
@@ -848,12 +925,15 @@
           </div>
           <div class="timeline-toolbar">
             <button id="timeline-add" type="button">+ Add track</button>
-            <button id="timeline-play" type="button" class="primary">Play all</button>
+            <button id="timeline-play" type="button" class="primary">
+              Play all
+            </button>
             <button id="timeline-reset" type="button">Reset</button>
           </div>
         </div>
         <div class="timeline-ruler" aria-hidden="true">
-          <span>0 ms</span><span>500</span><span>1000</span><span>1500</span><span>2000+</span>
+          <span>0 ms</span><span>500</span><span>1000</span><span>1500</span
+          ><span>2000+</span>
         </div>
         <div id="timeline-tracks" class="timeline-tracks"></div>
         <div class="dialog-actions"><button value="default">Done</button></div>
@@ -862,15 +942,36 @@
     <dialog id="action-editor-dialog" class="action-editor-dialog">
       <form method="dialog">
         <div class="timeline-header">
-          <div><h2>Event actions</h2><p id="action-widget-name" class="hint"></p></div>
-          <button id="action-add" type="button" class="primary">+ Add action</button>
+          <div>
+            <h2>Event actions</h2>
+            <p id="action-widget-name" class="hint"></p>
+          </div>
+          <button id="action-add" type="button" class="primary">
+            + Add action
+          </button>
         </div>
-        <p class="hint">Actions run top-to-bottom. “After previous” waits for the preceding action and its delay; “Parallel” starts from the event time.</p>
+        <p class="hint">
+          Actions run top-to-bottom. “After previous” waits for the preceding
+          action and its delay; “Parallel” starts from the event time.
+        </p>
         <div class="action-column-labels">
-          <span>Event</span><span>Trigger signal</span><span>Action</span><span>Target</span><span>Value</span><span>Delay</span><span>Timing</span><span></span>
+          <span></span><span>Event</span><span>Signal type</span
+          ><span>Trigger signal</span><span>Condition</span><span>Compare</span
+          ><span>Action</span><span>Target</span><span>Value</span
+          ><span>Delay</span><span>Timing</span><span></span>
         </div>
         <div id="action-rows" class="action-rows"></div>
         <div class="dialog-actions">
+          <button id="action-copy" type="button">Copy sequence</button>
+          <button id="action-paste" type="button">Paste sequence</button>
+          <select id="action-preview-event" title="Event to preview">
+            <option value="press">Press</option>
+            <option value="release">Release</option>
+            <option value="hold">Hold</option>
+            <option value="page-enter">Page enter</option>
+            <option value="timer">Timer</option>
+            <option value="signal-change">Signal change</option>
+          </select>
           <button id="action-preview" type="button">Preview event</button>
           <button value="default">Done</button>
         </div>

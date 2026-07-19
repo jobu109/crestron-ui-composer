@@ -50,6 +50,7 @@
     projectDirty = false,
     lastManualFingerprint = "";
   let componentClipboard = "";
+  let actionClipboard = [];
   let activeColorInput = null;
   let panelZoom = 1;
   let lastRenderedPageId = "";
@@ -80,7 +81,9 @@
   function wirePaneResizer(id, property, side, defaultWidth) {
     const handle = $(id),
       workspace = document.querySelector(".workspace");
-    const saved = Number(localStorage.getItem(`crestron-ui-composer-${property}`));
+    const saved = Number(
+      localStorage.getItem(`crestron-ui-composer-${property}`),
+    );
     if (Number.isFinite(saved) && saved >= 160)
       workspace.style.setProperty(`--${property}`, `${saved}px`);
     handle.ondblclick = () => {
@@ -129,7 +132,9 @@
   }
   function colorChannels(hex) {
     const value = normalizeHexColor(hex) || "#000000";
-    return [1, 3, 5].map((index) => parseInt(value.slice(index, index + 2), 16));
+    return [1, 3, 5].map((index) =>
+      parseInt(value.slice(index, index + 2), 16),
+    );
   }
   function setColorDialogValue(hex, updateTarget = true) {
     const value = normalizeHexColor(hex);
@@ -187,8 +192,12 @@
       next = JSON.parse(nextValue),
       oldItems = new Map((previous.items || []).map((item) => [item.id, item])),
       newItems = new Map((next.items || []).map((item) => [item.id, item])),
-      addedItems = [...newItems.values()].filter((item) => !oldItems.has(item.id)),
-      removedItems = [...oldItems.values()].filter((item) => !newItems.has(item.id));
+      addedItems = [...newItems.values()].filter(
+        (item) => !oldItems.has(item.id),
+      ),
+      removedItems = [...oldItems.values()].filter(
+        (item) => !newItems.has(item.id),
+      );
     if (addedItems.length)
       return addedItems.length === 1
         ? `Added ${addedItems[0].name}`
@@ -252,7 +261,10 @@
         return `${item.groupId ? "Grouped" : "Ungrouped"} ${item.name}`;
       if (old.master !== item.master)
         return `${item.master ? "Made global" : "Removed global"}: ${item.name}`;
-      if (JSON.stringify(old.signalBindings) !== JSON.stringify(item.signalBindings))
+      if (
+        JSON.stringify(old.signalBindings) !==
+        JSON.stringify(item.signalBindings)
+      )
         return `Changed ${item.name} bindings`;
       if (JSON.stringify(old.properties) !== JSON.stringify(item.properties)) {
         const oldProperties = old.properties || {},
@@ -274,7 +286,9 @@
         return `Changed ${item.name} navigation`;
       if (JSON.stringify(old.interaction) !== JSON.stringify(item.interaction))
         return `Changed ${item.name} interaction`;
-      if (JSON.stringify(old.interactions) !== JSON.stringify(item.interactions))
+      if (
+        JSON.stringify(old.interactions) !== JSON.stringify(item.interactions)
+      )
         return `Changed ${item.name} timeline`;
       if (JSON.stringify(old.actions) !== JSON.stringify(item.actions))
         return `Changed ${item.name} actions`;
@@ -304,7 +318,8 @@
       button.className = `history-entry${index === historyIndex ? " current" : ""}${index > historyIndex ? " future" : ""}`;
       button.title = `${entry.label} · ${new Date(entry.time).toLocaleTimeString()}`;
       marker.className = "history-entry-index";
-      marker.textContent = index === historyIndex ? "●" : index > historyIndex ? "○" : "✓";
+      marker.textContent =
+        index === historyIndex ? "●" : index > historyIndex ? "○" : "✓";
       label.className = "history-entry-label";
       label.textContent = entry.label;
       button.append(marker, label);
@@ -661,7 +676,7 @@
       signals: entry.signals || [],
       template: '<div class="custom-component-host"></div>',
       styles:
-        '[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}',
+        "[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}",
       data: { html: entry.html },
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
@@ -680,7 +695,10 @@
         frame.srcdoc = documentText;
         host.appendChild(frame);
         function receive(event) {
-          if (event.source === frame.contentWindow && event.data?.type === "composer-custom-error") {
+          if (
+            event.source === frame.contentWindow &&
+            event.data?.type === "composer-custom-error"
+          ) {
             host.innerHTML = `<div class="custom-component-error" style="padding:12px;color:#ffc1c1;background:#291718;border:1px solid #a65050">Component error: ${String(event.data.message || "Unknown error")}</div>`;
             return;
           }
@@ -719,7 +737,12 @@
   function renderComponentLibrary() {
     const query = $("component-search").value.trim().toLowerCase();
     list.innerHTML = "";
-    [...new Set([...categoryOrder, ...state.components.map((c) => c.category)])].forEach((category) => {
+    [
+      ...new Set([
+        ...categoryOrder,
+        ...state.components.map((c) => c.category),
+      ]),
+    ].forEach((category) => {
       const components = state.components
         .filter(
           (c) =>
@@ -934,10 +957,7 @@
       duration: Math.max(50, Number(interaction.duration) || 300),
       delay: reverse
         ? 0
-        : Math.max(
-            0,
-            Number(interaction.start ?? interaction.delay) || 0,
-          ),
+        : Math.max(0, Number(interaction.start ?? interaction.delay) || 0),
       easing: interaction.easing || "ease-out",
     });
   }
@@ -951,9 +971,7 @@
   function playItemTimeline(item) {
     const tracks = interactionList(item);
     resetItemInteraction(item);
-    tracks.forEach((track) =>
-      playItemInteraction(item, false, track, true),
-    );
+    tracks.forEach((track) => playItemInteraction(item, false, track, true));
   }
   function wireItemInteraction(element, item) {
     clearTimeout(element.interactionTimer);
@@ -978,17 +996,30 @@
       runItemActions(item, "page-enter");
     if (actions.some((action) => action.event === "timer"))
       runItemActions(item, "timer");
-    actions
-      .filter((action) => action.event === "signal-change" && action.triggerSignal)
-      .forEach((action) => {
-        const type = action.triggerType || "digital";
-        const dispose = window.ComposerRuntime.simulator.subscribe(
-          type === "digital" ? "b" : type === "analog" ? "n" : "s",
-          action.triggerSignal,
-          () => runItemActions(item, "signal-change", action.triggerSignal),
-        );
-        element.interactionAbort.signal.addEventListener("abort", dispose, { once: true });
+    [
+      ...new Map(
+        actions
+          .filter(
+            (action) =>
+              action.event === "signal-change" && action.triggerSignal,
+          )
+          .map((action) => [
+            `${action.triggerType || "digital"}:${action.triggerSignal}`,
+            action,
+          ]),
+      ).values(),
+    ].forEach((action) => {
+      const type = action.triggerType || "digital";
+      const dispose = window.ComposerRuntime.simulator.subscribe(
+        type === "digital" ? "b" : type === "analog" ? "n" : "s",
+        action.triggerSignal,
+        (value) =>
+          runItemActions(item, "signal-change", action.triggerSignal, value),
+      );
+      element.interactionAbort.signal.addEventListener("abort", dispose, {
+        once: true,
       });
+    });
     let holdTimer = 0;
     element.addEventListener(
       "pointerdown",
@@ -1035,7 +1066,8 @@
     return String(value ?? "");
   }
   function executeItemAction(source, action) {
-    const target = actionTargetItem(action), value = String(action.value ?? "");
+    const target = actionTargetItem(action),
+      value = String(action.value ?? "");
     if (action.type === "navigate") {
       if (state.pages.some((page) => page.id === action.target)) {
         state.activePage = action.target;
@@ -1044,9 +1076,14 @@
       return;
     }
     if (/^signal-/.test(action.type)) {
-      const type = action.type.slice(7), code = type === "digital" ? "b" : type === "analog" ? "n" : "s";
+      const type = action.type.slice(7),
+        code = type === "digital" ? "b" : type === "analog" ? "n" : "s";
       if (action.target)
-        window.ComposerRuntime.simulator.publish(code, action.target, parseActionValue(value, type));
+        window.ComposerRuntime.simulator.publish(
+          code,
+          action.target,
+          parseActionValue(value, type),
+        );
       return;
     }
     if (!target) return;
@@ -1060,9 +1097,11 @@
       target.properties.localText = value;
       renderItem(target);
     } else if (action.type === "property") {
-      const separator = value.indexOf("="), key = separator < 0 ? "localText" : value.slice(0, separator).trim();
+      const separator = value.indexOf("="),
+        key = separator < 0 ? "localText" : value.slice(0, separator).trim();
       target.properties = target.properties || {};
-      target.properties[key] = separator < 0 ? value : value.slice(separator + 1);
+      target.properties[key] =
+        separator < 0 ? value : value.slice(separator + 1);
       renderItem(target);
     } else if (action.type === "enable" || action.type === "disable") {
       target.actionDisabled = action.type === "disable";
@@ -1071,13 +1110,51 @@
         element.style.opacity = target.actionDisabled ? ".45" : "";
       }
     } else if (action.type === "select") {
-      if (element) element.classList.toggle("action-selected", parseActionValue(value || "true", "digital"));
+      if (element)
+        element.classList.toggle(
+          "action-selected",
+          parseActionValue(value || "true", "digital"),
+        );
     }
   }
-  function runItemActions(item, eventName, triggerSignal = "") {
+  function actionConditionMatches(action, eventValue) {
+    const operator = action.condition || "always",
+      expected = action.compareValue,
+      numericActual = Number(eventValue),
+      numericExpected = Number(expected);
+    if (operator === "always" || operator === "changed") return true;
+    if (operator === "truthy")
+      return (
+        eventValue === true ||
+        eventValue === 1 ||
+        eventValue === "1" ||
+        eventValue === "true"
+      );
+    if (operator === "falsy")
+      return !actionConditionMatches({ condition: "truthy" }, eventValue);
+    if (operator === "equals") return String(eventValue) === String(expected);
+    if (operator === "not-equals")
+      return String(eventValue) !== String(expected);
+    if (operator === "greater") return numericActual > numericExpected;
+    if (operator === "greater-equal") return numericActual >= numericExpected;
+    if (operator === "less") return numericActual < numericExpected;
+    if (operator === "less-equal") return numericActual <= numericExpected;
+    return true;
+  }
+  function runItemActions(
+    item,
+    eventName,
+    triggerSignal = "",
+    eventValue = undefined,
+  ) {
     let sequenceAt = 0;
     (item.actions || [])
-      .filter((action) => action.event === eventName && (!triggerSignal || action.triggerSignal === triggerSignal))
+      .filter(
+        (action) =>
+          action.event === eventName &&
+          (!triggerSignal || action.triggerSignal === triggerSignal) &&
+          actionConditionMatches(action, eventValue),
+      )
       .forEach((action) => {
         const delay = Math.max(0, Number(action.delay) || 0);
         if (action.timing === "after") sequenceAt += delay;
@@ -2002,8 +2079,7 @@
         };
       },
     );
-    $("interaction-direction-label").hidden =
-      interaction.preset !== "slide";
+    $("interaction-direction-label").hidden = interaction.preset !== "slide";
     $("interaction-preview").onclick = () => {
       const original = item.interaction;
       item.interaction = interaction;
@@ -2039,7 +2115,12 @@
     $("timeline-dialog").showModal();
   }
   function actionOptions(values, selected) {
-    return values.map(([value, label]) => `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`).join("");
+    return values
+      .map(
+        ([value, label]) =>
+          `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`,
+      )
+      .join("");
   }
   function openActionEditor(item) {
     item.actions = item.actions || [];
@@ -2053,51 +2134,170 @@
     (item.actions || []).forEach((action, index) => {
       const row = document.createElement("div");
       row.className = "action-row";
-      const event = document.createElement("select"), triggerSignal = document.createElement("input"),
-        type = document.createElement("select"), target = document.createElement("input"),
-        value = document.createElement("input"), delay = document.createElement("input"),
-        timing = document.createElement("select"), remove = document.createElement("button");
-      event.innerHTML = actionOptions([
-        ["press", "Press"], ["release", "Release"], ["hold", "Hold"],
-        ["page-enter", "Page enter"], ["timer", "Timer"], ["signal-change", "Signal change"],
-      ], action.event || "press");
-      type.innerHTML = actionOptions([
-        ["navigate", "Navigate page"], ["show", "Show widget"], ["hide", "Hide widget"],
-        ["animate", "Play timeline"], ["signal-digital", "Set digital"],
-        ["signal-analog", "Set analog"], ["signal-serial", "Set serial"],
-        ["text", "Change local text"], ["property", "Set property"],
-        ["enable", "Enable widget"], ["disable", "Disable widget"], ["select", "Select widget"],
-      ], action.type || "navigate");
-      timing.innerHTML = actionOptions([["parallel", "Parallel"], ["after", "After previous"]], action.timing || "parallel");
+      const drag = document.createElement("span"),
+        event = document.createElement("select"),
+        triggerType = document.createElement("select"),
+        triggerSignal = document.createElement("input"),
+        condition = document.createElement("select"),
+        compareValue = document.createElement("input"),
+        type = document.createElement("select"),
+        target = document.createElement("input"),
+        value = document.createElement("input"),
+        delay = document.createElement("input"),
+        timing = document.createElement("select"),
+        remove = document.createElement("button");
+      row.draggable = true;
+      drag.className = "action-drag-handle";
+      drag.textContent = "⋮⋮";
+      event.innerHTML = actionOptions(
+        [
+          ["press", "Press"],
+          ["release", "Release"],
+          ["hold", "Hold"],
+          ["page-enter", "Page enter"],
+          ["timer", "Timer"],
+          ["signal-change", "Signal change"],
+        ],
+        action.event || "press",
+      );
+      triggerType.innerHTML = actionOptions(
+        [
+          ["digital", "Digital"],
+          ["analog", "Analog"],
+          ["serial", "Serial"],
+        ],
+        action.triggerType || "digital",
+      );
+      condition.innerHTML = actionOptions(
+        [
+          ["always", "Always"],
+          ["truthy", "True / On"],
+          ["falsy", "False / Off"],
+          ["equals", "Equals"],
+          ["not-equals", "Not equal"],
+          ["greater", "Greater than"],
+          ["greater-equal", "At least"],
+          ["less", "Less than"],
+          ["less-equal", "At most"],
+          ["changed", "Any change"],
+        ],
+        action.condition || "always",
+      );
+      type.innerHTML = actionOptions(
+        [
+          ["navigate", "Navigate page"],
+          ["show", "Show widget"],
+          ["hide", "Hide widget"],
+          ["animate", "Play timeline"],
+          ["signal-digital", "Set digital"],
+          ["signal-analog", "Set analog"],
+          ["signal-serial", "Set serial"],
+          ["text", "Change local text"],
+          ["property", "Set property"],
+          ["enable", "Enable widget"],
+          ["disable", "Disable widget"],
+          ["select", "Select widget"],
+        ],
+        action.type || "navigate",
+      );
+      timing.innerHTML = actionOptions(
+        [
+          ["parallel", "Parallel"],
+          ["after", "After previous"],
+        ],
+        action.timing || "parallel",
+      );
       triggerSignal.placeholder = "Signal address";
       triggerSignal.value = action.triggerSignal || "";
-      triggerSignal.hidden = event.value !== "signal-change";
+      compareValue.placeholder = "Compare value";
+      compareValue.value = action.compareValue ?? "";
       target.placeholder = "Page, widget, or signal";
       target.value = action.target || "";
       target.setAttribute("list", "action-target-options");
-      value.placeholder = type.value === "property" ? "property=value" : "Value";
+      value.placeholder =
+        type.value === "property" ? "property=value" : "Value";
       value.value = action.value ?? "";
       delay.type = "number";
       delay.min = "0";
       delay.value = Number(action.delay) || 0;
       remove.type = "button";
       remove.textContent = "×";
-      const update = () => {
+      const update = (record = true) => {
         Object.assign(action, {
-          event: event.value, triggerSignal: triggerSignal.value.trim(), type: type.value,
-          target: target.value.trim(), value: value.value, delay: Math.max(0, Number(delay.value) || 0), timing: timing.value,
+          event: event.value,
+          triggerSignal: triggerSignal.value.trim(),
+          type: type.value,
+          triggerType: triggerType.value,
+          condition: condition.value,
+          compareValue: compareValue.value,
+          target: target.value.trim(),
+          value: value.value,
+          delay: Math.max(0, Number(delay.value) || 0),
+          timing: timing.value,
         });
-        triggerSignal.hidden = event.value !== "signal-change";
-        value.placeholder = type.value === "property" ? "property=value" : "Value";
-        scheduleHistory();
+        const signalEvent = event.value === "signal-change";
+        triggerType.disabled = triggerSignal.disabled = !signalEvent;
+        condition.disabled = compareValue.disabled = !signalEvent;
+        compareValue.hidden = ![
+          "equals",
+          "not-equals",
+          "greater",
+          "greater-equal",
+          "less",
+          "less-equal",
+        ].includes(condition.value);
+        value.placeholder =
+          type.value === "property" ? "property=value" : "Value";
+        if (record) scheduleHistory();
       };
-      [event, triggerSignal, type, target, value, delay, timing].forEach((control) => control.oninput = update);
+      [
+        event,
+        triggerType,
+        triggerSignal,
+        condition,
+        compareValue,
+        type,
+        target,
+        value,
+        delay,
+        timing,
+      ].forEach((control) => (control.oninput = () => update()));
       remove.onclick = () => {
         item.actions.splice(index, 1);
         renderActionEditor(item);
         commitHistory();
       };
-      row.append(event, triggerSignal, type, target, value, delay, timing, remove);
+      row.ondragstart = () => {
+        row.classList.add("dragging");
+        row.dataset.dragIndex = String(index);
+      };
+      row.ondragend = () => row.classList.remove("dragging");
+      row.ondragover = (dragEvent) => dragEvent.preventDefault();
+      row.ondrop = (dragEvent) => {
+        dragEvent.preventDefault();
+        const fromRow = host.querySelector(".action-row.dragging"),
+          from = Number(fromRow?.dataset.dragIndex);
+        if (!Number.isInteger(from) || from === index) return;
+        const [moved] = item.actions.splice(from, 1);
+        item.actions.splice(index, 0, moved);
+        renderActionEditor(item);
+        commitHistory();
+      };
+      update(false);
+      row.append(
+        drag,
+        event,
+        triggerType,
+        triggerSignal,
+        condition,
+        compareValue,
+        type,
+        target,
+        value,
+        delay,
+        timing,
+        remove,
+      );
       host.appendChild(row);
     });
     let datalist = $("action-target-options");
@@ -2107,8 +2307,12 @@
       document.body.appendChild(datalist);
     }
     datalist.innerHTML = [
-      ...state.pages.map((page) => `<option value="${page.id}">${page.name} page</option>`),
-      ...state.items.map((entry) => `<option value="${entry.id}">${entry.name}</option>`),
+      ...state.pages.map(
+        (page) => `<option value="${page.id}">${page.name} page</option>`,
+      ),
+      ...state.items.map(
+        (entry) => `<option value="${entry.id}">${entry.name}</option>`,
+      ),
     ].join("");
   }
   function renderTimeline(item) {
@@ -2378,13 +2582,7 @@
         .filter((value) => typeof value === "string" && value.trim())
         .map((value) => value.split("|").length)
         .find((value) => value > 0),
-      capacity = [
-        p.maxItems,
-        p.maxCards,
-        p.maxSlides,
-        p.maxButtons,
-        p.maxCount,
-      ]
+      capacity = [p.maxItems, p.maxCards, p.maxSlides, p.maxButtons, p.maxCount]
         .map(Number)
         .find((value) => Number.isFinite(value) && value > 0);
     return Math.max(
@@ -2433,7 +2631,10 @@
         return separator < 0 ? `${root}.${text}` : root + text.slice(separator);
       },
       direct = (value, type, direction) => {
-        const leaf = String(value || "").split(".").pop() || "Signal";
+        const leaf =
+          String(value || "")
+            .split(".")
+            .pop() || "Signal";
         return `${root}.${standardContractAttribute(type, direction, leaf)}`;
       };
     Object.entries(item.signalBindings || {}).forEach(([key, binding]) => {
@@ -2451,9 +2652,7 @@
     });
     (definition?.rangeBindings || []).forEach((entry) => {
       if (typeof item.properties?.[entry.baseKey] === "string")
-        item.properties[entry.baseKey] = rebase(
-          item.properties[entry.baseKey],
-        );
+        item.properties[entry.baseKey] = rebase(item.properties[entry.baseKey]);
     });
   }
   function contractWidgetPrefix(item) {
@@ -2993,15 +3192,15 @@
           .map(simplIdentifier)
           .join("_"),
         exportedComponent = {
-        Errors: [],
-        parentId: contractId,
-        id: componentId,
-        name: exportedComponentName,
-        description: `Generated from Crestron UI Composer (${component.rows[0]?.page || "Project"})`,
-        commands,
-        feedbacks,
-        specifications: [],
-      };
+          Errors: [],
+          parentId: contractId,
+          id: componentId,
+          name: exportedComponentName,
+          description: `Generated from Crestron UI Composer (${component.rows[0]?.page || "Project"})`,
+          commands,
+          feedbacks,
+          specifications: [],
+        };
       cceComponents.push(exportedComponent);
       const specification = {
         Errors: [],
@@ -3028,7 +3227,8 @@
           (component) => component.id === entry.parentId,
         );
         if (parent) parent.specifications.push(entry.specification);
-        else errors.push("A repeated collection is missing its parent component.");
+        else
+          errors.push("A repeated collection is missing its parent component.");
       });
     }
     const contract = {
@@ -3421,9 +3621,10 @@
       )
         item.signalBindings.visibility = {
           mode: overall || "contract",
-          value: (overall || "contract") === "contract"
-            ? visibility.defaultValue || "Visibility"
-            : "",
+          value:
+            (overall || "contract") === "contract"
+              ? visibility.defaultValue || "Visibility"
+              : "",
         };
       renderBindings(item);
       renderItem(item);
@@ -3647,10 +3848,7 @@
         } else {
           const originalWidth = Math.max(1, bounds.right - bounds.left),
             originalHeight = Math.max(1, bounds.bottom - bounds.top),
-            scaleX = Math.max(
-              0.05,
-              (originalWidth + pointerX) / originalWidth,
-            ),
+            scaleX = Math.max(0.05, (originalWidth + pointerX) / originalWidth),
             scaleY = Math.max(
               0.05,
               (originalHeight + pointerY) / originalHeight,
@@ -3803,6 +4001,69 @@
         !state.pages.some((page) => page.id === item.targetPage)
       )
         add("error", `“${item.name}” targets a page that no longer exists.`);
+      (item.actions || []).forEach((action, actionIndex) => {
+        const owner = `“${item.name}” action ${actionIndex + 1}`,
+          widgetActions = new Set([
+            "show",
+            "hide",
+            "animate",
+            "text",
+            "property",
+            "enable",
+            "disable",
+            "select",
+          ]);
+        if (
+          ![
+            "press",
+            "release",
+            "hold",
+            "page-enter",
+            "timer",
+            "signal-change",
+          ].includes(action.event)
+        )
+          add("error", `${owner} has an unsupported event.`);
+        if (action.event === "signal-change") {
+          if (!String(action.triggerSignal || "").trim())
+            add("error", `${owner} has no trigger signal.`);
+          if (
+            !["digital", "analog", "serial"].includes(
+              action.triggerType || "digital",
+            )
+          )
+            add("error", `${owner} has an invalid trigger signal type.`);
+          if (
+            [
+              "equals",
+              "not-equals",
+              "greater",
+              "greater-equal",
+              "less",
+              "less-equal",
+            ].includes(action.condition) &&
+            String(action.compareValue ?? "") === ""
+          )
+            add("error", `${owner} needs a comparison value.`);
+        }
+        if (action.type === "navigate" && !pageIds.has(action.target))
+          add("error", `${owner} targets a missing page.`);
+        if (
+          widgetActions.has(action.type) &&
+          !state.items.some((candidate) => candidate.id === action.target)
+        )
+          add("error", `${owner} targets a missing widget.`);
+        if (
+          /^signal-(digital|analog|serial)$/.test(action.type) &&
+          !String(action.target || "").trim()
+        )
+          add("error", `${owner} has no output signal address.`);
+        if (
+          action.type === "property" &&
+          !String(action.value || "").includes("=")
+        )
+          add("warning", `${owner} should use property=value syntax.`);
+      });
       checkAsset(item.assetId, `“${item.name}”`);
       checkAsset(item.backgroundAsset, `“${item.name}”`);
       if (!item.componentId) {
@@ -3833,63 +4094,110 @@
           );
       });
     });
+    const pageEnterNavigation = new Map();
+    state.items.forEach((item) =>
+      (item.actions || [])
+        .filter(
+          (action) =>
+            action.event === "page-enter" &&
+            action.type === "navigate" &&
+            pageIds.has(action.target),
+        )
+        .forEach((action) => {
+          const sources = item.master
+            ? state.pages.map((page) => page.id)
+            : [item.pageId];
+          sources.forEach((source) =>
+            pageEnterNavigation.set(source, [
+              ...(pageEnterNavigation.get(source) || []),
+              action.target,
+            ]),
+          );
+        }),
+    );
+    const visiting = new Set(),
+      visitedPages = new Set();
+    function findPageLoop(pageId, path = []) {
+      if (visiting.has(pageId)) return [...path, pageId];
+      if (visitedPages.has(pageId)) return null;
+      visiting.add(pageId);
+      for (const target of pageEnterNavigation.get(pageId) || []) {
+        const loop = findPageLoop(target, [...path, pageId]);
+        if (loop) return loop;
+      }
+      visiting.delete(pageId);
+      visitedPages.add(pageId);
+      return null;
+    }
+    for (const page of state.pages) {
+      const loop = findPageLoop(page.id);
+      if (loop) {
+        add(
+          "error",
+          `Page-enter actions create a navigation loop: ${loop.map((id) => state.pages.find((page) => page.id === id)?.name || id).join(" → ")}.`,
+        );
+        break;
+      }
+    }
 
     const expandedSignals = [];
-    collectProjectSignals().flatMap(expandContractSubItems).forEach((row) => {
-      const value = String(row.value || "").trim(),
-        count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1;
-      if (!value) {
-        add(
-          "warning",
-          `${row.page} · “${row.widget}” has no ${row.name} binding.`,
-        );
-        return;
-      }
-      if (row.mode === "join") {
-        if (
-          !/^\d+$/.test(value) ||
-          Number(value) < 1 ||
-          Number(value) > 65535
-        ) {
+    collectProjectSignals()
+      .flatMap(expandContractSubItems)
+      .forEach((row) => {
+        const value = String(row.value || "").trim(),
+          count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1;
+        if (!value) {
           add(
-            "error",
-            `${row.page} · “${row.widget}” has invalid ${row.name} join “${value}”.`,
+            "warning",
+            `${row.page} · “${row.widget}” has no ${row.name} binding.`,
           );
           return;
         }
-        for (let index = 0; index < count; index++) {
-          const expandedJoin =
-            Number(value) + index * (row.rangeIncrement || 1);
-          if (expandedJoin > 65535)
+        if (row.mode === "join") {
+          if (
+            !/^\d+$/.test(value) ||
+            Number(value) < 1 ||
+            Number(value) > 65535
+          ) {
             add(
               "error",
-              `${row.page} · “${row.widget}” ${row.name} expands beyond join 65535.`,
+              `${row.page} · “${row.widget}” has invalid ${row.name} join “${value}”.`,
             );
-          else expandedSignals.push({ ...row, value: String(expandedJoin) });
+            return;
+          }
+          for (let index = 0; index < count; index++) {
+            const expandedJoin =
+              Number(value) + index * (row.rangeIncrement || 1);
+            if (expandedJoin > 65535)
+              add(
+                "error",
+                `${row.page} · “${row.widget}” ${row.name} expands beyond join 65535.`,
+              );
+            else expandedSignals.push({ ...row, value: String(expandedJoin) });
+          }
+        } else {
+          if (!/^[A-Za-z_][A-Za-z0-9_.{}\[\]-]*$/.test(value)) {
+            add(
+              "error",
+              `${row.page} · “${row.widget}” has invalid ${row.name} contract “${value}”.`,
+            );
+            return;
+          }
+          if (row.range && count > 1 && !/\{n\}|\{index\}/.test(value))
+            add(
+              "error",
+              `${row.page} · “${row.widget}” ${row.name} needs {n} or {index} for ${count} entries.`,
+            );
+          for (let index = 0; index < count; index++)
+            expandedSignals.push({
+              ...row,
+              contractIndex: index,
+              value: value
+                .replace(/\{n\}/g, String(index + 1))
+                .replace(/\{index\}/g, String(index)),
+            });
         }
-      } else {
-        if (!/^[A-Za-z_][A-Za-z0-9_.{}\[\]-]*$/.test(value)) {
-          add(
-            "error",
-            `${row.page} · “${row.widget}” has invalid ${row.name} contract “${value}”.`,
-          );
-          return;
-        }
-        if (row.range && count > 1 && !/\{n\}|\{index\}/.test(value))
-          add(
-            "error",
-            `${row.page} · “${row.widget}” ${row.name} needs {n} or {index} for ${count} entries.`,
-          );
-        for (let index = 0; index < count; index++)
-          expandedSignals.push({
-            ...row,
-            contractIndex: index,
-            value: value
-              .replace(/\{n\}/g, String(index + 1))
-              .replace(/\{index\}/g, String(index)),
-          });
-      }
-    });
+      });
     expandedSignals.forEach((row) => {
       const shape = row.mode === "contract" ? contractSignalShape(row) : null,
         canonicalValue = shape
@@ -4600,9 +4908,9 @@
       javascript = [...documentValue.querySelectorAll("script")]
         .map((element) => element.textContent)
         .join("\n");
-    documentValue.querySelectorAll("style,script").forEach((element) =>
-      element.remove(),
-    );
+    documentValue
+      .querySelectorAll("style,script")
+      .forEach((element) => element.remove());
     return { html: documentValue.body.innerHTML, css, javascript };
   }
   function composeCustomSource() {
@@ -4622,14 +4930,14 @@
     row.querySelector('[data-field="defaultValue"]').value =
       property.type === "select"
         ? (property.options || []).map((option) => option.value).join(",")
-        : property.defaultValue ?? "";
+        : (property.defaultValue ?? "");
     row.querySelector("button").onclick = () => {
       row.remove();
       refreshCustomPreview();
     };
-    row.querySelectorAll("input,select").forEach(
-      (input) => (input.oninput = refreshCustomPreview),
-    );
+    row
+      .querySelectorAll("input,select")
+      .forEach((input) => (input.oninput = refreshCustomPreview));
     $("custom-property-list").appendChild(row);
   }
   function addCustomSignalRow(signal = {}) {
@@ -4644,9 +4952,9 @@
       row.remove();
       refreshCustomPreview();
     };
-    row.querySelectorAll("input,select").forEach(
-      (input) => (input.oninput = refreshCustomPreview),
-    );
+    row
+      .querySelectorAll("input,select")
+      .forEach((input) => (input.oninput = refreshCustomPreview));
     $("custom-signal-list").appendChild(row);
   }
   function collectCustomProperties() {
@@ -4706,8 +5014,11 @@
       signals = collectCustomSignals(),
       errors = [],
       warnings = [],
-      duplicateKeys = (values) =>
-        [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
+      duplicateKeys = (values) => [
+        ...new Set(
+          values.filter((value, index) => values.indexOf(value) !== index),
+        ),
+      ];
     if (!name) errors.push("Component name is required.");
     if (!/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(version))
       errors.push("Version must use semantic versioning, such as 1.0.0.");
@@ -4732,7 +5043,10 @@
     } catch (error) {
       errors.push(`JavaScript syntax: ${error.message}`);
     }
-    const result = { errors: [...new Set(errors)], warnings: [...new Set(warnings)] },
+    const result = {
+        errors: [...new Set(errors)],
+        warnings: [...new Set(warnings)],
+      },
       panel = $("custom-validation");
     panel.classList.toggle("invalid", !!result.errors.length);
     panel.innerHTML = result.errors.length
@@ -4744,9 +5058,16 @@
   }
   function refreshCustomSignalTester() {
     const selected = $("custom-preview-signal").value,
-      signals = collectCustomSignals().filter((signal) => signal.direction === "input");
+      signals = collectCustomSignals().filter(
+        (signal) => signal.direction === "input",
+      );
     $("custom-preview-signal").innerHTML = signals.length
-      ? signals.map((signal) => `<option value="${signal.key}">${signal.name} (${signal.type})</option>`).join("")
+      ? signals
+          .map(
+            (signal) =>
+              `<option value="${signal.key}">${signal.name} (${signal.type})</option>`,
+          )
+          .join("")
       : '<option value="">No input signals</option>';
     if (signals.some((signal) => signal.key === selected))
       $("custom-preview-signal").value = selected;
@@ -4786,7 +5107,8 @@
       : "Create component";
     $("custom-component-export").hidden = !entry;
     $("custom-component-delete").hidden = !entry;
-    $("custom-component-name").value = entry?.name || item.name || "Custom component";
+    $("custom-component-name").value =
+      entry?.name || item.name || "Custom component";
     $("custom-component-category").value = entry?.category || "Custom";
     $("custom-component-icon").value = entry?.icon || "🧩";
     $("custom-component-version").value = entry?.version || "1.0.0";
@@ -4797,7 +5119,8 @@
     $("custom-source-javascript").value = source.javascript;
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
-    $("custom-preview-log").textContent = "Preview signal activity appears here.";
+    $("custom-preview-log").textContent =
+      "Preview signal activity appears here.";
     properties.forEach(addCustomPropertyRow);
     signals.forEach(addCustomSignalRow);
     refreshCustomPreview();
@@ -4819,21 +5142,24 @@
       raw = $("custom-preview-value").value,
       signal = collectCustomSignals().find((entry) => entry.key === key);
     if (!signal) return;
-    const value = signal.type === "digital"
-      ? /^(true|1|on)$/i.test(raw)
-      : signal.type === "analog"
-        ? Number(raw) || 0
-        : raw;
+    const value =
+      signal.type === "digital"
+        ? /^(true|1|on)$/i.test(raw)
+        : signal.type === "analog"
+          ? Number(raw) || 0
+          : raw;
     $("custom-component-preview").contentWindow?.postMessage(
       { type: "composer-signal", key, value },
       "*",
     );
-    $("custom-preview-log").textContent += `\nFeedback ${key} = ${JSON.stringify(value)}`;
+    $("custom-preview-log").textContent +=
+      `\nFeedback ${key} = ${JSON.stringify(value)}`;
   };
   window.addEventListener("message", (event) => {
     if (event.source !== $("custom-component-preview").contentWindow) return;
     if (event.data?.type === "composer-custom-publish")
-      $("custom-preview-log").textContent += `\nPublish ${event.data.key} = ${JSON.stringify(event.data.value)}`;
+      $("custom-preview-log").textContent +=
+        `\nPublish ${event.data.key} = ${JSON.stringify(event.data.value)}`;
     if (event.data?.type === "composer-preview-error")
       $("custom-preview-log").textContent += `\nERROR: ${event.data.message}`;
     $("custom-preview-log").scrollTop = $("custom-preview-log").scrollHeight;
@@ -4884,9 +5210,11 @@
     commitHistory();
     setStatus(`Deleted custom component “${entry.name}”`);
   };
-  ["custom-source-html", "custom-source-css", "custom-source-javascript"].forEach(
-    (id) => ($(id).oninput = refreshCustomPreview),
-  );
+  [
+    "custom-source-html",
+    "custom-source-css",
+    "custom-source-javascript",
+  ].forEach((id) => ($(id).oninput = refreshCustomPreview));
   [
     "custom-component-name",
     "custom-component-category",
@@ -4896,12 +5224,13 @@
   ].forEach((id) => ($(id).oninput = validateCustomComponent));
   document.querySelectorAll("[data-custom-tab]").forEach((button) => {
     button.onclick = () => {
-      document.querySelectorAll("[data-custom-tab]").forEach((entry) =>
-        entry.classList.toggle("active", entry === button),
-      );
+      document
+        .querySelectorAll("[data-custom-tab]")
+        .forEach((entry) => entry.classList.toggle("active", entry === button));
       ["html", "css", "javascript"].forEach(
         (name) =>
-          ($("custom-source-" + name).hidden = button.dataset.customTab !== name),
+          ($("custom-source-" + name).hidden =
+            button.dataset.customTab !== name),
       );
     };
   });
@@ -4951,7 +5280,9 @@
       .forEach(renderItem);
     renderComponentLibrary();
     commitHistory();
-    setStatus(`${customEditingId ? "Updated" : "Created"} palette component “${name}”`);
+    setStatus(
+      `${customEditingId ? "Updated" : "Created"} palette component “${name}”`,
+    );
   };
   $("custom-package-file").onchange = async (event) => {
     const file = event.target.files?.[0];
@@ -4969,13 +5300,17 @@
         !Array.isArray(imported.properties) ||
         !Array.isArray(imported.signals)
       )
-        throw new Error("This is not a valid Crestron UI Composer component package.");
+        throw new Error(
+          "This is not a valid Crestron UI Composer component package.",
+        );
       const existingIndex = state.customComponents.findIndex(
         (entry) => entry.id === imported.id,
       );
       if (
         existingIndex >= 0 &&
-        !confirm(`Replace the existing “${state.customComponents[existingIndex].name}” component?`)
+        !confirm(
+          `Replace the existing “${state.customComponents[existingIndex].name}” component?`,
+        )
       )
         return;
       const entry = structuredClone(imported);
@@ -5468,7 +5803,9 @@
       triggerSignal: "",
       triggerType: "digital",
       type: "navigate",
-      target: state.pages.find((page) => page.id !== state.activePage)?.id || state.activePage,
+      target:
+        state.pages.find((page) => page.id !== state.activePage)?.id ||
+        state.activePage,
       value: "",
       delay: 0,
       timing: "parallel",
@@ -5477,9 +5814,36 @@
     commitHistory();
   };
   $("action-preview").onclick = () => {
-    const item = current(), first = item?.actions?.[0];
-    if (item && first) runItemActions(item, first.event, first.triggerSignal || "");
+    const item = current(),
+      eventName = $("action-preview-event").value,
+      matching = item?.actions?.find((action) => action.event === eventName);
+    if (item && matching)
+      runItemActions(
+        item,
+        eventName,
+        matching.triggerSignal || "",
+        parseActionValue(matching.compareValue || "true", matching.triggerType),
+      );
   };
+  $("action-copy").onclick = () => {
+    const item = current();
+    actionClipboard = structuredClone(item?.actions || []);
+    $("action-paste").disabled = !actionClipboard.length;
+    setStatus(
+      `Copied ${actionClipboard.length} action${actionClipboard.length === 1 ? "" : "s"}`,
+    );
+  };
+  $("action-paste").onclick = () => {
+    const item = current();
+    if (!item || !actionClipboard.length) return;
+    item.actions = structuredClone(actionClipboard);
+    renderActionEditor(item);
+    commitHistory();
+    setStatus(
+      `Pasted ${item.actions.length} action${item.actions.length === 1 ? "" : "s"}`,
+    );
+  };
+  $("action-paste").disabled = true;
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
   $("zoom-out").onclick = () => setPanelZoom(panelZoom - 0.1);
@@ -5507,14 +5871,15 @@
     close.onclick = () => dialog.close();
     form.prepend(close);
   });
-  document.querySelectorAll(".color-swatches [data-color]").forEach((button) => {
-    button.style.setProperty("--swatch", button.dataset.color);
-    button.onclick = () => setColorDialogValue(button.dataset.color);
-  });
+  document
+    .querySelectorAll(".color-swatches [data-color]")
+    .forEach((button) => {
+      button.style.setProperty("--swatch", button.dataset.color);
+      button.onclick = () => setColorDialogValue(button.dataset.color);
+    });
   ["red", "green", "blue"].forEach((channel) => {
     $("color-" + channel).oninput = () => {
-      const toHex = (value) =>
-        Number(value).toString(16).padStart(2, "0");
+      const toHex = (value) => Number(value).toString(16).padStart(2, "0");
       setColorDialogValue(
         `#${toHex($("color-red").value)}${toHex($("color-green").value)}${toHex($("color-blue").value)}`,
       );
@@ -5542,7 +5907,9 @@
   );
   document.addEventListener("keydown", (event) => {
     if (
-      event.target.matches?.('input[type="color"]:not([data-native-color-picker])') &&
+      event.target.matches?.(
+        'input[type="color"]:not([data-native-color-picker])',
+      ) &&
       (event.key === "Enter" || event.key === " ")
     ) {
       event.preventDefault();

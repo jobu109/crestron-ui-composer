@@ -414,7 +414,9 @@ h2 {
   border-radius: 5px;
   background: #0b1214;
   color: #9fe7dc;
-  font: 11px/1.35 Consolas, monospace;
+  font:
+    11px/1.35 Consolas,
+    monospace;
   white-space: pre-wrap;
 }
 .custom-validation {
@@ -447,7 +449,10 @@ h2 {
 .action-column-labels,
 .action-row {
   display: grid;
-  grid-template-columns: 115px 130px 150px minmax(150px, 1fr) minmax(120px, .8fr) 72px 115px 34px;
+  grid-template-columns: 24px 105px 82px 125px 105px 90px 135px minmax(
+      140px,
+      1fr
+    ) minmax(105px, 0.8fr) 65px 105px 32px;
   gap: 6px;
   align-items: center;
 }
@@ -471,6 +476,21 @@ h2 {
 .action-row button {
   padding: 5px;
   color: #ffb3b3;
+}
+.action-row[draggable="true"] {
+  cursor: grab;
+}
+.action-row.dragging {
+  opacity: 0.45;
+}
+.widget.action-selected {
+  outline: 3px solid #14d4b4;
+  outline-offset: 2px;
+}
+.action-drag-handle {
+  color: #72c7b9;
+  text-align: center;
+  user-select: none;
 }
 .timeline-header,
 .timeline-toolbar,
