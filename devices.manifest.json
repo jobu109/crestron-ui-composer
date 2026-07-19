@@ -39,28 +39,17 @@
       "validationStatus": "manufacturer-verified"
     },
     {
-      "id": "tsw-570",
-      "manufacturer": "Crestron",
-      "model": "TSW-570",
-      "name": "Crestron TSW-570",
-      "width": 1280,
-      "height": 720,
-      "aspectRatio": "16:9",
+      "id": "ipad-landscape",
+      "manufacturer": "Apple",
+      "model": "iPad",
+      "name": "Apple iPad (Generic Landscape)",
+      "width": 1024,
+      "height": 768,
+      "aspectRatio": "4:3",
       "colorDepth": 24,
       "supportsCh5": true,
-      "validationStatus": "manufacturer-verified"
-    },
-    {
-      "id": "tsw-570pr",
-      "manufacturer": "Crestron",
-      "model": "TSW-570PR",
-      "name": "Crestron TSW-570PR (Portrait)",
-      "width": 720,
-      "height": 1280,
-      "aspectRatio": "9:16",
-      "colorDepth": 24,
-      "supportsCh5": true,
-      "validationStatus": "manufacturer-verified"
+      "deploymentPlatform": "Crestron ONE",
+      "validationStatus": "generic-css-viewport"
     },
     {
       "id": "tst-1080",

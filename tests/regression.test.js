@@ -66,6 +66,17 @@ run("responsive anchors and panel overrides migrate safely", () => {
   assert.deepEqual(migrated.items[0].deviceOverrides, {});
 });
 
+run("removed TSW-570 targets retain their dimensions as custom layouts", () => {
+  const migrated = ComposerProjectMigrations.migrate({
+    version: ComposerProjectMigrations.CURRENT_VERSION,
+    targetDevice: "tsw-570", width: 1280, height: 720,
+    pages: [{ id: "home", name: "Home" }], activePage: "home", items: [],
+  }).project;
+  assert.equal(migrated.targetDevice, "custom");
+  assert.equal(migrated.width, 1280);
+  assert.equal(migrated.height, 720);
+});
+
 run("responsive layout honors right, center, stretch, and proportional rules", () => {
   assert.deepEqual(
     ComposerResponsiveLayout.adaptRect(
