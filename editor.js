@@ -13,8 +13,8 @@
     transitionDuration: 350,
   };
   const state = {
-    width: 1920,
-    height: 1200,
+    width: 1280,
+    height: 800,
     targetDevice: "tsw-1070",
     diagnostics: false,
     components: [],
@@ -826,7 +826,7 @@
           device.name +
           (device.id === "custom"
             ? ""
-            : ` — ${device.width} × ${device.height}`);
+            : ` — ${device.width} × ${device.height}${device.nativeWidth ? ` viewport (${device.nativeWidth} × ${device.nativeHeight} display)` : ""}`);
         select.appendChild(option);
       });
       select.value = state.targetDevice;
@@ -5917,7 +5917,7 @@
     state.activePage = p.activePage || state.pages[0].id;
     state.targetDevice =
       p.targetDevice ||
-      (p.width === 1920 && p.height === 1200 ? "tsw-1070" : "custom");
+      (p.width === 1280 && p.height === 800 ? "tsw-1070" : "custom");
     state.diagnostics = !!p.diagnostics;
     $("target-device").value = state.targetDevice;
     $("custom-size").hidden = state.targetDevice !== "custom";

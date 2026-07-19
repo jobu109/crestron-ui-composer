@@ -117,6 +117,20 @@ run("component manifest references existing unique components", () => {
   });
 });
 
+run("device presets use their effective Construct viewports", () => {
+  const devices = new Map(
+    JSON.parse(read("devices.manifest.json")).devices.map((device) => [
+      device.id,
+      device,
+    ]),
+  );
+  ["tsw-770", "tsw-880", "tsw-1070", "tsw-1080", "tst-1070", "tst-1080"].forEach(
+    (id) => assert.deepEqual([devices.get(id)?.width, devices.get(id)?.height], [1280, 800]),
+  );
+  assert.deepEqual([devices.get("monitor-4k")?.width, devices.get("monitor-4k")?.height], [2560, 1440]);
+  assert.deepEqual([devices.get("dge-100")?.width, devices.get("dge-100")?.height], [3840, 2160]);
+});
+
 run("exported action runtime is valid JavaScript", () => {
   vm.runInThisContext(read("component-runtime.js"), { filename: "component-runtime.js" });
   ComposerRuntime.register({

@@ -19,7 +19,7 @@
 
     project.width = Math.max(1, Number(project.width) || 1920);
     project.height = Math.max(1, Number(project.height) || 1200);
-    project.targetDevice ||= project.width === 1920 && project.height === 1200 ? "tsw-1070" : "custom";
+    project.targetDevice ||= project.width === 1280 && project.height === 800 ? "tsw-1070" : "custom";
     if (["tsw-570", "tsw-570pr"].includes(project.targetDevice)) {
       project.targetDevice = "custom";
       notes.push("Converted a removed TSW-570 target to a custom resolution.");
