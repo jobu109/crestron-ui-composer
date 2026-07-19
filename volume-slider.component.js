@@ -62,8 +62,8 @@
       '[data-component="volume-slider"] output{min-width:82px;color:#fff;font:700 28px Segoe UI;text-align:right;text-shadow:0 0 8px #04aa8e}' +
       '[data-component="volume-slider"][data-percent-position="left"] .slider{flex-direction:row-reverse}' +
       '[data-component="volume-slider"][data-percent-position="left"] output{text-align:left}' +
-      '[data-component="volume-slider"][data-percent-position="above"] .slider{flex-direction:column-reverse;justify-content:center;gap:10px}' +
-      '[data-component="volume-slider"][data-percent-position="below"] .slider{flex-direction:column;justify-content:center;gap:10px}' +
+      '[data-component="volume-slider"][data-percent-position="above"] .slider{flex-direction:column-reverse;justify-content:center;gap:22px}' +
+      '[data-component="volume-slider"][data-percent-position="below"] .slider{flex-direction:column;justify-content:center;gap:22px}' +
       '[data-component="volume-slider"][data-percent-position="above"] .track,[data-component="volume-slider"][data-percent-position="below"] .track{width:100%;height:34px;flex:0 0 34px}' +
       '[data-component="volume-slider"][data-percent-position="above"] output,[data-component="volume-slider"][data-percent-position="below"] output{width:100%;min-width:0;text-align:center;line-height:1}',
     mount(root, context) {
