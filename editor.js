@@ -1574,7 +1574,7 @@
     if (!pageId) return "Global";
     const page = state.pages.find((entry) => entry.id === pageId),
       name = simplIdentifier(page?.name || "Page");
-    return `Page${name.replace(/^Page/i, "") || "Main"}`;
+    return name || "Main";
   }
   function contractWidgetInstance(item) {
     const definition = item?.componentId

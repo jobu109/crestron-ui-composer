@@ -56,7 +56,7 @@
     const page = project.pages.find((entry) => entry.id === item.pageId),
       pageName = item.master
         ? "Global"
-        : `Page${contractIdentifier(page?.name || "Main").replace(/^Page/i, "") || "Main"}`,
+        : contractIdentifier(page?.name || "Main") || "Main",
       definition = global.ComposerRuntime.get(item.componentId),
       base = contractIdentifier(definition?.name || item.name || "Widget"),
       peers = project.items.filter(
@@ -103,7 +103,7 @@
         mode: page.bindingMode,
         signal:
           page.bindingMode === "contract"
-            ? `Page${contractIdentifier(page.name || "Main").replace(/^Page/i, "") || "Main"}.Selected`
+            ? `${contractIdentifier(page.name || "Main") || "Main"}.Selected`
             : page.binding,
       })),
     );
