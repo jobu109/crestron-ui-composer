@@ -538,12 +538,22 @@ public partial class MainWindow : Window
     {
         try
         {
-            var start = new ProcessStartInfo(fileName, arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            var commandScript = Path.GetExtension(fileName).Equals(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetExtension(fileName).Equals(".bat", StringComparison.OrdinalIgnoreCase);
+            var start = commandScript
+                ? new ProcessStartInfo("cmd.exe", $"/d /s /c \"\"{fileName}\" {arguments}\"")
+                : new ProcessStartInfo(fileName, arguments);
+            start.UseShellExecute = false;
+            start.CreateNoWindow = true;
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
             using var process = Process.Start(start);
             if (process is null) return null;
             var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(4000);
-            return process.ExitCode == 0 ? output.Trim() : null;
+            var error = process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(4000)) { try { process.Kill(true); } catch { } return null; }
+            var version = string.IsNullOrWhiteSpace(output) ? error : output;
+            return process.ExitCode == 0 ? version.Trim() : null;
         }
         catch { return null; }
     }
