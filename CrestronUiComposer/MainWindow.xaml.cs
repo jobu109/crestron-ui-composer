@@ -7,6 +7,7 @@ using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Net.Http;
 using System.Windows;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -127,6 +128,12 @@ public partial class MainWindow : Window
                     break;
                 case "openStorageFolder":
                     OpenStorageFolder(id, root.GetProperty("payload"));
+                    break;
+                case "checkForUpdates":
+                    CheckForUpdates(id);
+                    break;
+                case "openExternalUrl":
+                    OpenExternalUrl(id, root.GetProperty("payload").GetString() ?? "");
                     break;
                 case "importSnippets":
                     ImportSnippets(id);
@@ -513,6 +520,68 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(folder);
         Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
         Respond(id, true, folder, null);
+    }
+
+    private void CheckForUpdates(string id)
+    {
+        const string releasesApi = "https://api.github.com/repos/jobu109/crestron-ui-composer/releases/latest";
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("CrestronUiComposer-Updater/1.0");
+        using var response = client.GetAsync(releasesApi).GetAwaiter().GetResult();
+        var current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            Respond(id, true, new { currentVersion = DisplayVersion(current), latestVersion = "", updateAvailable = false, releaseNotes = "", releaseUrl = "", downloadUrl = "" }, null);
+            return;
+        }
+        response.EnsureSuccessStatusCode();
+        using var release = JsonDocument.Parse(response.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+        var root = release.RootElement;
+        var tag = root.TryGetProperty("tag_name", out var tagValue) ? tagValue.GetString() ?? "" : "";
+        var latest = ParseReleaseVersion(tag);
+        var releaseUrl = root.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() ?? "" : "";
+        var notes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "";
+        var downloadUrl = "";
+        if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+        {
+            var preferred = assets.EnumerateArray()
+                .Select(asset => new
+                {
+                    name = asset.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+                    url = asset.TryGetProperty("browser_download_url", out var url) ? url.GetString() ?? "" : ""
+                })
+                .OrderBy(asset => asset.name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) ? 0 : asset.name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? 1 : asset.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? 2 : 3)
+                .FirstOrDefault(asset => !string.IsNullOrWhiteSpace(asset.url));
+            downloadUrl = preferred?.url ?? "";
+        }
+        Respond(id, true, new
+        {
+            currentVersion = DisplayVersion(current),
+            latestVersion = latest is null ? tag : DisplayVersion(latest),
+            updateAvailable = latest is not null && latest > current,
+            releaseNotes = notes,
+            releaseUrl,
+            downloadUrl
+        }, null);
+    }
+
+    private static Version? ParseReleaseVersion(string value)
+    {
+        var clean = value.Trim().TrimStart('v', 'V').Split('-', '+')[0];
+        return Version.TryParse(clean, out var version) ? version : null;
+    }
+
+    private static string DisplayVersion(Version version) => version.Revision > 0
+        ? $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}"
+        : $"{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
+
+    private void OpenExternalUrl(string id, string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            !(uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("Only trusted GitHub update links can be opened.");
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        Respond(id, true, true, null);
     }
 
     private void CreateProjectBackup(string id, JsonElement payload)

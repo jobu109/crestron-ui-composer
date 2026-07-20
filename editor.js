@@ -5164,6 +5164,36 @@
       host.appendChild(row);
     });
   }
+  async function checkForUpdates() {
+    const dialog = $("update-dialog"), downloadButton = $("update-download");
+    $("update-summary").textContent = "Checking the public GitHub repository…";
+    $("update-current-version").textContent = "—";
+    $("update-latest-version").textContent = "—";
+    $("update-notes").textContent = "";
+    downloadButton.hidden = true;
+    if (!dialog.open) dialog.showModal();
+    if (!native) {
+      $("update-summary").textContent = "Update checking is available in the Windows application.";
+      return;
+    }
+    try {
+      const result = await nativeRequest("checkForUpdates");
+      $("update-current-version").textContent = result.currentVersion;
+      $("update-latest-version").textContent = result.latestVersion || "No published release";
+      $("update-notes").textContent = result.releaseNotes || "No GitHub release has been published yet.";
+      $("update-summary").textContent = result.updateAvailable
+        ? `Version ${result.latestVersion} is available.`
+        : result.latestVersion ? "You have the latest published version." : "No published releases were found.";
+      if (result.downloadUrl || result.releaseUrl) {
+        downloadButton.hidden = !result.updateAvailable;
+        downloadButton.onclick = () => nativeRequest("openExternalUrl", result.downloadUrl || result.releaseUrl)
+          .catch((error) => alert(error.message));
+      }
+    } catch (error) {
+      $("update-summary").textContent = "The update check failed.";
+      $("update-notes").textContent = error.message;
+    }
+  }
   function selectedCompatibilityDevice() {
     return deviceProfiles.find((device) => device.id === $("compatibility-device").value);
   }
@@ -6542,6 +6572,7 @@
     if (!$("storage-dialog").open) $("storage-dialog").showModal();
     await renderStorageSettings();
   };
+  $("check-updates").onclick = checkForUpdates;
   $("backup-refresh").onclick = renderProjectBackups;
   $("backup-create").onclick = async () => {
     try {

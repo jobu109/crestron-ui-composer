@@ -221,6 +221,12 @@
             <button id="system-diagnostics">System diagnostics</button>
           </div>
         </details>
+        <details class="app-menu">
+          <summary>Help</summary>
+          <div class="app-menu-popup">
+            <button id="check-updates">Check for updates</button>
+          </div>
+        </details>
       </nav>
       <label class="target-selector"
         >Target panel
@@ -1071,6 +1077,21 @@ Preview signal activity appears here.</pre
         <p class="hint">Choose the default folders used by Windows project, package, export, backup, asset, and reusable-design workflows.</p>
         <div id="storage-location-list" class="storage-location-list"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="update-dialog" class="update-dialog">
+      <form method="dialog">
+        <h2>Application updates</h2>
+        <p id="update-summary" class="hint">Checking GitHub Releases…</p>
+        <div class="update-version-grid">
+          <strong>Installed</strong><span id="update-current-version">—</span>
+          <strong>Latest</strong><span id="update-latest-version">—</span>
+        </div>
+        <pre id="update-notes" class="update-notes"></pre>
+        <div class="dialog-actions">
+          <button value="default">Close</button>
+          <button id="update-download" type="button" class="primary" hidden>Download update</button>
+        </div>
       </form>
     </dialog>
     <script src="project-migrations.js"></script>

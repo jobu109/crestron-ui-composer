@@ -691,6 +691,24 @@ h2 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.update-dialog { width: min(720px, 90vw); }
+.update-version-grid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 7px 12px;
+  margin: 14px 0;
+}
+.update-notes {
+  min-height: 150px;
+  max-height: 360px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #34514e;
+  border-radius: 6px;
+  color: #d5e9e6;
+  background: #0b1214;
+  white-space: pre-wrap;
+}
 .health-report {
   min-height: 320px;
   max-height: 60vh;
