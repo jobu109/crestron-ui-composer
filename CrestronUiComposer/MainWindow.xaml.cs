@@ -107,6 +107,18 @@ public partial class MainWindow : Window
                 case "backupProject":
                     BackupProject(id, root.GetProperty("payload"));
                     break;
+                case "createProjectBackup":
+                    CreateProjectBackup(id, root.GetProperty("payload"));
+                    break;
+                case "listProjectBackups":
+                    ListProjectBackups(id);
+                    break;
+                case "readProjectBackup":
+                    ReadProjectBackup(id, root.GetProperty("payload"));
+                    break;
+                case "deleteProjectBackup":
+                    DeleteProjectBackup(id, root.GetProperty("payload"));
+                    break;
                 case "importSnippets":
                     ImportSnippets(id);
                     break;
@@ -412,6 +424,65 @@ public partial class MainWindow : Window
         var backupPath = Path.Combine(folder, $"{name}.pre-migration-{DateTime.Now:yyyyMMdd-HHmmss}{extension}");
         File.Copy(sourcePath, backupPath, false);
         Respond(id, true, backupPath, null);
+    }
+
+    private static string ProjectBackupFolder()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "ProjectBackups");
+    }
+
+    private void CreateProjectBackup(string id, JsonElement payload)
+    {
+        var contents = payload.GetProperty("contents").GetString() ?? "";
+        using var validation = JsonDocument.Parse(contents);
+        var requestedName = payload.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "CrestronUiProject" : "CrestronUiProject";
+        var reason = payload.TryGetProperty("reason", out var reasonValue) ? reasonValue.GetString() ?? "manual" : "manual";
+        var folder = ProjectBackupFolder();
+        Directory.CreateDirectory(folder);
+        var safeName = SafeFileName(requestedName, "CrestronUiProject");
+        var safeReason = SafeFileName(reason, "manual");
+        var name = $"{DateTime.Now:yyyyMMdd-HHmmss-fff}-{safeName}-{safeReason}.cuiproj";
+        var path = Path.Combine(folder, name);
+        File.WriteAllText(path, contents);
+        Respond(id, true, new { path, name }, null);
+    }
+
+    private void ListProjectBackups(string id)
+    {
+        var folder = ProjectBackupFolder();
+        Directory.CreateDirectory(folder);
+        var backups = Directory.EnumerateFiles(folder, "*.cuiproj", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Select(file => new { path = file.FullName, name = file.Name, modifiedUtc = file.LastWriteTimeUtc, size = file.Length })
+            .ToArray();
+        Respond(id, true, backups, null);
+    }
+
+    private static string ValidateProjectBackupPath(JsonElement payload)
+    {
+        var requested = payload.GetProperty("path").GetString() ?? "";
+        var folder = Path.GetFullPath(ProjectBackupFolder()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(requested);
+        if (!path.StartsWith(folder, StringComparison.OrdinalIgnoreCase) || !path.EndsWith(".cuiproj", StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException("The selected file is not in the project backup folder.");
+        return path;
+    }
+
+    private void ReadProjectBackup(string id, JsonElement payload)
+    {
+        var path = ValidateProjectBackupPath(payload);
+        if (!File.Exists(path)) throw new FileNotFoundException("The selected backup no longer exists.", path);
+        var contents = File.ReadAllText(path);
+        using var validation = JsonDocument.Parse(contents);
+        Respond(id, true, new { path, contents }, null);
+    }
+
+    private void DeleteProjectBackup(string id, JsonElement payload)
+    {
+        var path = ValidateProjectBackupPath(payload);
+        if (File.Exists(path)) File.Delete(path);
+        Respond(id, true, true, null);
     }
 
     private void ImportSnippets(string id)

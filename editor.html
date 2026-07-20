@@ -209,6 +209,7 @@
           <div class="app-menu-popup">
             <button id="validate-project">Health check</button>
             <button id="build-self-test">Export/build self-test</button>
+            <button id="project-backups">Backups</button>
             <button id="build-ch5">Build Project</button>
           </div>
         </details>
@@ -1047,6 +1048,18 @@ Preview signal activity appears here.</pre
         <input id="project-search-query" class="project-search-query" type="search" placeholder="Component, page, contract, join, text, or signal…" autocomplete="off" />
         <p id="project-search-summary" class="hint"></p>
         <div id="project-search-results" class="project-search-results"></div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="backup-dialog" class="backup-dialog">
+      <form method="dialog">
+        <h2>Project backups</h2>
+        <p class="hint">Manual saves create timestamped snapshots. Restore any snapshot without overwriting its backup file.</p>
+        <div class="backup-toolbar">
+          <button id="backup-create" type="button" class="primary">Create backup now</button>
+          <button id="backup-refresh" type="button">Refresh</button>
+        </div>
+        <div id="backup-list" class="backup-list"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>

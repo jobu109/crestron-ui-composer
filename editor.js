@@ -5069,6 +5069,68 @@
     $("health-dialog").showModal();
     setStatus(problemCount ? `${problemCount} panel fit issues found` : "All panel profiles fit");
   }
+  async function createProjectBackup(reason = "manual") {
+    if (!native) throw new Error("Project backups are available in the Windows application.");
+    return nativeRequest("createProjectBackup", {
+      contents: JSON.stringify(project(), null, 2),
+      name: state.contract.name || "CrestronUiProject",
+      reason,
+    });
+  }
+  async function renderProjectBackups() {
+    const host = $("backup-list");
+    host.innerHTML = '<p class="hint" style="padding:14px">Loading backups…</p>';
+    try {
+      const backups = await nativeRequest("listProjectBackups");
+      host.innerHTML = "";
+      backups.forEach((backup) => {
+        const row = document.createElement("div"),
+          info = document.createElement("div"),
+          meta = document.createElement("span"),
+          restore = document.createElement("button"),
+          remove = document.createElement("button");
+        row.className = "backup-entry";
+        info.className = "backup-entry-name";
+        info.textContent = backup.name;
+        info.title = backup.path;
+        meta.className = "backup-entry-meta";
+        meta.textContent = `${new Date(backup.modifiedUtc).toLocaleString()} · ${Math.ceil(backup.size / 1024)} KB`;
+        restore.type = remove.type = "button";
+        restore.textContent = "Restore";
+        remove.textContent = "Delete";
+        remove.className = "danger";
+        restore.onclick = async () => {
+          if (!confirm(`Restore “${backup.name}”? The current project will be backed up first.`)) return;
+          try {
+            await createProjectBackup("before-restore");
+            const result = await nativeRequest("readProjectBackup", { path: backup.path });
+            await loadProjectText(result.contents, false, result.path);
+            projectDirty = true;
+            setAutosaveState("Restored · unsaved", "dirty");
+            $("backup-dialog").close();
+            setStatus(`Restored backup ${backup.name}`);
+          } catch (error) {
+            alert(`The backup could not be restored.\n\n${error.message}`);
+          }
+        };
+        remove.onclick = async () => {
+          if (!confirm(`Permanently delete backup “${backup.name}”?`)) return;
+          try {
+            await nativeRequest("deleteProjectBackup", { path: backup.path });
+            await renderProjectBackups();
+          } catch (error) {
+            alert(`The backup could not be deleted.\n\n${error.message}`);
+          }
+        };
+        row.append(info, meta, restore, remove);
+        host.appendChild(row);
+      });
+      if (!backups.length) host.innerHTML = '<p class="hint" style="padding:14px">No project backups have been created yet.</p>';
+    } catch (error) {
+      host.innerHTML = `<p class="hint" style="padding:14px"></p>`;
+      host.firstElementChild.textContent = error.message;
+    }
+  }
   function selectedCompatibilityDevice() {
     return deviceProfiles.find((device) => device.id === $("compatibility-device").value);
   }
@@ -6387,6 +6449,7 @@
     if (native) {
       try {
         const path = await nativeRequest("saveProject", text);
+        await createProjectBackup("manual-save");
         markProjectSaved();
         setStatus("Saved to " + path);
       } catch (error) {
@@ -6404,6 +6467,7 @@
     }
     try {
       const result = await nativeRequest("saveProjectPackage", JSON.stringify(project()));
+      await createProjectBackup("portable-save");
       markProjectSaved();
       setStatus(`Saved portable package to ${result.path}`);
     } catch (error) {
@@ -6425,6 +6489,21 @@
   };
   $("validate-project").onclick = () => runValidation(true);
   $("build-self-test").onclick = runBuildSelfTest;
+  $("project-backups").onclick = async () => {
+    if (!native) return alert("Project backups are available in the Windows application.");
+    if (!$("backup-dialog").open) $("backup-dialog").showModal();
+    await renderProjectBackups();
+  };
+  $("backup-refresh").onclick = renderProjectBackups;
+  $("backup-create").onclick = async () => {
+    try {
+      const result = await createProjectBackup("manual");
+      setStatus(`Created backup ${result.name}`);
+      await renderProjectBackups();
+    } catch (error) {
+      alert(`The backup could not be created.\n\n${error.message}`);
+    }
+  };
   $("panel-compatibility").onclick = runPanelCompatibility;
   $("compatibility-preview").onclick = previewCompatibilityDevice;
   $("compatibility-autofit").onclick = autoFitCompatibilityPage;
