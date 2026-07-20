@@ -4896,6 +4896,108 @@
     );
     return { issues, errors };
   }
+  async function runBuildSelfTest() {
+    const projectResult = runValidation(false),
+      definitions = [...window.ComposerRuntime.definitions.values()],
+      errors = projectResult.errors.map((issue) => `Current project: ${issue.message}`),
+      validTypes = new Set(["digital", "analog", "serial"]),
+      validDirections = new Set(["input", "output"]);
+    definitions.forEach((definition) => {
+      const properties = new Map((definition.properties || []).map((property) => [property.key, property]));
+      (definition.signals || []).forEach((signal) => {
+        if (!signal.key) errors.push(`${definition.name}: signal has no key`);
+        if (!validTypes.has(signal.type)) errors.push(`${definition.name}.${signal.key}: invalid type ${signal.type}`);
+        if (!validDirections.has(signal.direction)) errors.push(`${definition.name}.${signal.key}: invalid direction ${signal.direction}`);
+        if (signal.defaultValue && !window.ComposerRuntime.resolveAddress(signal.defaultValue, signal.type, signal.direction, `SelfTest.${definition.id}`))
+          errors.push(`${definition.name}.${signal.key}: address does not resolve`);
+      });
+      [...(definition.addressBindings || []).map((binding) => ({ ...binding, propertyKey: binding.key })),
+        ...(definition.rangeBindings || []).map((binding) => ({ ...binding, propertyKey: binding.baseKey }))]
+        .forEach((binding) => {
+          const property = properties.get(binding.propertyKey);
+          if (!property) errors.push(`${definition.name}: binding references missing property ${binding.propertyKey}`);
+          else if (!String(property.defaultValue || "").trim()) errors.push(`${definition.name}.${binding.propertyKey}: binding has no default address`);
+        });
+    });
+    if (errors.length) {
+      lastHealthReport = ["EXPORT/BUILD SELF-TEST — FAILED", "", ...errors.map((error) => `- ${error}`)].join("\n");
+      $("health-title").textContent = "Export/build self-test";
+      $("health-summary").textContent = `${errors.length} blocking problem${errors.length === 1 ? "" : "s"} found.`;
+      $("health-report").textContent = lastHealthReport;
+      $("compatibility-device").hidden = true;
+      $("compatibility-preview").hidden = true;
+      $("compatibility-autofit").hidden = true;
+      $("health-dialog").showModal();
+      setStatus("Export/build self-test failed");
+      return;
+    }
+    const columns = 6,
+      cellWidth = 330,
+      cellHeight = 230,
+      items = definitions.map((definition, index) => ({
+        id: `self-test-${index}`,
+        pageId: "self-test-page",
+        name: definition.name,
+        componentId: definition.id,
+        x: (index % columns) * cellWidth,
+        y: Math.floor(index / columns) * cellHeight,
+        w: definition.defaultSize?.width || 280,
+        h: definition.defaultSize?.height || 180,
+        z: index + 1,
+        properties: Object.fromEntries((definition.properties || []).map((property) => [property.key, property.defaultValue])),
+        signalBindings: Object.fromEntries((definition.signals || []).map((signal) => [signal.key, {
+          mode: /^\d+$/.test(String(signal.defaultValue || "")) ? "join" : "contract",
+          value: signal.defaultValue || "",
+        }])),
+      })),
+      catalog = {
+        version: window.ComposerProjectMigrations.CURRENT_VERSION,
+        width: columns * cellWidth,
+        height: Math.ceil(items.length / columns) * cellHeight,
+        targetDevice: "self-test",
+        pages: [{ id: "self-test-page", name: "Widget Catalog", background: "#182126", bindingMode: "none" }],
+        activePage: "self-test-page",
+        items,
+        assets: [],
+        customComponents: state.customComponents,
+      },
+      html = window.ComposerExporter.exportProject(catalog);
+    if (!html.includes("cr-com-lib.js") || !html.includes("Widget Catalog"))
+      throw new Error("The catalog export is missing its runtime or page markup.");
+    if (!native) {
+      alert("The HTML catalog passed. CH5 archive verification requires the Windows application.");
+      return;
+    }
+    setStatus(`Testing export and CH5 build for ${definitions.length} widgets…`);
+    try {
+      const result = await nativeRequest("buildSelfTest", {
+        html,
+        device: { id: "self-test", width: catalog.width, height: catalog.height },
+      });
+      lastHealthReport = [
+        "EXPORT/BUILD SELF-TEST — PASSED",
+        `Generated: ${new Date().toLocaleString()}`,
+        `Widgets exported: ${definitions.length}`,
+        `Component scripts loaded: ${state.components.length}`,
+        `Current project assets validated: ${state.assets.length}`,
+        `Temporary CH5Z size: ${Math.ceil(result.size / 1024)} KB`,
+        `Crestron CLI build time: ${result.elapsedMilliseconds} ms`,
+        "",
+        "The temporary archive contained a manifest, .ch5 payload, index.html, and CrComLib runtime.",
+      ].join("\n");
+      $("health-title").textContent = "Export/build self-test";
+      $("health-summary").textContent = `PASS — ${definitions.length} widgets exported and a temporary CH5Z was validated.`;
+      $("health-report").textContent = lastHealthReport;
+      $("compatibility-device").hidden = true;
+      $("compatibility-preview").hidden = true;
+      $("compatibility-autofit").hidden = true;
+      $("health-dialog").showModal();
+      setStatus("Export/build self-test passed");
+    } catch (error) {
+      setStatus(`Export/build self-test failed: ${error.message}`);
+      alert(`Export/build self-test failed.\n\n${error.message}`);
+    }
+  }
   function runPanelCompatibility() {
     const profiles = deviceProfiles.filter((device) => device.id !== "custom"),
       lines = [
@@ -6299,6 +6401,7 @@
     }
   };
   $("validate-project").onclick = () => runValidation(true);
+  $("build-self-test").onclick = runBuildSelfTest;
   $("panel-compatibility").onclick = runPanelCompatibility;
   $("compatibility-preview").onclick = previewCompatibilityDevice;
   $("compatibility-autofit").onclick = autoFitCompatibilityPage;

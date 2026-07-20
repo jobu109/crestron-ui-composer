@@ -116,6 +116,9 @@ public partial class MainWindow : Window
                 case "buildCh5Packages":
                     BuildCh5Packages(id, root.GetProperty("payload"));
                     break;
+                case "buildSelfTest":
+                    BuildSelfTest(id, root.GetProperty("payload"));
+                    break;
                 case "selectCh5Package":
                     SelectCh5Package(id);
                     break;
@@ -543,6 +546,31 @@ public partial class MainWindow : Window
         finally
         {
             try { Directory.Delete(workRoot, true); } catch { }
+        }
+    }
+
+    private void BuildSelfTest(string id, JsonElement payload)
+    {
+        var cli = FindCh5Cli() ?? throw new FileNotFoundException("Crestron's ch5-cli was not found. Install the Crestron CLI from System Diagnostics and run the self-test again.");
+        var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
+        if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
+        var html = payload.GetProperty("html").GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(html)) throw new InvalidDataException("The widget catalog export was empty.");
+        var deviceJson = payload.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
+        var folder = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", "SelfTest", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var destination = Path.Combine(folder, "ComposerSelfTest.ch5z");
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            CreateCh5Archive(cli, runtime, html, "ComposerSelfTest", deviceJson, null, destination);
+            ValidateCh5Archive(destination);
+            timer.Stop();
+            Respond(id, true, new { size = new FileInfo(destination).Length, elapsedMilliseconds = timer.ElapsedMilliseconds }, null);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch { }
         }
     }
 
