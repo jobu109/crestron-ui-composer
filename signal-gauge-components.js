@@ -8,6 +8,10 @@
       segments = [...root.querySelectorAll(".signal-segment")],
       fallbackName = String(properties.localName || (kind === "wifi" ? "Wi-Fi" : "Cell Signal"));
     label.textContent = fallbackName;
+    root.querySelector(".signal-gauge").classList.toggle(
+      "panel-off",
+      properties.showPanel !== "yes",
+    );
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
     }
@@ -33,7 +37,8 @@
         activeCount = amount === 0 ? 0 : Math.max(1, Math.ceil((amount / 100) * segments.length)),
         color = gaugeColor(amount);
       root.style.setProperty("--signal-color", color);
-      segments.forEach((segment, index) =>
+      const orderedSegments = kind === "wifi" ? [...segments].reverse() : segments;
+      orderedSegments.forEach((segment, index) =>
         segment.classList.toggle("active", index < activeCount),
       );
       output.textContent = `${amount}%`;
@@ -46,6 +51,16 @@
   }
   const commonProperties = (name) => [
     { key: "localName", name: "Local text", type: "text", defaultValue: name },
+    {
+      key: "showPanel",
+      name: "Show glass panel",
+      type: "select",
+      options: [
+        { value: "no", label: "No — transparent" },
+        { value: "yes", label: "Yes — glass panel" },
+      ],
+      defaultValue: "no",
+    },
     { key: "defaultPercent", name: "Default percentage", type: "number", defaultValue: 0, min: 0, max: 100, step: 1 },
     { key: "lowColor", name: "Low color", type: "color", defaultValue: "#04dcb9" },
     { key: "middleColor", name: "Middle color", type: "color", defaultValue: "#ffdb3b" },
@@ -63,6 +78,7 @@
   ];
   const commonStyles = (scope) =>
     `${scope} .signal-gauge{display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:100%;gap:7px;place-items:center;padding:12px;border:1px solid color-mix(in srgb,var(--glow-color) 52%,transparent);border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(4,170,142,.12) 45%,rgba(9,24,24,.58));box-shadow:inset 0 1px rgba(255,255,255,.25),inset 0 -18px 30px rgba(4,170,142,.08),0 0 var(--glow-strength-px) color-mix(in srgb,var(--glow-color) 42%,transparent);box-sizing:border-box}` +
+    `${scope} .signal-gauge.panel-off{padding:4px;border-color:transparent;background:transparent;box-shadow:none}` +
     `${scope} .signal-label{max-width:100%;overflow:hidden;color:var(--text-color);font-size:var(--text-size-px);font-weight:800;text-align:center;text-overflow:ellipsis;text-shadow:0 2px 5px rgba(0,0,0,.75),0 0 8px var(--glow-color);white-space:nowrap}` +
     `${scope} .signal-value{color:var(--text-color);font-size:var(--value-text-size-px);font-weight:900;line-height:1;text-shadow:0 2px 5px rgba(0,0,0,.75),0 0 9px var(--signal-color)}` +
     `${scope} .signal-segment{color:var(--inactive-color);transition:color .18s,fill .18s,filter .18s,background .18s}${scope} .signal-segment.active{color:var(--signal-color);filter:drop-shadow(0 0 4px var(--signal-color)) drop-shadow(0 0 9px var(--signal-color))}`;
