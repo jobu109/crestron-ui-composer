@@ -523,6 +523,10 @@
         <label
           >Background<input id="page-background" type="color" value="#182126"
         /></label>
+        <label>Background image<select id="page-background-asset"><option value="">None</option></select></label>
+        <label>Background image fit<select id="page-background-fit"><option value="cover">Cover page</option><option value="contain">Contain image</option><option value="fill">Stretch to page</option></select></label>
+        <div class="grid2"><label>Horizontal %<input id="page-background-x" type="number" min="0" max="100" value="50" /></label><label>Vertical %<input id="page-background-y" type="number" min="0" max="100" value="50" /></label></div>
+        <button id="page-background-clear" type="button">Clear page background image</button>
         <label
           >External selection<select id="page-binding-mode">
             <option value="none">None — local only</option>

@@ -72,6 +72,12 @@
           ? `background-image:url(&quot;${url}&quot;);background-size:cover;background-position:center;`
           : "";
       },
+      pageBackgroundStyle = (page) => {
+        const url = assetUrl(page.backgroundAsset);
+        return url
+          ? `background-image:url(&quot;${url}&quot;);background-size:${page.backgroundAssetFit || "cover"};background-position:${Number(page.backgroundAssetX ?? 50)}% ${Number(page.backgroundAssetY ?? 50)}%;background-repeat:no-repeat;`
+          : "";
+      },
       graphicBackgroundStyle = (item) => {
         const url = item.graphicAssetMode === "background" ? assetUrl(item.graphicAsset) : "";
         return url ? `background-image:url(&quot;${url}&quot;);background-size:${item.graphicAssetFit || "contain"};background-position:${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%;background-repeat:no-repeat;` : "";
@@ -90,7 +96,7 @@
               : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`,
           )
           .join("\n");
-        return `<section class="page" id="${page.id}" style="background-color:${page.background};${backgroundStyle(page.backgroundAsset)}">${widgets}</section>`;
+        return `<section class="page" id="${page.id}" style="background-color:${page.background};${pageBackgroundStyle(page)}">${widgets}</section>`;
       })
       .join("\n");
     const config = JSON.stringify(

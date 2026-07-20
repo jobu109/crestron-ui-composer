@@ -1431,8 +1431,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     stage.style.backgroundImage = backgroundAsset
       ? `url("${backgroundAsset.dataUrl}")`
       : "";
-    stage.style.backgroundSize = backgroundAsset ? "cover" : "";
-    stage.style.backgroundPosition = backgroundAsset ? "center" : "";
+    stage.style.backgroundSize = backgroundAsset
+      ? page.backgroundAssetFit || "cover"
+      : "";
+    stage.style.backgroundPosition = backgroundAsset
+      ? `${Number(page.backgroundAssetX ?? 50)}% ${Number(page.backgroundAssetY ?? 50)}%`
+      : "";
+    stage.style.backgroundRepeat = backgroundAsset ? "no-repeat" : "";
     state.items
       .filter((i) => i.pageId === state.activePage || i.master)
       .forEach(renderItem);
@@ -1711,6 +1716,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       host.innerHTML = '<p class="hint">No assets imported.</p>';
     const selected = current();
     if (selected) renderAssetInspector(selected);
+    renderPageInspector();
   }
   function readAssetFile(file) {
     return new Promise((resolve, reject) => {
@@ -1950,6 +1956,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       name: name.trim(),
       background: page.background,
       backgroundAsset: page.backgroundAsset || "",
+      backgroundAssetFit: page.backgroundAssetFit || "cover",
+      backgroundAssetX: page.backgroundAssetX ?? 50,
+      backgroundAssetY: page.backgroundAssetY ?? 50,
       items: items.map((item) => {
         const copy = structuredClone(item);
         delete copy.id;
@@ -1969,6 +1978,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         name: template.name,
         background: template.background,
         backgroundAsset: template.backgroundAsset || "",
+        backgroundAssetFit: template.backgroundAssetFit || "cover",
+        backgroundAssetX: template.backgroundAssetX ?? 50,
+        backgroundAssetY: template.backgroundAssetY ?? 50,
         bindingMode: "none",
         binding: "",
       },
@@ -2264,6 +2276,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const p = currentPage();
     $("page-name").value = p.name;
     $("page-background").value = p.background;
+    const assetSelect = $("page-background-asset");
+    assetSelect.innerHTML = '<option value="">None</option>';
+    state.assets
+      .filter((asset) => asset.type.startsWith("image/"))
+      .forEach((asset) => {
+        const option = document.createElement("option");
+        option.value = asset.id;
+        option.textContent = asset.name;
+        assetSelect.appendChild(option);
+      });
+    assetSelect.value = p.backgroundAsset || "";
+    $("page-background-fit").value = p.backgroundAssetFit || "cover";
+    $("page-background-x").value = p.backgroundAssetX ?? 50;
+    $("page-background-y").value = p.backgroundAssetY ?? 50;
     $("page-binding-mode").value = p.bindingMode;
     $("page-binding").value = p.binding;
     $("page-transition").value = p.transition || "none";
@@ -6719,6 +6745,35 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
   $("page-background").oninput = (e) => {
     currentPage().background = e.target.value;
     stage.style.backgroundColor = e.target.value;
+  };
+  function updatePageBackgroundAsset() {
+    const page = currentPage();
+    page.backgroundAsset = $("page-background-asset").value;
+    page.backgroundAssetFit = $("page-background-fit").value;
+    page.backgroundAssetX = Math.max(
+      0,
+      Math.min(100, Number($("page-background-x").value) || 0),
+    );
+    page.backgroundAssetY = Math.max(
+      0,
+      Math.min(100, Number($("page-background-y").value) || 0),
+    );
+    renderPage();
+    scheduleHistory();
+  }
+  $("page-background-asset").onchange = updatePageBackgroundAsset;
+  $("page-background-fit").onchange = updatePageBackgroundAsset;
+  $("page-background-x").oninput = updatePageBackgroundAsset;
+  $("page-background-y").oninput = updatePageBackgroundAsset;
+  $("page-background-clear").onclick = () => {
+    const page = currentPage();
+    delete page.backgroundAsset;
+    delete page.backgroundAssetFit;
+    delete page.backgroundAssetX;
+    delete page.backgroundAssetY;
+    renderPage();
+    commitHistory();
+    setStatus(`Cleared the background image from “${page.name}”`);
   };
   $("page-binding-mode").onchange = (e) => {
     currentPage().bindingMode = e.target.value;
