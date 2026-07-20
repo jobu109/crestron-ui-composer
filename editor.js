@@ -1602,6 +1602,7 @@
       delete copy.reusableId;
       delete copy.linkedInstanceId;
       delete copy.reusableOverrides;
+      delete copy.reusableBindingsOverride;
       delete copy.master;
       return copy;
     });
@@ -1648,6 +1649,28 @@
                 .filter((key) => Object.prototype.hasOwnProperty.call(item.properties || {}, key))
                 .map((key) => [key, structuredClone(item.properties[key])]),
             ),
+            customBindings = !!item.reusableBindingsOverride,
+            preservedBindings = customBindings
+              ? structuredClone(item.signalBindings || {})
+              : null,
+            preservedSource = customBindings && !item.componentId ? item.source : null,
+            componentDefinition = item.componentId
+              ? window.ComposerRuntime.get(item.componentId)
+              : null,
+            signalPropertyKeys = new Set([
+              "bindingMode",
+              ...(componentDefinition?.signals || [])
+                .map((signal) => signal.optionalProperty)
+                .filter(Boolean),
+              ...(componentDefinition?.properties || [])
+                .filter((property) => property.signalSetting)
+                .map((property) => property.key),
+            ]),
+            preservedSignalProperties = customBindings
+              ? Object.fromEntries(
+                  Object.entries(item.properties || {}).filter(([key]) => signalPropertyKeys.has(key)),
+                )
+              : {},
             keep = {
               id: item.id,
               pageId: item.pageId,
@@ -1656,11 +1679,17 @@
               reusableId: definition.id,
               reusableKey: item.reusableKey,
               reusableOverrides: overrideKeys,
+              reusableBindingsOverride: customBindings,
               x: left + source.x,
               y: top + source.y,
             };
           Object.assign(item, structuredClone(source), keep);
           item.properties = { ...(item.properties || {}), ...overridden };
+          if (customBindings) {
+            item.signalBindings = preservedBindings;
+            item.properties = { ...item.properties, ...preservedSignalProperties };
+            if (!item.componentId) item.source = preservedSource;
+          }
           renderItem(item);
         });
       });
@@ -3922,9 +3951,38 @@
     const host = $("signal-bindings"),
       bindings = findBindings(item.source);
     host.innerHTML = "";
+    const reusableDefinition = item.reusableId
+        ? state.reusables.find((entry) => entry.id === item.reusableId)
+        : null,
+      linkedInstance = !!reusableDefinition && !isReusableMaster(item),
+      inheritedBindings = linkedInstance && !item.reusableBindingsOverride;
+    if (reusableDefinition) {
+      const panel = document.createElement("div");
+      panel.className = "reusable-binding-control";
+      if (linkedInstance) {
+        const label = document.createElement("label"),
+          checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!item.reusableBindingsOverride;
+        label.append(checkbox, document.createTextNode("Use custom signal bindings for this instance"));
+        checkbox.onchange = () => {
+          item.reusableBindingsOverride = checkbox.checked;
+          if (!checkbox.checked) {
+            const source = (reusableDefinition.items || []).find(
+              (entry) => entry.reusableKey === item.reusableKey,
+            );
+            if (source) item.source = source.source;
+          }
+          renderItem(item);
+          renderBindings(item);
+          scheduleHistory();
+        };
+        panel.appendChild(label);
+      } else panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
+      host.appendChild(panel);
+    }
     if (!bindings.length) {
-      host.innerHTML =
-        '<div class="signal-empty">No variables ending in “Signal” were detected.</div>';
+      host.insertAdjacentHTML("beforeend", '<div class="signal-empty">No variables ending in “Signal” were detected.</div>');
       return;
     }
     bindings.forEach((binding) => {
@@ -3969,6 +4027,10 @@
       row.append(title, controls, help);
       host.appendChild(row);
     });
+    if (inheritedBindings)
+      host
+        .querySelectorAll(".signal-binding input,.signal-binding select")
+        .forEach((control) => (control.disabled = true));
   }
   function renderStructuredBindings(item) {
     const host = $("signal-bindings"),
@@ -3979,6 +4041,63 @@
         ? (item.properties && item.properties.bindingMode) || "join"
         : "";
     host.innerHTML = "";
+    const reusableDefinition = item.reusableId
+        ? state.reusables.find((entry) => entry.id === item.reusableId)
+        : null,
+      linkedInstance = !!reusableDefinition && !isReusableMaster(item),
+      inheritedBindings = linkedInstance && !item.reusableBindingsOverride;
+    if (reusableDefinition) {
+      const panel = document.createElement("div");
+      panel.className = "reusable-binding-control";
+      if (linkedInstance) {
+        const label = document.createElement("label"),
+          checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!item.reusableBindingsOverride;
+        label.append(checkbox, document.createTextNode("Use custom signal bindings for this instance"));
+        panel.appendChild(label);
+        checkbox.onchange = () => {
+          item.reusableBindingsOverride = checkbox.checked;
+          if (!checkbox.checked) {
+            const source = (reusableDefinition.items || []).find(
+              (entry) => entry.reusableKey === item.reusableKey,
+            );
+            if (source) {
+              item.signalBindings = structuredClone(source.signalBindings || {});
+              const signalKeys = new Set([
+                "bindingMode",
+                ...(definition.signals || [])
+                  .map((signal) => signal.optionalProperty)
+                  .filter(Boolean),
+                ...(definition.properties || [])
+                  .filter((property) => property.signalSetting)
+                  .map((property) => property.key),
+              ]);
+              Object.entries(source.properties || {}).forEach(([key, value]) => {
+                if (signalKeys.has(key)) item.properties[key] = structuredClone(value);
+              });
+            }
+          }
+          renderItem(item);
+          renderBindings(item);
+          scheduleHistory();
+        };
+        if (checkbox.checked && (definition.properties || []).some((property) => property.key === "bindingMode")) {
+          const modeSelect = document.createElement("select");
+          modeSelect.innerHTML = '<option value="contract">Contract names</option><option value="join">Join numbers</option>';
+          modeSelect.value = overall || "contract";
+          modeSelect.onchange = () => {
+            item.properties.bindingMode = modeSelect.value;
+            Object.values(item.signalBindings || {}).forEach((binding) => (binding.mode = modeSelect.value));
+            renderItem(item);
+            renderBindings(item);
+            scheduleHistory();
+          };
+          panel.appendChild(modeSelect);
+        }
+      } else panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
+      host.appendChild(panel);
+    }
     const visibilityEnabled = document.createElement("label"),
       visibilityCheckbox = document.createElement("input");
     visibilityEnabled.className = "signal-optional-toggle";
@@ -4174,6 +4293,10 @@
           "</small>";
         host.appendChild(row);
       });
+    if (inheritedBindings)
+      host
+        .querySelectorAll(".signal-binding input,.signal-binding select,.signal-optional-toggle input")
+        .forEach((control) => (control.disabled = true));
   }
   function pointerOp(e, resize) {
     if (e.button === 2) return;
