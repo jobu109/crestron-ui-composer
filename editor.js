@@ -775,6 +775,7 @@
         { key: "fontSize", name: "Text size", type: "number", defaultValue: 18 },
         { key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: 8 },
         { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 12 },
+        { key: "contentInset", name: "Glow-safe inset", type: "number", defaultValue: 10 },
       ],
       declaredKeys = new Set((entry.properties || []).map((property) => property.key)),
       properties = [
@@ -826,7 +827,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           localTextScript = localText
             ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
             : "",
-          frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body>*{box-sizing:border-box}</style>`,
+          frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:${Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
           bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
           documentText = /<\/body>/i.test(resolved)
             ? resolved.replace(/<\/body>/i, frameBaseStyle + appearance + localTextScript + bridge + "</body>")
@@ -6286,7 +6287,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     });
     const previewBridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});<\/script>`;
     $("custom-component-preview").srcdoc = safeDoc(
-      '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body>*{box-sizing:border-box}</style>' +
+      '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>' +
         previewBridge +
         source,
       "",
