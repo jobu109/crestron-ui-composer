@@ -775,7 +775,7 @@
       template: '<div class="custom-component-host"></div>',
       styles:
         "[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}",
-      data: { html: entry.html },
+      data: { html: prepareCustomSource(entry.html) },
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
           frame = document.createElement("iframe"),
@@ -6041,11 +6041,36 @@
       .forEach((element) => element.remove());
     return { html: documentValue.body.innerHTML, css, javascript };
   }
-  function composeCustomSource() {
+  function composeCustomSource(runtime = false) {
     const html = $("custom-source-html").value,
       css = $("custom-source-css").value,
       javascript = $("custom-source-javascript").value;
-    return `${css ? `<style>${css}</style>` : ""}${html}${javascript ? `<script>${javascript}<\/script>` : ""}`;
+    return `${css ? `<style>${css}</style>` : ""}${html}${javascript ? runtime ? customJavascriptRuntime(javascript) : `<script>${javascript}<\/script>` : ""}`;
+  }
+  function prepareCustomSource(source) {
+    if (String(source || "").includes("window.ComposerSignals=signals")) return source;
+    const parts = splitCustomSource(source);
+    return `${parts.css ? `<style>${parts.css}</style>` : ""}${parts.html}${parts.javascript ? customJavascriptRuntime(parts.javascript) : ""}`;
+  }
+  function customJavascriptRuntime(javascript) {
+    return `<script>(function(){
+var callbacks={};
+var signals={
+  publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},
+  subscribe:function(key,callback){
+    (callbacks[key]||(callbacks[key]=[])).push(callback);
+    return function(){callbacks[key]=(callbacks[key]||[]).filter(function(entry){return entry!==callback})};
+  }
+};
+window.ComposerSignals=signals;
+window.ComposerComponent={publish:signals.publish};
+window.addEventListener('message',function(event){
+  if(!event.data||event.data.type!=='composer-signal')return;
+  (callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)});
+});
+var cleanup=(new Function('root','signals',${JSON.stringify(String(javascript || ""))}))(document,signals);
+if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:true});
+})();<\/script>`;
   }
   function addCustomPropertyRow(property = {}) {
     const row = document.createElement("div");
@@ -6162,12 +6187,13 @@
       if (!knownProperties.has(match[1]))
         errors.push(`HTML uses undefined property token {{${match[1]}}}.`);
     });
+    const runtimeProperties = new Set(["bindingMode", "visibilityEnabled"]);
     properties.forEach((property) => {
-      if (!html.includes(`{{${property.key}}}`))
+      if (!runtimeProperties.has(property.key) && !html.includes(`{{${property.key}}}`))
         warnings.push(`Property “${property.key}” is not used in the HTML.`);
     });
     try {
-      new Function(javascript);
+      new Function("root", "signals", javascript);
     } catch (error) {
       errors.push(`JavaScript syntax: ${error.message}`);
     }
@@ -6202,7 +6228,7 @@
     $("custom-preview-send").disabled = !signals.length;
   }
   function refreshCustomPreview() {
-    let source = composeCustomSource();
+    let source = composeCustomSource(true);
     collectCustomProperties().forEach((property) => {
       source = source.replaceAll(
         `{{${property.key}}}`,
