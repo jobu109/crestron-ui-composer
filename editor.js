@@ -4897,6 +4897,26 @@
     return { issues, errors };
   }
   async function runBuildSelfTest() {
+    const dialog = $("health-dialog");
+    $("health-title").textContent = "Export/build self-test";
+    $("health-summary").textContent = "Running widget export and Crestron CLI package checks…";
+    $("health-report").textContent = "Preparing the complete widget catalog. This can take several seconds.";
+    $("compatibility-device").hidden = true;
+    $("compatibility-preview").hidden = true;
+    $("compatibility-autofit").hidden = true;
+    if (!dialog.open) dialog.showModal();
+    setStatus("Running export/build self-test…");
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    try {
+      await performBuildSelfTest();
+    } catch (error) {
+      lastHealthReport = `EXPORT/BUILD SELF-TEST — FAILED\n\n${error.stack || error.message || error}`;
+      $("health-summary").textContent = "The self-test failed.";
+      $("health-report").textContent = lastHealthReport;
+      setStatus(`Export/build self-test failed: ${error.message || error}`);
+    }
+  }
+  async function performBuildSelfTest() {
     const projectResult = runValidation(false),
       definitions = [...window.ComposerRuntime.definitions.values()],
       errors = projectResult.errors.map((issue) => `Current project: ${issue.message}`),
@@ -4927,7 +4947,7 @@
       $("compatibility-device").hidden = true;
       $("compatibility-preview").hidden = true;
       $("compatibility-autofit").hidden = true;
-      $("health-dialog").showModal();
+      if (!$("health-dialog").open) $("health-dialog").showModal();
       setStatus("Export/build self-test failed");
       return;
     }
@@ -4991,11 +5011,10 @@
       $("compatibility-device").hidden = true;
       $("compatibility-preview").hidden = true;
       $("compatibility-autofit").hidden = true;
-      $("health-dialog").showModal();
+      if (!$("health-dialog").open) $("health-dialog").showModal();
       setStatus("Export/build self-test passed");
     } catch (error) {
-      setStatus(`Export/build self-test failed: ${error.message}`);
-      alert(`Export/build self-test failed.\n\n${error.message}`);
+      throw error;
     }
   }
   function runPanelCompatibility() {
