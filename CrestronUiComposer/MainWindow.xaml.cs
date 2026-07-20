@@ -463,7 +463,7 @@ public partial class MainWindow : Window
     {
         var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
         var package = payload.GetProperty("packagePath").GetString() ?? "";
-        var slowMode = payload.TryGetProperty("slowMode", out var slow) && slow.GetBoolean();
+        const bool slowMode = true;
         var deploymentType = DeploymentType(payload);
         if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
         ValidateCh5Archive(package);
@@ -472,7 +472,7 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(backupRoot);
         var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
         File.Copy(package, backupPath, true);
-        var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\"{(slowMode ? " --slow-mode" : "")}";
+        var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\" --slow-mode";
         var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") { UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal };
         var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
         Respond(id, true, new { started = true, processId = process.Id, host, packagePath = package, backupPath, slowMode, deploymentType }, null);
@@ -484,7 +484,7 @@ public partial class MainWindow : Window
         {
             var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
             var package = payload.GetProperty("packagePath").GetString() ?? "";
-            var slowMode = payload.TryGetProperty("slowMode", out var slow) && slow.GetBoolean();
+            const bool slowMode = true;
             var deploymentType = DeploymentType(payload);
             if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
             ValidateCh5Archive(package);
@@ -493,7 +493,7 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(backupRoot);
             var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
             File.Copy(package, backupPath, true);
-            var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\"{(slowMode ? " --slow-mode" : "")}";
+            var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\" --slow-mode";
             var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") {
                 UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal
             };

@@ -3564,7 +3564,6 @@
     $("deploy-target-type").value = profile?.deploymentType || defaultDeploymentType(profile?.deviceId || state.targetDevice);
     $("deploy-host").value = profile?.host || settings.host || "";
     $("deploy-username").value = profile?.username || "";
-    $("deploy-slow").checked = profile ? !!profile.slowMode : !!settings.slowMode;
     $("deploy-package").value = profile?.packagePath || settings.packagePath || "";
     $("deploy-profile-delete").disabled = !profile;
     saveDeploymentSettings({ activeProfileId: profile?.id || "" });
@@ -3580,7 +3579,7 @@
       deviceId: $("deploy-profile-device").value,
       deploymentType: $("deploy-target-type").value,
       packagePath: $("deploy-package").value,
-      slowMode: $("deploy-slow").checked,
+      slowMode: true,
       updatedAt: new Date().toISOString(),
       lastCheck: selected?.lastCheck || null,
     };
@@ -3618,7 +3617,7 @@
         $("deploy-status").textContent =
           `Rollback package selected: ${entry.backupPath}`;
       };
-      title.textContent = `${entry.success === false ? "FAILED · " : entry.success === true ? "SUCCESS · " : ""}${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · ${entry.slowMode ? "slow mode" : "normal mode"}`;
+      title.textContent = `${entry.success === false ? "FAILED · " : entry.success === true ? "SUCCESS · " : ""}${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · slow mode`;
       detail.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.device || "Touchscreen"}${entry.deploymentType ? ` · ${entry.deploymentType}` : ""}${entry.resolution ? ` · ${entry.resolution}` : ""} · ${entry.packagePath}`;
       row.append(rollback, title, detail);
       host.appendChild(row);
@@ -6182,7 +6181,6 @@
     $("deploy-host").value = "";
     $("deploy-username").value = "";
     $("deploy-package").value = "";
-    $("deploy-slow").checked = false;
     $("deploy-profile-delete").disabled = true;
     saveDeploymentSettings({ activeProfileId: "" });
     $("deploy-profile-name").focus();
@@ -6200,8 +6198,6 @@
   };
   $("deploy-host").onchange = () =>
     saveDeploymentSettings({ host: $("deploy-host").value.trim() });
-  $("deploy-slow").onchange = () =>
-    saveDeploymentSettings({ slowMode: $("deploy-slow").checked });
   $("deploy-check").onclick = async () => {
     const host = $("deploy-host").value.trim();
     $("deploy-status").textContent = `Checking ${host || "panel"}…`;
@@ -6237,7 +6233,7 @@
   $("deploy-start").onclick = async () => {
     const host = $("deploy-host").value.trim(),
       packagePath = $("deploy-package").value,
-      slowMode = $("deploy-slow").checked;
+      slowMode = true;
     if (!host || !packagePath) {
       $("deploy-status").textContent =
         "Enter a panel host and select or build a .ch5z package.";
@@ -6321,7 +6317,7 @@
     const settings = deploymentSettings(), device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
       history = [{
         time: new Date().toISOString(), host: profile.host, packagePath: profile.packagePath,
-        backupPath: result?.backupPath || "", slowMode: !!profile.slowMode,
+        backupPath: result?.backupPath || "", slowMode: true,
         profileId: profile.id, profileName: profile.name, device: device?.name || profile.deviceId,
         deploymentType: profile.deploymentType || defaultDeploymentType(profile.deviceId),
         resolution: device ? `${device.width} × ${device.height}` : "", success, message,
@@ -6338,7 +6334,7 @@
       setDeploymentQueueState(profile.id, "running", "Deploying — complete the terminal prompt…");
       try {
         const result = await nativeRequest("deployCh5PackageWait", {
-          host: profile.host, packagePath: profile.packagePath, slowMode: !!profile.slowMode,
+          host: profile.host, packagePath: profile.packagePath, slowMode: true,
           deploymentType: profile.deploymentType || defaultDeploymentType(profile.deviceId),
         });
         if (result.success) {

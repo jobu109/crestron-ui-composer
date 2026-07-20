@@ -1399,12 +1399,6 @@ textarea {
   background: #101719;
   color: #fff;
 }
-.deployment-dialog .deploy-slow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 29px;
-}
 .deployment-actions {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
