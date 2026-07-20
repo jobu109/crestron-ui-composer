@@ -5131,6 +5131,39 @@
       host.firstElementChild.textContent = error.message;
     }
   }
+  const storageLabels = {
+    projects: "Projects",
+    packages: "Portable packages",
+    exports: "Exports / CH5Z",
+    backups: "Backups",
+    assets: "Asset library",
+    templates: "Components / templates",
+  };
+  async function renderStorageSettings() {
+    const host = $("storage-location-list"), settings = await nativeRequest("getStorageSettings");
+    host.innerHTML = "";
+    Object.entries(storageLabels).forEach(([key, label]) => {
+      const row = document.createElement("div"), name = document.createElement("strong"),
+        path = document.createElement("div"), choose = document.createElement("button"), open = document.createElement("button");
+      row.className = "storage-location-row";
+      name.textContent = label;
+      path.className = "storage-location-path";
+      path.textContent = settings[key];
+      path.title = settings[key];
+      choose.type = open.type = "button";
+      choose.textContent = "Choose…";
+      open.textContent = "Open";
+      choose.onclick = async () => {
+        try {
+          await nativeRequest("selectStorageFolder", { key });
+          await renderStorageSettings();
+        } catch (error) { if (error.message !== "cancelled") alert(error.message); }
+      };
+      open.onclick = () => nativeRequest("openStorageFolder", { key }).catch((error) => alert(error.message));
+      row.append(name, path, choose, open);
+      host.appendChild(row);
+    });
+  }
   function selectedCompatibilityDevice() {
     return deviceProfiles.find((device) => device.id === $("compatibility-device").value);
   }
@@ -5353,6 +5386,16 @@
     setStatus(
       `Imported ${imported.length} asset${imported.length === 1 ? "" : "s"}`,
     );
+  };
+  $("asset-library-import").onclick = async () => {
+    if (!native) return $("asset-files").click();
+    try {
+      const files = await nativeRequest("importAssets");
+      state.assets.push(...files.map((file) => ({ ...file, id: uid("asset-") })));
+      renderAssets();
+      commitHistory();
+      setStatus(`Imported ${files.length} asset${files.length === 1 ? "" : "s"} from the asset library`);
+    } catch (error) { if (error.message !== "cancelled") setStatus(error.message); }
   };
   $("asset-replace-file").onchange = async (event) => {
     const file = event.target.files[0],
@@ -6493,6 +6536,11 @@
     if (!native) return alert("Project backups are available in the Windows application.");
     if (!$("backup-dialog").open) $("backup-dialog").showModal();
     await renderProjectBackups();
+  };
+  $("storage-settings").onclick = async () => {
+    if (!native) return alert("Storage settings are available in the Windows application.");
+    if (!$("storage-dialog").open) $("storage-dialog").showModal();
+    await renderStorageSettings();
   };
   $("backup-refresh").onclick = renderProjectBackups;
   $("backup-create").onclick = async () => {

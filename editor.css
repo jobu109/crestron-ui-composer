@@ -673,6 +673,24 @@ h2 {
 }
 .backup-entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .backup-entry-meta { color: #91aaa7; font-size: 11px; white-space: nowrap; }
+.storage-dialog { width: min(900px, 92vw); }
+.storage-location-list { display: grid; gap: 9px; overflow: auto; }
+.storage-location-row {
+  display: grid;
+  grid-template-columns: 120px minmax(240px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.storage-location-path {
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid #34514e;
+  border-radius: 5px;
+  color: #b9d9d4;
+  background: #0b1214;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .health-report {
   min-height: 320px;
   max-height: 60vh;

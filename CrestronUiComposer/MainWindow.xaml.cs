@@ -90,10 +90,10 @@ public partial class MainWindow : Window
             switch (command)
             {
                 case "saveProject":
-                    SaveText(id, root.GetProperty("payload").GetString() ?? "", "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json", "crestron-ui-project.cuiproj");
+                    SaveText(id, root.GetProperty("payload").GetString() ?? "", "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json", "crestron-ui-project.cuiproj", "projects");
                     break;
                 case "exportHtml":
-                    SaveText(id, root.GetProperty("payload").GetString() ?? "", "HTML Interface (*.html)|*.html", "index.html");
+                    SaveText(id, root.GetProperty("payload").GetString() ?? "", "HTML Interface (*.html)|*.html", "index.html", "exports");
                     break;
                 case "openProject":
                     OpenProject(id);
@@ -119,8 +119,20 @@ public partial class MainWindow : Window
                 case "deleteProjectBackup":
                     DeleteProjectBackup(id, root.GetProperty("payload"));
                     break;
+                case "getStorageSettings":
+                    GetStorageSettings(id);
+                    break;
+                case "selectStorageFolder":
+                    SelectStorageFolder(id, root.GetProperty("payload"));
+                    break;
+                case "openStorageFolder":
+                    OpenStorageFolder(id, root.GetProperty("payload"));
+                    break;
                 case "importSnippets":
                     ImportSnippets(id);
+                    break;
+                case "importAssets":
+                    ImportAssets(id);
                     break;
                 case "buildCh5Package":
                     BuildCh5Package(id, root.GetProperty("payload"));
@@ -181,9 +193,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SaveText(string id, string contents, string filter, string defaultName)
+    private void SaveText(string id, string contents, string filter, string defaultName, string storageKey)
     {
-        var dialog = new SaveFileDialog { Filter = filter, FileName = defaultName, AddExtension = true };
+        var dialog = new SaveFileDialog { Filter = filter, FileName = defaultName, AddExtension = true, InitialDirectory = LoadStorageSettings()[storageKey] };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         File.WriteAllText(dialog.FileName, contents);
         Respond(id, true, dialog.FileName, null);
@@ -200,7 +212,8 @@ public partial class MainWindow : Window
             Title = openAfterSave ? "Import into Crestron Contract Editor" : "Export Contract Editor Project",
             Filter = "Crestron Contract Editor Project (*.cce)|*.cce",
             FileName = fileName + ".cce",
-            AddExtension = true
+            AddExtension = true,
+            InitialDirectory = LoadStorageSettings()["exports"]
         };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         File.WriteAllText(dialog.FileName, contents);
@@ -301,7 +314,7 @@ public partial class MainWindow : Window
 
     private void OpenProject(string id)
     {
-        var dialog = new OpenFileDialog { Filter = "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json|All files (*.*)|*.*", Multiselect = false };
+        var dialog = new OpenFileDialog { Filter = "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json|All files (*.*)|*.*", Multiselect = false, InitialDirectory = LoadStorageSettings()["projects"] };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         Respond(id, true, new { path = dialog.FileName, contents = File.ReadAllText(dialog.FileName) }, null);
     }
@@ -320,7 +333,8 @@ public partial class MainWindow : Window
             Title = "Save Portable Project Package",
             Filter = "Crestron UI Portable Package (*.cuipkg)|*.cuipkg",
             FileName = packageName + ".cuipkg",
-            AddExtension = true
+            AddExtension = true,
+            InitialDirectory = LoadStorageSettings()["packages"]
         };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
 
@@ -387,7 +401,8 @@ public partial class MainWindow : Window
         {
             Title = "Open Portable Project Package",
             Filter = "Crestron UI Portable Package (*.cuipkg)|*.cuipkg",
-            Multiselect = false
+            Multiselect = false,
+            InitialDirectory = LoadStorageSettings()["packages"]
         };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         using var archive = ZipFile.OpenRead(dialog.FileName);
@@ -428,7 +443,76 @@ public partial class MainWindow : Window
 
     private static string ProjectBackupFolder()
     {
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "ProjectBackups");
+        return LoadStorageSettings()["backups"];
+    }
+
+    private static string StorageSettingsPath() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "storage-settings.json");
+
+    private static Dictionary<string, string> DefaultStorageSettings()
+    {
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var root = Path.Combine(documents, "Crestron UI Composer");
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["projects"] = Path.Combine(root, "Projects"),
+            ["packages"] = Path.Combine(root, "Portable Packages"),
+            ["exports"] = Path.Combine(root, "Exports"),
+            ["backups"] = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "ProjectBackups"),
+            ["assets"] = Path.Combine(root, "Assets"),
+            ["templates"] = Path.Combine(root, "Components and Templates")
+        };
+    }
+
+    private static Dictionary<string, string> LoadStorageSettings()
+    {
+        var settings = DefaultStorageSettings();
+        var path = StorageSettingsPath();
+        if (File.Exists(path))
+        {
+            try
+            {
+                var saved = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+                if (saved is not null)
+                    foreach (var entry in saved)
+                        if (settings.ContainsKey(entry.Key) && !string.IsNullOrWhiteSpace(entry.Value)) settings[entry.Key] = Path.GetFullPath(entry.Value);
+            }
+            catch { }
+        }
+        foreach (var folder in settings.Values) Directory.CreateDirectory(folder);
+        return settings;
+    }
+
+    private static void SaveStorageSettings(Dictionary<string, string> settings)
+    {
+        var path = StorageSettingsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private void GetStorageSettings(string id) => Respond(id, true, LoadStorageSettings(), null);
+
+    private void SelectStorageFolder(string id, JsonElement payload)
+    {
+        var key = payload.GetProperty("key").GetString() ?? "";
+        var settings = LoadStorageSettings();
+        if (!settings.ContainsKey(key)) throw new InvalidOperationException("Unknown storage location.");
+        var dialog = new OpenFolderDialog { Title = $"Choose {key} folder", InitialDirectory = settings[key], Multiselect = false };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        settings[key] = Path.GetFullPath(dialog.FolderName);
+        Directory.CreateDirectory(settings[key]);
+        SaveStorageSettings(settings);
+        Respond(id, true, settings, null);
+    }
+
+    private void OpenStorageFolder(string id, JsonElement payload)
+    {
+        var key = payload.GetProperty("key").GetString() ?? "";
+        var settings = LoadStorageSettings();
+        if (!settings.TryGetValue(key, out var folder)) throw new InvalidOperationException("Unknown storage location.");
+        Directory.CreateDirectory(folder);
+        Process.Start(new ProcessStartInfo("explorer.exe", folder) { UseShellExecute = true });
+        Respond(id, true, folder, null);
     }
 
     private void CreateProjectBackup(string id, JsonElement payload)
@@ -487,11 +571,39 @@ public partial class MainWindow : Window
 
     private void ImportSnippets(string id)
     {
-        var dialog = new OpenFileDialog { Filter = "HTML snippets (*.html)|*.html", Multiselect = true };
+        var dialog = new OpenFileDialog { Filter = "HTML snippets (*.html)|*.html", Multiselect = true, InitialDirectory = LoadStorageSettings()["templates"] };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         var files = dialog.FileNames.Select(path => new { name = Path.GetFileName(path), html = File.ReadAllText(path) }).ToArray();
         Respond(id, true, files, null);
     }
+
+    private void ImportAssets(string id)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import from Asset Library",
+            Filter = "Supported assets|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg;*.mp4;*.webm;*.mp3;*.wav;*.ogg;*.woff;*.woff2;*.ttf;*.otf|All files (*.*)|*.*",
+            Multiselect = true,
+            InitialDirectory = LoadStorageSettings()["assets"]
+        };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        var files = dialog.FileNames.Select(path =>
+        {
+            var bytes = File.ReadAllBytes(path);
+            var type = AssetMimeType(Path.GetExtension(path));
+            return new { name = Path.GetFileName(path), type, size = bytes.Length, dataUrl = $"data:{type};base64,{Convert.ToBase64String(bytes)}" };
+        }).ToArray();
+        Respond(id, true, files, null);
+    }
+
+    private static string AssetMimeType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".gif" => "image/gif",
+        ".webp" => "image/webp", ".svg" => "image/svg+xml", ".mp4" => "video/mp4",
+        ".webm" => "video/webm", ".mp3" => "audio/mpeg", ".wav" => "audio/wav",
+        ".ogg" => "audio/ogg", ".woff" => "font/woff", ".woff2" => "font/woff2",
+        ".ttf" => "font/ttf", ".otf" => "font/otf", _ => "application/octet-stream"
+    };
 
     private void BuildCh5Package(string id, JsonElement payload)
     {
@@ -510,7 +622,7 @@ public partial class MainWindow : Window
             contractPath = contractDialog.FileName;
         }
 
-        var saveDialog = new SaveFileDialog { Title = "Build Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", FileName = projectName + ".ch5z", AddExtension = true };
+        var saveDialog = new SaveFileDialog { Title = "Build Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", FileName = projectName + ".ch5z", AddExtension = true, InitialDirectory = LoadStorageSettings()["exports"] };
         if (saveDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
 
         var cli = FindCh5Cli();
@@ -565,7 +677,7 @@ public partial class MainWindow : Window
             contractPath = contractDialog.FileName;
         }
 
-        var folderDialog = new OpenFolderDialog { Title = "Select the multi-panel package output folder", Multiselect = false };
+        var folderDialog = new OpenFolderDialog { Title = "Select the multi-panel package output folder", Multiselect = false, InitialDirectory = LoadStorageSettings()["exports"] };
         if (folderDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         var cli = FindCh5Cli();
         if (cli is null) throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before building panel packages.");
@@ -656,7 +768,7 @@ public partial class MainWindow : Window
 
     private void SelectCh5Package(string id)
     {
-        var dialog = new OpenFileDialog { Title = "Select Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", Multiselect = false };
+        var dialog = new OpenFileDialog { Title = "Select Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", Multiselect = false, InitialDirectory = LoadStorageSettings()["exports"] };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         ValidateCh5Archive(dialog.FileName);
         Respond(id, true, new { path = dialog.FileName, size = new FileInfo(dialog.FileName).Length }, null);

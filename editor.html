@@ -210,6 +210,7 @@
             <button id="validate-project">Health check</button>
             <button id="build-self-test">Export/build self-test</button>
             <button id="project-backups">Backups</button>
+            <button id="storage-settings">Storage locations</button>
             <button id="build-ch5">Build Project</button>
           </div>
         </details>
@@ -275,6 +276,7 @@
             accept="image/*,audio/*,video/*,.woff,.woff2,.ttf,.otf"
             multiple
         /></label>
+        <button id="asset-library-import" type="button">Import from asset library</button>
         <input
           id="asset-replace-file"
           type="file"
@@ -1060,6 +1062,14 @@ Preview signal activity appears here.</pre
           <button id="backup-refresh" type="button">Refresh</button>
         </div>
         <div id="backup-list" class="backup-list"></div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="storage-dialog" class="storage-dialog">
+      <form method="dialog">
+        <h2>Storage locations</h2>
+        <p class="hint">Choose the default folders used by Windows project, package, export, backup, asset, and reusable-design workflows.</p>
+        <div id="storage-location-list" class="storage-location-list"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
