@@ -82,9 +82,15 @@
         const url = item.graphicAssetMode === "background" ? assetUrl(item.graphicAsset) : "";
         return url ? `background-image:url(&quot;${url}&quot;);background-size:${item.graphicAssetFit || "contain"};background-position:${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%;background-repeat:no-repeat;` : "";
       },
-      graphicOverlay = (item) => {
-        const url = item.graphicAssetMode === "overlay" ? assetUrl(item.graphicAsset) : "";
-        return url ? `<img alt="" style="position:absolute;z-index:50;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;max-width:none;object-fit:${item.graphicAspectLocked ? item.graphicAssetFit || "contain" : "fill"};opacity:${Math.max(0,Math.min(100,Number(item.graphicAssetOpacity ?? 100)))/100};pointer-events:none;transform:translate(-50%,-50%)" src="${url}">` : "";
+      graphicOverlay = (item, selected = false) => {
+        const url = item.graphicAssetMode === "overlay"
+          ? assetUrl(selected ? item.selectedGraphicAsset : item.graphicAsset)
+          : "";
+        return url ? `<img class="widget-asset-overlay widget-asset-overlay-${selected ? "selected" : "normal"}" alt="" style="position:absolute;z-index:50;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;max-width:none;object-fit:${item.graphicAspectLocked ? item.graphicAssetFit || "contain" : "fill"};opacity:${Math.max(0,Math.min(100,Number(item.graphicAssetOpacity ?? 100)))/100};pointer-events:none;transform:translate(-50%,-50%)" src="${url}">` : "";
+      },
+      selectedGraphicStyle = (item) => {
+        const url = assetUrl(item.selectedGraphicAsset);
+        return `--selected-graphic-url:${url ? `url(&quot;${url}&quot;)` : "none"};`;
       };
     const pages = project.pages
       .map((page) => {
@@ -92,7 +98,7 @@
           .filter((item) => item.pageId === page.id || item.master)
           .map((item) =>
             item.componentId
-              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}</div>`
+              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}</div>`
               : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`,
           )
           .join("\n");
@@ -201,6 +207,10 @@
           "root.innerHTML='<style>'+(item.stylesOverride||def.styles)+'</style>'+(item.templateOverride||def.template);",
         )
         .replace(
+          "subscribe:function(key,callback){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key];if(!spec||!binding||!binding.value)return;subscribeAddress(spec.type,binding.value,callback)}",
+          "subscribe:function(key,callback){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key],handler=key==='selected'?function(value){holder.dataset.assetSelected=value===true||value===1||value==='1'?'true':'false';callback(value)}:callback;if(!spec||!binding||!binding.value)return;subscribeAddress(spec.type,binding.value,handler)}",
+        )
+        .replace(
           "function show(id){",
           interactionRuntime + "function show(id){",
         )
@@ -249,7 +259,7 @@
           "var legacyCollection=structured.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/);if(prefix&&legacyCollection){structured=prefix+'.'+legacyCollection[1]+legacyCollection[2]+'.'+legacyCollection[3];prefix=''}if(prefix&&structured.indexOf('.')>=0)",
         ),
       safeController = restoredController.replace(/<\/script/gi, "<\\/script");
-    return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}.scoped-preview{display:block;width:100%;height:100%;min-width:0;min-height:0}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:500px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{display:block;color:#55f2d7;pointer-events:auto;touch-action:manipulation}#ch5-diagnostic-log{height:400px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${safeController}<\/script></body></html>`;
+    return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}.scoped-preview{display:block;width:100%;height:100%;min-width:0;min-height:0}.widget-asset-overlay-selected{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-normal{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-selected{display:block}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"][data-graphic-mode="background"]{background-image:var(--selected-graphic-url)!important}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:500px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{display:block;color:#55f2d7;pointer-events:auto;touch-action:manipulation}#ch5-diagnostic-log{height:400px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${safeController}<\/script></body></html>`;
   }
   global.ComposerExporter = { exportProject };
 })(window);

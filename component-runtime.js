@@ -633,18 +633,30 @@
             spec?.type,
             "input",
             contractPrefix,
-          );
+          ),
+          handler =
+            key === "selected"
+              ? (value) => {
+                  const holder = root.closest(".widget,.scoped-widget");
+                  if (holder)
+                    holder.dataset.assetSelected =
+                      value === true || value === 1 || value === "1"
+                        ? "true"
+                        : "false";
+                  callback(value);
+                }
+              : callback;
         if (!spec || !signal) return;
         if (lib) {
           const result = lib.subscribeState(
             typeCode(spec.type),
             signal,
-            callback,
+            handler,
           );
           if (typeof result === "function") cleanups.push(result);
         } else
           cleanups.push(
-            simulator.subscribe(typeCode(spec.type), signal, callback),
+            simulator.subscribe(typeCode(spec.type), signal, handler),
           );
       },
       publishAddress(type, signal, value) {

@@ -176,6 +176,14 @@ run("exported action runtime is valid JavaScript", () => {
     html.includes("holder&&holder.querySelector('.scoped-preview')"),
     "Export runtime must mount components inside the inner preview container",
   );
+  assert.ok(
+    html.includes("holder.dataset.assetSelected"),
+    "Selected feedback must switch selected-state widget assets",
+  );
+  assert.ok(
+    html.includes('data-asset-selected="false"'),
+    "Exported widgets must include two-state asset state",
+  );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
   assert.equal(

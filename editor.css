@@ -760,6 +760,12 @@ h2 {
   transform: translate(-50%, -50%);
   object-fit: contain;
 }
+.widget-asset-overlay-selected { display: none; }
+.widget[data-has-selected-graphic="true"][data-asset-selected="true"] > .widget-asset-overlay-normal { display: none; }
+.widget[data-has-selected-graphic="true"][data-asset-selected="true"] > .widget-asset-overlay-selected { display: block; }
+.widget[data-has-selected-graphic="true"][data-asset-selected="true"][data-graphic-mode="background"] {
+  background-image: var(--selected-graphic-url) !important;
+}
 .health-report {
   min-height: 320px;
   max-height: 60vh;

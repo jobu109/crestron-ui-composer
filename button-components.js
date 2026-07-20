@@ -1,6 +1,53 @@
 (function (runtime) {
   "use strict";
   runtime.register({
+    id: "blank-button",
+    name: "Blank Button",
+    category: "Buttons",
+    defaultSize: { width: 120, height: 120 },
+    properties: [],
+    signals: [
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "BlankButton.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "BlankButton.Selected" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "BlankButton.Name" },
+      { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: "BlankButton.Visibility", optionalProperty: "visibilityEnabled" },
+    ],
+    template: '<button class="blank-button" type="button" aria-label="Blank Button"></button>',
+    styles:
+      '[data-component="blank-button"]{display:block;width:100%;height:100%}[data-component="blank-button"] .blank-button{display:block;width:100%;height:100%;margin:0;padding:0;border:0;appearance:none;background:transparent;cursor:pointer;touch-action:none}[data-component="blank-button"] .blank-button.pressed{filter:brightness(1.15)}',
+    mount(root, context) {
+      const button = root.querySelector(".blank-button");
+      function press(event) {
+        button.classList.add("pressed");
+        context.signals.publish("press", true);
+        event.preventDefault();
+      }
+      function release() {
+        button.classList.remove("pressed");
+        context.signals.publish("press", false);
+      }
+      function navigate() {
+        if (context.options.targetPage) context.navigate(context.options.targetPage);
+      }
+      button.addEventListener("pointerdown", press);
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointerup", navigate);
+      button.addEventListener("pointerleave", release);
+      button.addEventListener("pointercancel", release);
+      context.signals.subscribe("selected", function () {});
+      context.signals.subscribe("name", (value) =>
+        button.setAttribute("aria-label", String(value || "Blank Button")),
+      );
+      return () => {
+        button.removeEventListener("pointerdown", press);
+        button.removeEventListener("pointerup", release);
+        button.removeEventListener("pointerup", navigate);
+        button.removeEventListener("pointerleave", release);
+        button.removeEventListener("pointercancel", release);
+      };
+    },
+  });
+  runtime.register({
     id: "power-button",
     name: "Power Button",
     category: "Buttons",

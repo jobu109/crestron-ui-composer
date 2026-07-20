@@ -1383,17 +1383,29 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const graphicAsset = state.assets.find(
         (asset) => asset.id === item.graphicAsset && asset.type.startsWith("image/"),
       ),
+      selectedGraphicAsset = state.assets.find(
+        (asset) =>
+          asset.id === item.selectedGraphicAsset && asset.type.startsWith("image/"),
+      ),
       graphicMode = item.graphicAssetMode || "none";
+    el.dataset.graphicMode = graphicMode;
+    el.dataset.assetSelected = "false";
+    el.dataset.hasSelectedGraphic = selectedGraphicAsset ? "true" : "false";
+    el.style.setProperty(
+      "--selected-graphic-url",
+      selectedGraphicAsset ? `url("${selectedGraphicAsset.dataUrl}")` : "none",
+    );
     if (graphicAsset && graphicMode === "background") {
       el.style.backgroundImage = `url("${graphicAsset.dataUrl}")`;
       el.style.backgroundSize = item.graphicAssetFit || "contain";
       el.style.backgroundPosition = `${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%`;
       el.style.backgroundRepeat = "no-repeat";
     }
-    if (graphicAsset && graphicMode === "overlay") {
+    function appendGraphicOverlay(asset, selected) {
+      if (!asset || graphicMode !== "overlay") return;
       const overlay = document.createElement("img");
-      overlay.className = "widget-asset-overlay";
-      overlay.src = graphicAsset.dataUrl;
+      overlay.className = `widget-asset-overlay widget-asset-overlay-${selected ? "selected" : "normal"}`;
+      overlay.src = asset.dataUrl;
       Object.assign(overlay.style, {
         left: `${Number(item.graphicAssetX ?? 50)}%`,
         top: `${Number(item.graphicAssetY ?? 50)}%`,
@@ -1406,6 +1418,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       });
       el.appendChild(overlay);
     }
+    appendGraphicOverlay(graphicAsset, false);
+    appendGraphicOverlay(selectedGraphicAsset, true);
     if (item.componentId)
       el.runtimeDispose = window.ComposerRuntime.mount(
         el.querySelector(".scoped-preview"),
@@ -1593,7 +1607,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         (item) =>
           item.assetId === assetId ||
           item.backgroundAsset === assetId ||
-          item.graphicAsset === assetId,
+          item.graphicAsset === assetId ||
+          item.selectedGraphicAsset === assetId,
       ).length
     );
   }
@@ -1700,6 +1715,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               delete item.graphicAsset;
               delete item.graphicAssetMode;
             }
+            if (item.selectedGraphicAsset === asset.id)
+              delete item.selectedGraphicAsset;
           });
           state.items = state.items.filter((item) => item.assetId !== asset.id);
           state.assets = state.assets.filter((entry) => entry.id !== asset.id);
@@ -2944,15 +2961,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     });
   }
   function renderAssetInspector(item) {
-    const select = $("prop-asset"), imageAssets = state.assets.filter((asset) => asset.type.startsWith("image/"));
+    const select = $("prop-asset"),
+      selectedSelect = $("prop-asset-selected"),
+      imageAssets = state.assets.filter((asset) => asset.type.startsWith("image/"));
     select.innerHTML = '<option value="">None</option>';
+    selectedSelect.innerHTML = '<option value="">None</option>';
     imageAssets.forEach((asset) => {
       const option = document.createElement("option");
       option.value = asset.id;
       option.textContent = asset.name;
       select.appendChild(option);
+      selectedSelect.appendChild(option.cloneNode(true));
     });
     select.value = item.graphicAsset || "";
+    selectedSelect.value = item.selectedGraphicAsset || "";
     $("prop-asset-mode").value = item.graphicAssetMode || "none";
     $("prop-asset-fit").value = item.graphicAssetFit || "contain";
     $("prop-asset-width").value = item.graphicAssetWidth ?? 35;
@@ -2961,7 +2983,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("prop-asset-x").value = item.graphicAssetX ?? 50;
     $("prop-asset-y").value = item.graphicAssetY ?? 50;
     $("prop-asset-opacity").value = item.graphicAssetOpacity ?? 100;
-    const overlay = Boolean(item.graphicAsset) && (item.graphicAssetMode || "none") === "overlay";
+    const overlay =
+      Boolean(item.graphicAsset || item.selectedGraphicAsset) &&
+      (item.graphicAssetMode || "none") === "overlay";
     ["prop-asset-width", "prop-asset-height", "prop-asset-opacity"].forEach(
       (id) => ($(id).disabled = !overlay),
     );
@@ -4769,6 +4793,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         checkAsset(item.assetId, `Page template “${template.name}”`);
         checkAsset(item.backgroundAsset, `Page template “${template.name}”`);
         checkAsset(item.graphicAsset, `Page template “${template.name}”`);
+        checkAsset(item.selectedGraphicAsset, `Page template “${template.name}”`);
       });
     });
     state.reusables.forEach((reusable) =>
@@ -4776,6 +4801,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         checkAsset(item.assetId, `Reusable “${reusable.name}”`);
         checkAsset(item.backgroundAsset, `Reusable “${reusable.name}”`);
         checkAsset(item.graphicAsset, `Reusable “${reusable.name}”`);
+        checkAsset(item.selectedGraphicAsset, `Reusable “${reusable.name}”`);
       }),
     );
 
@@ -4880,6 +4906,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       checkAsset(item.assetId, `“${item.name}”`);
       checkAsset(item.backgroundAsset, `“${item.name}”`);
       checkAsset(item.graphicAsset, `“${item.name}”`);
+      checkAsset(item.selectedGraphicAsset, `“${item.name}”`);
       if (!item.componentId) {
         if (!String(item.source || "").trim())
           add("error", `“${item.name}” has no custom HTML source.`);
@@ -5647,7 +5674,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         (item) =>
           item.assetId === asset.id ||
           item.backgroundAsset === asset.id ||
-          item.graphicAsset === asset.id,
+          item.graphicAsset === asset.id ||
+          item.selectedGraphicAsset === asset.id,
       )
       .forEach((item) => {
         if (item.assetId === asset.id) {
@@ -5672,7 +5700,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         missing.add(page.backgroundAsset);
     });
     state.items.forEach((item) =>
-      [item.assetId, item.backgroundAsset, item.graphicAsset]
+      [
+        item.assetId,
+        item.backgroundAsset,
+        item.graphicAsset,
+        item.selectedGraphicAsset,
+      ]
         .filter(Boolean)
         .forEach((id) => {
         if (!state.assets.some((asset) => asset.id === id)) missing.add(id);
@@ -5725,7 +5758,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const item = current();
     if (!item) return;
     item.graphicAsset = $("prop-asset").value;
-    item.graphicAssetMode = item.graphicAsset
+    item.selectedGraphicAsset = $("prop-asset-selected").value;
+    item.graphicAssetMode = item.graphicAsset || item.selectedGraphicAsset
       ? $("prop-asset-mode").value
       : "none";
     item.graphicAssetFit = $("prop-asset-fit").value;
@@ -5759,6 +5793,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       $("prop-asset-mode").value = "overlay";
     updateSelectedGraphic();
   };
+  $("prop-asset-selected").onchange = () => {
+    if ($("prop-asset-selected").value && $("prop-asset-mode").value === "none")
+      $("prop-asset-mode").value = "overlay";
+    updateSelectedGraphic();
+  };
   [
     "prop-asset-mode",
     "prop-asset-fit",
@@ -5773,6 +5812,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const item = current();
     if (!item) return;
     delete item.graphicAsset;
+    delete item.selectedGraphicAsset;
     delete item.graphicAssetMode;
     delete item.graphicAssetFit;
     delete item.graphicAssetWidth;
