@@ -826,10 +826,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           localTextScript = localText
             ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
             : "",
+          frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body>*{box-sizing:border-box}</style>`,
           bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
           documentText = /<\/body>/i.test(resolved)
-            ? resolved.replace(/<\/body>/i, appearance + localTextScript + bridge + "</body>")
-            : resolved + appearance + localTextScript + bridge;
+            ? resolved.replace(/<\/body>/i, frameBaseStyle + appearance + localTextScript + bridge + "</body>")
+            : resolved + frameBaseStyle + appearance + localTextScript + bridge;
         frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
         frame.srcdoc = documentText;
         host.appendChild(frame);
@@ -6284,7 +6285,12 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       );
     });
     const previewBridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});<\/script>`;
-    $("custom-component-preview").srcdoc = safeDoc(previewBridge + source, "");
+    $("custom-component-preview").srcdoc = safeDoc(
+      '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body>*{box-sizing:border-box}</style>' +
+        previewBridge +
+        source,
+      "",
+    );
     refreshCustomSignalTester();
     validateCustomComponent();
   }
