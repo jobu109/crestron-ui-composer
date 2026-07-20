@@ -56,8 +56,12 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             LoadingPanel.Visibility = Visibility.Collapsed;
+            var message = ex is FileNotFoundException fileError &&
+                          fileError.Message.Contains("editor assets", StringComparison.OrdinalIgnoreCase)
+                ? "Crestron UI Composer could not start because its editor files are missing. Reinstall the application or extract the entire portable package; do not run the EXE by itself.\n\n" + ex.Message
+                : "Crestron UI Composer could not start its embedded WebView2 browser. Install or repair the Microsoft WebView2 Runtime.\n\n" + ex.Message;
             MessageBox.Show(
-                "Crestron UI Composer could not start. Ensure the Microsoft Edge WebView2 Runtime is installed.\n\n" + ex.Message,
+                message,
                 "Startup error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);

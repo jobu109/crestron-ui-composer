@@ -68,4 +68,9 @@
     <Content Include="Packaging\CrComLib\package\build_bundles\umd\cr-com-lib.js.LICENSE.txt" Link="Packaging\cr-com-lib.js.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Packaging\CrComLib\package\LICENSE.txt" Link="Packaging\CRESTRON-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- The publish output may be recreated independently of MSBuild's incremental cache. -->
+    <Content Update="..\*.*" CopyToPublishDirectory="Always" />
+  </ItemGroup>
 </Project>
