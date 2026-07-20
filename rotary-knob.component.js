@@ -7,7 +7,7 @@
     defaultSize: { width: 220, height: 270 },
     properties: [
       { key: "localName", name: "Local name", type: "text", defaultValue: "Rotary Knob" },
-      { key: "defaultPercent", name: "Default percentage", type: "number", defaultValue: 0 },
+      { key: "defaultPercent", name: "Default percentage", type: "number", defaultValue: 0, min: 0, max: 100, step: 1 },
       {
         key: "outputScale",
         name: "Outgoing analog scale",

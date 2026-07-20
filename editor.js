@@ -2938,6 +2938,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               : property.type === "checkbox"
                 ? "checkbox"
               : "text";
+      if (property.type === "number") {
+        if (property.min != null) input.min = String(property.min);
+        if (property.max != null) input.max = String(property.max);
+        if (property.step != null) input.step = String(property.step);
+      }
       const propertyValue =
         (item.properties && item.properties[property.key]) ?? property.defaultValue ?? "";
       if (property.type === "checkbox")
@@ -2945,12 +2950,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       else input.value = propertyValue;
       input.oninput = () => {
         item.properties = item.properties || {};
-        item.properties[property.key] =
+        let nextValue =
           property.type === "checkbox"
             ? input.checked
             : property.type === "number"
               ? Number(input.value)
               : input.value;
+        if (property.type === "number") {
+          if (!Number.isFinite(nextValue))
+            nextValue = Number(property.defaultValue) || 0;
+          if (property.min != null)
+            nextValue = Math.max(Number(property.min), nextValue);
+          if (property.max != null)
+            nextValue = Math.min(Number(property.max), nextValue);
+          input.value = String(nextValue);
+        }
+        item.properties[property.key] = nextValue;
         renderItem(item);
         if (property.affectsProperties) renderProperties(item);
         if (property.affectsBindings) renderBindings(item);
