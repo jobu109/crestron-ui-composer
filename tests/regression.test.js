@@ -169,6 +169,10 @@ run("exported action runtime is valid JavaScript", () => {
     "Exported widgets must use the same inner mount container as the editor",
   );
   assert.ok(
+    html.includes(".scoped-preview{display:block;width:100%;height:100%"),
+    "Exported custom-component mounts must fill the saved widget frame",
+  );
+  assert.ok(
     html.includes("holder&&holder.querySelector('.scoped-preview')"),
     "Export runtime must mount components inside the inner preview container",
   );
