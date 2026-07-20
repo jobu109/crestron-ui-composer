@@ -1668,33 +1668,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         info.innerHTML = `<div class="asset-name"></div><div class="asset-meta">${Math.ceil(asset.size / 1024)} KB · ${usage} use${usage === 1 ? "" : "s"}</div>`;
         info.querySelector(".asset-name").textContent = asset.name;
         buttons.className = "asset-buttons";
-        const pageButton = document.createElement("button"),
-          selectedButton = document.createElement("button"),
-          replaceButton = document.createElement("button"),
+        const replaceButton = document.createElement("button"),
           deleteButton = document.createElement("button");
-        pageButton.textContent = "Page bg";
-        selectedButton.textContent = "Selected bg";
         replaceButton.textContent = "Replace";
         deleteButton.textContent = "Delete";
-        pageButton.disabled = !asset.type.startsWith("image/");
-        selectedButton.disabled = !asset.type.startsWith("image/");
-        pageButton.onclick = () => {
-          currentPage().backgroundAsset = asset.id;
-          renderPage();
-          commitHistory();
-          setStatus(`Page background: “${asset.name}”`);
-        };
-        selectedButton.onclick = () => {
-          const items = selectedItems();
-          items.forEach((item) => {
-            item.backgroundAsset = asset.id;
-            renderItem(item);
-          });
-          commitHistory();
-          setStatus(
-            `Applied “${asset.name}” to ${items.length} component${items.length === 1 ? "" : "s"}`,
-          );
-        };
         replaceButton.onclick = () => {
           $("asset-replace-file").dataset.assetId = asset.id;
           $("asset-replace-file").click();
@@ -1723,7 +1700,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           commitHistory();
           setStatus(`Removed asset “${asset.name}”`);
         };
-        buttons.append(pageButton, selectedButton, replaceButton, deleteButton);
+        buttons.append(replaceButton, deleteButton);
         card.ondragstart = (event) =>
           event.dataTransfer.setData("text/asset", asset.id);
         card.ondblclick = () => createAssetItem(asset.id, 40, 40);
@@ -1732,6 +1709,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       });
     if (!host.children.length)
       host.innerHTML = '<p class="hint">No assets imported.</p>';
+    const selected = current();
+    if (selected) renderAssetInspector(selected);
   }
   function readAssetFile(file) {
     return new Promise((resolve, reject) => {
