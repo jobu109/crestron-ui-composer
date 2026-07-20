@@ -171,6 +171,31 @@ run("exported action runtime is valid JavaScript", () => {
   );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
+  const resolverStart = html.indexOf("function standardAttribute"),
+    resolverEnd = html.indexOf("function appearance", resolverStart),
+    exportedResolver = new Function(
+      `${html.slice(resolverStart, resolverEnd)};return contractAddress;`,
+    )();
+  assert.equal(
+    exportedResolver(
+      "RollingMenu.Items[0].Press",
+      "digital",
+      "output",
+      "Home.Rolling_Menu",
+    ),
+    "Home.Rolling_Menu.Items[0].Press",
+    "Exported ranged digital addresses must retain array brackets and separators",
+  );
+  assert.equal(
+    exportedResolver(
+      "LightingControl.Items[0].Level_Set",
+      "analog",
+      "output",
+      "Home.Lighting_Control",
+    ),
+    "Home.Lighting_Control.Items[0].ValueSet",
+    "Exported ranged analog addresses must use the mapped ValueSet attribute",
+  );
   new Function(html.slice(start, end));
 });
 
