@@ -686,7 +686,7 @@ public partial class MainWindow : Window
         string? contractPath = null;
         if (usesContracts)
         {
-            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping", Filter = "Crestron contract mapping (*.cse2j)|*.cse2j", Multiselect = false };
+            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j)", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
             if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
             contractPath = contractDialog.FileName;
         }
@@ -741,7 +741,7 @@ public partial class MainWindow : Window
         string? contractPath = null;
         if (usesContracts)
         {
-            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping for all panel packages", Filter = "Crestron contract mapping (*.cse2j)|*.cse2j", Multiselect = false };
+            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j) for all panel packages", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
             if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
             contractPath = contractDialog.FileName;
         }
