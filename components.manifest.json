@@ -41,5 +41,7 @@
     {"file":"pleaseWaitSpinning.html","componentId":"please-wait-spinner","runtime":"scoped","name":"Please Wait Spinner","category":"Status & Information","width":220,"height":180},
     {"file":"shutdownProgress.html","componentId":"shutdown-progress","runtime":"scoped","name":"Shutdown Progress","category":"Status & Information","width":420,"height":180},
     {"file":"weather.html","componentId":"weather-card","runtime":"scoped","name":"Weather","category":"Status & Information","width":480,"height":320}
+    ,{"file":"wifiGauge.html","componentId":"wifi-gauge","runtime":"scoped","name":"Wi-Fi Gauge","category":"Status & Information","width":220,"height":220}
+    ,{"file":"cellBarGauge.html","componentId":"cell-bar-gauge","runtime":"scoped","name":"Cell Bar Gauge","category":"Status & Information","width":220,"height":220}
   ]
 }
