@@ -6042,7 +6042,12 @@
     syncContractMetadata();
     renderContractSummary();
     renderBuildPanelList();
+    $("build-signal-diagnostics").checked = state.diagnostics;
     $("build-project-dialog").showModal();
+  };
+  $("build-signal-diagnostics").onchange = (event) => {
+    state.diagnostics = event.target.checked;
+    scheduleHistory();
   };
   $("build-project-multi").onclick = async () => {
     if (!native) { alert("CH5 packaging is available in the Windows application."); return; }
