@@ -195,6 +195,7 @@
         <details class="app-menu">
           <summary>View</summary>
           <div class="app-menu-popup">
+            <button id="project-search">Project search <kbd>Ctrl+F</kbd></button>
             <button id="preview">Preview</button>
             <button id="panel-compatibility">Panel fit</button>
             <button id="signal-manager">Signals</button>
@@ -1034,6 +1035,16 @@ Preview signal activity appears here.</pre
           <button id="health-export" type="button">Export report</button>
           <button value="default">Done</button>
         </div>
+      </form>
+    </dialog>
+    <dialog id="project-search-dialog" class="project-search-dialog">
+      <form method="dialog">
+        <h2>Project-wide search</h2>
+        <p class="hint">Find pages, widgets, component types, local text, contract names, join numbers, or every use of a signal.</p>
+        <input id="project-search-query" class="project-search-query" type="search" placeholder="Component, page, contract, join, text, or signal…" autocomplete="off" />
+        <p id="project-search-summary" class="hint"></p>
+        <div id="project-search-results" class="project-search-results"></div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
     <script src="project-migrations.js"></script>

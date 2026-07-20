@@ -596,6 +596,56 @@ h2 {
 .health-dialog {
   width: min(900px, 92vw);
 }
+.project-search-dialog {
+  width: min(1050px, 94vw);
+  height: min(760px, 90vh);
+}
+.project-search-query {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #4b6664;
+  border-radius: 6px;
+  background: #0d1719;
+  color: #fff;
+  font: 14px/1.3 "Segoe UI", sans-serif;
+}
+.project-search-results {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #304b4e;
+  border-radius: 6px;
+  background: #0d1719;
+}
+.project-search-result {
+  display: grid;
+  grid-template-columns: 95px minmax(180px, .8fr) minmax(240px, 1.4fr);
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-bottom: 1px solid #263b3e;
+  background: transparent;
+  color: #e5f3f1;
+  text-align: left;
+  cursor: pointer;
+}
+.project-search-result:hover,
+.project-search-result:focus-visible {
+  background: #17322f;
+  outline: none;
+}
+.project-search-kind { color: #66d6c2; font-size: 10px; text-transform: uppercase; }
+.project-search-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.project-search-detail { overflow: hidden; color: #91aaa7; text-overflow: ellipsis; white-space: nowrap; }
+
+.signal-find-uses {
+  display: block;
+  margin-top: 5px;
+  padding: 3px 7px;
+  font-size: 10px;
+  white-space: nowrap;
+}
 .health-report {
   min-height: 320px;
   max-height: 60vh;

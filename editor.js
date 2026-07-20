@@ -3045,6 +3045,105 @@
     });
     return rows;
   }
+  function openProjectSearch(initialQuery = "") {
+    const dialog = $("project-search-dialog"),
+      input = $("project-search-query");
+    input.value = initialQuery;
+    renderProjectSearch();
+    if (!dialog.open) dialog.showModal();
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  }
+  function navigateToSearchResult(result) {
+    const item = result.itemId
+        ? state.items.find((entry) => entry.id === result.itemId)
+        : null,
+      pageId = result.pageId || item?.pageId;
+    if (pageId && state.pages.some((page) => page.id === pageId)) {
+      state.activePage = pageId;
+      renderPage();
+    }
+    if (item) select(item.id);
+    $("project-search-dialog").close();
+    setStatus(item ? `Found “${item.name}”` : `Opened ${result.title}`);
+  }
+  function renderProjectSearch() {
+    const query = String($("project-search-query").value || "").trim(),
+      needle = query.toLowerCase(),
+      host = $("project-search-results"),
+      results = [];
+    host.innerHTML = "";
+    if (!needle) {
+      $("project-search-summary").textContent = "Type a value to search the entire project. Exact join numbers and full contract names are supported.";
+      host.innerHTML = '<p class="hint" style="padding:14px">Tip: paste a contract name or join number here to answer “Where is this signal used?”</p>';
+      return;
+    }
+    state.pages.forEach((page) => {
+      const fields = [page.name, page.id, page.bindingMode, page.binding, page.background];
+      if (fields.some((value) => String(value || "").toLowerCase().includes(needle)))
+        results.push({ kind: "Page", title: page.name, detail: page.binding ? `${page.bindingMode}: ${page.binding}` : "Page definition", pageId: page.id });
+    });
+    state.items.forEach((item) => {
+      const page = state.pages.find((entry) => entry.id === item.pageId),
+        definition = item.componentId ? window.ComposerRuntime.get(item.componentId) : null,
+        fields = {
+          name: item.name,
+          page: page?.name || (item.master ? "Global" : ""),
+          type: definition?.name || item.componentId || "Custom HTML",
+          category: definition?.category || "",
+          text: JSON.stringify(item.properties || {}),
+          bindings: JSON.stringify(item.signalBindings || {}),
+          source: item.source || "",
+        },
+        matches = Object.entries(fields)
+          .filter(([, value]) => String(value || "").toLowerCase().includes(needle))
+          .map(([key]) => key);
+      if (matches.length)
+        results.push({
+          kind: "Widget",
+          title: item.name,
+          detail: `${page?.name || "Global"} · ${definition?.name || item.componentId || "Custom HTML"} · matched ${matches.join(", ")}`,
+          pageId: item.pageId,
+          itemId: item.id,
+        });
+    });
+    collectProjectSignals().forEach((signal) => {
+      const haystack = [signal.value, signal.name, signal.widget, signal.page, signal.type, signal.direction, signal.mode]
+        .map((value) => String(value || "").toLowerCase());
+      if (!haystack.some((value) => value.includes(needle))) return;
+      const item = signal.itemId ? state.items.find((entry) => entry.id === signal.itemId) : null,
+        page = item ? state.pages.find((entry) => entry.id === item.pageId) : state.pages.find((entry) => entry.name === signal.page);
+      results.push({
+        kind: "Signal use",
+        title: signal.value || "Unbound signal",
+        detail: `${signal.page} · ${signal.widget} · ${signal.name} · ${signal.type} ${signal.direction} · ${signal.mode}`,
+        pageId: signal.pageId || page?.id,
+        itemId: signal.itemId,
+      });
+    });
+    results.slice(0, 500).forEach((result) => {
+      const button = document.createElement("button"),
+        kind = document.createElement("span"),
+        title = document.createElement("span"),
+        detail = document.createElement("span");
+      button.type = "button";
+      button.className = "project-search-result";
+      kind.className = "project-search-kind";
+      title.className = "project-search-title";
+      detail.className = "project-search-detail";
+      kind.textContent = result.kind;
+      title.textContent = result.title;
+      detail.textContent = result.detail;
+      button.title = `${result.title}\n${result.detail}`;
+      button.onclick = () => navigateToSearchResult(result);
+      button.append(kind, title, detail);
+      host.appendChild(button);
+    });
+    $("project-search-summary").textContent = `${results.length} result${results.length === 1 ? "" : "s"}${results.length > 500 ? " · showing first 500" : ""} for “${query}”.`;
+    if (!results.length) host.innerHTML = '<p class="hint" style="padding:14px">No pages, widgets, text, joins, contracts, or signal uses matched.</p>';
+  }
   function renderSignalManager() {
     const rows = collectProjectSignals(),
       query = String($("signal-search").value || "")
@@ -3107,6 +3206,13 @@
         scheduleHistory();
       };
       status.textContent = duplicate ? "Duplicate" : missing ? "Unbound" : "OK";
+      const findUses = document.createElement("button");
+      findUses.type = "button";
+      findUses.className = "signal-find-uses";
+      findUses.textContent = "Where used";
+      findUses.disabled = missing;
+      findUses.onclick = () => openProjectSearch(row.value);
+      status.appendChild(findUses);
       modeCell.appendChild(mode);
       addressCell.appendChild(input);
       tr.append(modeCell, addressCell, status);
@@ -6178,6 +6284,8 @@
     $("signal-dialog").showModal();
   };
   $("signal-search").oninput = renderSignalManager;
+  $("project-search").onclick = () => openProjectSearch();
+  $("project-search-query").oninput = renderProjectSearch;
   $("signal-export-csv").onclick = () =>
     download("crestron-signal-map.csv", signalCsv(), "text/csv");
   $("signal-simulator").onclick = () => {
@@ -6853,6 +6961,11 @@
   addEventListener("keydown", (e) => {
     const editing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName),
       key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && key === "f") {
+      e.preventDefault();
+      openProjectSearch();
+      return;
+    }
     if (!editing && (e.ctrlKey || e.metaKey) && key === "z") {
       e.preventDefault();
       e.shiftKey ? redo() : undo();
