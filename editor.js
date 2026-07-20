@@ -765,13 +765,29 @@
     renderComponentLibrary();
   }
   function registerCustomComponent(entry) {
+    const appearanceProperties = [
+        { key: "appearanceEnabled", name: "Override custom appearance", type: "checkbox", defaultValue: false },
+        { key: "localText", name: "Local text", type: "text", defaultValue: "" },
+        { key: "backgroundColor", name: "Background color", type: "color", defaultValue: "#253436" },
+        { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" },
+        { key: "borderColor", name: "Border color", type: "color", defaultValue: "#04dcb9" },
+        { key: "glowColor", name: "Glow color", type: "color", defaultValue: "#04dcb9" },
+        { key: "fontSize", name: "Text size", type: "number", defaultValue: 18 },
+        { key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: 8 },
+        { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 12 },
+      ],
+      declaredKeys = new Set((entry.properties || []).map((property) => property.key)),
+      properties = [
+        ...(entry.properties || []),
+        ...appearanceProperties.filter((property) => !declaredKeys.has(property.key)),
+      ];
     window.ComposerRuntime.register({
       id: entry.id,
       name: entry.name,
       category: entry.category || "Custom",
       icon: entry.icon || "🧩",
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
-      properties: entry.properties || [],
+      properties,
       signals: entry.signals || [],
       template: '<div class="custom-component-host"></div>',
       styles:
@@ -781,15 +797,39 @@
         const host = root.querySelector(".custom-component-host"),
           frame = document.createElement("iframe"),
           properties = context.options.properties || {},
+          color = (value, fallback) =>
+            /^#[0-9a-f]{6}$/i.test(String(value || ""))
+              ? String(value)
+              : fallback,
           signals = context.options.definitionData.signals || [],
           raw = String(context.options.definitionData.html || ""),
           resolved = raw.replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
             String(properties[key] ?? ""),
           ),
+          appearanceEnabled =
+            properties.appearanceEnabled === true ||
+            properties.appearanceEnabled === 1 ||
+            properties.appearanceEnabled === "1" ||
+            String(properties.appearanceEnabled).toLowerCase() === "true",
+          appearance = appearanceEnabled
+            ? `<style>
+button,[role="button"],.custom-component{
+background-color:${color(properties.backgroundColor, "#253436")}!important;
+color:${color(properties.textColor, "#ffffff")}!important;
+border-color:${color(properties.borderColor, "#04dcb9")}!important;
+border-radius:${Math.max(0, Number(properties.cornerRadius) || 0)}px!important;
+font-size:${Math.max(1, Number(properties.fontSize) || 18)}px!important;
+box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(properties.glowColor, "#04dcb9")}!important;
+}</style>`
+            : "",
+          localText = String(properties.localText || ""),
+          localTextScript = localText
+            ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
+            : "",
           bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
           documentText = /<\/body>/i.test(resolved)
-            ? resolved.replace(/<\/body>/i, bridge + "</body>")
-            : resolved + bridge;
+            ? resolved.replace(/<\/body>/i, appearance + localTextScript + bridge + "</body>")
+            : resolved + appearance + localTextScript + bridge;
         frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
         frame.srcdoc = documentText;
         host.appendChild(frame);
@@ -2837,15 +2877,22 @@
             ? "number"
             : property.type === "color"
               ? "color"
+              : property.type === "checkbox"
+                ? "checkbox"
               : "text";
-      input.value =
-        (item.properties && item.properties[property.key]) ??
-        property.defaultValue ??
-        "";
+      const propertyValue =
+        (item.properties && item.properties[property.key]) ?? property.defaultValue ?? "";
+      if (property.type === "checkbox")
+        input.checked = propertyValue === true || propertyValue === 1 || propertyValue === "1" || String(propertyValue).toLowerCase() === "true";
+      else input.value = propertyValue;
       input.oninput = () => {
         item.properties = item.properties || {};
         item.properties[property.key] =
-          property.type === "number" ? Number(input.value) : input.value;
+          property.type === "checkbox"
+            ? input.checked
+            : property.type === "number"
+              ? Number(input.value)
+              : input.value;
         renderItem(item);
         if (property.affectsProperties) renderProperties(item);
         if (property.affectsBindings) renderBindings(item);
