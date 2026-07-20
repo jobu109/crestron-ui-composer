@@ -28,6 +28,11 @@ const manifest = JSON.parse(read("components.manifest.json")),
   definitions = ComposerRuntime.definitions;
 assert.equal(definitions.size, manifestIds.size, "Manifest and runtime component counts differ");
 manifestIds.forEach((id) => assert.ok(definitions.has(id), `Manifest component ${id} was not registered`));
+assert.equal(
+  definitions.get("lighting-control").rangeBindings.find((binding) => binding.baseKey === "feedbackBase")?.type,
+  "analog",
+  "Lighting Control feedback range must compile as analog contract feedback",
+);
 
 const validTypes = new Set(["digital", "analog", "serial"]),
   validDirections = new Set(["input", "output"]),

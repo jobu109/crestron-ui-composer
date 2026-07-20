@@ -209,12 +209,16 @@
           "function standardAttribute(type,direction,value){if(/^Visibility$/i.test(String(value||'').replace(/[^A-Za-z0-9_]/g,'_')))return 'Visibility';var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Name'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=String(value||'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,'');if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix+suffix}function contractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\\\.(\\\\d+)\\\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\\\[\\\\d+\\\\])\\\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;if(prefix&&structured.indexOf('.')>=0)structured=prefix+'.'+(structured.indexOf('[')>=0?structured.slice(structured.indexOf('.')+1):address.split('.').pop());var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
         )
         .replace(
+          "function appearance(root,p){",
+          "function multiContractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\.(\\d+)\\.(.+)$/,function(_,base,index,attribute){return base+'['+Math.max(0,Number(index))+'].'+attribute});if(/^\\d+$/.test(address))return address;var structured=address;if(prefix&&address.indexOf('.')>=0){var legacy=address.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*\\[\\d+\\]\\..+)$/);structured=prefix+'.'+(legacy?legacy[1]:address.slice(address.indexOf('.')+1))}var indexed=structured.match(/^(.*?\\[\\d+\\])\\.(.+)$/);if(indexed){var componentName=indexed[1].replace(/\\[\\d+\\]$/,'').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,''),attribute=type&&direction?standardAttribute(type,direction,indexed[2]):indexed[2].replace(/[^A-Za-z0-9_]/g,'_');return indexed[1]+'.'+componentName+'.'+attribute}var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
+        )
+        .replace(
           "function publishAddress(type,signal,value){",
-          "function publishAddress(type,signal,value){signal=contractAddress(signal,type,'output',item.contractPrefix);",
+          "function publishAddress(type,signal,value){signal=multiContractAddress(signal,type,'output',item.contractPrefix);",
         )
         .replace(
           "function subscribeAddress(type,signal,callback){",
-          "function subscribeAddress(type,signal,callback){signal=contractAddress(signal,type,'input',item.contractPrefix);",
+          "function subscribeAddress(type,signal,callback){signal=multiContractAddress(signal,type,'input',item.contractPrefix);",
         )
         .replace(
           "properties:item.properties||{},definitionData:def.data||{}",

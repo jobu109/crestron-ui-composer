@@ -54,40 +54,30 @@
   function contractAddress(value, type, direction, prefix) {
     const address = String(value || "").replace(
       /^(.*)\.(\d+)\.(.+)$/,
-      function (_, prefix, index, attribute) {
+      function (_, base, index, attribute) {
         var number = Number(index);
-        return (
-          prefix +
-          "[" +
-          Math.max(0, number) +
-          "]." +
-          attribute.replace(/\./g, "_")
-        );
+        return base + "[" + Math.max(0, number) + "]." + attribute;
       },
     );
-    const array = address.match(
-      /^([A-Za-z_][A-Za-z0-9_.]*\[\d+\])\.([A-Za-z0-9_.]+)$/,
-    );
-    let structured;
-    if (array) structured = `${array[1]}.${array[2].replace(/\./g, "_")}`;
-    const parts = address.split(".");
-    if (!structured)
-      structured = parts.length > 2
-        ? `${parts[0]}.${parts.slice(1).join("_")}`
-        : address;
-    const legacyCollection = structured.match(
-      /^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\[\d+\])\.([A-Za-z0-9_.]+)$/,
-    );
-    if (prefix && legacyCollection) {
-      structured = `${prefix}.${legacyCollection[1]}${legacyCollection[2]}.${legacyCollection[3]}`;
-      prefix = "";
+    if (/^\d+$/.test(address)) return address;
+    let structured = address;
+    if (prefix && address.includes(".")) {
+      const legacyCollection = address.match(
+        /^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*\[\d+\]\..+)$/,
+      );
+      structured = `${prefix}.${legacyCollection ? legacyCollection[1] : address.slice(address.indexOf(".") + 1)}`;
     }
-    if (prefix && structured.includes(".")) {
-      const rootEnd = structured.indexOf("."),
-        remainder = structured.includes("[")
-          ? structured.slice(rootEnd + 1)
-          : address.split(".").pop();
-      structured = `${prefix}.${remainder}`;
+    const indexed = structured.match(/^(.*?\[\d+\])\.(.+)$/);
+    if (indexed) {
+      const componentName = indexed[1]
+        .replace(/\[\d+\]$/, "")
+        .replace(/[^A-Za-z0-9_]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, ""),
+        attribute = type && direction
+          ? standardContractAttribute(type, direction, indexed[2])
+          : indexed[2].replace(/[^A-Za-z0-9_]/g, "_");
+      return `${indexed[1]}.${componentName}.${attribute}`;
     }
     const separator = structured.lastIndexOf(".");
     return separator < 0 || !type || !direction
@@ -424,6 +414,9 @@
     const typeFor = (key) =>
         /label|name/i.test(key)
           ? "serial"
+          : key === "feedbackBase" &&
+              definition.properties.some((property) => property.key === "setBase")
+            ? "analog"
           : /set|level|position|displaychoice/i.test(key)
             ? "analog"
             : "digital",
