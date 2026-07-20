@@ -71,6 +71,14 @@
         return url
           ? `background-image:url(&quot;${url}&quot;);background-size:cover;background-position:center;`
           : "";
+      },
+      graphicBackgroundStyle = (item) => {
+        const url = item.graphicAssetMode === "background" ? assetUrl(item.graphicAsset) : "";
+        return url ? `background-image:url(&quot;${url}&quot;);background-size:${item.graphicAssetFit || "contain"};background-position:${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%;background-repeat:no-repeat;` : "";
+      },
+      graphicOverlay = (item) => {
+        const url = item.graphicAssetMode === "overlay" ? assetUrl(item.graphicAsset) : "";
+        return url ? `<img alt="" style="position:absolute;z-index:50;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;max-width:none;object-fit:${item.graphicAssetFit || "contain"};opacity:${Math.max(0,Math.min(100,Number(item.graphicAssetOpacity ?? 100)))/100};pointer-events:none;transform:translate(-50%,-50%)" src="${url}">` : "";
       };
     const pages = project.pages
       .map((page) => {
@@ -78,7 +86,7 @@
           .filter((item) => item.pageId === page.id || item.master)
           .map((item) =>
             item.componentId
-              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div></div>`
+              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}</div>`
               : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`,
           )
           .join("\n");

@@ -1380,6 +1380,30 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       : "";
     el.style.backgroundSize = backgroundAsset ? "cover" : "";
     el.style.backgroundPosition = backgroundAsset ? "center" : "";
+    const graphicAsset = state.assets.find(
+        (asset) => asset.id === item.graphicAsset && asset.type.startsWith("image/"),
+      ),
+      graphicMode = item.graphicAssetMode || "none";
+    if (graphicAsset && graphicMode === "background") {
+      el.style.backgroundImage = `url("${graphicAsset.dataUrl}")`;
+      el.style.backgroundSize = item.graphicAssetFit || "contain";
+      el.style.backgroundPosition = `${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%`;
+      el.style.backgroundRepeat = "no-repeat";
+    }
+    if (graphicAsset && graphicMode === "overlay") {
+      const overlay = document.createElement("img");
+      overlay.className = "widget-asset-overlay";
+      overlay.src = graphicAsset.dataUrl;
+      Object.assign(overlay.style, {
+        left: `${Number(item.graphicAssetX ?? 50)}%`,
+        top: `${Number(item.graphicAssetY ?? 50)}%`,
+        width: `${Number(item.graphicAssetWidth ?? 35)}%`,
+        height: `${Number(item.graphicAssetHeight ?? 35)}%`,
+        opacity: String(Math.max(0, Math.min(100, Number(item.graphicAssetOpacity ?? 100))) / 100),
+        objectFit: item.graphicAssetFit || "contain",
+      });
+      el.appendChild(overlay);
+    }
     if (item.componentId)
       el.runtimeDispose = window.ComposerRuntime.mount(
         el.querySelector(".scoped-preview"),
@@ -1559,7 +1583,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return (
       state.pages.filter((page) => page.backgroundAsset === assetId).length +
       state.items.filter(
-        (item) => item.assetId === assetId || item.backgroundAsset === assetId,
+        (item) =>
+          item.assetId === assetId ||
+          item.backgroundAsset === assetId ||
+          item.graphicAsset === assetId,
       ).length
     );
   }
@@ -1685,6 +1712,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           });
           state.items.forEach((item) => {
             if (item.backgroundAsset === asset.id) delete item.backgroundAsset;
+            if (item.graphicAsset === asset.id) {
+              delete item.graphicAsset;
+              delete item.graphicAssetMode;
+            }
           });
           state.items = state.items.filter((item) => item.assetId !== asset.id);
           state.assets = state.assets.filter((entry) => entry.id !== asset.id);
@@ -2329,6 +2360,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         : "Create palette component";
       refreshTargets();
       renderProperties(item);
+      renderAssetInspector(item);
       renderBindings(item);
       renderInteractionEditor(item);
       renderResponsiveEditor(item);
@@ -2903,6 +2935,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       label.appendChild(input);
       host.appendChild(label);
     });
+  }
+  function renderAssetInspector(item) {
+    const select = $("prop-asset"), imageAssets = state.assets.filter((asset) => asset.type.startsWith("image/"));
+    select.innerHTML = '<option value="">None</option>';
+    imageAssets.forEach((asset) => {
+      const option = document.createElement("option");
+      option.value = asset.id;
+      option.textContent = asset.name;
+      select.appendChild(option);
+    });
+    select.value = item.graphicAsset || "";
+    $("prop-asset-mode").value = item.graphicAssetMode || "none";
+    $("prop-asset-fit").value = item.graphicAssetFit || "contain";
+    $("prop-asset-width").value = item.graphicAssetWidth ?? 35;
+    $("prop-asset-height").value = item.graphicAssetHeight ?? 35;
+    $("prop-asset-x").value = item.graphicAssetX ?? 50;
+    $("prop-asset-y").value = item.graphicAssetY ?? 50;
+    $("prop-asset-opacity").value = item.graphicAssetOpacity ?? 100;
+    const overlay = Boolean(item.graphicAsset) && (item.graphicAssetMode || "none") === "overlay";
+    ["prop-asset-width", "prop-asset-height", "prop-asset-opacity"].forEach(
+      (id) => ($(id).disabled = !overlay),
+    );
   }
   function findBindings(source) {
     const found = [],
@@ -4706,12 +4760,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       (template.items || []).forEach((item) => {
         checkAsset(item.assetId, `Page template “${template.name}”`);
         checkAsset(item.backgroundAsset, `Page template “${template.name}”`);
+        checkAsset(item.graphicAsset, `Page template “${template.name}”`);
       });
     });
     state.reusables.forEach((reusable) =>
       (reusable.items || []).forEach((item) => {
         checkAsset(item.assetId, `Reusable “${reusable.name}”`);
         checkAsset(item.backgroundAsset, `Reusable “${reusable.name}”`);
+        checkAsset(item.graphicAsset, `Reusable “${reusable.name}”`);
       }),
     );
 
@@ -4815,6 +4871,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       });
       checkAsset(item.assetId, `“${item.name}”`);
       checkAsset(item.backgroundAsset, `“${item.name}”`);
+      checkAsset(item.graphicAsset, `“${item.name}”`);
       if (!item.componentId) {
         if (!String(item.source || "").trim())
           add("error", `“${item.name}” has no custom HTML source.`);
@@ -5578,10 +5635,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     asset.size = replacement.size;
     asset.dataUrl = replacement.dataUrl;
     state.items
-      .filter((item) => item.assetId === asset.id)
+      .filter(
+        (item) =>
+          item.assetId === asset.id ||
+          item.backgroundAsset === asset.id ||
+          item.graphicAsset === asset.id,
+      )
       .forEach((item) => {
-        item.name = asset.name;
-        item.source = assetSource(asset);
+        if (item.assetId === asset.id) {
+          item.name = asset.name;
+          item.source = assetSource(asset);
+        }
+        renderItem(item);
       });
     event.target.value = "";
     renderPage();
@@ -5599,9 +5664,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         missing.add(page.backgroundAsset);
     });
     state.items.forEach((item) =>
-      [item.assetId, item.backgroundAsset].filter(Boolean).forEach((id) => {
+      [item.assetId, item.backgroundAsset, item.graphicAsset]
+        .filter(Boolean)
+        .forEach((id) => {
         if (!state.assets.some((asset) => asset.id === id)) missing.add(id);
-      }),
+        }),
     );
     alert(
       `Asset audit\n\n${state.assets.length} total asset(s)\n${unused.length} unused asset(s)\n${missing.size} missing reference(s)`,
@@ -5646,6 +5713,68 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
       }),
   );
+  function updateSelectedGraphic() {
+    const item = current();
+    if (!item) return;
+    item.graphicAsset = $("prop-asset").value;
+    item.graphicAssetMode = item.graphicAsset
+      ? $("prop-asset-mode").value
+      : "none";
+    item.graphicAssetFit = $("prop-asset-fit").value;
+    item.graphicAssetWidth = Math.max(
+      1,
+      Math.min(200, Number($("prop-asset-width").value) || 35),
+    );
+    item.graphicAssetHeight = Math.max(
+      1,
+      Math.min(200, Number($("prop-asset-height").value) || 35),
+    );
+    item.graphicAssetX = Math.max(
+      0,
+      Math.min(100, Number($("prop-asset-x").value) || 0),
+    );
+    item.graphicAssetY = Math.max(
+      0,
+      Math.min(100, Number($("prop-asset-y").value) || 0),
+    );
+    item.graphicAssetOpacity = Math.max(
+      0,
+      Math.min(100, Number($("prop-asset-opacity").value) || 0),
+    );
+    renderItem(item);
+    renderAssetInspector(item);
+    scheduleHistory();
+  }
+  $("prop-asset").onchange = () => {
+    if ($("prop-asset").value && $("prop-asset-mode").value === "none")
+      $("prop-asset-mode").value = "overlay";
+    updateSelectedGraphic();
+  };
+  [
+    "prop-asset-mode",
+    "prop-asset-fit",
+    "prop-asset-width",
+    "prop-asset-height",
+    "prop-asset-x",
+    "prop-asset-y",
+    "prop-asset-opacity",
+  ].forEach((id) => ($(id).oninput = updateSelectedGraphic));
+  $("prop-asset-clear").onclick = () => {
+    const item = current();
+    if (!item) return;
+    delete item.graphicAsset;
+    delete item.graphicAssetMode;
+    delete item.graphicAssetFit;
+    delete item.graphicAssetWidth;
+    delete item.graphicAssetHeight;
+    delete item.graphicAssetX;
+    delete item.graphicAssetY;
+    delete item.graphicAssetOpacity;
+    renderItem(item);
+    renderAssetInspector(item);
+    commitHistory();
+    setStatus(`Cleared the graphic from “${item.name}”`);
+  };
   $("prop-target").onchange = (e) => {
     if (current()) current().targetPage = e.target.value;
   };

@@ -752,6 +752,14 @@ h2 {
 .side-panel-section-body > .page-list,
 .side-panel-section-body > .layers-list,
 .side-panel-section-body > .history-list { min-height: 0; }
+.widget-asset-overlay {
+  position: absolute;
+  z-index: 50;
+  max-width: none;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+}
 .health-report {
   min-height: 320px;
   max-height: 60vh;
