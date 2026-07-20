@@ -4982,7 +4982,11 @@
         customComponents: state.customComponents,
       },
       html = window.ComposerExporter.exportProject(catalog);
-    if (!html.includes("cr-com-lib.js") || !html.includes("Widget Catalog"))
+    if (
+      !html.includes('<script src="cr-com-lib.js">') ||
+      !html.includes('id="self-test-page"') ||
+      !html.includes('data-instance="self-test-0"')
+    )
       throw new Error("The catalog export is missing its runtime or page markup.");
     if (!native) {
       alert("The HTML catalog passed. CH5 archive verification requires the Windows application.");
