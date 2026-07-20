@@ -56,6 +56,7 @@
   let panelZoom = 1;
   let lastRenderedPageId = "";
   let customEditingId = "";
+  let customBuilderSourceItemId = "";
   let sourceEditingComponent = false;
   let snapEnabled = true,
     snapSize = 10;
@@ -6240,16 +6241,30 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     refreshCustomSignalTester();
     validateCustomComponent();
   }
-  function openCustomBuilder(item, entry = null) {
+  function openCustomBuilder(item = null, entry = null) {
     customEditingId = entry?.id || "";
-    const definition = item.componentId
+    customBuilderSourceItemId = item?.id || "";
+    const definition = item?.componentId
         ? window.ComposerRuntime.get(item.componentId)
         : null,
       initialSource = entry?.html
         ? entry.html
         : definition
           ? `<style>${item.componentStyles || definition.styles || ""}</style>${item.componentTemplate || definition.template || ""}`
-          : item.source,
+          : item?.source || `<div class="custom-component">Custom component</div>
+<style>
+.custom-component {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 1px solid #04dcb9;
+  border-radius: 8px;
+  background: #253436;
+  color: #ffffff;
+  font: 18px "Segoe UI", sans-serif;
+}
+</style>`,
       source = splitCustomSource(initialSource),
       properties = entry?.properties || [],
       signals = entry?.signals || [];
@@ -6262,7 +6277,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     $("custom-component-export").hidden = !entry;
     $("custom-component-delete").hidden = !entry;
     $("custom-component-name").value =
-      entry?.name || item.name || "Custom component";
+      entry?.name || item?.name || "Custom component";
     $("custom-component-category").value = entry?.category || "Custom";
     $("custom-component-icon").value = entry?.icon || "🧩";
     $("custom-component-version").value = entry?.version || "1.0.0";
@@ -6288,6 +6303,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     );
     openCustomBuilder(item, entry || null);
   };
+  $("new-custom-component").onclick = () => openCustomBuilder();
   $("custom-property-add").onclick = () => addCustomPropertyRow();
   $("custom-signal-add").onclick = () => addCustomSignalRow();
   $("custom-preview-refresh").onclick = refreshCustomPreview;
@@ -6389,9 +6405,9 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     };
   });
   $("custom-component-save").onclick = () => {
-    const item = current(),
+    const item = state.items.find((candidate) => candidate.id === customBuilderSourceItemId) || null,
       name = $("custom-component-name").value.trim();
-    if (!item || !name) return;
+    if (!name) return;
     const validation = validateCustomComponent();
     if (validation.errors.length) {
       alert("Fix the custom component validation errors before saving.");
@@ -6416,7 +6432,10 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       author: $("custom-component-author").value.trim(),
       description: $("custom-component-description").value.trim(),
       html: composeCustomSource(),
-      defaultSize: entry.defaultSize || { width: item.w, height: item.h },
+      defaultSize: entry.defaultSize || {
+        width: item?.w || 240,
+        height: item?.h || 140,
+      },
       properties: collectCustomProperties(),
       signals: collectCustomSignals(),
     });
