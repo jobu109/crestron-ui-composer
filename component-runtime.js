@@ -54,30 +54,40 @@
   function contractAddress(value, type, direction, prefix) {
     const address = String(value || "").replace(
       /^(.*)\.(\d+)\.(.+)$/,
-      function (_, base, index, attribute) {
+      function (_, prefix, index, attribute) {
         var number = Number(index);
-        return base + "[" + Math.max(0, number) + "]." + attribute;
+        return (
+          prefix +
+          "[" +
+          Math.max(0, number) +
+          "]." +
+          attribute.replace(/\./g, "_")
+        );
       },
     );
-    if (/^\d+$/.test(address)) return address;
-    let structured = address;
-    if (prefix && address.includes(".")) {
-      const legacyCollection = address.match(
-        /^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*\[\d+\]\..+)$/,
-      );
-      structured = `${prefix}.${legacyCollection ? legacyCollection[1] : address.slice(address.indexOf(".") + 1)}`;
+    const array = address.match(
+      /^([A-Za-z_][A-Za-z0-9_.]*\[\d+\])\.([A-Za-z0-9_.]+)$/,
+    );
+    let structured;
+    if (array) structured = `${array[1]}.${array[2].replace(/\./g, "_")}`;
+    const parts = address.split(".");
+    if (!structured)
+      structured = parts.length > 2
+        ? `${parts[0]}.${parts.slice(1).join("_")}`
+        : address;
+    const legacyCollection = structured.match(
+      /^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\[\d+\])\.([A-Za-z0-9_.]+)$/,
+    );
+    if (prefix && legacyCollection) {
+      structured = `${prefix}.${legacyCollection[1]}${legacyCollection[2]}.${legacyCollection[3]}`;
+      prefix = "";
     }
-    const indexed = structured.match(/^(.*?\[\d+\])\.(.+)$/);
-    if (indexed) {
-      const componentName = indexed[1]
-        .replace(/\[\d+\]$/, "")
-        .replace(/[^A-Za-z0-9_]/g, "_")
-        .replace(/_+/g, "_")
-        .replace(/^_+|_+$/g, ""),
-        attribute = type && direction
-          ? standardContractAttribute(type, direction, indexed[2])
-          : indexed[2].replace(/[^A-Za-z0-9_]/g, "_");
-      return `${indexed[1]}.${componentName}.${attribute}`;
+    if (prefix && structured.includes(".")) {
+      const rootEnd = structured.indexOf("."),
+        remainder = structured.includes("[")
+          ? structured.slice(rootEnd + 1)
+          : address.split(".").pop();
+      structured = `${prefix}.${remainder}`;
     }
     const separator = structured.lastIndexOf(".");
     return separator < 0 || !type || !direction

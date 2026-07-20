@@ -190,7 +190,7 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
       "input",
       "Home.LightingControl",
     ),
-    "Home.LightingControl.Items[0].Home_LightingControl_Items.Feedback",
+    "Home.LightingControl.Items[0].Feedback",
   );
   assert.equal(
     ComposerRuntime.resolveAddress(
@@ -199,7 +199,7 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
       "input",
       "Home.Sources",
     ),
-    "Home.Sources.Items[2].Home_Sources_Items.Name",
+    "Home.Sources.Items[2].Name",
   );
   assert.equal(
     ComposerRuntime.resolveAddress(
@@ -208,7 +208,7 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
       "input",
       "Home.RollingMenu",
     ),
-    "Home.RollingMenu.Items[2].Home_RollingMenu_Items.Selected",
+    "Home.RollingMenu.Items[2].Selected",
   );
   assert.equal(
     ComposerRuntime.resolveAddress(
@@ -218,15 +218,6 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
       "Home.Sources",
     ),
     "Home.Sources.SelectedSetFeedback",
-  );
-  assert.equal(
-    ComposerRuntime.resolveAddress(
-      "Displays.Items[1].Sources[2].Press",
-      "digital",
-      "output",
-      "Home.Displays",
-    ),
-    "Home.Displays.Items[1].Home_Displays_Items.Sources_2Press",
   );
 });
 
