@@ -12,6 +12,20 @@ The published application is written to `dist\win-x64`. End users do not need Py
 
 The built-in component catalog is defined by `components.manifest.json`. Crestron output generation is isolated in `exporter.js`, allowing the panel runtime implementation to evolve independently from the desktop editor.
 
+Build a versioned MSI and portable ZIP with:
+
+```powershell
+.\build-installer.ps1 -Version 1.0.0
+```
+
+Verify major-upgrade behavior with an isolated test installation:
+
+```powershell
+.\test-installer-upgrade.ps1 -OldVersion 0.9.0 -NewVersion 1.0.0
+```
+
+The test uses a separate product identity and install folder. It confirms application files are replaced, user data is retained during upgrade and uninstall, and the test installation is removed afterward.
+
 Target touch-panel profiles are defined by `devices.manifest.json`. The initial hardware validation profile is the Crestron TSW-1070 at its native 1920 × 1200 resolution. Projects retain their selected panel profile when saved.
 
 Use **TSW-1070 Test** to replace the current design with a repeatable two-page hardware test. It assigns button press, feedback, and serial label joins 1–9 and includes local forward/back navigation that does not depend on SIMPL.
