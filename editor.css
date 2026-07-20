@@ -709,6 +709,49 @@ h2 {
   background: #0b1214;
   white-space: pre-wrap;
 }
+.side-panel-title {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #38524f;
+}
+.side-panel-section {
+  margin: 0 0 10px;
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 1px solid #38524f;
+}
+.side-panel-section > summary {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 8px 4px;
+  color: #fff;
+  background: #102022;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  cursor: pointer;
+  list-style: none;
+}
+.side-panel-section > summary::-webkit-details-marker { display: none; }
+.side-panel-section > summary::before {
+  display: inline-block;
+  width: 16px;
+  color: #64d8c4;
+  content: "▸";
+  transition: transform .15s ease;
+}
+.side-panel-section[open] > summary::before { transform: rotate(90deg); }
+.side-panel-section-body {
+  display: grid;
+  gap: 8px;
+  padding: 7px 3px 0;
+}
+.side-panel-section-body > .component-list,
+.side-panel-section-body > .asset-list,
+.side-panel-section-body > .design-list,
+.side-panel-section-body > .page-list,
+.side-panel-section-body > .layers-list,
+.side-panel-section-body > .history-list { min-height: 0; }
 .health-report {
   min-height: 320px;
   max-height: 60vh;

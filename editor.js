@@ -117,6 +117,95 @@
       addEventListener("pointerup", up);
     };
   }
+  function collapsiblePanelSection(title, nodes, key, open = true, anchor = nodes[0]) {
+    if (!anchor || !nodes.length) return null;
+    const details = document.createElement("details"),
+      summary = document.createElement("summary"),
+      body = document.createElement("div"),
+      saved = localStorage.getItem(`crestron-ui-composer-section-${key}`);
+    details.className = "side-panel-section";
+    details.open = saved === null ? open : saved === "open";
+    summary.textContent = title;
+    body.className = "side-panel-section-body";
+    anchor.parentNode.insertBefore(details, anchor);
+    details.append(summary, body);
+    nodes.forEach((node) => body.appendChild(node));
+    details.addEventListener("toggle", () =>
+      localStorage.setItem(
+        `crestron-ui-composer-section-${key}`,
+        details.open ? "open" : "closed",
+      ),
+    );
+    return details;
+  }
+  function initializeCollapsibleSidePanels() {
+    const sidebar = document.querySelector(".sidebar"),
+      headings = [...sidebar.querySelectorAll(":scope > h2")];
+    headings.forEach((heading, index) => {
+      const stop = headings[index + 1], nodes = [];
+      for (let node = heading.nextElementSibling; node && node !== stop; ) {
+        const next = node.nextElementSibling;
+        nodes.push(node);
+        node = next;
+      }
+      const title = heading.textContent.trim(), key = `library-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      if (nodes.length) collapsiblePanelSection(title, nodes, key, index < 2);
+      heading.remove();
+    });
+
+    const inspector = document.querySelector(".inspector"),
+      form = $("properties"),
+      firstSection = form.querySelector(":scope > section"),
+      basicNodes = [];
+    for (let node = form.firstElementChild; node && node !== firstSection; ) {
+      const next = node.nextElementSibling;
+      basicNodes.push(node);
+      node = next;
+    }
+    if (basicNodes.length) collapsiblePanelSection("Widget", basicNodes, "inspector-widget", true);
+    [...form.querySelectorAll(":scope > section")].forEach((section) => {
+      const heading = section.querySelector(":scope > h2"),
+        title = heading?.textContent.trim() || "Section",
+        children = [...section.children].filter((child) => child !== heading),
+        details = collapsiblePanelSection(
+          title,
+          children,
+          `inspector-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          title === "Component properties" || title === "Signal bindings",
+          section,
+        );
+      if (details) {
+        details.id = section.id;
+        details.classList.add(...[...section.classList].filter((name) => name !== "signal-section"));
+        details.hidden = section.hidden;
+      }
+      heading?.remove();
+      section.remove();
+    });
+    const navigation = $("prop-target")?.closest("label");
+    if (navigation) collapsiblePanelSection("Navigation", [navigation], "inspector-navigation", false);
+    const actionStart = $("edit-source"), actionNodes = [];
+    for (let node = actionStart; node; ) {
+      const next = node.nextElementSibling;
+      actionNodes.push(node);
+      node = next;
+    }
+    if (actionNodes.length) collapsiblePanelSection("Widget actions", actionNodes, "inspector-actions", false);
+
+    const pageHeading = [...inspector.querySelectorAll(":scope > h2")].find((heading) => heading.textContent.trim() === "Page");
+    if (pageHeading) {
+      const pageNodes = [];
+      for (let node = pageHeading.nextElementSibling; node; ) {
+        const next = node.nextElementSibling;
+        pageNodes.push(node);
+        node = next;
+      }
+      collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
+      pageHeading.remove();
+    }
+    const inspectorHeading = inspector.querySelector(":scope > h2");
+    if (inspectorHeading) inspectorHeading.classList.add("side-panel-title");
+  }
   function normalizeHexColor(value) {
     const text = String(value || "").trim();
     if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
@@ -7164,6 +7253,7 @@
     );
   };
   $("action-paste").disabled = true;
+  initializeCollapsibleSidePanels();
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
   $("zoom-out").onclick = () => setPanelZoom(panelZoom - 0.1);
