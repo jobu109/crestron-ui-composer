@@ -5,8 +5,12 @@ using System.IO;
 using System.IO.Compression;
 using System.Net.NetworkInformation;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace CrestronUiComposer;
 
@@ -14,6 +18,9 @@ public partial class MainWindow : Window
 {
     private const string AppHost = "composer.local";
     private readonly string? _initialProjectPath = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(path => File.Exists(path));
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     public MainWindow()
     {
@@ -71,11 +78,13 @@ public partial class MainWindow : Window
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        var requestId = "";
         try
         {
             using var message = JsonDocument.Parse(e.WebMessageAsJson);
             var root = message.RootElement;
             var id = root.GetProperty("id").GetString() ?? "";
+            requestId = id;
             var command = root.GetProperty("command").GetString() ?? "";
 
             switch (command)
@@ -147,7 +156,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Respond("", false, null, ex.Message);
+            Respond(requestId, false, null, ex.Message);
         }
     }
 
@@ -181,15 +190,7 @@ public partial class MainWindow : Window
                 var contractEditor = FindContractEditor();
                 if (contractEditor is null)
                     throw new FileNotFoundException("Crestron CH5 Contract Editor was not found. Install Contract Editor and try again.");
-                var start = new ProcessStartInfo(contractEditor)
-                {
-                    UseShellExecute = false,
-                    WorkingDirectory = Path.GetDirectoryName(contractEditor) ?? AppContext.BaseDirectory
-                };
-                start.ArgumentList.Add(dialog.FileName);
-                var process = Process.Start(start) ?? throw new InvalidOperationException("Crestron Contract Editor could not be started.");
-                if (process.WaitForExit(1500) && process.ExitCode != 0)
-                    throw new InvalidOperationException($"Crestron Contract Editor exited immediately with code {process.ExitCode}.");
+                OpenContractEditorProject(contractEditor, dialog.FileName);
             }
             catch (Exception ex)
             {
@@ -197,6 +198,38 @@ public partial class MainWindow : Window
             }
         }
         Respond(id, true, new { path = dialog.FileName, opened = openAfterSave }, null);
+    }
+
+    private static void OpenContractEditorProject(string contractEditor, string projectPath)
+    {
+        var editorProcess = Process.GetProcessesByName("CH5-Contract-Editor")
+            .FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero);
+        if (editorProcess is null)
+        {
+            var explorer = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
+            explorer.ArgumentList.Add(contractEditor);
+            Process.Start(explorer);
+            var deadline = DateTime.UtcNow.AddSeconds(12);
+            while (DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(250);
+                editorProcess = Process.GetProcessesByName("CH5-Contract-Editor")
+                    .FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero);
+                if (editorProcess is not null) break;
+            }
+        }
+        if (editorProcess is null || editorProcess.MainWindowHandle == IntPtr.Zero)
+            throw new InvalidOperationException("Crestron Contract Editor did not create a visible window.");
+
+        SetForegroundWindow(editorProcess.MainWindowHandle);
+        Thread.Sleep(350);
+        System.Windows.Clipboard.SetText(projectPath);
+        System.Windows.Forms.SendKeys.SendWait("^o");
+        Thread.Sleep(900);
+        System.Windows.Forms.SendKeys.SendWait("^a");
+        System.Windows.Forms.SendKeys.SendWait("^v");
+        Thread.Sleep(250);
+        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
     }
 
     private static string? FindContractEditor()
