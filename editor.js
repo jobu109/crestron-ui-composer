@@ -6384,6 +6384,24 @@
     await nativeRequest("installPrerequisite", "ch5cli");
   };
   $("system-open-settings").onclick = () => nativeRequest("openSettingsFolder");
+  const appMenus = [...document.querySelectorAll(".app-menu")];
+  appMenus.forEach((menu) => {
+    menu.querySelector("summary").addEventListener("click", () =>
+      appMenus.forEach((other) => {
+        if (other !== menu) other.open = false;
+      }),
+    );
+    menu.querySelector(".app-menu-popup").addEventListener("click", (event) => {
+      if (event.target.closest("button,.menu-file-button")) menu.open = false;
+    });
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest(".app-menu"))
+      appMenus.forEach((menu) => (menu.open = false));
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") appMenus.forEach((menu) => (menu.open = false));
+  });
   $("preview").onclick = () => {
     const w = open();
     w.document.write(exportHtml());

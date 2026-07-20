@@ -172,16 +172,57 @@
         Crestron UI Composer <small id="status">Ready</small>
         <small id="autosave-state" class="autosave-state">Saved</small>
       </div>
-      <label
+      <nav class="app-menu-bar" aria-label="Application menus">
+        <details class="app-menu">
+          <summary>File</summary>
+          <div class="app-menu-popup">
+            <button id="new-project">New project</button>
+            <label id="open-project-label" class="menu-file-button"
+              >Open project<input id="open-project" type="file" accept="application/json,.json,.cuiproj"
+            /></label>
+            <button id="save-project">Save project</button>
+            <span class="menu-separator"></span>
+            <button id="export">Export HTML</button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Edit</summary>
+          <div class="app-menu-popup">
+            <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo <kbd>Ctrl+Z</kbd></button>
+            <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo <kbd>Ctrl+Y</kbd></button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>View</summary>
+          <div class="app-menu-popup">
+            <button id="preview">Preview</button>
+            <button id="panel-compatibility">Panel fit</button>
+            <button id="signal-manager">Signals</button>
+            <button id="signal-simulator">Simulate</button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Project</summary>
+          <div class="app-menu-popup">
+            <button id="validate-project">Health check</button>
+            <button id="build-ch5">Build Project</button>
+          </div>
+        </details>
+        <details class="app-menu">
+          <summary>Deploy</summary>
+          <div class="app-menu-popup">
+            <button id="deploy-panel">Deploy to panels</button>
+            <button id="system-diagnostics">System diagnostics</button>
+          </div>
+        </details>
+      </nav>
+      <label class="target-selector"
         >Target panel
         <select id="target-device">
           <option value="tsw-1070">Crestron TSW-1070 — 1280 × 800 viewport (1920 × 1080 display)</option>
           <option value="custom">Custom resolution</option>
         </select></label
       >
-      <button id="new-project">New</button>
-      <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
-      <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo</button>
       <label title="Snap movement and resizing to a grid"
         ><input id="snap-grid" type="checkbox" checked /> Snap
         <input
@@ -194,22 +235,6 @@
         />
         px</label
       >
-      <button id="save-project">Save project</button>
-      <label id="open-project-label" class="button"
-        >Open project<input
-          id="open-project"
-          type="file"
-          accept="application/json,.json,.cuiproj"
-      /></label>
-      <button id="preview">Preview</button>
-      <button id="validate-project">Health check</button>
-      <button id="panel-compatibility">Panel fit</button>
-      <button id="signal-manager">Signals</button>
-      <button id="signal-simulator">Simulate</button>
-      <button id="export">Export HTML</button>
-      <button id="build-ch5">Build Project</button>
-      <button id="deploy-panel">Deploy</button>
-      <button id="system-diagnostics">System</button>
     </header>
     <main class="workspace">
       <aside class="sidebar">
