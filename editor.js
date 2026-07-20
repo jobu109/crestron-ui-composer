@@ -1400,7 +1400,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         width: `${Number(item.graphicAssetWidth ?? 35)}%`,
         height: `${Number(item.graphicAssetHeight ?? 35)}%`,
         opacity: String(Math.max(0, Math.min(100, Number(item.graphicAssetOpacity ?? 100))) / 100),
-        objectFit: item.graphicAssetFit || "contain",
+        objectFit: item.graphicAspectLocked
+          ? item.graphicAssetFit || "contain"
+          : "fill",
       });
       el.appendChild(overlay);
     }
@@ -2955,6 +2957,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("prop-asset-fit").value = item.graphicAssetFit || "contain";
     $("prop-asset-width").value = item.graphicAssetWidth ?? 35;
     $("prop-asset-height").value = item.graphicAssetHeight ?? 35;
+    $("prop-asset-aspect-lock").checked = !!item.graphicAspectLocked;
     $("prop-asset-x").value = item.graphicAssetX ?? 50;
     $("prop-asset-y").value = item.graphicAssetY ?? 50;
     $("prop-asset-opacity").value = item.graphicAssetOpacity ?? 100;
@@ -5734,6 +5737,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       1,
       Math.min(200, Number($("prop-asset-height").value) || 35),
     );
+    item.graphicAspectLocked = $("prop-asset-aspect-lock").checked;
     item.graphicAssetX = Math.max(
       0,
       Math.min(100, Number($("prop-asset-x").value) || 0),
@@ -5760,6 +5764,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     "prop-asset-fit",
     "prop-asset-width",
     "prop-asset-height",
+    "prop-asset-aspect-lock",
     "prop-asset-x",
     "prop-asset-y",
     "prop-asset-opacity",
@@ -5772,6 +5777,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     delete item.graphicAssetFit;
     delete item.graphicAssetWidth;
     delete item.graphicAssetHeight;
+    delete item.graphicAspectLocked;
     delete item.graphicAssetX;
     delete item.graphicAssetY;
     delete item.graphicAssetOpacity;
