@@ -6272,6 +6272,32 @@
       markProjectSaved();
     }
   };
+  $("save-project-package").onclick = async () => {
+    if (!native) {
+      alert("Portable project packages are available in the Windows application.");
+      return;
+    }
+    try {
+      const result = await nativeRequest("saveProjectPackage", JSON.stringify(project()));
+      markProjectSaved();
+      setStatus(`Saved portable package to ${result.path}`);
+    } catch (error) {
+      if (error.message !== "cancelled") setStatus(error.message);
+    }
+  };
+  $("open-project-package").onclick = async () => {
+    if (!native) {
+      alert("Portable project packages are available in the Windows application.");
+      return;
+    }
+    try {
+      const result = await nativeRequest("openProjectPackage");
+      await loadProjectText(result.contents, true, result.path);
+      setStatus(`Opened portable package ${result.path}`);
+    } catch (error) {
+      if (error.message !== "cancelled") setStatus(error.message);
+    }
+  };
   $("validate-project").onclick = () => runValidation(true);
   $("panel-compatibility").onclick = runPanelCompatibility;
   $("compatibility-preview").onclick = previewCompatibilityDevice;

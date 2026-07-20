@@ -98,6 +98,12 @@ public partial class MainWindow : Window
                 case "openProject":
                     OpenProject(id);
                     break;
+                case "saveProjectPackage":
+                    SaveProjectPackage(id, root.GetProperty("payload").GetString() ?? "");
+                    break;
+                case "openProjectPackage":
+                    OpenProjectPackage(id);
+                    break;
                 case "backupProject":
                     BackupProject(id, root.GetProperty("payload"));
                     break;
@@ -283,6 +289,113 @@ public partial class MainWindow : Window
         var dialog = new OpenFileDialog { Filter = "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json|All files (*.*)|*.*", Multiselect = false };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         Respond(id, true, new { path = dialog.FileName, contents = File.ReadAllText(dialog.FileName) }, null);
+    }
+
+    private void SaveProjectPackage(string id, string projectJson)
+    {
+        using var project = JsonDocument.Parse(projectJson);
+        var root = project.RootElement;
+        var requestedName = root.TryGetProperty("contract", out var contract) &&
+                            contract.TryGetProperty("name", out var contractName)
+            ? contractName.GetString() ?? "CrestronUiProject"
+            : "CrestronUiProject";
+        var packageName = SafeFileName(requestedName, "CrestronUiProject");
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save Portable Project Package",
+            Filter = "Crestron UI Portable Package (*.cuipkg)|*.cuipkg",
+            FileName = packageName + ".cuipkg",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+
+        using var file = new FileStream(dialog.FileName, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var archive = new ZipArchive(file, ZipArchiveMode.Create);
+        WriteArchiveText(archive, "project.cuiproj", projectJson);
+
+        var assetCount = 0;
+        if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var asset in assets.EnumerateArray())
+            {
+                var dataUrl = asset.TryGetProperty("dataUrl", out var data) ? data.GetString() ?? "" : "";
+                var comma = dataUrl.IndexOf(',');
+                if (comma < 0) continue;
+                var name = asset.TryGetProperty("name", out var assetName) ? assetName.GetString() ?? "asset" : "asset";
+                var idValue = asset.TryGetProperty("id", out var assetId) ? assetId.GetString() ?? $"asset-{assetCount + 1}" : $"asset-{assetCount + 1}";
+                var entryName = $"assets/{SafeFileName(idValue, $"asset-{assetCount + 1}")}-{SafeFileName(name, "asset")}";
+                var metadata = dataUrl[..comma];
+                var payload = dataUrl[(comma + 1)..];
+                byte[] bytes;
+                try
+                {
+                    bytes = metadata.Contains(";base64", StringComparison.OrdinalIgnoreCase)
+                        ? Convert.FromBase64String(payload)
+                        : System.Text.Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
+                }
+                catch { continue; }
+                var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                using var stream = entry.Open();
+                stream.Write(bytes);
+                assetCount++;
+            }
+        }
+
+        var componentCount = 0;
+        if (root.TryGetProperty("customComponents", out var components) && components.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var component in components.EnumerateArray())
+            {
+                var name = component.TryGetProperty("name", out var componentName) ? componentName.GetString() ?? $"component-{componentCount + 1}" : $"component-{componentCount + 1}";
+                WriteArchiveText(archive, $"components/{SafeFileName(name, $"component-{componentCount + 1}")}.json", component.GetRawText());
+                componentCount++;
+            }
+        }
+
+        var manifest = JsonSerializer.Serialize(new
+        {
+            format = "crestron-ui-composer-portable-project",
+            version = 1,
+            createdUtc = DateTime.UtcNow,
+            applicationVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown",
+            projectFile = "project.cuiproj",
+            assets = assetCount,
+            customComponents = componentCount
+        }, new JsonSerializerOptions { WriteIndented = true });
+        WriteArchiveText(archive, "package-manifest.json", manifest);
+        Respond(id, true, new { path = dialog.FileName, assets = assetCount, customComponents = componentCount }, null);
+    }
+
+    private void OpenProjectPackage(string id)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Open Portable Project Package",
+            Filter = "Crestron UI Portable Package (*.cuipkg)|*.cuipkg",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        using var archive = ZipFile.OpenRead(dialog.FileName);
+        var projectEntry = archive.GetEntry("project.cuiproj")
+            ?? throw new InvalidDataException("This package does not contain project.cuiproj.");
+        using var reader = new StreamReader(projectEntry.Open());
+        var contents = reader.ReadToEnd();
+        using var validation = JsonDocument.Parse(contents);
+        Respond(id, true, new { path = dialog.FileName, contents }, null);
+    }
+
+    private static void WriteArchiveText(ZipArchive archive, string path, string contents)
+    {
+        var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+        using var writer = new StreamWriter(entry.Open());
+        writer.Write(contents);
+    }
+
+    private static string SafeFileName(string value, string fallback)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var safe = new string(value.Where(ch => !invalid.Contains(ch) && !char.IsControl(ch)).ToArray()).Trim().Trim('.');
+        return string.IsNullOrWhiteSpace(safe) ? fallback : safe;
     }
 
     private void BackupProject(string id, JsonElement payload)
