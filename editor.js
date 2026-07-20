@@ -7088,6 +7088,14 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       if (error.message !== "cancelled") { setStatus("Multi-panel build failed"); alert(error.message); }
     }
   };
+  $("build-project-deploy").onclick = () => {
+    if (!native) {
+      alert("Panel deployment is available in the Windows application.");
+      return;
+    }
+    $("build-project-dialog").close();
+    $("deploy-panel").click();
+  };
   $("contract-export").onclick = () => saveContractEditorProject(false);
   $("contract-open").onclick = () => saveContractEditorProject(true);
   $("build-project-ch5").onclick = async () => {
