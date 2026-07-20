@@ -680,12 +680,19 @@ h2 {
   border-color: #744 !important;
 }
 dialog {
+  position: fixed;
   width: min(900px, 90vw);
   height: min(720px, 90vh);
   border: 1px solid #4b6565;
   border-radius: 8px;
   background: #172225;
   color: #fff;
+}
+
+.dialog-drag-handle {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
 }
 dialog form {
   height: 100%;
@@ -1360,9 +1367,11 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+  min-height: 84px;
   max-height: 150px;
   margin: 8px 0 14px;
   overflow: auto;
+  flex-shrink: 0;
 }
 .build-panel-option {
   display: flex;

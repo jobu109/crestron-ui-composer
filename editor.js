@@ -6563,6 +6563,38 @@
     close.textContent = "×";
     close.onclick = () => dialog.close();
     form.prepend(close);
+    if (dialog.id === "simulator-dialog") return;
+    const handle = form.querySelector("h2");
+    if (!handle) return;
+    handle.classList.add("dialog-drag-handle");
+    handle.title = "Drag to move";
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.target.closest("button,input,select,textarea,a")) return;
+      const rect = dialog.getBoundingClientRect(),
+        startX = event.clientX,
+        startY = event.clientY;
+      dialog.style.margin = "0";
+      dialog.style.right = "auto";
+      dialog.style.bottom = "auto";
+      dialog.style.left = `${rect.left}px`;
+      dialog.style.top = `${rect.top}px`;
+      handle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      function move(moveEvent) {
+        const width = dialog.offsetWidth,
+          height = dialog.offsetHeight,
+          left = Math.max(0, Math.min(window.innerWidth - Math.min(80, width), rect.left + moveEvent.clientX - startX)),
+          top = Math.max(0, Math.min(window.innerHeight - Math.min(48, height), rect.top + moveEvent.clientY - startY));
+        dialog.style.left = `${left}px`;
+        dialog.style.top = `${top}px`;
+      }
+      function up() {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+      }
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    });
   });
   document
     .querySelectorAll(".color-swatches [data-color]")
