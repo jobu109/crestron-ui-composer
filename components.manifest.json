@@ -16,6 +16,7 @@
     {"file":"mic.html","componentId":"microphone-control","runtime":"scoped","name":"Microphone Control","category":"Sliders & Levels","width":760,"height":420},
     {"file":"shades.html","componentId":"shade-control","runtime":"scoped","name":"Shade Control","category":"Sliders & Levels","width":760,"height":420},
     {"file":"volSlider.html","componentId":"volume-slider","runtime":"scoped","name":"Volume Slider","category":"Sliders & Levels","width":420,"height":130},
+    {"file":"rotaryKnob.html","componentId":"rotary-knob","runtime":"scoped","name":"Rotary Knob","category":"Sliders & Levels","width":220,"height":270},
     {"file":"textBlock.html","componentId":"text-block","runtime":"scoped","name":"Text Block","category":"Text","width":280,"height":90},
     {"file":"ScrollingHorizontalText.html","componentId":"horizontal-scrolling-text","runtime":"scoped","name":"Horizontal Scrolling Text","category":"Text","width":520,"height":90},
     {"file":"ScrollingVerticalText.html","componentId":"vertical-scrolling-text","runtime":"scoped","name":"Vertical Scrolling Text","category":"Text","width":260,"height":240},

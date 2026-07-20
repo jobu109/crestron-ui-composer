@@ -37,6 +37,7 @@
     <Content Include="..\more-button-components.js" Link="Web\more-button-components.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\card-flip.component.js" Link="Web\card-flip.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\volume-slider.component.js" Link="Web\volume-slider.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\rotary-knob.component.js" Link="Web\rotary-knob.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\text-block.component.js" Link="Web\text-block.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\lighting-control.component.js" Link="Web\lighting-control.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\microphone-control.component.js" Link="Web\microphone-control.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
