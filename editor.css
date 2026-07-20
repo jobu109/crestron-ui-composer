@@ -379,6 +379,28 @@ h2 {
   color: #fff;
   background: #101719;
 }
+.reusable-inheritance-status {
+  margin: 5px 0 10px;
+  padding: 7px 8px;
+  border: 1px solid #315b56;
+  border-radius: 5px;
+  color: #a9ded5;
+  background: #10211f;
+  font-size: 11px;
+}
+.reusable-property-override {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 1px !important;
+  color: #8fb8b1 !important;
+  font-size: 10px !important;
+}
+.reusable-property-override input {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+}
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

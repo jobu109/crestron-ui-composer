@@ -428,6 +428,7 @@
   }
   function commitHistory(persist = true) {
     if (restoringHistory) return;
+    synchronizeReusableMasters();
     const value = historyState();
     if (historyIndex >= 0 && history[historyIndex].state === value) return;
     const previous = historyIndex >= 0 ? history[historyIndex].state : "";
@@ -1355,7 +1356,7 @@
       name.textContent = item.name;
       const type = document.createElement("small");
       type.className = "layer-type";
-      type.textContent = `${item.master ? "GLOBAL · " : ""}${item.componentId || "Custom HTML"}`;
+      type.textContent = `${item.master ? "GLOBAL · " : ""}${item.reusableId ? (isReusableMaster(item) ? "SYMBOL MASTER · " : "SYMBOL INSTANCE · ") : ""}${item.componentId || "Custom HTML"}`;
       name.appendChild(type);
       z.className = "layer-z";
       z.textContent = item.z;
@@ -1600,9 +1601,81 @@
       delete copy.pageId;
       delete copy.reusableId;
       delete copy.linkedInstanceId;
+      delete copy.reusableOverrides;
       delete copy.master;
       return copy;
     });
+  }
+  function ensureReusableMasters() {
+    state.reusables.forEach((definition) => {
+      const instanceIds = state.items
+        .filter((item) => item.reusableId === definition.id && item.linkedInstanceId)
+        .map((item) => item.linkedInstanceId);
+      if (!instanceIds.includes(definition.masterInstanceId))
+        definition.masterInstanceId = instanceIds[0] || "";
+    });
+  }
+  function isReusableMaster(item) {
+    if (!item?.reusableId || !item.linkedInstanceId) return false;
+    const definition = state.reusables.find((entry) => entry.id === item.reusableId);
+    return !!definition && definition.masterInstanceId === item.linkedInstanceId;
+  }
+  function synchronizeReusableMasters(forceDefinitionId = "") {
+    ensureReusableMasters();
+    state.reusables.forEach((definition) => {
+      if (forceDefinitionId && definition.id !== forceDefinitionId) return;
+      const masterItems = state.items.filter(
+        (item) => item.reusableId === definition.id && item.linkedInstanceId === definition.masterInstanceId,
+      );
+      if (!masterItems.length) return;
+      const snapshot = reusableSnapshot(masterItems),
+        changed = forceDefinitionId === definition.id || JSON.stringify(snapshot) !== JSON.stringify(definition.items || []);
+      if (!changed) return;
+      definition.items = snapshot;
+      const instanceIds = [...new Set(state.items
+        .filter((item) => item.reusableId === definition.id && item.linkedInstanceId !== definition.masterInstanceId)
+        .map((item) => item.linkedInstanceId))];
+      instanceIds.forEach((instanceId) => {
+        const items = state.items.filter((item) => item.linkedInstanceId === instanceId),
+          left = Math.min(...items.map((item) => item.x)),
+          top = Math.min(...items.map((item) => item.y));
+        items.forEach((item) => {
+          const source = snapshot.find((entry) => entry.reusableKey === item.reusableKey);
+          if (!source) return;
+          const overrideKeys = [...new Set(item.reusableOverrides || [])],
+            overridden = Object.fromEntries(
+              overrideKeys
+                .filter((key) => Object.prototype.hasOwnProperty.call(item.properties || {}, key))
+                .map((key) => [key, structuredClone(item.properties[key])]),
+            ),
+            keep = {
+              id: item.id,
+              pageId: item.pageId,
+              groupId: item.groupId,
+              linkedInstanceId: item.linkedInstanceId,
+              reusableId: definition.id,
+              reusableKey: item.reusableKey,
+              reusableOverrides: overrideKeys,
+              x: left + source.x,
+              y: top + source.y,
+            };
+          Object.assign(item, structuredClone(source), keep);
+          item.properties = { ...(item.properties || {}), ...overridden };
+          renderItem(item);
+        });
+      });
+    });
+  }
+  function makeReusableMaster(item) {
+    if (!item?.reusableId || !item.linkedInstanceId) return;
+    const definition = state.reusables.find((entry) => entry.id === item.reusableId);
+    if (!definition) return;
+    definition.masterInstanceId = item.linkedInstanceId;
+    synchronizeReusableMasters(definition.id);
+    renderProperties(item);
+    renderLayers();
+    commitHistory();
+    setStatus(`“${definition.name}” master moved to this instance`);
   }
   function saveReusableSelection() {
     const items = selectedItems();
@@ -1615,12 +1688,13 @@
       items.length === 1 ? items[0].name : "Component group",
     );
     if (!name || !name.trim()) return;
-    const definition = {
+    const instanceId = uid("instance-"),
+      definition = {
         id: uid("reusable-"),
         name: name.trim(),
         items: reusableSnapshot(items),
-      },
-      instanceId = uid("instance-");
+        masterInstanceId: instanceId,
+      };
     state.reusables.push(definition);
     items.forEach((item, index) => {
       item.reusableId = definition.id;
@@ -1671,46 +1745,11 @@
       reference = selected[0];
     if (!reference?.reusableId || !reference.linkedInstanceId) return;
     const definition = state.reusables.find(
-        (entry) => entry.id === reference.reusableId,
-      ),
-      sourceItems = state.items.filter(
-        (item) => item.linkedInstanceId === reference.linkedInstanceId,
-      );
-    if (!definition || !sourceItems.length) return;
-    definition.items = reusableSnapshot(sourceItems);
-    const instances = new Map();
-    state.items
-      .filter(
-        (item) =>
-          item.reusableId === definition.id &&
-          item.linkedInstanceId !== reference.linkedInstanceId,
-      )
-      .forEach((item) => {
-        if (!instances.has(item.linkedInstanceId))
-          instances.set(item.linkedInstanceId, []);
-        instances.get(item.linkedInstanceId).push(item);
-      });
-    instances.forEach((items) => {
-      const left = Math.min(...items.map((item) => item.x)),
-        top = Math.min(...items.map((item) => item.y));
-      items.forEach((item) => {
-        const source = definition.items.find(
-          (entry) => entry.reusableKey === item.reusableKey,
-        );
-        if (!source) return;
-        const keep = {
-          id: item.id,
-          pageId: item.pageId,
-          groupId: item.groupId,
-          linkedInstanceId: item.linkedInstanceId,
-          reusableId: definition.id,
-          reusableKey: item.reusableKey,
-          x: left + source.x,
-          y: top + source.y,
-        };
-        Object.assign(item, structuredClone(source), keep);
-      });
-    });
+      (entry) => entry.id === reference.reusableId,
+    );
+    if (!definition) return;
+    definition.masterInstanceId = reference.linkedInstanceId;
+    synchronizeReusableMasters(definition.id);
     renderPage();
     commitHistory();
     setStatus(`Updated all linked “${definition.name}” instances`);
@@ -2587,6 +2626,45 @@
       );
     section.hidden = !properties.length;
     host.innerHTML = "";
+    const reusableDefinition = item.reusableId
+        ? state.reusables.find((entry) => entry.id === item.reusableId)
+        : null,
+      reusableMaster = isReusableMaster(item);
+    if (reusableDefinition) {
+      const status = document.createElement("div");
+      status.className = "reusable-inheritance-status";
+      status.textContent = reusableMaster
+        ? `Master of “${reusableDefinition.name}” — edits automatically update linked instances.`
+        : `Linked to “${reusableDefinition.name}” — enable Override on properties that should differ here.`;
+      host.appendChild(status);
+    }
+    function wireReusableOverride(label, controls, property) {
+      if (!reusableDefinition || reusableMaster) return;
+      const override = document.createElement("label"),
+        checkbox = document.createElement("input"),
+        keys = new Set(item.reusableOverrides || []);
+      override.className = "reusable-property-override";
+      checkbox.type = "checkbox";
+      checkbox.checked = keys.has(property.key);
+      controls.forEach((control) => (control.disabled = !checkbox.checked));
+      override.append(checkbox, document.createTextNode("Override for this instance"));
+      checkbox.onchange = () => {
+        if (checkbox.checked) keys.add(property.key);
+        else {
+          keys.delete(property.key);
+          const source = (reusableDefinition.items || []).find(
+            (entry) => entry.reusableKey === item.reusableKey,
+          );
+          if (source?.properties && Object.prototype.hasOwnProperty.call(source.properties, property.key))
+            item.properties[property.key] = structuredClone(source.properties[property.key]);
+        }
+        item.reusableOverrides = [...keys];
+        renderItem(item);
+        renderProperties(item);
+        scheduleHistory();
+      };
+      label.appendChild(override);
+    }
     properties.forEach((property) => {
       const label = document.createElement("label");
       label.textContent = property.name;
@@ -2619,6 +2697,7 @@
           };
           list.appendChild(input);
         }
+        wireReusableOverride(label, [...list.querySelectorAll("input")], property);
         label.appendChild(list);
         host.appendChild(label);
         return;
@@ -2652,6 +2731,7 @@
         if (property.affectsProperties) renderProperties(item);
         if (property.affectsBindings) renderBindings(item);
       };
+      wireReusableOverride(label, [input], property);
       label.appendChild(input);
       host.appendChild(label);
     });
@@ -5201,6 +5281,8 @@
       !selection.length || !selection[0]?.reusableId;
     $("context-detach-reusable").disabled =
       !selection.length || !selection[0]?.linkedInstanceId;
+    $("context-reusable-master").disabled =
+      !selection.length || !selection[0]?.linkedInstanceId || isReusableMaster(selection[0]);
     $("context-master").disabled = !selection.length;
     $("context-master").textContent =
       selection.length && selection.every((item) => item.master)
@@ -5268,6 +5350,10 @@
   };
   $("context-update-reusable").onclick = () => {
     updateReusableInstances();
+    hideContextMenu();
+  };
+  $("context-reusable-master").onclick = () => {
+    makeReusableMaster(current());
     hideContextMenu();
   };
   $("context-detach-reusable").onclick = () => {
