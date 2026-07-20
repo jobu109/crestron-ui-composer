@@ -140,6 +140,9 @@ run("exported action runtime is valid JavaScript", () => {
     styles: "",
     properties: [],
     signals: [],
+    data: {
+      html: '<button>Custom</button><script>window.customReady=true;</script>',
+    },
     mount() {},
   });
   vm.runInThisContext(read("exporter.js"), { filename: "exporter.js" });
@@ -154,7 +157,7 @@ run("exported action runtime is valid JavaScript", () => {
         actions: [{ event: "signal-change", triggerType: "analog", triggerSignal: "Room.Level", condition: "greater", compareValue: "100", type: "navigate", target: "home", delay: 0, timing: "parallel" }],
       }],
     }),
-    start = html.lastIndexOf("<script>") + 8,
+    start = html.indexOf("<script>", html.indexOf("<body")) + 8,
     end = html.lastIndexOf("</script>");
   assert.ok(html.includes("Room.Level"));
   assert.ok(
@@ -171,6 +174,11 @@ run("exported action runtime is valid JavaScript", () => {
   );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
+  assert.equal(
+    (html.match(/<\/script>/g) || []).length,
+    2,
+    "Embedded custom-component scripts must not close the exported runtime script",
+  );
   const resolverStart = html.indexOf("function standardAttribute"),
     resolverEnd = html.indexOf("function appearance", resolverStart),
     exportedResolver = new Function(
