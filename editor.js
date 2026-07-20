@@ -2839,7 +2839,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       definition =
         item.componentId && window.ComposerRuntime.get(item.componentId),
       properties = ((definition && definition.properties) || []).filter(
-        (property) => !property.signalSetting,
+        (property) => !property.signalSetting && property.key !== "bindingMode",
       );
     section.hidden = !properties.length;
     host.innerHTML = "";
@@ -4369,7 +4369,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       overall = (definition.properties || []).some(
         (p) => p.key === "bindingMode",
       )
-        ? (item.properties && item.properties.bindingMode) || "join"
+        ? (item.properties && item.properties.bindingMode) || "contract"
         : "";
     host.innerHTML = "";
     const reusableDefinition = item.reusableId
@@ -4413,22 +4413,73 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           renderBindings(item);
           scheduleHistory();
         };
-        if (checkbox.checked && (definition.properties || []).some((property) => property.key === "bindingMode")) {
-          const modeSelect = document.createElement("select");
-          modeSelect.innerHTML = '<option value="contract">Contract names</option><option value="join">Join numbers</option>';
-          modeSelect.value = overall || "contract";
-          modeSelect.onchange = () => {
-            item.properties.bindingMode = modeSelect.value;
-            Object.values(item.signalBindings || {}).forEach((binding) => (binding.mode = modeSelect.value));
-            renderItem(item);
-            renderBindings(item);
-            scheduleHistory();
-          };
-          panel.appendChild(modeSelect);
-        }
       } else panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
       host.appendChild(panel);
     }
+    if ((definition.properties || []).some((property) => property.key === "bindingMode")) {
+      const modeLabel = document.createElement("label"),
+        modeSelect = document.createElement("select");
+      modeLabel.className = "signal-binding-mode";
+      modeLabel.appendChild(document.createTextNode("Crestron binding mode"));
+      modeSelect.innerHTML =
+        '<option value="contract">Contract names</option><option value="join">Join numbers</option>';
+      modeSelect.value = overall || "contract";
+      modeSelect.disabled = inheritedBindings;
+      modeSelect.onchange = () => {
+        item.properties = item.properties || {};
+        item.properties.bindingMode = modeSelect.value;
+        Object.values(item.signalBindings || {}).forEach(
+          (binding) => (binding.mode = modeSelect.value),
+        );
+        renderItem(item);
+        renderBindings(item);
+        scheduleHistory();
+      };
+      modeLabel.appendChild(modeSelect);
+      host.appendChild(modeLabel);
+    }
+    (definition.properties || [])
+      .filter(
+        (property) =>
+          property.signalSetting &&
+          property.key !== "bindingMode" &&
+          property.key !== "visibilityEnabled",
+      )
+      .forEach((property) => {
+        const label = document.createElement("label"),
+          checkbox = document.createElement("input");
+        label.className = "signal-optional-toggle";
+        checkbox.type = "checkbox";
+        checkbox.checked = !!item.properties?.[property.key];
+        checkbox.disabled = inheritedBindings;
+        checkbox.onchange = () => {
+          item.properties = item.properties || {};
+          item.properties[property.key] = checkbox.checked;
+          if (checkbox.checked) {
+            (definition.signals || [])
+              .filter(
+                (signal) =>
+                  signal.optionalProperty === property.key &&
+                  !item.signalBindings?.[signal.key]?.value,
+              )
+              .forEach((signal) => {
+                item.signalBindings = item.signalBindings || {};
+                item.signalBindings[signal.key] = {
+                  mode: overall || "contract",
+                  value:
+                    (overall || "contract") === "contract"
+                      ? signal.defaultValue || signal.name
+                      : "",
+                };
+              });
+          }
+          renderBindings(item);
+          renderItem(item);
+          scheduleHistory();
+        };
+        label.append(checkbox, ` ${property.name}`);
+        host.appendChild(label);
+      });
     const visibilityEnabled = document.createElement("label"),
       visibilityCheckbox = document.createElement("input");
     visibilityEnabled.className = "signal-optional-toggle";
