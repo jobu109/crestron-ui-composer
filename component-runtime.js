@@ -370,6 +370,18 @@
     "shade-control": ".shade-card",
     "vertical-carousel": ".glass-slide",
   };
+  const optionalContent = {
+    "battery-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
+    "card-flip": { showLabel: ".text" },
+    "cell-bar-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
+    "display-control": { showLabel: ".dc-name" },
+    "display-flip": { showLabel: ".text" },
+    "lighting-control": { showLabel: ".name", showPercentage: ".level" },
+    "microphone-control": { showLabel: ".label", showPercentage: ".value", showToggle: ".toggle" },
+    "rotary-knob": { showLabel: ".rotary-name", showPercentage: ".rotary-value" },
+    "shade-control": { showLabel: ".name", showPercentage: ".position" },
+    "wifi-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
+  };
   function register(definition) {
     if (!definition || !definition.id)
       throw new Error("A component definition requires an id");
@@ -377,6 +389,15 @@
     definition.signals = definition.signals || [];
     definition.itemSelector =
       definition.itemSelector || repeatedItemSelectors[definition.id] || "";
+    Object.keys(optionalContent[definition.id] || {}).forEach((key) => {
+      if (!definition.properties.some((property) => property.key === key))
+        definition.properties.push({
+          key,
+          name: key === "showPercentage" ? "Show percentage / value" : key === "showToggle" ? "Show toggle" : "Show label",
+          type: "checkbox",
+          defaultValue: true,
+        });
+    });
     const namespace = definition.id
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -723,6 +744,14 @@
         navigate: options.navigate || function () {},
         options,
       });
+      const visibility = optionalContent[id], style = document.createElement("style");
+      if (visibility) {
+        style.textContent = Object.entries(visibility)
+          .filter(([key]) => options.properties?.[key] === false || options.properties?.[key] === 0 || options.properties?.[key] === "0" || String(options.properties?.[key]).toLowerCase() === "false")
+          .map(([, selector]) => `${selector}{display:none!important}`)
+          .join("");
+        if (style.textContent) root.appendChild(style);
+      }
     } catch (error) {
       console.error(`Component “${definition.name || definition.id}” failed to mount`, error);
       root.innerHTML = "";
