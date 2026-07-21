@@ -346,11 +346,23 @@
       css: '[data-component="vertical-carousel"] .glass-label{font-size:var(--text-size-px)}[data-component="vertical-carousel"] .carousel-controls button{font-size:var(--icon-size-px)}',
     },
   };
+  const repeatedItemSelectors = {
+    "card-flip": ".card-wrap",
+    "display-control": ".dc-card",
+    "horizontal-carousel": ".glass-slide",
+    "lighting-control": ".load",
+    "microphone-control": ".mic-card",
+    "rolling-menu": ".rm-item",
+    "shade-control": ".shade-card",
+    "vertical-carousel": ".glass-slide",
+  };
   function register(definition) {
     if (!definition || !definition.id)
       throw new Error("A component definition requires an id");
     definition.properties = definition.properties || [];
     definition.signals = definition.signals || [];
+    definition.itemSelector =
+      definition.itemSelector || repeatedItemSelectors[definition.id] || "";
     const namespace = definition.id
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

@@ -79,14 +79,48 @@
           : "";
       },
       graphicBackgroundStyle = (item) => {
-        const url = item.graphicAssetMode === "background" ? assetUrl(item.graphicAsset) : "";
+        const definition = item.componentId
+            ? global.ComposerRuntime.get(item.componentId)
+            : null,
+          repeats = item.graphicAssetPlacement === "items" && !!definition?.itemSelector,
+          url = item.graphicAssetMode === "background" && !repeats ? assetUrl(item.graphicAsset) : "";
         return url ? `background-image:url(&quot;${url}&quot;);background-size:${item.graphicAssetFit || "contain"};background-position:${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%;background-repeat:no-repeat;` : "";
       },
       graphicOverlay = (item, selected = false) => {
-        const url = item.graphicAssetMode === "overlay"
+        const definition = item.componentId
+            ? global.ComposerRuntime.get(item.componentId)
+            : null,
+          repeats = item.graphicAssetPlacement === "items" && !!definition?.itemSelector,
+          url = item.graphicAssetMode === "overlay" && !repeats
           ? assetUrl(selected ? item.selectedGraphicAsset : item.graphicAsset)
           : "";
         return url ? `<img class="widget-asset-overlay widget-asset-overlay-${selected ? "selected" : "normal"}" alt="" style="position:absolute;z-index:50;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;max-width:none;object-fit:${item.graphicAspectLocked ? item.graphicAssetFit || "contain" : "fill"};opacity:${Math.max(0,Math.min(100,Number(item.graphicAssetOpacity ?? 100)))/100};pointer-events:none;transform:translate(-50%,-50%)" src="${url}">` : "";
+      },
+      repeatedGraphicStyle = (item, instance) => {
+        const definition = item.componentId
+            ? global.ComposerRuntime.get(item.componentId)
+            : null,
+          selector = definition?.itemSelector;
+        if (item.graphicAssetPlacement !== "items" || !selector) return "";
+        const normal = assetUrl(item.graphicAsset),
+          selected = assetUrl(item.selectedGraphicAsset) || normal;
+        if (!normal && !selected) return "";
+        const scope = `.scoped-widget[data-instance=${JSON.stringify(instance)}] .scoped-preview `,
+          normalUrl = normal ? `url(${JSON.stringify(normal)})` : "none",
+          selectedUrl = selected ? `url(${JSON.stringify(selected)})` : normalUrl,
+          size = item.graphicAspectLocked
+            ? item.graphicAssetFit || "contain"
+            : "100% 100%",
+          common = `background-repeat:no-repeat;background-position:center;background-size:${size};`,
+          selectedSelectors = [".active", ".selected", ".flipped", '[aria-selected="true"]']
+            .map((state) => `${scope}${selector}${state}`)
+            .join(",");
+        const css = item.graphicAssetMode === "background"
+          ? `${scope}${selector}{background-image:${normalUrl}!important;${common}}${selectedSelectors}{background-image:${selectedUrl}!important}`
+          : item.graphicAssetMode === "overlay"
+            ? `${scope}${selector}{position:relative!important}${scope}${selector}::after{content:"";position:absolute;z-index:50;pointer-events:none;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;opacity:${Math.max(0, Math.min(100, Number(item.graphicAssetOpacity ?? 100))) / 100};transform:translate(-50%,-50%);background-image:${normalUrl};${common}}${selectedSelectors.split(",").map((entry) => `${entry}::after`).join(",")}{background-image:${selectedUrl}}`
+            : "";
+        return css ? `<style>${css.replace(/<\/style/gi, "<\\/style")}</style>` : "";
       },
       selectedGraphicStyle = (item) => {
         const url = assetUrl(item.selectedGraphicAsset);
@@ -96,11 +130,12 @@
       .map((page) => {
         const widgets = project.items
           .filter((item) => item.pageId === page.id || item.master)
-          .map((item) =>
-            item.componentId
-              ? `<div class="scoped-widget" data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}</div>`
-              : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`,
-          )
+          .map((item) => {
+            const instance = item.master ? `${item.id}--${page.id}` : item.id;
+            return item.componentId
+              ? `<div class="scoped-widget" data-instance="${instance}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}</div>`
+              : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`;
+          })
           .join("\n");
         return `<section class="page" id="${page.id}" style="background-color:${page.background};${pageBackgroundStyle(page)}">${widgets}</section>`;
       })

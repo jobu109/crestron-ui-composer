@@ -1387,7 +1387,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         (asset) =>
           asset.id === item.selectedGraphicAsset && asset.type.startsWith("image/"),
       ),
-      graphicMode = item.graphicAssetMode || "none";
+      graphicMode = item.graphicAssetMode || "none",
+      definition = item.componentId
+        ? window.ComposerRuntime.get(item.componentId)
+        : null,
+      repeatGraphic =
+        item.graphicAssetPlacement === "items" && !!definition?.itemSelector;
     el.dataset.graphicMode = graphicMode;
     el.dataset.assetSelected = "false";
     el.dataset.hasSelectedGraphic = selectedGraphicAsset ? "true" : "false";
@@ -1395,14 +1400,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       "--selected-graphic-url",
       selectedGraphicAsset ? `url("${selectedGraphicAsset.dataUrl}")` : "none",
     );
-    if (graphicAsset && graphicMode === "background") {
+    if (graphicAsset && graphicMode === "background" && !repeatGraphic) {
       el.style.backgroundImage = `url("${graphicAsset.dataUrl}")`;
       el.style.backgroundSize = item.graphicAssetFit || "contain";
       el.style.backgroundPosition = `${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%`;
       el.style.backgroundRepeat = "no-repeat";
     }
     function appendGraphicOverlay(asset, selected) {
-      if (!asset || graphicMode !== "overlay") return;
+      if (!asset || graphicMode !== "overlay" || repeatGraphic) return;
       const overlay = document.createElement("img");
       overlay.className = `widget-asset-overlay widget-asset-overlay-${selected ? "selected" : "normal"}`;
       overlay.src = asset.dataUrl;
@@ -1435,6 +1440,25 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
       );
     else el.querySelector("iframe").srcdoc = safeDoc(item.source, "");
+    if (repeatGraphic) {
+      const root = el.querySelector(".scoped-preview"),
+        style = document.createElement("style"),
+        selector = definition.itemSelector,
+        normalUrl = graphicAsset ? `url("${graphicAsset.dataUrl}")` : "none",
+        selectedUrl = selectedGraphicAsset
+          ? `url("${selectedGraphicAsset.dataUrl}")`
+          : normalUrl,
+        size = item.graphicAspectLocked
+          ? item.graphicAssetFit || "contain"
+          : "100% 100%",
+        common = `background-repeat:no-repeat;background-position:center;background-size:${size};`;
+      if (graphicMode === "background") {
+        style.textContent = `${selector}{background-image:${normalUrl}!important;${common}}${selector}.active,${selector}.selected,${selector}.flipped,${selector}[aria-selected="true"]{background-image:${selectedUrl}!important}`;
+      } else if (graphicMode === "overlay") {
+        style.textContent = `${selector}{position:relative!important}${selector}::after{content:"";position:absolute;z-index:50;pointer-events:none;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;opacity:${Math.max(0, Math.min(100, Number(item.graphicAssetOpacity ?? 100))) / 100};transform:translate(-50%,-50%);background-image:${normalUrl};${common}}${selector}.active::after,${selector}.selected::after,${selector}.flipped::after,${selector}[aria-selected="true"]::after{background-image:${selectedUrl}}`;
+      }
+      root.appendChild(style);
+    }
     wireItemInteraction(el, item);
   }
   function renderPage() {
@@ -2991,6 +3015,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     select.value = item.graphicAsset || "";
     selectedSelect.value = item.selectedGraphicAsset || "";
     $("prop-asset-mode").value = item.graphicAssetMode || "none";
+    const definition = item.componentId
+      ? window.ComposerRuntime.get(item.componentId)
+      : null;
+    $("prop-asset-placement").value = item.graphicAssetPlacement || "widget";
+    $("prop-asset-placement").disabled = !definition?.itemSelector;
     $("prop-asset-fit").value = item.graphicAssetFit || "contain";
     $("prop-asset-width").value = item.graphicAssetWidth ?? 35;
     $("prop-asset-height").value = item.graphicAssetHeight ?? 35;
@@ -5828,6 +5857,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     item.graphicAssetMode = item.graphicAsset || item.selectedGraphicAsset
       ? $("prop-asset-mode").value
       : "none";
+    item.graphicAssetPlacement = $("prop-asset-placement").value;
     item.graphicAssetFit = $("prop-asset-fit").value;
     item.graphicAssetWidth = Math.max(
       1,
@@ -5866,6 +5896,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   };
   [
     "prop-asset-mode",
+    "prop-asset-placement",
     "prop-asset-fit",
     "prop-asset-width",
     "prop-asset-height",
@@ -5880,6 +5911,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     delete item.graphicAsset;
     delete item.selectedGraphicAsset;
     delete item.graphicAssetMode;
+    delete item.graphicAssetPlacement;
     delete item.graphicAssetFit;
     delete item.graphicAssetWidth;
     delete item.graphicAssetHeight;
