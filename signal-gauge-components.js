@@ -140,12 +140,13 @@
       '[data-component="battery-gauge"] .battery-level{position:absolute;z-index:1;top:5px;bottom:5px;left:5px;width:0;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--signal-color) 68%,black),var(--signal-color),color-mix(in srgb,var(--signal-color) 72%,white));box-shadow:inset 0 1px rgba(255,255,255,.45),0 0 8px var(--signal-color);transition:width .2s,background .2s}' +
       '[data-component="battery-gauge"] .battery-bolt{position:absolute;z-index:2;top:50%;left:50%;display:none;width:24%;height:72%;background:linear-gradient(135deg,#fff 0 24%,#bdeaff 42%,var(--charging-color) 100%);clip-path:polygon(56% 0,14% 48%,43% 48%,27% 100%,86% 39%,57% 39%,76% 0);filter:drop-shadow(0 0 3px #fff) drop-shadow(0 0 8px var(--charging-color)) drop-shadow(0 0 16px var(--charging-color));transform:translate(-50%,-50%)}' +
       '[data-component="battery-gauge"] .battery-shell.charging{border-color:var(--charging-color);box-shadow:inset 0 0 14px color-mix(in srgb,var(--charging-color) 40%,transparent),0 0 10px var(--charging-color),0 0 24px color-mix(in srgb,var(--charging-color) 75%,transparent);animation:battery-charge-halo 1.35s ease-in-out infinite}' +
-      '[data-component="battery-gauge"] .battery-shell.low:not(.charging){border-color:var(--low-color);box-shadow:inset 0 0 12px color-mix(in srgb,var(--low-color) 38%,transparent),0 0 9px var(--low-color),0 0 20px color-mix(in srgb,var(--low-color) 72%,transparent)}' +
+      '[data-component="battery-gauge"] .battery-shell.low:not(.charging){border-color:var(--low-color);filter:brightness(1.15);box-shadow:inset 0 0 18px color-mix(in srgb,var(--low-color) 62%,transparent),0 0 13px var(--low-color),0 0 29px var(--low-color),0 0 45px color-mix(in srgb,var(--low-color) 68%,transparent)}' +
       '[data-component="battery-gauge"] .battery-shell.critical:not(.charging){animation:battery-critical-pulse .8s ease-in-out infinite}' +
+      '[data-component="battery-gauge"] .battery-shell.full:not(.charging){border-color:var(--high-color);filter:brightness(1.12);box-shadow:inset 0 0 15px color-mix(in srgb,var(--high-color) 52%,transparent),0 0 11px var(--high-color),0 0 25px color-mix(in srgb,var(--high-color) 82%,transparent)}' +
       '[data-component="battery-gauge"] .battery-shell.charging:after{background:var(--charging-color);box-shadow:0 0 12px var(--charging-color)}' +
       '[data-component="battery-gauge"] .battery-shell.charging .battery-level{background:linear-gradient(90deg,#075b91,var(--charging-color),#9cddff);box-shadow:inset 0 1px rgba(255,255,255,.58),0 0 13px var(--charging-color)}' +
       '[data-component="battery-gauge"] .battery-shell.charging .battery-bolt{display:block;animation:battery-bolt-pulse .85s ease-in-out infinite}' +
-      '@keyframes battery-charge-halo{0%,100%{filter:brightness(.92)}50%{filter:brightness(1.3)}}@keyframes battery-critical-pulse{0%,100%{filter:brightness(.82);box-shadow:inset 0 0 8px color-mix(in srgb,var(--low-color) 30%,transparent),0 0 6px var(--low-color),0 0 14px color-mix(in srgb,var(--low-color) 58%,transparent)}50%{filter:brightness(1.35);box-shadow:inset 0 0 16px color-mix(in srgb,var(--low-color) 58%,transparent),0 0 14px var(--low-color),0 0 34px var(--low-color)}}@keyframes battery-bolt-pulse{0%,100%{opacity:.48;transform:translate(-50%,-50%) scale(.88)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}}',
+      '@keyframes battery-charge-halo{0%,100%{filter:brightness(.92)}50%{filter:brightness(1.3)}}@keyframes battery-critical-pulse{0%,100%{filter:brightness(.9);box-shadow:inset 0 0 13px color-mix(in srgb,var(--low-color) 48%,transparent),0 0 9px var(--low-color),0 0 25px color-mix(in srgb,var(--low-color) 72%,transparent)}50%{filter:brightness(1.45);box-shadow:inset 0 0 22px color-mix(in srgb,var(--low-color) 72%,transparent),0 0 18px var(--low-color),0 0 42px var(--low-color),0 0 56px color-mix(in srgb,var(--low-color) 75%,transparent)}}@keyframes battery-bolt-pulse{0%,100%{opacity:.48;transform:translate(-50%,-50%) scale(.88)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}}',
     mount(root, context) {
       const properties = context.options.properties || {},
         panel = root.querySelector(".signal-gauge"),
@@ -182,6 +183,7 @@
         level.style.width = `max(0px, calc(${amount}% - ${amount / 10}px))`;
         shell.classList.toggle("low", amount < 20);
         shell.classList.toggle("critical", amount < 10);
+        shell.classList.toggle("full", amount >= 100);
         output.textContent = `${amount}%`;
       }
       context.signals.subscribe("feedback", update);
