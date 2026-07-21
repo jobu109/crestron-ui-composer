@@ -187,7 +187,7 @@
       ],
       css: '[data-component="wave-button"] .wave{color:var(--text-color);border-color:var(--border-color);box-shadow:inset 0 1px rgba(255,255,255,.42),0 0 10px var(--glow-color),0 6px 12px rgba(0,0,0,.22)}[data-component="wave-button"] .wave i{background:radial-gradient(circle,color-mix(in srgb,var(--wave-color) 40%,transparent),transparent 70%)}[data-component="wave-button"] .wave.active{border-color:var(--glow-color);box-shadow:0 0 18px var(--glow-color)}',
     },
-    "card-flip": {
+    "display-flip": {
       props: [
         "textColor|Text color|#ffffff",
         "frontColor|Front face color|#333333",
@@ -196,7 +196,16 @@
         "selectedColor|Selected screen color|#04aa8e",
         "glowColor|Glow color|#04aa8e",
       ],
-      css: '[data-component="card-flip"] .face{color:var(--text-color);box-shadow:0 8px 16px rgba(0,0,0,.3),0 0 18px color-mix(in srgb,var(--glow-color) 30%,transparent)}[data-component="card-flip"] .front{background:var(--front-color)}[data-component="card-flip"] .back{background:linear-gradient(145deg,var(--back-color),#424)}[data-component="card-flip"] .screen{background:var(--screen-color);box-shadow:0 0 10px var(--glow-color)}[data-component="card-flip"] .back .screen{background:var(--selected-color);box-shadow:0 0 30px var(--glow-color)}',
+      css: '[data-component="display-flip"] .face{color:var(--text-color);box-shadow:0 8px 16px rgba(0,0,0,.3),0 0 18px color-mix(in srgb,var(--glow-color) 30%,transparent)}[data-component="display-flip"] .front{background:var(--front-color)}[data-component="display-flip"] .back{background:linear-gradient(145deg,var(--back-color),#424)}[data-component="display-flip"] .screen{background:var(--screen-color);box-shadow:0 0 10px var(--glow-color)}[data-component="display-flip"] .back .screen{background:var(--selected-color);box-shadow:0 0 30px var(--glow-color)}',
+    },
+    "card-flip": {
+      props: [
+        "textColor|Text color|#ffffff",
+        "frontColor|Front face color|#333333",
+        "backColor|Back face color|#126c5d",
+        "glowColor|Glow color|#04aa8e",
+      ],
+      css: '[data-component="card-flip"] .face{color:var(--text-color);box-shadow:0 8px 16px rgba(0,0,0,.3),0 0 18px color-mix(in srgb,var(--glow-color) 30%,transparent)}[data-component="card-flip"] .front{background:var(--front-color)}[data-component="card-flip"] .back{background:linear-gradient(145deg,var(--back-color),#424)}',
     },
     "volume-slider": {
       props: [
@@ -305,9 +314,13 @@
       props: ["textSize|Text size|24", "iconSize|Wave size|100"],
       css: '[data-component="wave-button"] .wave span{font-size:var(--text-size-px)}[data-component="wave-button"] .wave i{width:var(--icon-size-px)}',
     },
-    "card-flip": {
+    "display-flip": {
       props: ["textSize|Label size|20", "iconSize|Screen size (%)|70"],
-      css: '[data-component="card-flip"] .face{font-size:var(--text-size-px)}[data-component="card-flip"] .screen{width:var(--icon-size-percent)}',
+      css: '[data-component="display-flip"] .face{font-size:var(--text-size-px)}[data-component="display-flip"] .screen{width:var(--icon-size-percent)}',
+    },
+    "card-flip": {
+      props: ["textSize|Label size|20"],
+      css: '[data-component="card-flip"] .face{font-size:var(--text-size-px)}',
     },
     "volume-slider": {
       props: ["textSize|Percentage size|28", "iconSize|Knob size|48"],
@@ -348,6 +361,7 @@
   };
   const repeatedItemSelectors = {
     "card-flip": ".card-wrap",
+    "display-flip": ".card-wrap",
     "display-control": ".dc-card",
     "horizontal-carousel": ".glass-slide",
     "lighting-control": ".load",
@@ -501,7 +515,8 @@
           });
       });
     const collectionLabels = {
-        "card-flip": ["localLabels", "Card", "Display"],
+        "card-flip": ["localLabels", "Card", "Card"],
+        "display-flip": ["localLabels", "Card", "Display"],
         "lighting-control": ["localLabels", "Load", "Light Load"],
         "microphone-control": ["localLabels", "Microphone", "Microphone"],
         "shade-control": ["localLabels", "Shade", "Window Shade"],
@@ -746,7 +761,7 @@
     const labels = String(value || "").split("|"),
       id = root.dataset.component;
     let groups = [];
-    if (id === "card-flip")
+    if (id === "card-flip" || id === "display-flip")
       groups = [...root.querySelectorAll(".card-wrap")].map((el) => [
         ...el.querySelectorAll(".text"),
       ]);

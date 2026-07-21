@@ -206,6 +206,7 @@
         if ((d.properties || []).some((p) => p.key === "localLabels")) {
           const config = {
               "card-flip": [".cards", ".card-wrap", ".text", true],
+              "display-flip": [".cards", ".card-wrap", ".text", true],
               "lighting-control": [".loads", ".load", ".name", false],
               "microphone-control": [".mic-list", ".mic-card", ".label", false],
               "shade-control": [".shade-list", ".shade-card", ".name", false],
