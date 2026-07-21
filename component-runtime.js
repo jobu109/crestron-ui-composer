@@ -744,11 +744,18 @@
         navigate: options.navigate || function () {},
         options,
       });
-      const visibility = optionalContent[id], style = document.createElement("style");
+      const visibility = optionalContent[id],
+        style = document.createElement("style"),
+        holder = root.closest(".widget,.scoped-widget"),
+        scope = holder?.dataset.id
+          ? `.widget[data-id="${holder.dataset.id}"] `
+          : holder?.dataset.instance
+            ? `.scoped-widget[data-instance="${holder.dataset.instance}"] `
+            : `[data-component="${id}"] `;
       if (visibility) {
         style.textContent = Object.entries(visibility)
           .filter(([key]) => options.properties?.[key] === false || options.properties?.[key] === 0 || options.properties?.[key] === "0" || String(options.properties?.[key]).toLowerCase() === "false")
-          .map(([, selector]) => `${selector}{display:none!important}`)
+          .map(([, selector]) => `${scope}${selector}{display:none!important}`)
           .join("");
         if (style.textContent) root.appendChild(style);
       }
