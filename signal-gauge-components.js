@@ -114,4 +114,80 @@
       '[data-component="cell-bar-gauge"] .cell-display{display:flex;align-items:flex-end;justify-content:center;width:88%;height:100%;gap:8%}[data-component="cell-bar-gauge"] .cell-display i{display:block;flex:1;border:1px solid color-mix(in srgb,currentColor 70%,white);border-radius:5px 5px 2px 2px;background:currentColor;box-shadow:inset 0 1px rgba(255,255,255,.34)}[data-component="cell-bar-gauge"] .cell-display i:nth-child(1){height:22%}[data-component="cell-bar-gauge"] .cell-display i:nth-child(2){height:40%}[data-component="cell-bar-gauge"] .cell-display i:nth-child(3){height:58%}[data-component="cell-bar-gauge"] .cell-display i:nth-child(4){height:76%}[data-component="cell-bar-gauge"] .cell-display i:nth-child(5){height:94%}',
     mount: mountGauge,
   });
+  runtime.register({
+    id: "battery-gauge",
+    name: "Battery Gauge",
+    category: "Status & Information",
+    defaultSize: { width: 250, height: 220 },
+    properties: [
+      ...commonProperties("Battery"),
+      { key: "chargingColor", name: "Charging color", type: "color", defaultValue: "#26a7ff" },
+    ],
+    signals: [
+      { key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "BatteryGauge.Feedback" },
+      { key: "charging", name: "Charging", type: "digital", direction: "input", defaultValue: "BatteryGauge.Charging" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "BatteryGauge.Name" },
+    ],
+    template:
+      '<div class="signal-gauge battery-panel"><div class="signal-label">Battery</div><div class="battery-display"><div class="battery-shell"><div class="battery-empty"></div><div class="battery-level"></div><div class="battery-bolt">ϟ</div></div></div><output class="signal-value">0%</output></div>',
+    styles:
+      '[data-component="battery-gauge"]{display:block;width:100%;height:100%;box-sizing:border-box;font-family:"Segoe UI",sans-serif}' +
+      commonStyles('[data-component="battery-gauge"]') +
+      '[data-component="battery-gauge"] .battery-display{display:grid;place-items:center;width:92%;height:100%;padding-right:8%;box-sizing:border-box}' +
+      '[data-component="battery-gauge"] .battery-shell{position:relative;width:100%;height:68%;min-height:58px;border:7px solid color-mix(in srgb,var(--inactive-color) 78%,white);border-radius:13px;background:#091011;box-shadow:inset 0 0 12px rgba(0,0,0,.9);box-sizing:border-box}' +
+      '[data-component="battery-gauge"] .battery-shell:after{content:"";position:absolute;top:25%;left:100%;width:9%;height:50%;border-radius:0 6px 6px 0;background:color-mix(in srgb,var(--inactive-color) 78%,white)}' +
+      '[data-component="battery-gauge"] .battery-empty{position:absolute;inset:5px;border-radius:5px;background:linear-gradient(135deg,color-mix(in srgb,var(--inactive-color) 72%,black),#111);box-shadow:inset 0 0 7px rgba(255,255,255,.1)}' +
+      '[data-component="battery-gauge"] .battery-level{position:absolute;z-index:1;top:5px;bottom:5px;left:5px;width:0;border-radius:5px;background:linear-gradient(90deg,color-mix(in srgb,var(--signal-color) 68%,black),var(--signal-color),color-mix(in srgb,var(--signal-color) 72%,white));box-shadow:inset 0 1px rgba(255,255,255,.45),0 0 8px var(--signal-color);transition:width .2s,background .2s}' +
+      '[data-component="battery-gauge"] .battery-bolt{position:absolute;z-index:2;inset:0;display:none;place-items:center;color:#e8f7ff;font:900 clamp(38px,8vmin,72px)/1 "Segoe UI Symbol","Segoe UI",sans-serif;text-shadow:0 0 4px #fff,0 0 10px var(--charging-color),0 0 22px var(--charging-color);transform:skew(-8deg)}' +
+      '[data-component="battery-gauge"] .battery-shell.charging{border-color:var(--charging-color);box-shadow:inset 0 0 14px color-mix(in srgb,var(--charging-color) 40%,transparent),0 0 10px var(--charging-color),0 0 24px color-mix(in srgb,var(--charging-color) 75%,transparent);animation:battery-charge-halo 1.35s ease-in-out infinite}' +
+      '[data-component="battery-gauge"] .battery-shell.charging:after{background:var(--charging-color);box-shadow:0 0 12px var(--charging-color)}' +
+      '[data-component="battery-gauge"] .battery-shell.charging .battery-level{background:linear-gradient(90deg,#075b91,var(--charging-color),#9cddff);box-shadow:inset 0 1px rgba(255,255,255,.58),0 0 13px var(--charging-color)}' +
+      '[data-component="battery-gauge"] .battery-shell.charging .battery-bolt{display:grid;animation:battery-bolt-pulse .85s ease-in-out infinite}' +
+      '@keyframes battery-charge-halo{0%,100%{filter:brightness(.92)}50%{filter:brightness(1.3)}}@keyframes battery-bolt-pulse{0%,100%{opacity:.45;transform:skew(-8deg) scale(.88)}50%{opacity:1;transform:skew(-8deg) scale(1.08)}}',
+    mount(root, context) {
+      const properties = context.options.properties || {},
+        panel = root.querySelector(".signal-gauge"),
+        shell = root.querySelector(".battery-shell"),
+        level = root.querySelector(".battery-level"),
+        label = root.querySelector(".signal-label"),
+        output = root.querySelector(".signal-value"),
+        fallbackName = String(properties.localName || "Battery");
+      panel.classList.toggle("panel-off", properties.showPanel !== "yes");
+      label.textContent = fallbackName;
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+      function percent(value) {
+        const number = Number(value) || 0;
+        return clamp(Math.round(number > 100 ? (number / 65535) * 100 : number), 0, 100);
+      }
+      function parse(color) {
+        const value = String(color || "#000000").replace("#", "");
+        return [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16) || 0);
+      }
+      function mix(first, second, ratio) {
+        const a = parse(first), b = parse(second), amount = clamp(ratio, 0, 1);
+        return `rgb(${a.map((channel, index) => Math.round(channel + (b[index] - channel) * amount)).join(",")})`;
+      }
+      function color(amount) {
+        if (amount <= 65)
+          return mix(properties.lowColor || "#04dcb9", properties.middleColor || "#ffdb3b", amount / 65);
+        return mix(properties.middleColor || "#ffdb3b", properties.highColor || "#f44336", (amount - 65) / 35);
+      }
+      function update(value) {
+        const amount = percent(value);
+        root.style.setProperty("--signal-color", color(amount));
+        level.style.width = `max(0px, calc(${amount}% - ${amount / 10}px))`;
+        output.textContent = `${amount}%`;
+      }
+      context.signals.subscribe("feedback", update);
+      context.signals.subscribe("charging", (value) =>
+        shell.classList.toggle("charging", value === true || value === 1 || value === "1"),
+      );
+      context.signals.subscribe("name", (value) => {
+        label.textContent = String(value == null || value === "" ? fallbackName : value);
+      });
+      update(clamp(Number(properties.defaultPercent) || 0, 0, 100));
+    },
+  });
 })(window.ComposerRuntime);
