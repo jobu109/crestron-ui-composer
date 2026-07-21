@@ -1338,6 +1338,7 @@ textarea {
   background: #142124;
 }
 .design-name {
+  color: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1392,7 +1393,9 @@ textarea {
   border: 1px solid #3b5553;
   border-radius: 4px;
   background: #142124;
+  color: #fff;
 }
+#theme-list { color: #fff; }
 .theme-grid .theme-wide {
   grid-column: 1 / -1;
 }
