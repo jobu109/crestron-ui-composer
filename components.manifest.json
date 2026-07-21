@@ -5,7 +5,7 @@
     {"file":"blankButton.html","componentId":"blank-button","runtime":"scoped","name":"Blank Button","category":"Buttons","width":120,"height":120},
     {"file":"ButtonStandard.html","componentId":"standard-button","runtime":"scoped","name":"Standard Button","category":"Buttons","width":220,"height":100},
     {"file":"buttonCardFlip.html","componentId":"display-flip","runtime":"scoped","name":"Display Flip","category":"Buttons","width":620,"height":360},
-    {"file":"buttonCardFlip.html","componentId":"card-flip","runtime":"scoped","name":"Card Flip","category":"Buttons","width":620,"height":360},
+    {"file":"buttonGenericCardFlip.html","componentId":"card-flip","runtime":"scoped","name":"Card Flip","category":"Buttons","width":620,"height":360},
     {"file":"buttonMute.html","componentId":"mute-button","runtime":"scoped","name":"Mute Button","category":"Buttons","width":220,"height":100},
     {"file":"buttonPower.html","componentId":"power-button","runtime":"scoped","name":"Power Button","category":"Buttons","width":120,"height":120},
     {"file":"buttonStandardWave.html","componentId":"wave-button","runtime":"scoped","name":"Wave Button","category":"Buttons","width":220,"height":100},
