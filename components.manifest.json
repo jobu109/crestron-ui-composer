@@ -10,6 +10,7 @@
     {"file":"buttonMute.html","componentId":"mute-button","runtime":"scoped","name":"Mute Button","category":"Buttons","width":220,"height":100},
     {"file":"buttonPower.html","componentId":"power-button","runtime":"scoped","name":"Power Button","category":"Buttons","width":120,"height":120},
     {"file":"powerRocker.html","componentId":"power-rocker","runtime":"scoped","name":"Power Rocker","category":"Buttons","width":220,"height":260},
+    {"file":"illuminatedPowerButton.html","componentId":"illuminated-power-button","runtime":"scoped","name":"Illuminated Power Button","category":"Buttons","width":210,"height":230},
     {"file":"buttonStandardWave.html","componentId":"wave-button","runtime":"scoped","name":"Wave Button","category":"Buttons","width":220,"height":100},
     {"file":"buttonToggle.html","componentId":"rolling-toggle","runtime":"scoped","name":"Rolling Toggle","category":"Buttons","width":220,"height":100},
     {"file":"holeToggle.html","componentId":"hole-toggle","runtime":"scoped","name":"Hole Toggle","category":"Buttons","width":220,"height":100},
