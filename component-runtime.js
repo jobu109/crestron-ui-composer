@@ -641,7 +641,6 @@
         ]),
       );
     root.dataset.component = id;
-    if (options.scopeStyles) root.dataset.composerComponentScope = "true";
     Object.entries(options.properties || {}).forEach(([key, value]) => {
       const name = "--" + key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
       root.style.setProperty(name, String(value));
@@ -650,13 +649,9 @@
         root.style.setProperty(name + "-percent", value + "%");
       }
     });
-    const componentStyles = options.stylesOverride || definition.styles,
-      mountedStyles = options.scopeStyles
-        ? `@scope ([data-composer-component-scope]) {${componentStyles}}`
-        : componentStyles;
     root.innerHTML =
       "<style>" +
-      mountedStyles +
+      (options.stylesOverride || definition.styles) +
       "</style>" +
       (options.templateOverride || definition.template);
     const cleanups = [],

@@ -1434,7 +1434,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           properties: item.properties || {},
           templateOverride: item.componentTemplate || "",
           stylesOverride: item.componentStyles || "",
-          scopeStyles: true,
           contractPrefix: contractWidgetPrefix(item),
           targetPage: item.targetPage,
           navigate: () => {},
