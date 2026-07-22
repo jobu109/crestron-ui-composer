@@ -38,7 +38,7 @@
       let running = p.defaultRunning === true || String(p.defaultRunning).toLowerCase() === "true", targetRunning = running, frame = 0, pressedKey = "";
       system.textContent = p.systemText || "SYSTEM"; startLabel.textContent = p.startText || "START"; stopLabel.textContent = p.stopText || "STOP";
       face.style.overflow = "hidden";
-      vortex.style.cssText = "position:absolute;z-index:0;inset:0;border-radius:50%;overflow:hidden;opacity:0;background:radial-gradient(circle at 42% 36%,#dce3e7 0%,#8b969c 48%,#505a60 100%);box-shadow:inset 0 0 22px rgba(15,20,23,.72);transform:rotate(0deg);transform-origin:center;will-change:transform,opacity";
+      vortex.style.cssText = "position:absolute;z-index:0;inset:0;border-radius:50%;overflow:hidden;opacity:0;background:transparent;transform:rotate(0deg);transform-origin:center;will-change:transform,opacity";
       panels.forEach((panel,index)=>{panel.style.cssText="position:absolute;inset:-1%;width:102%;height:102%;clip-path:polygon(50% 50%,101% 19%,101% 81%);background:linear-gradient("+(index%2?"145deg":"35deg")+",#667178 0%,#c4cdd2 28%,#7d898f 53%,#eef2f4 76%,#727e84 100%);transform-origin:50% 50%;will-change:transform";});
       [pill,system,startLabel,stopLabel].forEach(element=>{element.style.position="relative";element.style.zIndex="1";});
       const off = p.offColor || "#dc2626", offGlow = p.offGlowColor || "#fca5a5", on = p.onColor || "#22c55e", onGlow = p.onGlowColor || "#86efac", intensity = Math.max(0, Math.min(1, Number(p.swirlIntensity || 72) / 100)), vortexIntensity = Math.max(0, Math.min(1, Number(p.vortexIntensity || 78) / 100));
