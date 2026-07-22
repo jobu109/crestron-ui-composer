@@ -214,11 +214,14 @@
       );
       if (pageBody) {
         const divider = document.createElement("div"),
-          heading = document.createElement("h3");
+          heading = document.createElement("h3"),
+          settings = document.createElement("div");
         divider.className = "page-settings-divider";
         heading.className = "page-settings-title";
         heading.textContent = "Page settings";
-        pageBody.append(divider, heading, ...pageNodes);
+        settings.className = "page-sidebar-settings";
+        settings.append(...pageNodes);
+        pageBody.append(divider, heading, settings);
       } else {
         collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
       }

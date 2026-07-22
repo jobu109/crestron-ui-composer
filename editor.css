@@ -365,13 +365,15 @@ h2 {
 .widget.selected .handle {
   display: block;
 }
-.inspector label {
+.inspector label,
+.page-sidebar-settings label {
   display: block;
   color: #a9bbbb;
   font-size: 12px;
   margin: 9px 0;
 }
-.inspector input {
+.inspector input,
+.page-sidebar-settings input {
   display: block;
   width: 100%;
   margin-top: 3px;
@@ -760,6 +762,30 @@ h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .5px;
+}
+.page-sidebar-settings {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.page-sidebar-settings select {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  padding: 7px;
+  border: 1px solid #415557;
+  border-radius: 4px;
+  color: #fff;
+  background: #101719;
+}
+.page-sidebar-settings button {
+  width: 100%;
+  padding: 8px;
+  margin-top: 8px;
+  border: 1px solid #46605f;
+  border-radius: 5px;
+  color: #fff;
+  background: #253436;
 }
 .sidebar .side-panel-section-body > button,
 .sidebar .side-panel-section-body > .button,
