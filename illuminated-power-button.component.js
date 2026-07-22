@@ -44,7 +44,12 @@
       text.textContent = fallback;
       name.textContent = fallback;
       name.hidden = !(p.showName === true || String(p.showName).toLowerCase() === "true");
-      function display(value) { const on = active(value); button.classList.toggle("on", on); button.setAttribute("aria-pressed", on ? "true" : "false"); }
+      function display(value) {
+        const on = active(value), color = on ? "var(--on-color)" : "var(--off-color)";
+        button.classList.toggle("on", on);
+        button.setAttribute("aria-pressed", on ? "true" : "false");
+        face.style.boxShadow = "0 0 calc(var(--glow-strength-px) * .55) " + color + ", 0 0 var(--glow-strength-px) " + color + ", inset 0 7px 11px rgba(255,255,255,.1), inset 0 -10px 16px rgba(0,0,0,.65)";
+      }
       function down(event) { button.classList.add("pressed"); context.signals.publish("press", true); event.preventDefault(); }
       function up() { button.classList.remove("pressed"); context.signals.publish("press", false); }
       button.addEventListener("pointerdown", down); button.addEventListener("pointerup", up); button.addEventListener("pointerleave", up); button.addEventListener("pointercancel", up);
