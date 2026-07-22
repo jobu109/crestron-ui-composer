@@ -192,7 +192,7 @@ run("exported action runtime is valid JavaScript", () => {
   );
   assert.equal(
     (html.match(/<\/script>/g) || []).length,
-    4,
+    3,
     "Embedded custom-component scripts must not close the exported runtime script",
   );
   const resolverStart = html.indexOf("function standardAttribute"),

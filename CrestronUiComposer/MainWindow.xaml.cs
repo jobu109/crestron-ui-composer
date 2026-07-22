@@ -698,7 +698,6 @@ public partial class MainWindow : Window
         if (cli is null) throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before building a panel package.");
         var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
         if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
-        EnsureWebXPanelRuntime();
 
         var workRoot = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", Guid.NewGuid().ToString("N"));
         var source = Path.Combine(workRoot, "project");
@@ -710,7 +709,6 @@ public partial class MainWindow : Window
             File.WriteAllText(Path.Combine(source, "index.html"), html);
             File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
-            CopyWebXPanelRuntime(source);
             var runtimeLicense = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
 
@@ -754,7 +752,6 @@ public partial class MainWindow : Window
         if (cli is null) throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before building panel packages.");
         var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
         if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
-        EnsureWebXPanelRuntime();
 
         var paths = new List<string>();
         foreach (var package in packages)
@@ -783,7 +780,6 @@ public partial class MainWindow : Window
             File.WriteAllText(Path.Combine(source, "index.html"), html);
             File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
-            CopyWebXPanelRuntime(source);
             var runtimeLicense = Path.Combine(Path.GetDirectoryName(runtime)!, "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
             var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\"";
@@ -810,7 +806,6 @@ public partial class MainWindow : Window
         var cli = FindCh5Cli() ?? throw new FileNotFoundException("Crestron's ch5-cli was not found. Install the Crestron CLI from System Diagnostics and run the self-test again.");
         var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
         if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
-        EnsureWebXPanelRuntime();
         var html = payload.GetProperty("html").GetString() ?? "";
         if (string.IsNullOrWhiteSpace(html)) throw new InvalidDataException("The widget catalog export was empty.");
         var deviceJson = payload.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
@@ -829,24 +824,6 @@ public partial class MainWindow : Window
         {
             try { Directory.Delete(folder, true); } catch { }
         }
-    }
-
-    private static void EnsureWebXPanelRuntime()
-    {
-        var packaging = Path.Combine(AppContext.BaseDirectory, "Packaging");
-        var runtime = Path.Combine(packaging, "ch5-webxpanel.js");
-        var worker = Path.Combine(packaging, "d4412f0cafef4f213591.worker.js");
-        if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged Crestron Web XPanel runtime is missing.", runtime);
-        if (!File.Exists(worker)) throw new FileNotFoundException("The packaged Crestron Web XPanel worker is missing.", worker);
-    }
-
-    private static void CopyWebXPanelRuntime(string source)
-    {
-        var packaging = Path.Combine(AppContext.BaseDirectory, "Packaging");
-        File.Copy(Path.Combine(packaging, "ch5-webxpanel.js"), Path.Combine(source, "ch5-webxpanel.js"), true);
-        File.Copy(Path.Combine(packaging, "d4412f0cafef4f213591.worker.js"), Path.Combine(source, "d4412f0cafef4f213591.worker.js"), true);
-        var license = Path.Combine(packaging, "ch5-webxpanel.LICENSE.txt");
-        if (File.Exists(license)) File.Copy(license, Path.Combine(source, "ch5-webxpanel.LICENSE.txt"), true);
     }
 
     private static string? FindCh5Cli()
@@ -1115,8 +1092,6 @@ exit $deploymentExitCode
         using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing index.html.");
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("cr-com-lib.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing CrComLib.");
-        if (!payload.Entries.Any(entry => entry.FullName.EndsWith("ch5-webxpanel.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing the Web XPanel runtime.");
-        if (!payload.Entries.Any(entry => entry.FullName.EndsWith("d4412f0cafef4f213591.worker.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing the Web XPanel worker.");
     }
 
     private static string? ReadCh5TargetDeviceId(string path)
