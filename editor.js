@@ -4121,7 +4121,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           name: state.contract.name,
         });
         $("contract-status").textContent = openAfterSave
-          ? `Saved and opened ${saved.path}`
+          ? `Saved ${saved.path}. Contract Editor is open; choose Open Project and select the highlighted file (its path is also copied).`
           : `Exported ${saved.path}`;
       } else if (!openAfterSave)
         download(

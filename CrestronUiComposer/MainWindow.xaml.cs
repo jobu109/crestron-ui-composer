@@ -302,14 +302,15 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Crestron Contract Editor did not create a visible window.");
 
         SetForegroundWindow(editorProcess.MainWindowHandle);
-        Thread.Sleep(750);
+        Thread.Sleep(500);
+        // Contract Editor 1.x has no reliable command-line open action or standard
+        // Ctrl+O shortcut. Sending Ctrl+O can invoke Save As and overwrite the
+        // populated CCE with a blank contract. Keep the validated file intact, copy
+        // its path, and select it in Explorer for the editor's Open Project command.
         System.Windows.Clipboard.SetText(projectPath);
-        System.Windows.Forms.SendKeys.SendWait("^o");
-        Thread.Sleep(1500);
-        System.Windows.Forms.SendKeys.SendWait("^a");
-        System.Windows.Forms.SendKeys.SendWait("^v");
-        Thread.Sleep(400);
-        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+        var selectFile = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
+        selectFile.ArgumentList.Add("/select," + projectPath);
+        Process.Start(selectFile);
     }
 
     private static string? FindContractEditor()
@@ -749,6 +750,10 @@ public partial class MainWindow : Window
 
         var saveDialog = new SaveFileDialog { Title = "Build Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", FileName = projectName + ".ch5z", AddExtension = true, InitialDirectory = LoadStorageSettings()["exports"] };
         if (saveDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        projectName = new string(Path.GetFileNameWithoutExtension(saveDialog.FileName)
+            .Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_').ToArray());
+        if (string.IsNullOrWhiteSpace(projectName))
+            throw new InvalidOperationException("The package file name must contain letters or numbers.");
 
         var cli = FindCh5Cli();
         if (cli is null) throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before building a panel package.");
@@ -781,6 +786,7 @@ public partial class MainWindow : Window
             var archive = Path.Combine(output, projectName + ".ch5z");
             ValidateCh5Archive(archive);
             File.Copy(archive, saveDialog.FileName, true);
+            ValidateCh5Archive(saveDialog.FileName);
             Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null }, null);
         }
         finally
@@ -1190,6 +1196,11 @@ exit $deploymentExitCode
         if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Crestron did not produce a CH5 archive.");
         using var zip = ZipFile.OpenRead(path);
         var ch5Entry = zip.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".ch5", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The generated archive does not contain a .ch5 payload.");
+        var archiveName = Path.GetFileNameWithoutExtension(path);
+        var payloadName = Path.GetFileNameWithoutExtension(ch5Entry.FullName);
+        if (!string.Equals(archiveName, payloadName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(
+                $"The CH5Z file name ('{archiveName}') does not match its embedded project name ('{payloadName}'). Rebuild the package instead of renaming it.");
         if (!zip.Entries.Any(entry => entry.FullName.EndsWith("manifest.json", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The generated archive does not contain the required manifest.");
         using var payloadMemory = new MemoryStream();
         using (var payloadStream = ch5Entry.Open()) payloadStream.CopyTo(payloadMemory);
