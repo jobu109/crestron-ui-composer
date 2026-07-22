@@ -1607,7 +1607,6 @@ textarea {
 .widget.simulator-focus {
   outline: 3px solid #ffd84d !important;
   outline-offset: 5px;
-  filter: drop-shadow(0 0 12px rgba(255, 216, 77, 0.9));
 }
 .deployment-dialog {
   width: min(820px, 92vw);
