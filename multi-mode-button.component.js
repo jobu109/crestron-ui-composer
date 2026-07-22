@@ -2,23 +2,30 @@
   "use strict";
   const properties = [
     { key: "modeCount", name: "Number of modes", type: "number", min: 2, max: 8, step: 1, defaultValue: 4, affectsProperties: true },
-    { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" },
-    { key: "borderColor", name: "Border color", type: "color", defaultValue: "#ffffff" },
-    { key: "glowColor", name: "Glow color", type: "color", defaultValue: "#04aa8e" },
-    { key: "selectedColor", name: "Selected color", type: "color", defaultValue: "#04aa8e" },
-    { key: "fontSize", name: "Text size", type: "number", min: 8, max: 96, step: 1, defaultValue: 24 },
-    { key: "cornerRadius", name: "Corner radius", type: "number", min: 0, max: 100, step: 1, defaultValue: 24 },
-    { key: "glowStrength", name: "Glow strength", type: "number", min: 0, max: 50, step: 1, defaultValue: 14 },
-    { key: "assetFit", name: "Mode asset fit", type: "select", defaultValue: "contain", options: [{ value: "contain", label: "Contain" }, { value: "cover", label: "Cover" }, { value: "fill", label: "Stretch" }] },
-    { key: "assetOpacity", name: "Mode asset opacity %", type: "number", min: 0, max: 100, step: 1, defaultValue: 100 },
   ];
   for (let index = 0; index < 8; index++) {
-    const visibleWhen = { key: "modeCount", gte: index + 1 };
+    const visibleWhen = { key: "modeCount", gte: index + 1 }, start = properties.length;
     properties.push(
       { key: `mode${index}Text`, name: `Mode ${index} text`, type: "text", defaultValue: `Mode ${index}`, visibleWhen },
-      { key: `mode${index}Color`, name: `Mode ${index} color`, type: "color", defaultValue: index === 0 ? "#365250" : "#087e6c", visibleWhen },
+      { key: `mode${index}ShowText`, name: `Mode ${index} show text`, type: "checkbox", defaultValue: true, visibleWhen },
+      { key: `mode${index}TextColor`, name: `Mode ${index} text color`, type: "color", defaultValue: "#ffffff", visibleWhen },
+      { key: `mode${index}FontSize`, name: `Mode ${index} text size`, type: "number", min: 8, max: 96, step: 1, defaultValue: 24, visibleWhen },
+      { key: `mode${index}Color`, name: `Mode ${index} face color`, type: "color", defaultValue: index === 0 ? "#365250" : "#087e6c", visibleWhen },
+      { key: `mode${index}BorderColor`, name: `Mode ${index} border color`, type: "color", defaultValue: "#ffffff", visibleWhen },
+      { key: `mode${index}GlowColor`, name: `Mode ${index} glow color`, type: "color", defaultValue: "#04aa8e", visibleWhen },
+      { key: `mode${index}SelectedColor`, name: `Mode ${index} selected color`, type: "color", defaultValue: "#04aa8e", visibleWhen },
+      { key: `mode${index}CornerRadius`, name: `Mode ${index} corner radius`, type: "number", min: 0, max: 100, step: 1, defaultValue: 24, visibleWhen },
+      { key: `mode${index}GlowStrength`, name: `Mode ${index} glow strength`, type: "number", min: 0, max: 50, step: 1, defaultValue: 14, visibleWhen },
       { key: `mode${index}Asset`, name: `Mode ${index} asset`, type: "asset", defaultValue: "", visibleWhen },
+      { key: `mode${index}SelectedAsset`, name: `Mode ${index} selected asset`, type: "asset", defaultValue: "", visibleWhen },
+      { key: `mode${index}AssetFit`, name: `Mode ${index} asset fit`, type: "select", defaultValue: "contain", options: [{ value: "contain", label: "Contain" }, { value: "cover", label: "Cover" }, { value: "fill", label: "Stretch" }], visibleWhen },
+      { key: `mode${index}AssetOpacity`, name: `Mode ${index} asset opacity %`, type: "number", min: 0, max: 100, step: 1, defaultValue: 100, visibleWhen },
+      { key: `mode${index}AssetWidth`, name: `Mode ${index} asset width %`, type: "number", min: 1, max: 200, step: 1, defaultValue: 100, visibleWhen },
+      { key: `mode${index}AssetHeight`, name: `Mode ${index} asset height %`, type: "number", min: 1, max: 200, step: 1, defaultValue: 100, visibleWhen },
+      { key: `mode${index}AssetX`, name: `Mode ${index} horizontal shift %`, type: "number", min: -100, max: 200, step: 1, defaultValue: 50, visibleWhen },
+      { key: `mode${index}AssetY`, name: `Mode ${index} vertical shift %`, type: "number", min: -100, max: 200, step: 1, defaultValue: 50, visibleWhen },
     );
+    properties.slice(start).forEach((property) => (property.group = `Mode ${index}`));
   }
   runtime.register({
     id: "multi-mode-button",
@@ -40,17 +47,32 @@
         label = root.querySelector(".multi-mode-label"),
         asset = root.querySelector(".multi-mode-asset"),
         values = context.options.properties || {};
-      let mode = 0, serialName = "";
+      let mode = 0, serialName = "", selected = false;
       function modeCount() { return Math.max(2, Math.min(8, Number(values.modeCount) || 4)); }
       function showMode(next) {
         mode = Math.max(0, Math.min(modeCount() - 1, Math.round(Number(next) || 0)));
         label.textContent = serialName || values[`mode${mode}Text`] || `Mode ${mode}`;
+        label.style.display = values[`mode${mode}ShowText`] === false || String(values[`mode${mode}ShowText`]).toLowerCase() === "false" ? "none" : "block";
         const color = values[`mode${mode}Color`] || "#087e6c",
-          source = values[`mode${mode}AssetData`] || "";
+          source = (selected && values[`mode${mode}SelectedAssetData`]) || values[`mode${mode}AssetData`] || "";
         button.style.setProperty("--multi-mode-color", color);
+        button.style.setProperty("--text-color", values[`mode${mode}TextColor`] || "#ffffff");
+        button.style.setProperty("--font-size-px", `${Math.max(8, Number(values[`mode${mode}FontSize`]) || 24)}px`);
+        button.style.setProperty("--border-color", values[`mode${mode}BorderColor`] || "#ffffff");
+        button.style.setProperty("--glow-color", values[`mode${mode}GlowColor`] || "#04aa8e");
+        button.style.setProperty("--selected-color", values[`mode${mode}SelectedColor`] || "#04aa8e");
+        button.style.setProperty("--corner-radius-px", `${Math.max(0, Number(values[`mode${mode}CornerRadius`]) || 0)}px`);
+        button.style.setProperty("--glow-strength-px", `${Math.max(0, Number(values[`mode${mode}GlowStrength`]) || 0)}px`);
+        button.style.borderColor = values[`mode${mode}BorderColor`] || "#ffffff";
         asset.style.backgroundImage = source ? `url("${String(source).replace(/"/g, "%22")}")` : "none";
-        asset.style.backgroundSize = values.assetFit || "contain";
-        asset.style.opacity = String(Math.max(0, Math.min(100, Number(values.assetOpacity ?? 100))) / 100);
+        asset.style.backgroundSize = values[`mode${mode}AssetFit`] || "contain";
+        asset.style.opacity = String(Math.max(0, Math.min(100, Number(values[`mode${mode}AssetOpacity`] ?? 100))) / 100);
+        asset.style.width = `${Math.max(1, Math.min(200, Number(values[`mode${mode}AssetWidth`]) || 100))}%`;
+        asset.style.height = `${Math.max(1, Math.min(200, Number(values[`mode${mode}AssetHeight`]) || 100))}%`;
+        asset.style.left = `${Number(values[`mode${mode}AssetX`] ?? 50)}%`;
+        asset.style.top = `${Number(values[`mode${mode}AssetY`] ?? 50)}%`;
+        asset.style.inset = "auto";
+        asset.style.transform = "translate(-50%,-50%)";
         button.dataset.mode = String(mode);
         button.setAttribute("aria-label", label.textContent);
       }
@@ -62,7 +84,7 @@
       button.addEventListener("pointerup", navigate);
       button.addEventListener("pointerleave", release);
       button.addEventListener("pointercancel", release);
-      context.signals.subscribe("selected", (value) => button.classList.toggle("active", value === true || value === 1 || value === "1"));
+      context.signals.subscribe("selected", (value) => { selected = value === true || value === 1 || value === "1"; button.classList.toggle("active", selected); showMode(mode); });
       context.signals.subscribe("feedback", showMode);
       context.signals.subscribe("name", (value) => { serialName = String(value || ""); showMode(mode); });
       showMode(0);

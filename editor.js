@@ -2911,7 +2911,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
       label.appendChild(override);
     }
+    let propertyGroup = "";
     properties.forEach((property) => {
+      if (property.group && property.group !== propertyGroup) {
+        const heading = document.createElement("div");
+        heading.className = "component-property-group";
+        heading.textContent = property.group;
+        host.appendChild(heading);
+        propertyGroup = property.group;
+      }
       const label = document.createElement("label");
       label.textContent = property.name;
       if (property.type === "text-list") {

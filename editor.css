@@ -765,6 +765,15 @@ h2 {
 .side-panel-section-body > .page-list,
 .side-panel-section-body > .layers-list,
 .side-panel-section-body > .history-list { min-height: 0; }
+.component-property-group {
+  margin-top: 8px;
+  padding: 8px 3px 4px;
+  border-bottom: 1px solid #38524f;
+  color: #74dfcc;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
 .widget-asset-overlay {
   position: absolute;
   z-index: 50;
