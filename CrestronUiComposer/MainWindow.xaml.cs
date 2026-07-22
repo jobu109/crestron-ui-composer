@@ -263,18 +263,49 @@ public partial class MainWindow : Window
         if (!File.Exists(projectPath))
             throw new FileNotFoundException("The generated Contract Editor project could not be found.", projectPath);
 
-        // Contract Editor is an Electron application and accepts a .cce project as a
-        // command-line argument. Passing the project directly is deterministic; the
-        // previous Ctrl+O/clipboard automation could target the wrong window and leave
-        // Contract Editor displaying a new, empty contract.
-        var startInfo = new ProcessStartInfo(contractEditor)
+        var editorProcess = Process.GetProcessesByName("CH5-Contract-Editor")
+            .FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero);
+
+        // Contract Editor does not register .cce files with Windows and does not accept
+        // a project path on its command line. A failed command-line launch can leave its
+        // Electron helper processes alive without a window; clear only that headless
+        // instance before starting the editor normally.
+        if (editorProcess is null)
         {
-            UseShellExecute = true,
-            WorkingDirectory = Path.GetDirectoryName(projectPath) ?? Environment.CurrentDirectory
-        };
-        startInfo.ArgumentList.Add(projectPath);
-        if (Process.Start(startInfo) is null)
-            throw new InvalidOperationException("Crestron Contract Editor could not be started.");
+            foreach (var process in Process.GetProcessesByName("CH5-Contract-Editor"))
+            {
+                try { process.Kill(true); process.WaitForExit(3000); }
+                catch { /* A helper may exit while the process list is being cleared. */ }
+            }
+
+            var startInfo = new ProcessStartInfo(contractEditor)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(contractEditor) ?? Environment.CurrentDirectory
+            };
+            Process.Start(startInfo);
+            var deadline = DateTime.UtcNow.AddSeconds(20);
+            while (DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(250);
+                editorProcess = Process.GetProcessesByName("CH5-Contract-Editor")
+                    .FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero);
+                if (editorProcess is not null) break;
+            }
+        }
+
+        if (editorProcess is null || editorProcess.MainWindowHandle == IntPtr.Zero)
+            throw new InvalidOperationException("Crestron Contract Editor did not create a visible window.");
+
+        SetForegroundWindow(editorProcess.MainWindowHandle);
+        Thread.Sleep(750);
+        System.Windows.Clipboard.SetText(projectPath);
+        System.Windows.Forms.SendKeys.SendWait("^o");
+        Thread.Sleep(1500);
+        System.Windows.Forms.SendKeys.SendWait("^a");
+        System.Windows.Forms.SendKeys.SendWait("^v");
+        Thread.Sleep(400);
+        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
     }
 
     private static string? FindContractEditor()
