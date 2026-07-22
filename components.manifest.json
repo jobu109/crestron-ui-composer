@@ -12,6 +12,7 @@
     {"file":"powerRocker.html","componentId":"power-rocker","runtime":"scoped","name":"Power Rocker","category":"Buttons","width":220,"height":260},
     {"file":"illuminatedPowerButton.html","componentId":"illuminated-power-button","runtime":"scoped","name":"Illuminated Power Button","category":"Buttons","width":210,"height":230},
     {"file":"systemStartStop.html","componentId":"system-start-stop","runtime":"scoped","name":"System Start / Stop","category":"Buttons","width":300,"height":300},
+    {"file":"searchInput.html","componentId":"search-input","runtime":"scoped","name":"Search Input","category":"Text","width":560,"height":96},
     {"file":"buttonStandardWave.html","componentId":"wave-button","runtime":"scoped","name":"Wave Button","category":"Buttons","width":220,"height":100},
     {"file":"buttonToggle.html","componentId":"rolling-toggle","runtime":"scoped","name":"Rolling Toggle","category":"Buttons","width":220,"height":100},
     {"file":"holeToggle.html","componentId":"hole-toggle","runtime":"scoped","name":"Hole Toggle","category":"Buttons","width":220,"height":100},
