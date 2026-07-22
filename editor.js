@@ -2864,7 +2864,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       definition =
         item.componentId && window.ComposerRuntime.get(item.componentId),
       properties = ((definition && definition.properties) || []).filter(
-        (property) => !property.signalSetting && property.key !== "bindingMode",
+        (property) => {
+          if (property.signalSetting || property.key === "bindingMode") return false;
+          if (!property.visibleWhen) return true;
+          const actual = Number(item.properties?.[property.visibleWhen.key] ?? 0);
+          return property.visibleWhen.gte == null || actual >= Number(property.visibleWhen.gte);
+        },
       );
     section.hidden = !properties.length;
     host.innerHTML = "";
@@ -2945,9 +2950,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         return;
       }
       const input = document.createElement(
-        property.type === "select" ? "select" : "input",
+        property.type === "select" || property.type === "asset" ? "select" : "input",
       );
-      if (property.type === "select")
+      if (property.type === "asset") {
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "None";
+        input.appendChild(empty);
+        state.assets
+          .filter((asset) => asset.type.startsWith("image/"))
+          .forEach((asset) => {
+            const option = document.createElement("option");
+            option.value = asset.id;
+            option.textContent = asset.name;
+            input.appendChild(option);
+          });
+      } else if (property.type === "select")
         (property.options || []).forEach((option) => {
           const el = document.createElement("option");
           el.value = option.value;
@@ -2973,6 +2991,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       if (property.type === "checkbox")
         input.checked = propertyValue === true || propertyValue === 1 || propertyValue === "1" || String(propertyValue).toLowerCase() === "true";
       else input.value = propertyValue;
+      if (property.type === "asset") {
+        const selectedAsset = state.assets.find((asset) => asset.id === propertyValue);
+        item.properties[`${property.key}Data`] = selectedAsset?.dataUrl || "";
+      }
       input.oninput = () => {
         item.properties = item.properties || {};
         let nextValue =
@@ -2991,6 +3013,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           input.value = String(nextValue);
         }
         item.properties[property.key] = nextValue;
+        if (property.type === "asset") {
+          const selectedAsset = state.assets.find((asset) => asset.id === nextValue);
+          item.properties[`${property.key}Data`] = selectedAsset?.dataUrl || "";
+        }
         renderItem(item);
         if (property.affectsProperties) renderProperties(item);
         if (property.affectsBindings) renderBindings(item);
