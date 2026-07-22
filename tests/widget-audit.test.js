@@ -44,6 +44,11 @@ assert.equal(
   "analog",
   "Lighting Control feedback range must compile as analog contract feedback",
 );
+assert.doesNotMatch(
+  definitions.get("folding-menu").styles,
+  /(?:^|})\s*\.(?:primary|pbtn|sbtn|panel|inside|title|submenu|pi|pl|si|sl)\b/,
+  "Folding Menu styles must not leak into the editor document",
+);
 
 const validTypes = new Set(["digital", "analog", "serial"]),
   validDirections = new Set(["input", "output"]),
