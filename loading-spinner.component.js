@@ -25,12 +25,24 @@
     template:
       '<div class="loading-spinner"><svg class="spinner-svg" viewBox="0 0 120 120" aria-hidden="true"><circle class="spinner-track" cx="60" cy="60" r="49"></circle><g class="spinner-motion"><circle class="spinner-arc" cx="60" cy="60" r="49"></circle><circle class="spinner-dot" cx="60" cy="11" r="5"></circle></g></svg><span class="spinner-text">LOADING</span></div>',
     styles:
-      '[data-component="loading-spinner"]{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:8%;box-sizing:border-box}[data-component="loading-spinner"] *{box-sizing:border-box}[data-component="loading-spinner"] .loading-spinner{position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;overflow:visible;border-radius:50%;background:var(--background-color);box-shadow:inset 0 0 24px rgba(0,0,0,.42)}[data-component="loading-spinner"] .loading-spinner.no-background{background:transparent;box-shadow:none}[data-component="loading-spinner"] .spinner-svg{position:absolute;inset:5%;width:90%;height:90%;overflow:visible;filter:drop-shadow(0 0 var(--glow-strength-px) var(--glow-color))}[data-component="loading-spinner"] .spinner-track,[data-component="loading-spinner"] .spinner-arc{fill:none;stroke-width:var(--ring-thickness-px);vector-effect:non-scaling-stroke}[data-component="loading-spinner"] .spinner-track{stroke:var(--track-color)}[data-component="loading-spinner"] .spinner-arc{stroke:var(--spinner-color);stroke-linecap:round;stroke-dasharray:260 48;transform:rotate(90deg);transform-origin:60px 60px}[data-component="loading-spinner"] .spinner-dot{fill:var(--spinner-color);filter:drop-shadow(0 0 calc(var(--glow-strength-px) * .7) var(--glow-color))}[data-component="loading-spinner"] .spinner-motion{transform-origin:60px 60px;animation:loading-spinner-rotate var(--spinner-duration,3.2s) linear infinite;animation-play-state:var(--spinner-play-state,running)}[data-component="loading-spinner"] .spinner-text{position:relative;z-index:1;max-width:62%;overflow:hidden;color:var(--text-color);font:500 var(--text-size-px)/1.1 "Segoe UI",sans-serif;letter-spacing:.14em;text-align:center;text-overflow:ellipsis;text-shadow:0 0 calc(var(--glow-strength-px) * .65) var(--glow-color);white-space:nowrap}@keyframes loading-spinner-rotate{to{transform:rotate(360deg)}}',
+      '[data-component="loading-spinner"]{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:8%;box-sizing:border-box}[data-component="loading-spinner"] *{box-sizing:border-box}[data-component="loading-spinner"] .loading-spinner{position:relative;display:flex;align-items:center;justify-content:center;width:100%;height:100%;overflow:visible;border-radius:50%;background:var(--background-color,#222222);box-shadow:inset 0 0 24px rgba(0,0,0,.42)}[data-component="loading-spinner"] .loading-spinner.no-background{background:transparent;box-shadow:none}[data-component="loading-spinner"] .spinner-svg{position:absolute;inset:5%;width:90%;height:90%;overflow:visible;filter:drop-shadow(0 0 var(--glow-strength-px,10px) var(--glow-color,#f4ef00))}[data-component="loading-spinner"] .spinner-track,[data-component="loading-spinner"] .spinner-arc{fill:none;stroke-width:var(--ring-thickness-px,3px);vector-effect:non-scaling-stroke}[data-component="loading-spinner"] .spinner-track{stroke:var(--track-color,#303030)}[data-component="loading-spinner"] .spinner-arc{stroke:var(--spinner-color,#f4ef00);stroke-linecap:round;stroke-dasharray:260 48;transform:rotate(-90deg);transform-origin:60px 60px}[data-component="loading-spinner"] .spinner-dot{fill:var(--spinner-color,#f4ef00);filter:drop-shadow(0 0 calc(var(--glow-strength-px,10px) * .7) var(--glow-color,#f4ef00))}[data-component="loading-spinner"] .spinner-motion{transform-origin:60px 60px;animation:loading-spinner-rotate var(--spinner-duration,3.2s) linear infinite;animation-play-state:var(--spinner-play-state,running)}[data-component="loading-spinner"] .spinner-text{position:relative;z-index:1;max-width:62%;overflow:hidden;color:var(--text-color,#f4ef00);font:500 var(--text-size-px,17px)/1.1 "Segoe UI",sans-serif;letter-spacing:.14em;text-align:center;text-overflow:ellipsis;text-shadow:0 0 calc(var(--glow-strength-px,10px) * .65) var(--glow-color,#f4ef00);white-space:nowrap}@keyframes loading-spinner-rotate{to{transform:rotate(360deg)}}',
     mount(root, context) {
       const host = root.querySelector(".loading-spinner"),
         text = root.querySelector(".spinner-text"),
         properties = context.options.properties || {},
         defaultText = properties.text || "LOADING";
+      [
+        ["spinnerColor", "#f4ef00"],
+        ["textColor", "#f4ef00"],
+        ["trackColor", "#303030"],
+        ["backgroundColor", "#222222"],
+        ["glowColor", "#f4ef00"],
+      ].forEach(([key, fallback]) =>
+        root.style.setProperty(
+          `--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+          properties[key] || fallback,
+        ),
+      );
       text.textContent = defaultText;
       host.classList.toggle(
         "no-background",

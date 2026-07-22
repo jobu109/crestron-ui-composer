@@ -1393,6 +1393,23 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         : null,
       repeatGraphic =
         item.graphicAssetPlacement === "items" && !!definition?.itemSelector;
+    if (definition) {
+      item.properties = item.properties || {};
+      definition.properties.forEach((property) => {
+        if (!Object.prototype.hasOwnProperty.call(item.properties, property.key))
+          item.properties[property.key] = structuredClone(property.defaultValue);
+      });
+      item.signalBindings = item.signalBindings || {};
+      definition.signals.forEach((signal) => {
+        if (!Object.prototype.hasOwnProperty.call(item.signalBindings, signal.key))
+          item.signalBindings[signal.key] = {
+            mode: /^\d+$/.test(String(signal.defaultValue || ""))
+              ? "join"
+              : "contract",
+            value: signal.defaultValue || "",
+          };
+      });
+    }
     el.dataset.graphicMode = graphicMode;
     el.dataset.assetSelected = "false";
     el.dataset.hasSelectedGraphic = selectedGraphicAsset ? "true" : "false";
