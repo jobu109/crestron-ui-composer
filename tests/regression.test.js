@@ -225,9 +225,13 @@ run("exported action runtime is valid JavaScript", () => {
 
 run("widget styles cannot enlarge sidebar action buttons", () => {
   const css = read("editor.css");
+  const runtime = read("component-runtime.js");
+  const editor = read("editor.js");
   assert.ok(css.includes(".sidebar .side-panel-section-body > button"));
   assert.ok(css.includes("height: auto !important"));
   assert.ok(css.includes("min-height: 36px !important"));
+  assert.ok(runtime.includes("@scope ([data-composer-component-scope])"));
+  assert.ok(editor.includes("scopeStyles: true"));
 });
 
 run("simulator and mounted widgets share resolved contract addresses", () => {
