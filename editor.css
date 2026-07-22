@@ -748,6 +748,19 @@ h2 {
   gap: 8px;
   padding: 7px 3px 0;
 }
+.page-settings-divider {
+  height: 1px;
+  margin: 10px 0 2px;
+  background: #38524f;
+}
+.page-settings-title {
+  margin: 0;
+  padding: 3px 1px;
+  color: #74dfcc;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
 .sidebar .side-panel-section-body > button,
 .sidebar .side-panel-section-body > .button,
 .sidebar .component-import-actions > .button {

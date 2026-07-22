@@ -150,7 +150,15 @@
         node = next;
       }
       const title = heading.textContent.trim(), key = `library-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-      if (nodes.length) collapsiblePanelSection(title, nodes, key, index < 2);
+      if (nodes.length) {
+        const details = collapsiblePanelSection(
+          title,
+          nodes,
+          key,
+          index < 2 || title === "Page",
+        );
+        if (details && title === "Page") details.id = "page-library-section";
+      }
       heading.remove();
     });
 
@@ -201,7 +209,19 @@
         pageNodes.push(node);
         node = next;
       }
-      collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
+      const pageBody = $("page-library-section")?.querySelector(
+        ":scope > .side-panel-section-body",
+      );
+      if (pageBody) {
+        const divider = document.createElement("div"),
+          heading = document.createElement("h3");
+        divider.className = "page-settings-divider";
+        heading.className = "page-settings-title";
+        heading.textContent = "Page settings";
+        pageBody.append(divider, heading, ...pageNodes);
+      } else {
+        collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
+      }
       pageHeading.remove();
     }
     const inspectorHeading = inspector.querySelector(":scope > h2");
