@@ -2911,14 +2911,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
       label.appendChild(override);
     }
-    let propertyGroup = "";
+    let propertyGroup = "", propertyHost = host;
     properties.forEach((property) => {
       if (property.group && property.group !== propertyGroup) {
-        const heading = document.createElement("div");
-        heading.className = "component-property-group";
+        const details = document.createElement("details"),
+          heading = document.createElement("summary"),
+          body = document.createElement("div"),
+          storageKey = `crestron-ui-composer-property-group-${item.componentId}-${property.group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+          saved = localStorage.getItem(storageKey);
+        details.className = "component-property-group";
         heading.textContent = property.group;
-        host.appendChild(heading);
+        body.className = "component-property-group-body";
+        details.open = saved === null ? property.group === "Mode 0" : saved === "open";
+        details.append(heading, body);
+        details.addEventListener("toggle", () =>
+          localStorage.setItem(storageKey, details.open ? "open" : "closed"),
+        );
+        host.appendChild(details);
+        propertyHost = body;
         propertyGroup = property.group;
+      } else if (!property.group) {
+        propertyHost = host;
       }
       const label = document.createElement("label");
       label.textContent = property.name;
@@ -2953,7 +2966,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
         wireReusableOverride(label, [...list.querySelectorAll("input")], property);
         label.appendChild(list);
-        host.appendChild(label);
+        propertyHost.appendChild(label);
         return;
       }
       const input = document.createElement(
@@ -3030,7 +3043,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
       wireReusableOverride(label, [input], property);
       label.appendChild(input);
-      host.appendChild(label);
+      propertyHost.appendChild(label);
     });
   }
   function renderAssetInspector(item) {
