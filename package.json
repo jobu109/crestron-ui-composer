@@ -4,5 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "test": "node tests/regression.test.js && node tests/widget-audit.test.js"
+  },
+  "dependencies": {
+    "@crestron/ch5-webxpanel": "^2.8.0"
   }
 }

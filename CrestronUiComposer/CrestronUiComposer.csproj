@@ -72,6 +72,9 @@
     <Content Include="Packaging\CrComLib\package\build_bundles\umd\cr-com-lib.js" Link="Packaging\cr-com-lib.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Packaging\CrComLib\package\build_bundles\umd\cr-com-lib.js.LICENSE.txt" Link="Packaging\cr-com-lib.js.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Packaging\CrComLib\package\LICENSE.txt" Link="Packaging\CRESTRON-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Packaging\WebXPanel\ch5-webxpanel.js" Link="Packaging\ch5-webxpanel.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Packaging\WebXPanel\d4412f0cafef4f213591.worker.js" Link="Packaging\d4412f0cafef4f213591.worker.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Packaging\WebXPanel\ch5-webxpanel.LICENSE.txt" Link="Packaging\ch5-webxpanel.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

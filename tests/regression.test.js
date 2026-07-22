@@ -186,9 +186,13 @@ run("exported action runtime is valid JavaScript", () => {
   );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
+  assert.ok(
+    html.includes("factory(bundle.runsInContainerApp())"),
+    "Export must select the correct Web XPanel transport before CrComLib initializes",
+  );
   assert.equal(
     (html.match(/<\/script>/g) || []).length,
-    2,
+    4,
     "Embedded custom-component scripts must not close the exported runtime script",
   );
   const resolverStart = html.indexOf("function standardAttribute"),

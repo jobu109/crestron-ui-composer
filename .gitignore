@@ -7,6 +7,7 @@ dist/
 .tools/
 .agents/
 tmp/
+node_modules/
 
 # Generated Crestron smoke-test packages
 ch5-smoke-output/
