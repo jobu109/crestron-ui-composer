@@ -18,7 +18,16 @@ vm.runInThisContext(read("component-runtime.js"), { filename: "component-runtime
 const editorHtml = read("editor.html"),
   componentScripts = [...editorHtml.matchAll(/<script src="([^"]+\.js)"/g)]
     .map((match) => match[1])
-    .filter((name) => !["project-migrations.js", "component-runtime.js", "exporter.js", "editor.js"].includes(name));
+    .filter((name) => !["project-migrations.js", "component-runtime.js", "exporter.js", "editor.js"].includes(name)),
+  externalHelpers = new Map();
+componentScripts.forEach((file) => {
+  const source = read(file),
+    id = source.match(/\bid\s*:\s*["']([^"']+)["']/)?.[1],
+    registerIndex = source.search(/(?:ComposerRuntime|runtime)\.register\s*\(/),
+    prefix = source.slice(0, registerIndex < 0 ? 0 : registerIndex),
+    names = [...prefix.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)].map((match) => match[1]);
+  if (id && names.length) externalHelpers.set(id, names);
+});
 componentScripts.forEach((file) =>
   vm.runInThisContext(read(file), { filename: file }),
 );
@@ -63,6 +72,9 @@ for (const [id, definition] of definitions) {
     mountSource = String(definition.mount || "");
   if (/\bglobal\./.test(mountSource))
     problem(id, "exported mount references editor-only global variable");
+  for (const helper of externalHelpers.get(id) || [])
+    if (new RegExp(`\\b${helper}\\s*\\(`).test(mountSource))
+      problem(id, `exported mount references non-serialized helper ${helper}`);
   (definition.signals || []).forEach((signal) => {
     if (!signal.key) problem(id, "signal is missing a key");
     if (signals.has(signal.key)) problem(id, `duplicate signal key ${signal.key}`);

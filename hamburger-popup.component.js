@@ -2,7 +2,6 @@
   "use strict";
   const labels =
     "Settings|Copy|Share|Delete|Item 4|Item 5|Item 6|Item 7|Item 8|Item 9|Item 10|Item 11";
-  const high = (v) => v === true || v === 1 || v === "1" || v === "true";
   global.ComposerRuntime.register({
     id: "hamburger-popup",
     name: "Hamburger Popup",

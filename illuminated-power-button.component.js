@@ -1,6 +1,5 @@
 (function (runtime) {
   "use strict";
-  const active = (value) => value === true || value === 1 || value === "1";
   runtime.register({
     id: "illuminated-power-button",
     name: "Illuminated Power Button",
@@ -45,7 +44,7 @@
       name.textContent = fallback;
       name.hidden = !(p.showName === true || String(p.showName).toLowerCase() === "true");
       function display(value) {
-        const on = active(value), color = on ? "var(--on-color)" : "var(--off-color)";
+        const on = value === true || value === 1 || value === "1", color = on ? "var(--on-color)" : "var(--off-color)";
         button.classList.toggle("on", on);
         button.setAttribute("aria-pressed", on ? "true" : "false");
         face.style.boxShadow = "0 0 calc(var(--glow-strength-px) * .55) " + color + ", 0 0 var(--glow-strength-px) " + color + ", inset 0 7px 11px rgba(255,255,255,.1), inset 0 -10px 16px rgba(0,0,0,.65)";
