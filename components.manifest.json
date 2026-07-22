@@ -53,6 +53,7 @@
     {"file":"loadingSpinner.html","componentId":"loading-spinner","runtime":"scoped","name":"Loading Spinner","category":"Status & Information","width":240,"height":240},
     {"file":"shutdownProgress.html","componentId":"shutdown-progress","runtime":"scoped","name":"Shutdown Progress","category":"Status & Information","width":420,"height":180},
     {"file":"weather.html","componentId":"weather-card","runtime":"scoped","name":"Weather","category":"Status & Information","width":480,"height":320}
+    ,{"file":"videoInput.html","componentId":"video-input","runtime":"scoped","name":"Video Input","category":"Status & Information","width":640,"height":360}
     ,{"file":"wifiGauge.html","componentId":"wifi-gauge","runtime":"scoped","name":"Wi-Fi Gauge","category":"Status & Information","width":220,"height":220}
     ,{"file":"cellBarGauge.html","componentId":"cell-bar-gauge","runtime":"scoped","name":"Cell Bar Gauge","category":"Status & Information","width":220,"height":220}
     ,{"file":"batteryGauge.html","componentId":"battery-gauge","runtime":"scoped","name":"Battery Gauge","category":"Status & Information","width":250,"height":220}
