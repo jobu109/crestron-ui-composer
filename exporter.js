@@ -15,6 +15,30 @@
   function escapeAttr(value) {
     return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   }
+  function wireCipText(root, signals) {
+    const pattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi, walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [];
+    function analogText(value, format) {
+      const number = Number(value) || 0, spec = String(format || "%r");
+      if (/%x/i.test(spec)) return Math.round(number).toString(16).toUpperCase().padStart(2, "0");
+      if (/%t/i.test(spec)) { const seconds = Math.max(0, Math.round(number)); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; }
+      const percent = spec.match(/%(\d+(?:\.\d+)?)\.(\d+)p/i); if (percent) return `${((number / Math.max(1, Number(percent[1]))) * 100).toFixed(Number(percent[2]))}%`;
+      const fixed = spec.match(/%(\d+)\.(\d+)f/i); if (fixed) return number.toFixed(Number(fixed[2])).padStart(Number(fixed[1]) + Number(fixed[2]) + 1, "0");
+      const integer = spec.match(/%(\d+)?[du]/i); if (integer) return String(Math.round(number)).padStart(Number(integer[1]) || 0, "0");
+      return String(Math.round(number));
+    }
+    while (walker.nextNode()) if (/<cip[sda]>/i.test(walker.currentNode.nodeValue || "")) nodes.push(walker.currentNode);
+    nodes.forEach((node) => {
+      const tokens = [], values = [], template = String(node.nodeValue || "").replace(pattern, (match, kind, content) => {
+        let address = String(content).trim(), format = "", trueText = "True", falseText = "False", fallback = ""; kind = kind.toLowerCase();
+        if (kind === "d") { const question = address.indexOf("?"), colon = address.indexOf(":", question + 1); if (question >= 0) { trueText = address.slice(question + 1, colon >= 0 ? colon : undefined); falseText = colon >= 0 ? address.slice(colon + 1) : ""; address = address.slice(0, question); } }
+        else if (kind === "a") { const question = address.indexOf("?"); if (question >= 0) { format = address.slice(question + 1); address = address.slice(0, question); } }
+        else { const colon = address.indexOf(":"); if (colon >= 0) { fallback = address.slice(colon + 1); address = address.slice(0, colon); } }
+        const index = tokens.length; tokens.push({ kind, address: address.trim(), format: format.trim(), trueText, falseText, fallback }); values.push(kind === "s" ? fallback : kind === "d" ? falseText : "0"); return `\u0000${index}\u0000`;
+      });
+      function render() { node.nodeValue = template.replace(/\u0000(\d+)\u0000/g, (_, index) => values[Number(index)] ?? ""); }
+      tokens.forEach((token, index) => signals.subscribeExact(token.kind === "s" ? "serial" : token.kind === "d" ? "digital" : "analog", token.address, (value) => { values[index] = token.kind === "s" ? String(value == null || value === "" ? token.fallback : value) : token.kind === "d" ? (value === true || value === 1 || value === "1" ? token.trueText : token.falseText) : analogText(value, token.format); render(); })); render();
+    });
+  }
   function propertyStyle(properties) {
     return Object.entries(properties || {})
       .flatMap(([key, value]) => {
@@ -245,10 +269,12 @@
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});diag('Page: '+id)}",
       animatedShow =
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id){tracks(entry).filter(function(c){return c.trigger==='page-enter'}).forEach(function(c){play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c)});runActions(entry,'page-enter')}});diag('Page: '+id)}",
-      layeredController = controller.replace(
-        "function mount(item){var root=document.querySelector('[data-instance=\"'+item.instance+'\"]'),def=definitions[item.componentId];",
-        "function mount(item){var holder=document.querySelector('[data-instance=\"'+item.instance+'\"]'),root=holder&&holder.querySelector('.scoped-preview'),def=definitions[item.componentId];",
-      ),
+      layeredController = controller
+        .replace("(function(){var pages=", `(function(){${wireCipText.toString()};var pages=`)
+        .replace(
+          "function mount(item){var root=document.querySelector('[data-instance=\"'+item.instance+'\"]'),def=definitions[item.componentId];",
+          "function mount(item){var holder=document.querySelector('[data-instance=\"'+item.instance+'\"]'),root=holder&&holder.querySelector('.scoped-preview'),def=definitions[item.componentId];",
+        ),
       animatedController = layeredController
         .replace(
           "root.innerHTML='<style>'+def.styles+'</style>'+def.template;",
@@ -273,7 +299,7 @@
         )
         .replace(
           "def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});appearance(root,item.properties||{})",
-          "try{def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}})}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}appearance(root,item.properties||{})",
+          "try{def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}})}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}wireCipText(root,signals);appearance(root,item.properties||{})",
         )
         .replace(
           "window.addEventListener('message',function(e){",

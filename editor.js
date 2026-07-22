@@ -2935,7 +2935,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       }
       const label = document.createElement("label");
       label.textContent = property.name;
-      if (property.type === "cip-text") {
+      if (property.type === "cip-text" || property.type === "text") {
         const editor = document.createElement("textarea"),
           actions = document.createElement("div");
         editor.className = "cip-text-editor";
@@ -3387,12 +3387,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             },
           }),
         );
-        if (item.componentId === "text-block")
-          parseCipTextSignals(item.properties?.text).forEach((signal, index) =>
+        Object.entries(item.properties || {})
+          .filter(
+            ([, value]) =>
+              typeof value === "string" && /<cip[sda]>/i.test(value),
+          )
+          .flatMap(([propertyKey, value]) =>
+            parseCipTextSignals(value).map((signal) => ({
+              ...signal,
+              propertyKey,
+            })),
+          )
+          .forEach((signal, index) =>
             rows.push({
               page,
               widget: item.name,
-              name: `Inline ${signal.type} ${index + 1}`,
+              name: `Inline ${signal.type} ${signal.propertyKey} ${index + 1}`,
               type: signal.type,
               direction: "input",
               mode: /^\d+$/.test(signal.value) ? "join" : overall,
