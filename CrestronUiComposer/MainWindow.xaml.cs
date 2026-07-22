@@ -744,6 +744,7 @@ public partial class MainWindow : Window
             var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j)", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
             if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
             contractPath = contractDialog.FileName;
+            ValidateContractMapping(contractPath);
         }
 
         var saveDialog = new SaveFileDialog { Title = "Build Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", FileName = projectName + ".ch5z", AddExtension = true, InitialDirectory = LoadStorageSettings()["exports"] };
@@ -799,6 +800,7 @@ public partial class MainWindow : Window
             var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j) for all panel packages", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
             if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
             contractPath = contractDialog.FileName;
+            ValidateContractMapping(contractPath);
         }
 
         var folderDialog = new OpenFolderDialog { Title = "Select the multi-panel package output folder", Multiselect = false, InitialDirectory = LoadStorageSettings()["exports"] };
@@ -893,7 +895,6 @@ public partial class MainWindow : Window
     private static string CreateEmptyContractMapping(string folder, string projectName)
     {
         var path = Path.Combine(folder, projectName + "-empty.cse2j");
-        var empty = new Dictionary<string, object>();
         var mapping = new
         {
             name = projectName,
@@ -903,12 +904,30 @@ public partial class MainWindow : Window
             extra_value = "Generated join-only mapping",
             signals = new
             {
-                states = new { boolean = empty, numeric = empty, @string = empty },
-                events = new { boolean = empty, numeric = empty, @string = empty }
+                states = new Dictionary<string, object>(),
+                events = new Dictionary<string, object>()
             }
         };
         File.WriteAllText(path, JsonSerializer.Serialize(mapping, new JsonSerializerOptions { WriteIndented = true }));
         return path;
+    }
+
+    private static void ValidateContractMapping(string path)
+    {
+        if (!File.Exists(path) || new FileInfo(path).Length == 0)
+            throw new InvalidDataException(
+                "The selected .cse2j mapping is empty. Open the populated .cce in Contract Editor, compile/export it, and select the generated non-empty interface mapping.");
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("signals", out var signals) || signals.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("The selected .cse2j mapping does not contain a valid signals object.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("The selected .cse2j mapping is not valid JSON.", ex);
+        }
     }
 
     private void SelectCh5Package(string id)
@@ -1178,6 +1197,14 @@ exit $deploymentExitCode
         using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing index.html.");
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("cr-com-lib.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing CrComLib.");
+        var contractEntry = payload.Entries.FirstOrDefault(entry => entry.FullName.EndsWith("contract.cse2j", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidDataException("The CH5 payload is missing contract.cse2j.");
+        if (contractEntry.Length == 0)
+            throw new InvalidDataException("The CH5 payload contains an empty contract.cse2j mapping and would be rejected by the touch panel.");
+        using var contractStream = contractEntry.Open();
+        using var contractDocument = JsonDocument.Parse(contractStream);
+        if (!contractDocument.RootElement.TryGetProperty("signals", out var signals) || signals.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("The CH5 payload contains an invalid contract.cse2j mapping.");
     }
 
     private static string? ReadCh5TargetDeviceId(string path)
