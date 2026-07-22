@@ -728,6 +728,13 @@
             simulator.subscribe(typeCode(type), String(signal), callback),
           );
       },
+      subscribeExact(type, signal, callback) {
+        if (!signal) return;
+        if (lib) {
+          const result = lib.subscribeState(typeCode(type), String(signal), callback);
+          if (typeof result === "function") cleanups.push(result);
+        } else cleanups.push(simulator.subscribe(typeCode(type), String(signal), callback));
+      },
     };
     if (options.properties?.visibilityEnabled) {
       root.style.visibility = "visible";

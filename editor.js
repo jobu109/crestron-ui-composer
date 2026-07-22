@@ -2935,6 +2935,51 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       }
       const label = document.createElement("label");
       label.textContent = property.name;
+      if (property.type === "cip-text") {
+        const editor = document.createElement("textarea"),
+          actions = document.createElement("div");
+        editor.className = "cip-text-editor";
+        editor.value = String(item.properties?.[property.key] ?? property.defaultValue ?? "");
+        actions.className = "cip-text-actions";
+        function update(value) {
+          item.properties = item.properties || {};
+          item.properties[property.key] = value;
+          renderItem(item);
+          scheduleHistory();
+        }
+        function insertTag(type) {
+          const address = prompt(`${type} contract name or join number:`, type === "Serial" ? "TextBlock.Status.Name" : type === "Digital" ? "TextBlock.State.Selected" : "TextBlock.Level.Feedback");
+          if (!address) return;
+          let tag;
+          if (type === "Digital") {
+            const whenTrue = prompt("Text when true:", "On") ?? "On",
+              whenFalse = prompt("Text when false:", "Off") ?? "Off";
+            tag = `<cipd>${address}?${whenTrue}:${whenFalse}</cipd>`;
+          } else if (type === "Analog") {
+            const format = prompt("Analog format (%r raw, %x hex, %t time, %65535.0p percent):", "%r") || "%r";
+            tag = `<cipa>${address}?${format}</cipa>`;
+          } else {
+            const fallback = prompt("Design-time/default text:", "Unknown") ?? "";
+            tag = `<cips>${address}:${fallback}</cips>`;
+          }
+          const start = editor.selectionStart, end = editor.selectionEnd;
+          editor.value = editor.value.slice(0, start) + tag + editor.value.slice(end);
+          editor.focus();
+          editor.setSelectionRange(start + tag.length, start + tag.length);
+          update(editor.value);
+        }
+        ["Digital", "Analog", "Serial"].forEach((type) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = `+ ${type}`;
+          button.onclick = () => insertTag(type);
+          actions.appendChild(button);
+        });
+        editor.oninput = () => update(editor.value);
+        label.append(editor, actions);
+        propertyHost.appendChild(label);
+        return;
+      }
       if (property.type === "text-list") {
         const list = document.createElement("div"),
           count = Math.max(
@@ -3230,6 +3275,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function contractWidgetPrefix(item) {
     return `${contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
   }
+  function parseCipTextSignals(text) {
+    const signals = [], pattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi;
+    let match;
+    while ((match = pattern.exec(String(text || "")))) {
+      const kind = match[1].toLowerCase(), content = match[2].trim(), delimiter = kind === "s" ? content.indexOf(":") : content.indexOf("?"),
+        value = (delimiter >= 0 ? content.slice(0, delimiter) : content).trim();
+      if (value) signals.push({ type: kind === "s" ? "serial" : kind === "d" ? "digital" : "analog", value });
+    }
+    return signals;
+  }
   function collectProjectSignals() {
     const rows = [];
     state.pages.forEach((page) => {
@@ -3332,6 +3387,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             },
           }),
         );
+        if (item.componentId === "text-block")
+          parseCipTextSignals(item.properties?.text).forEach((signal, index) =>
+            rows.push({
+              page,
+              widget: item.name,
+              name: `Inline ${signal.type} ${index + 1}`,
+              type: signal.type,
+              direction: "input",
+              mode: /^\d+$/.test(signal.value) ? "join" : overall,
+              value: signal.value,
+              owningItemId: item.id,
+              cipInline: true,
+              setMode() {},
+              setValue() {},
+            }),
+          );
       } else {
         findBindings(item.source || "").forEach((binding) => {
           const name = binding.name,
@@ -3670,6 +3741,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       array = value.match(
         /^([A-Za-z_][A-Za-z0-9_.]*)\[\{(?:n|index)\}\]\.(.+)$/,
       );
+    if (row.cipInline) {
+      const inlineParts = value.split(".").filter(Boolean),
+        instanceParts = inlineParts.slice(0, -1),
+        instancePath = instanceParts.join(".");
+      return {
+        instancePath,
+        parentPath: instanceParts.slice(0, -1).join("."),
+        nestedInstanceName: instanceParts[instanceParts.length - 1] || "",
+        attributePath: inlineParts[inlineParts.length - 1] || "Signal",
+        instances: 1,
+      };
+    }
     if (item && row.range && Number.isInteger(row.contractIndex)) {
       const expandedArray = value.match(/^(.*)\[\d+\]\.(.+)$/),
         expandedLegacy = value.match(/^(.*)\.\d+\.(.+)$/),

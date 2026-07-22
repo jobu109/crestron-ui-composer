@@ -790,6 +790,23 @@ h2 {
   gap: 8px;
   padding: 2px 3px 10px;
 }
+.cip-text-editor {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  font: 11px/1.45 Consolas, monospace;
+}
+.cip-text-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+.cip-text-actions button {
+  min-width: 0;
+  padding: 6px 3px;
+  font-size: 10px;
+}
 .widget-asset-overlay {
   position: absolute;
   z-index: 50;
