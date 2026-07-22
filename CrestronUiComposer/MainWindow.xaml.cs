@@ -211,6 +211,7 @@ public partial class MainWindow : Window
     private void SaveContractEditorProject(string id, JsonElement payload, bool openAfterSave)
     {
         var contents = payload.GetProperty("contents").GetString() ?? "";
+        ValidateContractEditorProject(contents);
         var requestedName = payload.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "CrestronUiContract" : "CrestronUiContract";
         var fileName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or ' ').ToArray()).Trim();
         if (string.IsNullOrWhiteSpace(fileName)) fileName = "CrestronUiContract";
@@ -241,36 +242,39 @@ public partial class MainWindow : Window
         Respond(id, true, new { path = dialog.FileName, opened = openAfterSave }, null);
     }
 
+    private static void ValidateContractEditorProject(string contents)
+    {
+        if (string.IsNullOrWhiteSpace(contents))
+            throw new InvalidDataException("The generated Contract Editor project is empty.");
+
+        using var document = JsonDocument.Parse(contents);
+        var root = document.RootElement;
+        if (!root.TryGetProperty("components", out var components) ||
+            components.ValueKind != JsonValueKind.Array ||
+            components.GetArrayLength() == 0)
+        {
+            throw new InvalidDataException(
+                "The generated Contract Editor project contains no components. Assign at least one contract binding before opening it.");
+        }
+    }
+
     private static void OpenContractEditorProject(string contractEditor, string projectPath)
     {
-        var editorProcess = Process.GetProcessesByName("CH5-Contract-Editor")
-            .FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero);
-        if (editorProcess is null)
-        {
-            var explorer = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
-            explorer.ArgumentList.Add(contractEditor);
-            Process.Start(explorer);
-            var deadline = DateTime.UtcNow.AddSeconds(12);
-            while (DateTime.UtcNow < deadline)
-            {
-                Thread.Sleep(250);
-                editorProcess = Process.GetProcessesByName("CH5-Contract-Editor")
-                    .FirstOrDefault(process => process.MainWindowHandle != IntPtr.Zero);
-                if (editorProcess is not null) break;
-            }
-        }
-        if (editorProcess is null || editorProcess.MainWindowHandle == IntPtr.Zero)
-            throw new InvalidOperationException("Crestron Contract Editor did not create a visible window.");
+        if (!File.Exists(projectPath))
+            throw new FileNotFoundException("The generated Contract Editor project could not be found.", projectPath);
 
-        SetForegroundWindow(editorProcess.MainWindowHandle);
-        Thread.Sleep(350);
-        System.Windows.Clipboard.SetText(projectPath);
-        System.Windows.Forms.SendKeys.SendWait("^o");
-        Thread.Sleep(900);
-        System.Windows.Forms.SendKeys.SendWait("^a");
-        System.Windows.Forms.SendKeys.SendWait("^v");
-        Thread.Sleep(250);
-        System.Windows.Forms.SendKeys.SendWait("{ENTER}");
+        // Contract Editor is an Electron application and accepts a .cce project as a
+        // command-line argument. Passing the project directly is deterministic; the
+        // previous Ctrl+O/clipboard automation could target the wrong window and leave
+        // Contract Editor displaying a new, empty contract.
+        var startInfo = new ProcessStartInfo(contractEditor)
+        {
+            UseShellExecute = true,
+            WorkingDirectory = Path.GetDirectoryName(projectPath) ?? Environment.CurrentDirectory
+        };
+        startInfo.ArgumentList.Add(projectPath);
+        if (Process.Start(startInfo) is null)
+            throw new InvalidOperationException("Crestron Contract Editor could not be started.");
     }
 
     private static string? FindContractEditor()
