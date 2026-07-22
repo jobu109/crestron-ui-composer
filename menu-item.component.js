@@ -81,7 +81,7 @@
       thumb.addEventListener("pointerdown", event => { dragX = event.clientX; dragScroll = host.scrollLeft; thumb.setPointerCapture && thumb.setPointerCapture(event.pointerId); event.preventDefault(); });
       thumb.addEventListener("pointermove", event => { if (!thumb.hasPointerCapture || !thumb.hasPointerCapture(event.pointerId)) return; const max = host.scrollWidth - host.clientWidth, travel = Math.max(1, scroll.clientWidth - thumb.offsetWidth); host.scrollLeft = dragScroll + (event.clientX - dragX) / travel * max; });
       host.addEventListener("scroll", updateScroll, { passive: true });
-      const observer = global.ResizeObserver ? new ResizeObserver(updateScroll) : null; if (observer) { observer.observe(root); observer.observe(host); }
+      const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScroll) : null; if (observer) { observer.observe(root); observer.observe(host); }
       requestAnimationFrame(updateScroll);
       return () => { if (observer) observer.disconnect(); };
     }

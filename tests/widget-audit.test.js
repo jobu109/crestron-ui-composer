@@ -56,6 +56,8 @@ for (const [id, definition] of definitions) {
   const properties = new Map((definition.properties || []).map((entry) => [entry.key, entry])),
     signals = new Map(),
     mountSource = String(definition.mount || "");
+  if (/\bglobal\./.test(mountSource))
+    problem(id, "exported mount references editor-only global variable");
   (definition.signals || []).forEach((signal) => {
     if (!signal.key) problem(id, "signal is missing a key");
     if (signals.has(signal.key)) problem(id, `duplicate signal key ${signal.key}`);
