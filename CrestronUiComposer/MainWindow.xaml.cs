@@ -955,8 +955,14 @@ Write-Host "Panel:  $PanelHost"
 Write-Host "Package: $Package"
 Write-Host "Log:     $LogPath"
 Write-Host ""
-& $Cli deploy -p -H $PanelHost -t $DeploymentType $Package --slow-mode -vvv 2>&1 | Tee-Object -FilePath $LogPath
-$deploymentExitCode = $LASTEXITCODE
+$deploymentExitCode = 1
+try {
+    Start-Transcript -Path $LogPath -Force | Out-Null
+    & $Cli deploy -p -H $PanelHost -t $DeploymentType $Package --slow-mode -vvv
+    $deploymentExitCode = $LASTEXITCODE
+} finally {
+    try { Stop-Transcript | Out-Null } catch { }
+}
 Write-Host ""
 if ($deploymentExitCode -eq 0) {
     Write-Host "Deployment completed successfully." -ForegroundColor Green
