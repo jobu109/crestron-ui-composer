@@ -36,7 +36,9 @@
       face.classList.add("mode-" + mode);
       symbol.textContent = p.symbol || "⏻";
       symbol.hidden = mode === "text";
+      symbol.style.display = mode === "text" ? "none" : "";
       text.hidden = mode === "symbol";
+      text.style.display = mode === "symbol" ? "none" : "";
       text.textContent = fallback;
       name.textContent = fallback;
       name.hidden = !(p.showName === true || String(p.showName).toLowerCase() === "true");
