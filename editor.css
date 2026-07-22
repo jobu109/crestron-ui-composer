@@ -746,6 +746,19 @@ h2 {
   gap: 8px;
   padding: 7px 3px 0;
 }
+.sidebar .side-panel-section-body > button,
+.sidebar .side-panel-section-body > .button,
+.sidebar .component-import-actions > .button {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 36px !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 7px 11px !important;
+  line-height: 1.35 !important;
+  transform: none !important;
+}
 .side-panel-section-body > .component-list,
 .side-panel-section-body > .asset-list,
 .side-panel-section-body > .design-list,

@@ -223,6 +223,13 @@ run("exported action runtime is valid JavaScript", () => {
   new Function(html.slice(start, end));
 });
 
+run("widget styles cannot enlarge sidebar action buttons", () => {
+  const css = read("editor.css");
+  assert.ok(css.includes(".sidebar .side-panel-section-body > button"));
+  assert.ok(css.includes("height: auto !important"));
+  assert.ok(css.includes("min-height: 36px !important"));
+});
+
 run("simulator and mounted widgets share resolved contract addresses", () => {
   assert.equal(
     ComposerRuntime.resolveAddress("RollingToggle.Selected", "digital", "input", "Home.RollingToggle"),
