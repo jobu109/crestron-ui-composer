@@ -340,7 +340,8 @@ h2 {
   outline: 1px solid transparent;
 }
 .widget.selected {
-  outline: 2px solid #14d4b4;
+  outline: 1px solid #fff;
+  box-shadow: 0 0 0 2px #000;
 }
 .widget iframe {
   width: 100%;
@@ -355,8 +356,9 @@ h2 {
   height: 14px;
   right: -7px;
   bottom: -7px;
-  border: 2px solid #fff;
-  background: #14a98f;
+  border: 2px solid #000;
+  background: #fff;
+  box-shadow: 0 0 0 1px #fff;
   border-radius: 2px;
   cursor: nwse-resize;
 }
@@ -1234,15 +1236,17 @@ textarea {
 .selection-marquee {
   position: absolute;
   z-index: 999998;
-  border: 1px solid #14d4b4;
-  background: rgba(20, 212, 180, 0.14);
+  border: 1px solid #fff;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 1px #000;
   pointer-events: none;
 }
 .widget.selected {
-  outline: 2px solid #14d4b4;
+  outline: 1px solid #fff;
+  box-shadow: 0 0 0 2px #000;
 }
 .widget.grouped.selected {
-  outline-color: #7cebd8;
+  outline-color: #fff;
 }
 .layers-list {
   display: grid;
