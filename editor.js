@@ -4102,7 +4102,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   const signalTypeCode = (type) =>
     type === "digital" ? "b" : type === "analog" ? "n" : "s";
-  let simulatorTimer = 0;
+  let simulatorTimer = 0,
+    simulatorItemFilter = null;
   const deploymentSettingsKey = "crestron-ui-composer-deployment-v1";
   const deploymentQueueStatus = new Map();
   function deploymentSettings() {
@@ -4343,10 +4344,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .toLowerCase(),
       rows = simulatorSignalRows().filter(
         (row) =>
-          !query ||
-          `${row.page} ${row.widget} ${row.name} ${row.type} ${row.value}`
-            .toLowerCase()
-            .includes(query),
+          (!simulatorItemFilter || row.itemId === simulatorItemFilter) &&
+          (!query ||
+            `${row.page} ${row.widget} ${row.name} ${row.type} ${row.value}`
+              .toLowerCase()
+              .includes(query)),
       ),
       body = $("simulator-table-body"),
       simulator = window.ComposerRuntime.simulator;
@@ -4457,6 +4459,47 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       );
       if (value !== undefined) element.textContent = String(value);
     });
+  }
+  function clearSimulatorFocus() {
+    document
+      .querySelectorAll(".widget.simulator-focus")
+      .forEach((element) => element.classList.remove("simulator-focus"));
+  }
+  function openSignalSimulator(itemId = null) {
+    simulatorItemFilter = itemId;
+    clearSimulatorFocus();
+    const item = itemId
+        ? state.items.find((candidate) => candidate.id === itemId)
+        : null,
+      title = $("simulator-title"),
+      hint = $("simulator-hint");
+    title.textContent = item ? `Simulate: ${item.name}` : "Signal Simulator";
+    hint.textContent = item
+      ? "Showing only this component’s inputs and outputs. The component is highlighted on the panel."
+      : "Drive feedback inputs and observe widget output events without SIMPL.";
+    $("simulator-search").value = "";
+    renderSignalSimulator();
+    if (item) {
+      if (!item.master && item.pageId !== state.activePage) {
+        state.activePage = item.pageId;
+        renderPage();
+      }
+      requestAnimationFrame(() => {
+        const element = stage.querySelector(`.widget[data-id="${CSS.escape(item.id)}"]`);
+        if (element) {
+          element.classList.add("simulator-focus");
+          element.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        }
+      });
+    }
+    const dialog = $("simulator-dialog");
+    if (!dialog.open) {
+      dialog.style.left = `${Math.max(20, (window.innerWidth - Math.min(1200, window.innerWidth * 0.88)) / 2)}px`;
+      dialog.style.top = "72px";
+      dialog.show();
+    }
+    clearInterval(simulatorTimer);
+    simulatorTimer = setInterval(refreshSimulatorEvents, 250);
   }
   function renderBindings(item) {
     if (item.componentId) {
@@ -6303,6 +6346,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       selection = selectedItems();
     $("context-copy").disabled = !selection.length;
     $("context-paste").disabled = !componentClipboard;
+    $("context-simulate").disabled = selection.length !== 1;
     $("context-lock").disabled = !selection.length;
     $("context-lock").textContent = selection.some((entry) => entry.locked)
       ? "Unlock"
@@ -6344,6 +6388,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   $("context-paste").onclick = () => {
     pasteComponent();
     hideContextMenu();
+  };
+  $("context-simulate").onclick = () => {
+    const item = current();
+    hideContextMenu();
+    if (item) openSignalSimulator(item.id);
   };
   $("context-align").onchange = (event) => {
     const mode = event.target.value;
@@ -7233,18 +7282,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
   $("project-search-query").oninput = renderProjectSearch;
   $("signal-export-csv").onclick = () =>
     download("crestron-signal-map.csv", signalCsv(), "text/csv");
-  $("signal-simulator").onclick = () => {
-    $("simulator-search").value = "";
-    renderSignalSimulator();
-    const dialog = $("simulator-dialog");
-    if (!dialog.open) {
-      dialog.style.left = `${Math.max(20, (window.innerWidth - Math.min(1200, window.innerWidth * 0.88)) / 2)}px`;
-      dialog.style.top = "72px";
-      dialog.show();
-    }
-    clearInterval(simulatorTimer);
-    simulatorTimer = setInterval(refreshSimulatorEvents, 250);
-  };
+  $("signal-simulator").onclick = () => openSignalSimulator();
   $("simulator-search").oninput = renderSignalSimulator;
   $("simulator-clear").onclick = () => {
     window.ComposerRuntime.simulator.events.length = 0;
@@ -7255,6 +7293,8 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
   $("simulator-dialog").addEventListener("close", () => {
     clearInterval(simulatorTimer);
     simulatorTimer = 0;
+    simulatorItemFilter = null;
+    clearSimulatorFocus();
   });
   $("simulator-drag-handle").addEventListener("pointerdown", (event) => {
     if (event.target.closest("input,button,select")) return;

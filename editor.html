@@ -624,8 +624,8 @@
           class="signal-manager-head simulator-drag-handle"
         >
           <div>
-            <h2>Signal Simulator</h2>
-            <p class="hint">
+            <h2 id="simulator-title">Signal Simulator</h2>
+            <p id="simulator-hint" class="hint">
               Drive feedback inputs and observe widget output events without
               SIMPL.
             </p>
@@ -1157,6 +1157,7 @@ Preview signal activity appears here.</pre
     <div id="canvas-context-menu" class="context-menu" hidden>
       <button id="context-copy" type="button">Copy</button>
       <button id="context-paste" type="button">Paste</button>
+      <button id="context-simulate" type="button">Simulate component</button>
       <div class="context-menu-separator"></div>
       <button id="context-lock" type="button">Lock</button>
       <button id="context-group" type="button">Group</button>
