@@ -253,6 +253,42 @@
       return () => input.removeEventListener("change", change);
     },
   });
+  {
+    const source = runtime.get("hole-toggle"),
+      propertyDefaults = {
+        offText: "UNMUTED",
+        onText: "MUTED",
+        offColor: "#087e6c",
+        onColor: "#982f36",
+        offHoleColor: "#04dc78",
+        onHoleColor: "#dc2d2d",
+      },
+      signalDefaults = {
+        press: "MicHoleToggle.Press",
+        selected: "MicHoleToggle.Selected",
+        visibility: "MicHoleToggle.Visibility",
+      };
+    runtime.register({
+      ...source,
+      id: "mic-hole-toggle",
+      name: "Mic Hole Toggle",
+      properties: source.properties.map((property) => ({
+        ...property,
+        defaultValue:
+          property.key in propertyDefaults
+            ? propertyDefaults[property.key]
+            : property.defaultValue,
+      })),
+      signals: source.signals.map((signal) => ({
+        ...signal,
+        defaultValue: signalDefaults[signal.key] || signal.defaultValue,
+      })),
+      template: source.template
+        .replace(">OFF<", ">UNMUTED<")
+        .replace(">ON<", ">MUTED<"),
+      styles: source.styles.replaceAll("hole-toggle", "mic-hole-toggle"),
+    });
+  }
   registerToggle({
     id: "tsw-toggle",
     name: "TSW Toggle Switch",
