@@ -236,7 +236,10 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException("The .cce project was saved, but Windows could not open it. Install Crestron Contract Editor or associate .cce files with it.\n\nSaved to: " + dialog.FileName, ex);
+                throw new InvalidOperationException(
+                    "The .cce project was saved, but Contract Editor could not open it.\n\n" +
+                    "Reason: " + ex.Message + "\n\nSaved to: " + dialog.FileName,
+                    ex);
             }
         }
         Respond(id, true, new { path = dialog.FileName, opened = openAfterSave }, null);
@@ -278,12 +281,13 @@ public partial class MainWindow : Window
                 catch { /* A helper may exit while the process list is being cleared. */ }
             }
 
-            var startInfo = new ProcessStartInfo(contractEditor)
-            {
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(contractEditor) ?? Environment.CurrentDirectory
-            };
-            Process.Start(startInfo);
+            // Launch the installed Start Menu shortcut when available. This old
+            // Electron/Squirrel package relies on its shell shortcut context and may
+            // create only Chromium helper processes when its EXE is started directly.
+            var shortcut = FindContractEditorShortcut();
+            var explorer = new ProcessStartInfo("explorer.exe") { UseShellExecute = true };
+            explorer.ArgumentList.Add(shortcut ?? contractEditor);
+            Process.Start(explorer);
             var deadline = DateTime.UtcNow.AddSeconds(20);
             while (DateTime.UtcNow < deadline)
             {
@@ -318,6 +322,22 @@ public partial class MainWindow : Window
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Crestron", "CH5 Contract Editor", "CH5-Contract-Editor.exe")
         };
         return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static string? FindContractEditorShortcut()
+    {
+        var startMenus = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu)
+        };
+        foreach (var startMenu in startMenus.Where(Directory.Exists))
+        {
+            var shortcut = Directory.EnumerateFiles(startMenu, "CH5-Contract-Editor.lnk", SearchOption.AllDirectories)
+                .FirstOrDefault();
+            if (shortcut is not null) return shortcut;
+        }
+        return null;
     }
 
     private static string RecoveryFilePath()
