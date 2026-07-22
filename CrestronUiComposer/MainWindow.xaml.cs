@@ -712,8 +712,8 @@ public partial class MainWindow : Window
             var runtimeLicense = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
 
-            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\"";
-            if (contractPath is not null) arguments += $" -c \"{contractPath}\"";
+            var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\"";
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
@@ -782,8 +782,8 @@ public partial class MainWindow : Window
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
             var runtimeLicense = Path.Combine(Path.GetDirectoryName(runtime)!, "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
-            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\"";
-            if (contractPath is not null) arguments += $" -c \"{contractPath}\"";
+            var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\"";
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
@@ -833,6 +833,27 @@ public partial class MainWindow : Window
         if (File.Exists(globalCli)) return globalCli;
         var path = Environment.GetEnvironmentVariable("PATH") ?? "";
         return path.Split(Path.PathSeparator).Select(folder => Path.Combine(folder.Trim('"'), "ch5-cli.cmd")).FirstOrDefault(File.Exists);
+    }
+
+    private static string CreateEmptyContractMapping(string folder, string projectName)
+    {
+        var path = Path.Combine(folder, projectName + "-empty.cse2j");
+        var empty = new Dictionary<string, object>();
+        var mapping = new
+        {
+            name = projectName,
+            timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+            version = "1.0.0.0",
+            schema_version = 1,
+            extra_value = "Generated join-only mapping",
+            signals = new
+            {
+                states = new { boolean = empty, numeric = empty, @string = empty },
+                events = new { boolean = empty, numeric = empty, @string = empty }
+            }
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(mapping, new JsonSerializerOptions { WriteIndented = true }));
+        return path;
     }
 
     private void SelectCh5Package(string id)
@@ -962,6 +983,10 @@ try {
     $deploymentExitCode = $LASTEXITCODE
 } finally {
     try { Stop-Transcript | Out-Null } catch { }
+}
+if (Test-Path -LiteralPath $LogPath) {
+    $deviceInstallError = Select-String -LiteralPath $LogPath -Pattern 'ERROR:\s*Error installing User project' -Quiet
+    if ($deviceInstallError) { $deploymentExitCode = 1 }
 }
 Write-Host ""
 if ($deploymentExitCode -eq 0) {
