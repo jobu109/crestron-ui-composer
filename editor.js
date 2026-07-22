@@ -7630,7 +7630,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       updateActiveDeploymentProfile({ host, packagePath, slowMode, deploymentType: result.deploymentType });
       renderDeploymentHistory();
       $("deploy-status").textContent =
-        "Deployment terminal opened. Enter credentials there and watch for “Success. Restarting UI”.";
+        `Deployment terminal opened. It will remain open after completion. Detailed output will be saved to ${result.logPath || "the deployment log folder"}.`;
     } catch (error) {
       $("deploy-status").textContent =
         `Deployment failed to start: ${error.message}`;
@@ -7697,8 +7697,8 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
           setDeploymentQueueState(profile.id, "ready", "Deployment succeeded", result);
           appendDeploymentHistory(profile, result, true, "Deployment succeeded");
         } else {
-          setDeploymentQueueState(profile.id, "failed", `Deployment failed · exit ${result.exitCode}`, result);
-          appendDeploymentHistory(profile, result, false, `CLI exit code ${result.exitCode}`);
+          setDeploymentQueueState(profile.id, "failed", `Deployment failed · exit ${result.exitCode} · ${result.logPath || "see terminal"}`, result);
+          appendDeploymentHistory(profile, result, false, `CLI exit code ${result.exitCode}${result.logPath ? ` · ${result.logPath}` : ""}`);
         }
       } catch (error) {
         setDeploymentQueueState(profile.id, "failed", error.message);

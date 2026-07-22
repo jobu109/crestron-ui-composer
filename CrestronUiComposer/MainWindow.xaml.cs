@@ -925,10 +925,8 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(backupRoot);
         var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
         File.Copy(package, backupPath, true);
-        var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\" --slow-mode";
-        var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") { UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal };
-        var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
-        Respond(id, true, new { started = true, processId = process.Id, host, packagePath = package, backupPath, slowMode, deploymentType }, null);
+        var launch = StartDeploymentTerminal(cli, host, deploymentType, package);
+        Respond(id, true, new { started = true, processId = launch.Process.Id, host, packagePath = package, backupPath, logPath = launch.LogPath, slowMode, deploymentType }, null);
     }
 
     private async void DeployCh5PackageWait(string id, JsonElement payload)
@@ -946,18 +944,78 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(backupRoot);
             var backupPath = Path.Combine(backupRoot, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(package)}");
             File.Copy(package, backupPath, true);
-            var command = $"\"{cli}\" deploy -p -H \"{host}\" -t {deploymentType} \"{package}\" --slow-mode";
-            var start = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{command}\"") {
-                UseShellExecute = true, CreateNoWindow = false, WindowStyle = ProcessWindowStyle.Normal
-            };
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
+            var launch = StartDeploymentTerminal(cli, host, deploymentType, package);
+            using var process = launch.Process;
             await process.WaitForExitAsync();
             Respond(id, true, new {
                 success = process.ExitCode == 0, exitCode = process.ExitCode, host,
-                packagePath = package, backupPath, slowMode, deploymentType
+                packagePath = package, backupPath, logPath = launch.LogPath, slowMode, deploymentType
             }, null);
         }
         catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private static (Process Process, string LogPath) StartDeploymentTerminal(string cli, string host, string deploymentType, string package)
+    {
+        var logRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "DeploymentLogs");
+        Directory.CreateDirectory(logRoot);
+        var safeHost = new string(host.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '_').ToArray());
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var logPath = Path.Combine(logRoot, $"{stamp}-{safeHost}.log");
+        var scriptPath = Path.Combine(logRoot, "RunDeployment.ps1");
+        File.WriteAllText(scriptPath, """
+param(
+    [Parameter(Mandatory=$true)][string]$Cli,
+    [Parameter(Mandatory=$true)][string]$PanelHost,
+    [Parameter(Mandatory=$true)][string]$DeploymentType,
+    [Parameter(Mandatory=$true)][string]$Package,
+    [Parameter(Mandatory=$true)][string]$LogPath
+)
+$ErrorActionPreference = 'Continue'
+$Host.UI.RawUI.WindowTitle = "Crestron UI Composer Deployment - $PanelHost"
+Write-Host "Crestron UI Composer deployment" -ForegroundColor Cyan
+Write-Host "Panel:  $PanelHost"
+Write-Host "Package: $Package"
+Write-Host "Log:     $LogPath"
+Write-Host ""
+& $Cli deploy -p -H $PanelHost -t $DeploymentType $Package --slow-mode -vvv 2>&1 | Tee-Object -FilePath $LogPath
+$deploymentExitCode = $LASTEXITCODE
+Write-Host ""
+if ($deploymentExitCode -eq 0) {
+    Write-Host "Deployment completed successfully." -ForegroundColor Green
+} else {
+    Write-Host "Deployment failed with exit code $deploymentExitCode." -ForegroundColor Red
+    Write-Host "The complete output was saved to: $LogPath" -ForegroundColor Yellow
+}
+Write-Host ""
+[void](Read-Host "Press Enter to close this deployment window")
+exit $deploymentExitCode
+""");
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = true,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Normal,
+            WorkingDirectory = logRoot
+        };
+        start.ArgumentList.Add("-NoLogo");
+        start.ArgumentList.Add("-NoProfile");
+        start.ArgumentList.Add("-ExecutionPolicy");
+        start.ArgumentList.Add("Bypass");
+        start.ArgumentList.Add("-File");
+        start.ArgumentList.Add(scriptPath);
+        start.ArgumentList.Add("-Cli");
+        start.ArgumentList.Add(cli);
+        start.ArgumentList.Add("-PanelHost");
+        start.ArgumentList.Add(host);
+        start.ArgumentList.Add("-DeploymentType");
+        start.ArgumentList.Add(deploymentType);
+        start.ArgumentList.Add("-Package");
+        start.ArgumentList.Add(package);
+        start.ArgumentList.Add("-LogPath");
+        start.ArgumentList.Add(logPath);
+        var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron deployment terminal could not be started.");
+        return (process, logPath);
     }
 
     private static string DeploymentType(JsonElement payload)
