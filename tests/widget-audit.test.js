@@ -22,6 +22,17 @@ const editorHtml = read("editor.html"),
 componentScripts.forEach((file) =>
   vm.runInThisContext(read(file), { filename: file }),
 );
+const desktopProject = read("CrestronUiComposer/CrestronUiComposer.csproj");
+componentScripts.forEach((file) =>
+  assert.match(
+    desktopProject,
+    new RegExp(
+      `Content Include="\\.\\.\\\\${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
+      "i",
+    ),
+    `Desktop package does not include ${file}`,
+  ),
+);
 
 const manifest = JSON.parse(read("components.manifest.json")),
   manifestIds = new Set(manifest.components.map((entry) => entry.componentId)),
