@@ -11,6 +11,7 @@
     {"file":"buttonPower.html","componentId":"power-button","runtime":"scoped","name":"Power Button","category":"Buttons","width":120,"height":120},
     {"file":"buttonStandardWave.html","componentId":"wave-button","runtime":"scoped","name":"Wave Button","category":"Buttons","width":220,"height":100},
     {"file":"buttonToggle.html","componentId":"rolling-toggle","runtime":"scoped","name":"Rolling Toggle","category":"Buttons","width":220,"height":100},
+    {"file":"holeToggle.html","componentId":"hole-toggle","runtime":"scoped","name":"Hole Toggle","category":"Buttons","width":220,"height":100},
     {"file":"buttonVolDown.html","componentId":"volume-down-button","runtime":"scoped","name":"Volume Down","category":"Buttons","width":220,"height":100},
     {"file":"buttonVolUp.html","componentId":"volume-up-button","runtime":"scoped","name":"Volume Up","category":"Buttons","width":220,"height":100},
     {"file":"toggleSwitch.html","componentId":"tsw-toggle","runtime":"scoped","name":"TSW Toggle Switch","category":"Buttons","width":300,"height":110},
