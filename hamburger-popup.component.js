@@ -4,7 +4,7 @@
     "Settings|Copy|Share|Delete|Item 4|Item 5|Item 6|Item 7|Item 8|Item 9|Item 10|Item 11";
   global.ComposerRuntime.register({
     id: "hamburger-popup",
-    name: "Hamburger Popup",
+    name: "Hamburger Menu",
     category: "Navigation & Menus",
     defaultSize: { width: 360, height: 420 },
     signals: [],

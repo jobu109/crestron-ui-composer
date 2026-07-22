@@ -738,13 +738,13 @@
   }
   function componentCategory(name) {
     const n = name.toLowerCase();
-    if (/button|toggle|switch/.test(n)) return "Buttons";
+    if (/toggle|switch/.test(n)) return "Toggle Buttons";
+    if (/button/.test(n)) return "Standard Buttons";
     if (/slider|level|volume|shade|light|mic/.test(n))
       return "Sliders & Levels";
-    if (/text|label|scroll/.test(n)) return "Text";
+    if (/text|label|scroll|keyboard|password|input/.test(n)) return "Text & Input";
     if (/menu|nav|carousel|dpad/.test(n)) return "Navigation & Menus";
     if (/list|selector|preset/.test(n)) return "Lists & Selectors";
-    if (/keyboard|password|input/.test(n)) return "Input";
     if (/clock|weather|display|progress|wait|status|led/.test(n))
       return "Status & Information";
     return "Other";
@@ -898,7 +898,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         items = document.createElement("div");
       group.className = "component-category";
       group.open =
-        !!query || ["Buttons", "Sliders & Levels", "Text"].includes(category);
+        !!query || ["Standard Buttons", "Sliders & Levels", "Text & Input"].includes(category);
       summary.innerHTML =
         category +
         '<span class="category-count">' +

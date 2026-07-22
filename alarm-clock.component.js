@@ -3,7 +3,7 @@
   global.ComposerRuntime.register({
     id: "alarm-clock",
     name: "Alarm Clock",
-    category: "Status & Information",
+    category: "Lists & Selectors",
     defaultSize: { width: 420, height: 300 },
     signals: [
       { key: "hour", name: "Hour text", type: "serial", direction: "output", defaultValue: "AlarmClock.Hour.ValueText" },

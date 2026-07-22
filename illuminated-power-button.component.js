@@ -3,7 +3,7 @@
   runtime.register({
     id: "illuminated-power-button",
     name: "Illuminated Power Button",
-    category: "Buttons",
+    category: "Advanced Buttons",
     defaultSize: { width: 210, height: 230 },
     properties: [
       { key: "text", name: "Default text", type: "text", defaultValue: "POWER" },

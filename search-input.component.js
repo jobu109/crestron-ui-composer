@@ -3,7 +3,7 @@
   runtime.register({
     id: "search-input",
     name: "Search Input",
-    category: "Text",
+    category: "Text & Input",
     defaultSize: { width: 560, height: 96 },
     properties: [
       { key: "placeholder", name: "Placeholder text", type: "text", defaultValue: "Search..." },

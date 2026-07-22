@@ -3,7 +3,7 @@
   runtime.register({
     id: "display-flip",
     name: "Display Flip",
-    category: "Buttons",
+    category: "Advanced Buttons",
     defaultSize: { width: 620, height: 360 },
     signals: [],
     signalGroups: [

@@ -1,7 +1,7 @@
 (function(global){
   "use strict";
   global.ComposerRuntime.register({
-    id:"horizontal-carousel",name:"Horizontal Carousel",category:"Navigation & Menus",defaultSize:{width:520,height:220},
+    id:"horizontal-carousel",name:"Horizontal Carousel",category:"Lists & Selectors",defaultSize:{width:520,height:220},
     signals:[{key:"set",name:"Selected slide set",type:"analog",direction:"output",defaultValue:"HorizontalCarousel.Selected.Set"},{key:"feedback",name:"Selected slide feedback",type:"analog",direction:"input",defaultValue:"HorizontalCarousel.Selected.Value"},{key:"count",name:"Number of slides (overrides local count)",type:"analog",direction:"input",defaultValue:"HorizontalCarousel.SlideCount"}],
     signalGroups:[{name:"Slide press range",type:"digital",direction:"output"},{name:"Slide label range",type:"serial",direction:"input"}],
     rangeBindings:[{name:"Digital slide press range",type:"digital",direction:"output",baseKey:"pressBase",incrementKey:"pressIncrement"},{name:"Serial slide label range",type:"serial",direction:"input",baseKey:"labelBase",incrementKey:"labelIncrement"}],

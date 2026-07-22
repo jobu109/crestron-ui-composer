@@ -1,7 +1,7 @@
 (function(global){
   "use strict";
   global.ComposerRuntime.register({
-    id:"vertical-scrolling-text",name:"Vertical Scrolling Text",category:"Text",defaultSize:{width:260,height:240},
+    id:"vertical-scrolling-text",name:"Vertical Scrolling Text",category:"Text & Input",defaultSize:{width:260,height:240},
     signals:[
       {key:"text",name:"Scrolling text",type:"serial",direction:"input",defaultValue:"301"},
       {key:"speed",name:"Scroll speed",type:"analog",direction:"input",defaultValue:"302"}

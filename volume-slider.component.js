@@ -2,7 +2,7 @@
   "use strict";
   runtime.register({
     id: "volume-slider",
-    name: "Volume Slider",
+    name: "Standard Slider",
     category: "Sliders & Levels",
     defaultSize: { width: 420, height: 130 },
     properties: [

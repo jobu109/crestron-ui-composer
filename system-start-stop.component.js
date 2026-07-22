@@ -3,7 +3,7 @@
   runtime.register({
     id: "system-start-stop",
     name: "System Start / Stop",
-    category: "Buttons",
+    category: "Advanced Buttons",
     defaultSize: { width: 300, height: 300 },
     properties: [
       { key: "systemText", name: "Default system name", type: "text", defaultValue: "SYSTEM" },

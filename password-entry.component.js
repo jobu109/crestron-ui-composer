@@ -3,7 +3,7 @@
   global.ComposerRuntime.register({
     id: "password-entry",
     name: "Password Entry",
-    category: "Input",
+    category: "Text & Input",
     defaultSize: { width: 420, height: 300 },
     signals: [
       {

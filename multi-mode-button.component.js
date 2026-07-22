@@ -30,7 +30,7 @@
   runtime.register({
     id: "multi-mode-button",
     name: "Multi-Mode Button",
-    category: "Buttons",
+    category: "Advanced Buttons",
     defaultSize: { width: 240, height: 110 },
     properties,
     signals: [

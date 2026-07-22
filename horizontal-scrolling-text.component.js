@@ -1,7 +1,7 @@
 (function(global){
   "use strict";
   global.ComposerRuntime.register({
-    id:"horizontal-scrolling-text",name:"Horizontal Scrolling Text",category:"Text",defaultSize:{width:520,height:90},
+    id:"horizontal-scrolling-text",name:"Horizontal Scrolling Text",category:"Text & Input",defaultSize:{width:520,height:90},
     signals:[{key:"press",name:"Press",type:"digital",direction:"output",defaultValue:"HorizontalScrollingText.Press"},{key:"text",name:"Text feedback",type:"serial",direction:"input"},{key:"speed",name:"Speed feedback",type:"analog",direction:"input"}],
     properties:[
       {key:"defaultText",name:"Default text",type:"text",defaultValue:"Scrolling Text"},{key:"fontSize",name:"Font size",type:"number",defaultValue:30},

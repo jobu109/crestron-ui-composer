@@ -9,7 +9,7 @@
   global.ComposerRuntime.register({
     id: "display-control",
     name: "Display Control",
-    category: "Status & Information",
+    category: "Multi-Devices",
     defaultSize: { width: 480, height: 360 },
     signals: [],
     data: { displayDefaults, sourceDefaults },

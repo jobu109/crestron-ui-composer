@@ -3,7 +3,7 @@
   runtime.register({
     id:"standard-button",
     name:"Standard Button",
-    category:"Buttons",
+    category:"Standard Buttons",
     defaultSize:{width:220,height:100},
     properties:[{key:"text",name:"Default label",type:"text",defaultValue:"Button"},{key:"textColor",name:"Text color",type:"color",defaultValue:"#ffffff"},{key:"faceColor",name:"Button tint",type:"color",defaultValue:"#04aa8e"},{key:"borderColor",name:"Border color",type:"color",defaultValue:"#ffffff"},{key:"glowColor",name:"Glow color",type:"color",defaultValue:"#04aa8e"},{key:"selectedColor",name:"Selected tint",type:"color",defaultValue:"#04aa8e"}],
     signals:[

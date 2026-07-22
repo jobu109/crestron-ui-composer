@@ -4,7 +4,7 @@
   global.ComposerRuntime.register({
     id: "rolling-menu",
     name: "Rolling Menu",
-    category: "Navigation & Menus",
+    category: "Lists & Selectors",
     defaultSize: { width: 340, height: 420 },
     signals: [],
     addressBindings: [

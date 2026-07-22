@@ -3,7 +3,7 @@
   runtime.register({
     id: "text-block",
     name: "Text Block",
-    category: "Text",
+    category: "Text & Input",
     defaultSize: { width: 280, height: 90 },
     properties: [
       { key: "text", name: "Local / advanced text", type: "cip-text", defaultValue: "Text" },

@@ -63,7 +63,7 @@
   global.ComposerRuntime.register({
     id: "keyboard",
     name: "Keyboard",
-    category: "Input",
+    category: "Text & Input",
     defaultSize: { width: 720, height: 340 },
     signals: [
       {

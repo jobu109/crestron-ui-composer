@@ -2,7 +2,7 @@
   "use strict";
   const runtime=global.ComposerRuntime;
   runtime.register({
-    id:"microphone-control",name:"Microphone Control",category:"Sliders & Levels",defaultSize:{width:760,height:420},signals:[],
+    id:"microphone-control",name:"Microphone Control",category:"Multi-Devices",defaultSize:{width:760,height:420},signals:[],
     signalGroups:[{name:"Item count",type:"analog",direction:"input"},{name:"Level set range",type:"analog",direction:"output"},{name:"Level feedback range",type:"analog",direction:"input"},{name:"Label range",type:"serial",direction:"input"},{name:"Toggle press range",type:"digital",direction:"output"},{name:"Toggle feedback range",type:"digital",direction:"input"}],
     properties:[
       {key:"bindingMode",name:"Range binding mode",type:"select",options:[{value:"join",label:"Join numbers"},{value:"contract",label:"Contract patterns"}],defaultValue:"join"},

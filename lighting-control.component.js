@@ -1,4 +1,206 @@
-(function(runtime){
+(function (runtime) {
   "use strict";
-  runtime.register({id:"lighting-control",name:"Lighting Control",category:"Sliders & Levels",defaultSize:{width:760,height:390},signals:[],signalGroups:[{name:"Item count",type:"analog",direction:"input"},{name:"Level set range",type:"analog",direction:"output"},{name:"Level feedback range",type:"analog",direction:"input"},{name:"Name range",type:"serial",direction:"input"}],properties:[{key:"bindingMode",name:"Range binding mode",type:"select",options:[{value:"join",label:"Join numbers"},{value:"contract",label:"Contract patterns"}],defaultValue:"join"},{key:"countSignal",name:"Item count signal",type:"text",defaultValue:"100"},{key:"setBase",name:"Level set base / pattern",type:"text",defaultValue:"101"},{key:"feedbackBase",name:"Level feedback base / pattern",type:"text",defaultValue:"101"},{key:"nameBase",name:"Name base / pattern",type:"text",defaultValue:"101"},{key:"signalIncrement",name:"Join increment",type:"number",defaultValue:1},{key:"defaultCount",name:"Default load count",type:"number",defaultValue:5},{key:"maxItems",name:"Maximum loads",type:"number",defaultValue:48},{key:"defaultName",name:"Default name",type:"text",defaultValue:"Light Load"},{key:"outputScale",name:"Outgoing analog scale",type:"select",options:[{value:"65535",label:"0–65535"},{value:"100",label:"0–100"}],defaultValue:"65535"}],template:'<div class="loads"></div>',styles:'[data-component="lighting-control"]{display:block;width:100%;height:100%;padding:12px;overflow:auto;box-sizing:border-box;touch-action:none}[data-component="lighting-control"] .loads{display:flex;align-items:stretch;gap:14px;min-width:100%;height:100%}[data-component="lighting-control"] .load{position:relative;min-width:130px;flex:1 0 130px;max-width:210px;height:100%;overflow:hidden;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:22px;background:#222;color:#fff;box-shadow:inset 0 1px rgba(255,255,255,.35),0 0 12px rgba(4,170,142,.4);cursor:pointer;touch-action:none}[data-component="lighting-control"] .fill{position:absolute;right:0;bottom:0;left:0;height:0;background:linear-gradient(to top,#f5b700,#fff36a);opacity:.8;pointer-events:none}[data-component="lighting-control"] .glow{position:absolute;inset:0;background:radial-gradient(circle at 50% 90%,rgba(255,230,30,.6),transparent 70%);opacity:0;pointer-events:none}[data-component="lighting-control"] .name,[data-component="lighting-control"] .level{position:absolute;right:10px;left:10px;z-index:2;overflow:hidden;font-family:Segoe UI;text-align:center;text-overflow:ellipsis;text-shadow:0 2px 5px #000;white-space:nowrap}[data-component="lighting-control"] .name{top:18px;font-size:18px;font-weight:700}[data-component="lighting-control"] .level{bottom:18px;font-size:26px;font-weight:800}[data-component="lighting-control"] .load.pressed{outline:2px solid #fff}',mount(root,context){const host=root.querySelector(".loads"),p=context.options.properties||{},mode=p.bindingMode||"join",increment=Number(p.signalIncrement)||1,max=Math.max(1,Math.min(100,Number(p.maxItems)||48)),fallback=Math.max(1,Math.min(max,Number(p.defaultCount)||5)),names=Array.from({length:max},()=>p.defaultName||"Light Load"),levels=Array(max).fill(0);let count=fallback;function address(base,index){if(mode==="join")return String((Number(base)||0)+(index*increment));return String(base||"").replace(/\{n\}/g,String(index+1)).replace(/\{index\}/g,String(index))}function percent(value){const n=Number(value)||0;return Math.max(0,Math.min(100,Math.round(n>100?n/65535*100:n)))}function setVisual(index,value){levels[index]=percent(value);const item=host.children[index];if(!item)return;item.querySelector(".fill").style.height=levels[index]+"%";item.querySelector(".glow").style.opacity=String(levels[index]/100*.55);item.querySelector(".level").textContent=levels[index]+"%"}function render(){host.innerHTML="";for(let i=0;i<count;i++){const button=document.createElement("button");button.className="load";button.innerHTML='<span class="fill"></span><span class="glow"></span><span class="name"></span><span class="level"></span>';button.querySelector(".name").textContent=names[i];host.appendChild(button);setVisual(i,levels[i]);let active=false;function publish(event){const rect=button.getBoundingClientRect(),value=100-Math.max(0,Math.min(100,(event.clientY-rect.top)/rect.height*100)),rounded=Math.round(value);setVisual(i,rounded);context.signals.publishAddress("analog",address(p.setBase,i),p.outputScale==="100"?rounded:Math.round(rounded/100*65535))}button.addEventListener("pointerdown",event=>{active=true;button.classList.add("pressed");if(button.setPointerCapture)button.setPointerCapture(event.pointerId);publish(event);event.preventDefault()});button.addEventListener("pointermove",event=>{if(active)publish(event)});button.addEventListener("pointerup",()=>{active=false;button.classList.remove("pressed")});button.addEventListener("pointercancel",()=>{active=false;button.classList.remove("pressed")});}}context.signals.subscribeAddress("analog",p.countSignal,value=>{const next=Math.round(Number(value));if(next>0){count=Math.max(1,Math.min(max,next));render()}});for(let i=0;i<max;i++){context.signals.subscribeAddress("analog",address(p.feedbackBase,i),value=>setVisual(i,value));context.signals.subscribeAddress("serial",address(p.nameBase,i),value=>{if(value){names[i]=value;const item=host.children[i];if(item)item.querySelector(".name").textContent=value}})}render()}});
+  runtime.register({
+    id: "lighting-control",
+    name: "Lighting Control",
+    category: "Multi-Devices",
+    defaultSize: { width: 760, height: 390 },
+    signals: [],
+    signalGroups: [
+      { name: "Item count", type: "analog", direction: "input" },
+      { name: "Level set range", type: "analog", direction: "output" },
+      { name: "Level feedback range", type: "analog", direction: "input" },
+      { name: "Name range", type: "serial", direction: "input" },
+    ],
+    properties: [
+      {
+        key: "bindingMode",
+        name: "Range binding mode",
+        type: "select",
+        options: [
+          { value: "join", label: "Join numbers" },
+          { value: "contract", label: "Contract patterns" },
+        ],
+        defaultValue: "join",
+      },
+      {
+        key: "countSignal",
+        name: "Item count signal",
+        type: "text",
+        defaultValue: "100",
+      },
+      {
+        key: "setBase",
+        name: "Level set base / pattern",
+        type: "text",
+        defaultValue: "101",
+      },
+      {
+        key: "feedbackBase",
+        name: "Level feedback base / pattern",
+        type: "text",
+        defaultValue: "101",
+      },
+      {
+        key: "nameBase",
+        name: "Name base / pattern",
+        type: "text",
+        defaultValue: "101",
+      },
+      {
+        key: "signalIncrement",
+        name: "Join increment",
+        type: "number",
+        defaultValue: 1,
+      },
+      {
+        key: "defaultCount",
+        name: "Default load count",
+        type: "number",
+        defaultValue: 5,
+      },
+      {
+        key: "maxItems",
+        name: "Maximum loads",
+        type: "number",
+        defaultValue: 48,
+      },
+      {
+        key: "defaultName",
+        name: "Default name",
+        type: "text",
+        defaultValue: "Light Load",
+      },
+      {
+        key: "outputScale",
+        name: "Outgoing analog scale",
+        type: "select",
+        options: [
+          { value: "65535", label: "0–65535" },
+          { value: "100", label: "0–100" },
+        ],
+        defaultValue: "65535",
+      },
+    ],
+    template: '<div class="loads"></div>',
+    styles:
+      '[data-component="lighting-control"]{display:block;width:100%;height:100%;padding:12px;overflow:auto;box-sizing:border-box;touch-action:none}[data-component="lighting-control"] .loads{display:flex;align-items:stretch;gap:14px;min-width:100%;height:100%}[data-component="lighting-control"] .load{position:relative;min-width:130px;flex:1 0 130px;max-width:210px;height:100%;overflow:hidden;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:22px;background:#222;color:#fff;box-shadow:inset 0 1px rgba(255,255,255,.35),0 0 12px rgba(4,170,142,.4);cursor:pointer;touch-action:none}[data-component="lighting-control"] .fill{position:absolute;right:0;bottom:0;left:0;height:0;background:linear-gradient(to top,#f5b700,#fff36a);opacity:.8;pointer-events:none}[data-component="lighting-control"] .glow{position:absolute;inset:0;background:radial-gradient(circle at 50% 90%,rgba(255,230,30,.6),transparent 70%);opacity:0;pointer-events:none}[data-component="lighting-control"] .name,[data-component="lighting-control"] .level{position:absolute;right:10px;left:10px;z-index:2;overflow:hidden;font-family:Segoe UI;text-align:center;text-overflow:ellipsis;text-shadow:0 2px 5px #000;white-space:nowrap}[data-component="lighting-control"] .name{top:18px;font-size:18px;font-weight:700}[data-component="lighting-control"] .level{bottom:18px;font-size:26px;font-weight:800}[data-component="lighting-control"] .load.pressed{outline:2px solid #fff}',
+    mount(root, context) {
+      const host = root.querySelector(".loads"),
+        p = context.options.properties || {},
+        mode = p.bindingMode || "join",
+        increment = Number(p.signalIncrement) || 1,
+        max = Math.max(1, Math.min(100, Number(p.maxItems) || 48)),
+        fallback = Math.max(1, Math.min(max, Number(p.defaultCount) || 5)),
+        names = Array.from(
+          { length: max },
+          () => p.defaultName || "Light Load",
+        ),
+        levels = Array(max).fill(0);
+      let count = fallback;
+      function address(base, index) {
+        if (mode === "join")
+          return String((Number(base) || 0) + index * increment);
+        return String(base || "")
+          .replace(/\{n\}/g, String(index + 1))
+          .replace(/\{index\}/g, String(index));
+      }
+      function percent(value) {
+        const n = Number(value) || 0;
+        return Math.max(
+          0,
+          Math.min(100, Math.round(n > 100 ? (n / 65535) * 100 : n)),
+        );
+      }
+      function setVisual(index, value) {
+        levels[index] = percent(value);
+        const item = host.children[index];
+        if (!item) return;
+        item.querySelector(".fill").style.height = levels[index] + "%";
+        item.querySelector(".glow").style.opacity = String(
+          (levels[index] / 100) * 0.55,
+        );
+        item.querySelector(".level").textContent = levels[index] + "%";
+      }
+      function render() {
+        host.innerHTML = "";
+        for (let i = 0; i < count; i++) {
+          const button = document.createElement("button");
+          button.className = "load";
+          button.innerHTML =
+            '<span class="fill"></span><span class="glow"></span><span class="name"></span><span class="level"></span>';
+          button.querySelector(".name").textContent = names[i];
+          host.appendChild(button);
+          setVisual(i, levels[i]);
+          let active = false;
+          function publish(event) {
+            const rect = button.getBoundingClientRect(),
+              value =
+                100 -
+                Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    ((event.clientY - rect.top) / rect.height) * 100,
+                  ),
+                ),
+              rounded = Math.round(value);
+            setVisual(i, rounded);
+            context.signals.publishAddress(
+              "analog",
+              address(p.setBase, i),
+              p.outputScale === "100"
+                ? rounded
+                : Math.round((rounded / 100) * 65535),
+            );
+          }
+          button.addEventListener("pointerdown", (event) => {
+            active = true;
+            button.classList.add("pressed");
+            if (button.setPointerCapture)
+              button.setPointerCapture(event.pointerId);
+            publish(event);
+            event.preventDefault();
+          });
+          button.addEventListener("pointermove", (event) => {
+            if (active) publish(event);
+          });
+          button.addEventListener("pointerup", () => {
+            active = false;
+            button.classList.remove("pressed");
+          });
+          button.addEventListener("pointercancel", () => {
+            active = false;
+            button.classList.remove("pressed");
+          });
+        }
+      }
+      context.signals.subscribeAddress("analog", p.countSignal, (value) => {
+        const next = Math.round(Number(value));
+        if (next > 0) {
+          count = Math.max(1, Math.min(max, next));
+          render();
+        }
+      });
+      for (let i = 0; i < max; i++) {
+        context.signals.subscribeAddress(
+          "analog",
+          address(p.feedbackBase, i),
+          (value) => setVisual(i, value),
+        );
+        context.signals.subscribeAddress(
+          "serial",
+          address(p.nameBase, i),
+          (value) => {
+            if (value) {
+              names[i] = value;
+              const item = host.children[i];
+              if (item) item.querySelector(".name").textContent = value;
+            }
+          },
+        );
+      }
+      render();
+    },
+  });
 })(window.ComposerRuntime);

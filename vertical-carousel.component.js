@@ -1,7 +1,7 @@
 (function(global){
   "use strict";
   global.ComposerRuntime.register({
-    id:"vertical-carousel",name:"Vertical Carousel",category:"Navigation & Menus",defaultSize:{width:280,height:420},
+    id:"vertical-carousel",name:"Vertical Carousel",category:"Lists & Selectors",defaultSize:{width:280,height:420},
     signals:[{key:"count",name:"Number of slides (overrides default)",type:"analog",direction:"input",defaultValue:"VerticalCarousel.SlideCount"}],
     signalGroups:[{name:"Slide press range",type:"digital",direction:"output"},{name:"Slide feedback range",type:"digital",direction:"input"},{name:"Slide label range",type:"serial",direction:"input"}],
     rangeBindings:[{name:"Digital slide press range",type:"digital",direction:"output",baseKey:"pressBase",incrementKey:"pressIncrement"},{name:"Digital slide feedback range",type:"digital",direction:"input",baseKey:"feedbackBase",incrementKey:"feedbackIncrement"},{name:"Serial slide label range",type:"serial",direction:"input",baseKey:"labelBase",incrementKey:"labelIncrement"}],

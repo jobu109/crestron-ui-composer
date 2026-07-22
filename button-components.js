@@ -3,7 +3,7 @@
   runtime.register({
     id: "blank-button",
     name: "Blank Button",
-    category: "Buttons",
+    category: "Standard Buttons",
     defaultSize: { width: 120, height: 120 },
     properties: [],
     signals: [
@@ -50,7 +50,7 @@
   runtime.register({
     id: "power-button",
     name: "Power Button",
-    category: "Buttons",
+    category: "Standard Buttons",
     defaultSize: { width: 120, height: 120 },
     properties: [
       {
@@ -135,7 +135,7 @@
     runtime.register({
       id: def.id,
       name: def.name,
-      category: "Buttons",
+      category: "Toggle Buttons",
       defaultSize: def.size,
       properties: [
         {
@@ -218,7 +218,7 @@
   runtime.register({
     id: "hole-toggle",
     name: "Hole Toggle",
-    category: "Buttons",
+    category: "Toggle Buttons",
     defaultSize: { width: 220, height: 100 },
     properties: [
       { key: "offText", name: "Off label", type: "text", defaultValue: "OFF" },

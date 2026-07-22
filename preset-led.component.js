@@ -3,7 +3,7 @@
   global.ComposerRuntime.register({
     id: "preset-led",
     name: "Preset with LED",
-    category: "Lists & Selectors",
+    category: "Advanced Buttons",
     defaultSize: { width: 260, height: 100 },
     signals: [
       {

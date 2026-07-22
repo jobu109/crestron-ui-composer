@@ -3,7 +3,7 @@
   runtime.register({
     id: "power-rocker",
     name: "Power Rocker",
-    category: "Buttons",
+    category: "Advanced Buttons",
     defaultSize: { width: 220, height: 260 },
     properties: [
       { key: "text", name: "Default name", type: "text", defaultValue: "POWER" },
