@@ -48,7 +48,8 @@
       '[data-component="rotary-knob"] .rotary-marker{position:absolute;top:7%;left:50%;width:10%;aspect-ratio:1;border:2px solid var(--marker-color);border-radius:50%;background:linear-gradient(#fff,var(--knob-shadow-color));box-shadow:0 1px 2px rgba(0,0,0,.75);transform:translateX(-50%)}' +
       '[data-component="rotary-knob"] .rotary-value{display:block;color:var(--text-color);font-size:var(--value-text-size-px);font-weight:900;line-height:1;text-align:center;text-shadow:0 2px 5px rgba(0,0,0,.75),0 0 9px var(--glow-color)}',
     mount(root, context) {
-      const knob = root.querySelector(".rotary-knob"),
+      const control = root.querySelector(".rotary-control"),
+        knob = root.querySelector(".rotary-knob"),
         face = root.querySelector(".rotary-face"),
         output = root.querySelector(".rotary-value"),
         label = root.querySelector(".rotary-name"),
@@ -56,6 +57,26 @@
         fallbackName = String(properties.localName || "Rotary Knob");
       let dragging = false;
       label.textContent = fallbackName;
+      let resizeFrame = 0;
+      function sizeKnob() {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          const visible = [label, knob, output].filter((element) => getComputedStyle(element).display !== "none"),
+            gap = parseFloat(getComputedStyle(control).rowGap || getComputedStyle(control).gap) || 0,
+            reserved = visible
+              .filter((element) => element !== knob)
+              .reduce((total, element) => total + element.getBoundingClientRect().height, 0),
+            availableHeight = Math.max(0, control.clientHeight - reserved - gap * Math.max(0, visible.length - 1)),
+            size = Math.max(1, Math.min(control.clientWidth, availableHeight));
+          knob.style.width = `${size}px`;
+          knob.style.height = `${size}px`;
+        });
+      }
+      const resizeObserver = new ResizeObserver(sizeKnob);
+      resizeObserver.observe(control);
+      resizeObserver.observe(label);
+      resizeObserver.observe(output);
+      sizeKnob();
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
       }
@@ -130,6 +151,8 @@
       });
       update(clamp(Number(properties.defaultPercent) || 0, 0, 100));
       return () => {
+        cancelAnimationFrame(resizeFrame);
+        resizeObserver.disconnect();
         knob.removeEventListener("pointerdown", down);
         knob.removeEventListener("pointermove", move);
         knob.removeEventListener("pointerup", up);

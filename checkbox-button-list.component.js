@@ -171,7 +171,7 @@
           item.className = "cb-item";
           item.innerHTML =
             '<span class="cb-disc"><span class="cb-flip"><span class="cb-face"></span><span class="cb-face cb-back"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg></span></span></span><span class="cb-label">' +
-            (labels[i] || "Item " + i) +
+            (labels[i] ?? "") +
             "</span>";
           const set = (value, publish) => {
             states[i] = !!value;

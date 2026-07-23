@@ -357,7 +357,7 @@
           powerBacks.forEach((back, index) => Object.assign(back.style, { position: "absolute", top: "50%", height: "calc(100% - 18px)", width: index === 0 ? "50%" : "0", left: index === 0 ? "5px" : "auto", right: index === 1 ? "5px" : "auto", zIndex: "0", background: "linear-gradient(90deg,#999899,#545354)", transform: `translateY(-50%) rotateY(${index === 0 ? -65 : 65}deg)`, transformOrigin: index === 0 ? "left" : "right", transition: "width .25s" }));
           modes.forEach((mode, index) => { mode.style.position = "relative"; mode.style.zIndex = "1"; mode.style.borderRadius = index === 0 ? "8px 0 0 8px" : "0 8px 8px 0"; mode.style.transformOrigin = index === 0 ? "right" : "left"; });
           const setPower = selected => { power.classList.toggle("selected", selected); modes[0].style.transform = selected ? "none" : "rotateY(50deg)"; modes[1].style.transform = selected ? "rotateY(-50deg)" : "none"; modes[0].style.color = selected ? "green" : "red"; modes[1].style.color = selected ? "red" : "green"; modes[0].style.boxShadow = selected ? "none" : "-10px 5px 20px rgba(0,0,0,.2)"; modes[1].style.boxShadow = selected ? "10px 5px 20px rgba(0,0,0,.2)" : "none"; powerBacks[0].style.width = selected ? "0" : "50%"; powerBacks[1].style.width = selected ? "50%" : "0"; };
-          name.textContent = displayLabels[d] || `Display ${d + 1}`;
+          name.textContent = displayLabels[d] ?? "";
           modes[0].textContent = p.offText || "OFF";
           modes[1].textContent = p.onText || "ON";
           setPower(false);

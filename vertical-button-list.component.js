@@ -168,7 +168,7 @@
         const b = document.createElement("button");
         b.type = "button";
         b.className = "vbl-button";
-        b.textContent = labels[i] || `Preset ${i + 1}`;
+        b.textContent = labels[i] ?? "";
         b.addEventListener("click", () => choose(i, true));
         context.signals.subscribeAddress(
           "digital",

@@ -206,7 +206,7 @@
   }
   registerToggle({
     id: "rolling-toggle",
-    name: "Rolling Toggle",
+    name: "Standard Toggle",
     size: { width: 220, height: 100 },
     press: "41",
     feedback: "51",
@@ -291,7 +291,7 @@
   }
   registerToggle({
     id: "tsw-toggle",
-    name: "TSW Toggle Switch",
+    name: "Power Switch",
     size: { width: 300, height: 110 },
     press: "101",
     feedback: "111",

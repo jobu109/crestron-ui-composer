@@ -20,7 +20,7 @@
       const analog = value => { const number = Number(value) || 0; return Math.max(0, Math.min(100, Math.round(number > 100 ? number / 65535 * 100 : number))); };
       const output = (value, options) => options.outputScale === "100" ? value : Math.round(value / 100 * 65535);
       const truthy = value => value === true || value === 1 || value === "1";
-      const p = context.options.properties || {}, button = root.querySelector(".load"), fill = root.querySelector(".fill"), glow = root.querySelector(".glow"), label = root.querySelector(".name"), level = root.querySelector(".level"), fallback = p.text || "Light Load";
+      const p = context.options.properties || {}, button = root.querySelector(".load"), fill = root.querySelector(".fill"), glow = root.querySelector(".glow"), label = root.querySelector(".name"), level = root.querySelector(".level"), fallback = p.text ?? "Light Load";
       let active = false;
       label.textContent = fallback;
       const update = value => { const percent = analog(value); fill.style.height = percent + "%"; glow.style.opacity = String(percent / 100 * .55); level.textContent = percent + "%"; };
@@ -49,7 +49,7 @@
     mount(root, context) {
       const analog = value => { const number = Number(value) || 0; return Math.max(0, Math.min(100, Math.round(number > 100 ? number / 65535 * 100 : number))); };
       const output = (value, options) => options.outputScale === "100" ? value : Math.round(value / 100 * 65535);
-      const p = context.options.properties || {}, button = root.querySelector(".shade"), panel = root.querySelector(".panel"), label = root.querySelector(".name"), position = root.querySelector(".position"), fallback = p.text || "Window Shade";
+      const p = context.options.properties || {}, button = root.querySelector(".shade"), panel = root.querySelector(".panel"), label = root.querySelector(".name"), position = root.querySelector(".position"), fallback = p.text ?? "Window Shade";
       let active = false;
       label.textContent = fallback;
       const update = value => { const percent = analog(value); panel.style.transform = "translateY(-" + percent + "%)"; position.textContent = percent + "%"; };
@@ -79,7 +79,7 @@
       const analog = value => { const number = Number(value) || 0; return Math.max(0, Math.min(100, Math.round(number > 100 ? number / 65535 * 100 : number))); };
       const output = (value, options) => options.outputScale === "100" ? value : Math.round(value / 100 * 65535);
       const truthy = value => value === true || value === 1 || value === "1";
-      const p = context.options.properties || {}, gauge = root.querySelector(".gauge"), progress = root.querySelector(".progress"), pointer = root.querySelector(".pointer"), valueNode = root.querySelector(".value"), label = root.querySelector(".label"), toggle = root.querySelector(".toggle"), fallback = p.text || "Microphone";
+      const p = context.options.properties || {}, gauge = root.querySelector(".gauge"), progress = root.querySelector(".progress"), pointer = root.querySelector(".pointer"), valueNode = root.querySelector(".value"), label = root.querySelector(".label"), toggle = root.querySelector(".toggle"), fallback = p.text ?? "Microphone";
       let active = false;
       label.textContent = fallback;
       const color = value => value <= 65 ? [Math.round(4 + 251 * value / 65), Math.round(170 - 5 * value / 65), Math.round(142 - 142 * value / 65)].join(",") : [255, Math.round(165 - 125 * (value - 65) / 35), Math.round(40 * (value - 65) / 35)].join(",");

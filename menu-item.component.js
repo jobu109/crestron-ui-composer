@@ -51,7 +51,7 @@
       const host = root.querySelector(".mi-list");
       const scroll = root.querySelector(".mi-scroll");
       const thumb = scroll.querySelector("i");
-      const localLabels = String(p.menuLabels || defaults).split("|");
+      const localLabels = String(p.menuLabels ?? defaults).split("|");
       const count = Number(p.defaultCount) || 5;
       const applyScale = (key, base, value) => { const percent = Number(value); const scale = !Number.isFinite(percent) || percent <= 0 ? 1 : Math.max(25, Math.min(250, percent)) / 100; root.style.setProperty(key, Math.round(base * scale) + "px"); };
       const address = (base, index) => p.bindingMode === "join"
@@ -60,7 +60,7 @@
       const renderChoice = (button, choiceIndex, localLabel) => {
         const choice = choices[Math.max(0, Math.min(choices.length - 1, choiceIndex))];
         button.innerHTML = '<svg class="mi-icon" viewBox="0 0 24 24" aria-hidden="true">' + choice[1] + '</svg><span class="mi-label"></span>';
-        button.querySelector(".mi-label").textContent = localLabel || choice[0];
+        button.querySelector(".mi-label").textContent = localLabel ?? "";
       };
       for (let index = 0; index < count; index++) {
         const button = document.createElement("button");

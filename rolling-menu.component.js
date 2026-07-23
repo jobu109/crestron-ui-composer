@@ -210,7 +210,7 @@
           const b = document.createElement("button");
           b.type = "button";
           b.className = "rm-item";
-          b.textContent = labels[i] || `Item ${i}`;
+          b.textContent = labels[i] ?? "";
           b.addEventListener("click", () => {
             set(i, true);
             const a = address(p.pressBase, i);

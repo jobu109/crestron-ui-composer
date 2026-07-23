@@ -260,6 +260,8 @@
               accept="text/html,.html"
               multiple
           /></label>
+          <button id="translate-snippet" type="button">Import &amp; translate</button>
+          <input id="translate-snippet-file" type="file" accept="text/html,.html" hidden />
           <label class="button custom-package-import"
             >Import component package<input
               id="custom-package-file"
@@ -514,12 +516,6 @@
             </p>
             <div id="signal-bindings"></div>
           </section>
-          <button id="edit-source" type="button">Edit component HTML</button>
-          <button id="create-custom-component" type="button">
-            Create palette component
-          </button>
-          <button id="duplicate" type="button">Duplicate</button>
-          <button id="delete" class="danger" type="button">Delete</button>
         </form>
         <h2>Page</h2>
         <label>Name<input id="page-name" /></label>
@@ -995,6 +991,40 @@ Preview signal activity appears here.</pre
         </div>
       </form>
     </dialog>
+    <dialog id="translate-snippet-dialog" class="custom-component-dialog">
+      <form method="dialog">
+        <h2>Import &amp; Translate Snippet</h2>
+        <p class="hint">Choose a component type, then approve the detected editable items and Crestron signals. Continue opens the full component editor before anything is added to the palette.</p>
+        <div class="grid2">
+          <label>Component name<input id="translate-name" /></label>
+          <label>Component type<select id="translate-preset">
+            <option value="button">Standard button</option>
+            <option value="toggle">Toggle button</option>
+            <option value="slider">Slider / knob</option>
+            <option value="gauge">Gauge / status</option>
+            <option value="text">Text / input</option>
+            <option value="navigation">Navigation</option>
+            <option value="custom">Custom</option>
+          </select></label>
+          <label>Palette category<select id="translate-category">
+            <option>Standard Buttons</option><option>Toggle Buttons</option><option>Advanced Buttons</option><option>Sliders &amp; Levels</option><option>Navigation &amp; Menus</option><option>Lists &amp; Selectors</option><option>Status &amp; Information</option><option>Multi-Devices</option><option>Text &amp; Input</option><option>Custom</option>
+          </select></label>
+          <label>Source file<input id="translate-source-name" disabled /></label>
+        </div>
+        <div class="custom-builder-layout translate-builder-layout">
+          <section>
+            <div class="custom-builder-heading"><h2>Editable items</h2><button id="translate-select-all" type="button">Select all</button></div>
+            <div id="translate-editables" class="translate-choice-list"></div>
+          </section>
+          <section>
+            <div class="custom-builder-heading"><h2>Signal bindings</h2></div>
+            <div id="translate-signals" class="translate-choice-list"></div>
+          </section>
+        </div>
+        <details><summary>Detected source</summary><textarea id="translate-source-preview" class="custom-source-editor" readonly></textarea></details>
+        <div class="dialog-actions"><button value="cancel">Cancel</button><button id="translate-continue" type="button" class="primary">Continue to component editor</button></div>
+      </form>
+    </dialog>
     <dialog id="timeline-dialog" class="timeline-dialog">
       <form method="dialog">
         <div class="timeline-header">
@@ -1126,6 +1156,9 @@ Preview signal activity appears here.</pre
     <script src="generic-card-flip.component.js"></script>
     <script src="volume-slider.component.js"></script>
     <script src="rotary-knob.component.js"></script>
+    <script src="effect-knob.component.js"></script>
+    <script src="neumorphic-components.js"></script>
+    <script src="neumorphic-kit-components.js"></script>
     <script src="text-block.component.js"></script>
     <script src="lighting-control.component.js"></script>
     <script src="microphone-control.component.js"></script>
@@ -1165,6 +1198,9 @@ Preview signal activity appears here.</pre
       <button id="context-copy" type="button">Copy</button>
       <button id="context-paste" type="button">Paste</button>
       <button id="context-simulate" type="button">Simulate component</button>
+      <button id="edit-source" type="button">Edit component HTML</button>
+      <button id="create-custom-component" type="button">Create palette component</button>
+      <button id="duplicate" type="button">Duplicate</button>
       <div class="context-menu-separator"></div>
       <button id="context-lock" type="button">Lock</button>
       <button id="context-group" type="button">Group</button>
@@ -1207,6 +1243,7 @@ Preview signal activity appears here.</pre
       <button id="layer-duplicate" type="button">Duplicate</button>
       <button id="layer-delete" type="button">Delete</button>
     </div>
+    <button id="delete" type="button" hidden aria-hidden="true">Delete selected component</button>
     <script src="exporter.js"></script>
     <script src="editor.js"></script>
   </body>

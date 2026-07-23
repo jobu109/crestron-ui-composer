@@ -442,6 +442,14 @@
         defaultValue: false,
         signalSetting: true,
       });
+    else {
+      const visibilityProperty = definition.properties.find(
+        (property) => property.key === "visibilityEnabled",
+      );
+      visibilityProperty.signalSetting = true;
+      visibilityProperty.name = "Enable visibility signal";
+      visibilityProperty.type = "checkbox";
+    }
     if (!definition.signals.some((signal) => signal.key === "visibility"))
       definition.signals.push({
         key: "visibility",
@@ -855,11 +863,11 @@
         el.querySelector(".name"),
       ]);
     groups.forEach((elements, index) => {
-      const text = (labels[index] || "").trim();
-      if (text)
-        elements.filter(Boolean).forEach((el) => {
-          if (el.textContent !== text) el.textContent = text;
-        });
+      if (index >= labels.length) return;
+      const text = String(labels[index] ?? "").trim();
+      elements.filter(Boolean).forEach((el) => {
+        if (el.textContent !== text) el.textContent = text;
+      });
     });
   }
   global.ComposerRuntime = {

@@ -104,7 +104,7 @@
         wrap = root.querySelector(".pl-wrap"),
         button = root.querySelector(".pl-button"),
         label = root.querySelector(".pl-text");
-      label.textContent = p.text || "Preset 1";
+      label.textContent = p.text ?? "Preset 1";
       function setPress(value) {
         wrap.classList.toggle("pressed", value);
         context.signals.publish("press", value);
@@ -121,7 +121,7 @@
         wrap.classList.toggle("selected", v === true || v === 1 || v === "1"),
       );
       context.signals.subscribe("label", (v) => {
-        label.textContent = v || p.text || "Preset 1";
+        label.textContent = v == null ? (p.text ?? "Preset 1") : String(v);
       });
     },
   });

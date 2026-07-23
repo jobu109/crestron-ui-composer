@@ -193,14 +193,6 @@
     });
     const navigation = $("prop-target")?.closest("label");
     if (navigation) collapsiblePanelSection("Navigation", [navigation], "inspector-navigation", false);
-    const actionStart = $("edit-source"), actionNodes = [];
-    for (let node = actionStart; node; ) {
-      const next = node.nextElementSibling;
-      actionNodes.push(node);
-      node = next;
-    }
-    if (actionNodes.length) collapsiblePanelSection("Widget actions", actionNodes, "inspector-actions", false);
-
     const pageHeading = [...inspector.querySelectorAll(":scope > h2")].find((heading) => heading.textContent.trim() === "Page");
     if (pageHeading) {
       const pageNodes = [];
@@ -820,6 +812,7 @@
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
           frame = document.createElement("iframe"),
+          latestFeedback = new Map(),
           properties = context.options.properties || {},
           color = (value, fallback) =>
             /^#[0-9a-f]{6}$/i.test(String(value || ""))
@@ -855,7 +848,26 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           documentText = /<\/body>/i.test(resolved)
             ? resolved.replace(/<\/body>/i, frameBaseStyle + appearance + localTextScript + bridge + "</body>")
             : resolved + frameBaseStyle + appearance + localTextScript + bridge;
+        let frameReady = false;
+        function sendFeedback(key, value) {
+          latestFeedback.set(key, value);
+          if (frameReady)
+            frame.contentWindow?.postMessage(
+              { type: "composer-signal", key, value },
+              "*",
+            );
+        }
+        function replayFeedback() {
+          frameReady = true;
+          latestFeedback.forEach((value, key) =>
+            frame.contentWindow?.postMessage(
+              { type: "composer-signal", key, value },
+              "*",
+            ),
+          );
+        }
         frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        frame.addEventListener("load", replayFeedback);
         frame.srcdoc = documentText;
         host.appendChild(frame);
         function receive(event) {
@@ -877,13 +889,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           .filter((signal) => signal.direction === "input")
           .forEach((signal) =>
             context.signals.subscribe(signal.key, (value) =>
-              frame.contentWindow?.postMessage(
-                { type: "composer-signal", key: signal.key, value },
-                "*",
-              ),
+              sendFeedback(signal.key, value),
             ),
           );
-        return () => removeEventListener("message", receive);
+        return () => {
+          frame.removeEventListener("load", replayFeedback);
+          removeEventListener("message", receive);
+        };
       },
     });
     const definition = window.ComposerRuntime.get(entry.id);
@@ -929,14 +941,41 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         "</span>";
       items.className = "category-items";
       components.forEach((c) => {
-        const el = document.createElement("div");
+        const el = document.createElement("div"),
+          customEntry = state.customComponents.find(
+            (entry) => entry.id === c.componentId,
+          );
         el.className = "component";
         if (c.icon) {
           const icon = document.createElement("span");
           icon.className = "component-icon";
+          const name = document.createElement("span");
           icon.textContent = c.icon;
-          el.append(icon, document.createTextNode(c.displayName));
-        } else el.textContent = c.displayName;
+          name.className = "component-name";
+          name.textContent = c.displayName;
+          el.append(icon, name);
+        } else {
+          const name = document.createElement("span");
+          name.className = "component-name";
+          name.textContent = c.displayName;
+          el.appendChild(name);
+        }
+        if (customEntry) {
+          const remove = document.createElement("button");
+          el.classList.add("custom-component");
+          remove.type = "button";
+          remove.className = "component-remove";
+          remove.title = `Delete ${customEntry.name}`;
+          remove.setAttribute("aria-label", `Delete ${customEntry.name}`);
+          remove.textContent = "×";
+          remove.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteCustomComponent(customEntry);
+          };
+          remove.onpointerdown = (event) => event.stopPropagation();
+          el.appendChild(remove);
+        }
         el.draggable = true;
         el.addEventListener("dragstart", (e) =>
           e.dataTransfer.setData("text/component", c.name),
@@ -2906,7 +2945,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         (property) => {
           if (property.signalSetting || property.key === "bindingMode") return false;
           if (!property.visibleWhen) return true;
-          const actual = Number(item.properties?.[property.visibleWhen.key] ?? 0);
+          const raw = item.properties?.[property.visibleWhen.key];
+          if (property.visibleWhen.equals != null)
+            return String(raw ?? "") === String(property.visibleWhen.equals);
+          const actual = Number(raw ?? 0);
           return property.visibleWhen.gte == null || actual >= Number(property.visibleWhen.gte);
         },
       );
@@ -3050,6 +3092,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           list.appendChild(input);
         }
         wireReusableOverride(label, [...list.querySelectorAll("input")], property);
+        label.appendChild(list);
+        propertyHost.appendChild(label);
+        return;
+      }
+      if (property.type === "select-list") {
+        const list = document.createElement("div"),
+          count = Math.max(1, Math.min(48, Number(item.properties?.[property.countKey]) || 1)),
+          values = String(item.properties?.[property.key] ?? property.defaultValue ?? "").split("|");
+        list.className = "property-text-list";
+        for (let i = 0; i < count; i++) {
+          const select = document.createElement("select");
+          (property.options || []).forEach((option) => {
+            const element = document.createElement("option");
+            element.value = option.value;
+            element.textContent = `${property.itemName || "Item"} ${i + 1}: ${option.label}`;
+            select.appendChild(element);
+          });
+          select.value = values[i] ?? property.defaultItemValue ?? "";
+          select.onchange = () => {
+            values[i] = select.value;
+            item.properties = item.properties || {};
+            item.properties[property.key] = values.join("|");
+            renderItem(item);
+          };
+          list.appendChild(select);
+        }
+        wireReusableOverride(label, [...list.querySelectorAll("select")], property);
         label.appendChild(list);
         propertyHost.appendChild(label);
         return;
@@ -5940,6 +6009,102 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     for (const f of e.target.files) addComponent(f.name, await f.text());
     setStatus(e.target.files.length + " snippets imported");
   };
+  let translateSource = null;
+  const translatePresets = {
+    button: { category: "Standard Buttons", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "label", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    toggle: { category: "Toggle Buttons", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "label", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    slider: { category: "Sliders & Levels", signals: [{ key: "set", name: "Value Set", type: "analog", direction: "output", suffix: "ValueSet" }, { key: "feedback", name: "Feedback", type: "analog", direction: "input", suffix: "Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    gauge: { category: "Status & Information", signals: [{ key: "feedback", name: "Feedback", type: "analog", direction: "input", suffix: "Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    text: { category: "Text & Input", signals: [{ key: "text", name: "Text", type: "serial", direction: "output", suffix: "Text" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    navigation: { category: "Navigation & Menus", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    custom: { category: "Custom", signals: [] },
+  };
+  function translatorKey(value, fallback = "property") {
+    const words = String(value || "").replace(/^--/, "").replace(/[^A-Za-z0-9]+(.)/g, (_, next) => next.toUpperCase()).replace(/^[^A-Za-z_$]+/, "");
+    return words || fallback;
+  }
+  function analyzeSnippet(name, source) {
+    const documentValue = new DOMParser().parseFromString(String(source || ""), "text/html"),
+      styles = [...documentValue.querySelectorAll("style")].map((element) => element.textContent).join("\n"),
+      javascript = [...documentValue.querySelectorAll("script")].map((element) => element.textContent).join("\n"),
+      body = documentValue.body.cloneNode(true),
+      variableValues = new Set();
+    body.querySelectorAll("script,style").forEach((element) => element.remove());
+    const html = body.innerHTML.trim(), editables = [], seen = new Set(), add = (entry) => { if (!seen.has(entry.key)) { seen.add(entry.key); editables.push(entry); } };
+    for (const match of styles.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;}{]+)\s*;/g)) {
+      const raw = match[2].trim(), type = /^#[0-9a-f]{6}$/i.test(raw) ? "color" : /^-?\d+(?:\.\d+)?(?:px)?$/i.test(raw) ? "number" : "text";
+      variableValues.add(raw.toLowerCase());
+      const semantic = { "--bg": "Button color", "--background": "Button color", "--glow": "Glow color", "--text": "Icon / text color", "--color": "Color" }[match[1].toLowerCase()];
+      add({ key: translatorKey(match[1]), label: semantic || match[1].replace(/^--/, "").replace(/[-_]+/g, " ").replace(/\b\w/g, letter => letter.toUpperCase()), type, value: raw, kind: "css-variable", source: match[1] });
+    }
+    const literalColors = [...new Set([...styles.matchAll(/#[0-9a-f]{6}\b/gi)].map(match => match[0].toLowerCase()))].filter(value => !variableValues.has(value));
+    literalColors.forEach((value, index) => {
+      const before = styles.slice(Math.max(0, styles.toLowerCase().indexOf(value) - 50), styles.toLowerCase().indexOf(value)), property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
+        role = /border/.test(property) ? "Border color" : /background/.test(property) ? "Background color" : /shadow/.test(property) ? "Shadow color" : /stroke|fill|color/.test(property) ? "Text / icon color" : `Additional color ${index + 1}`,
+        key = translatorKey(role) + (index ? index + 1 : "");
+      add({ key, label: role, type: "color", value, kind: "literal", source: value });
+    });
+    let textIndex = 1;
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node && textIndex <= 8; node = walker.nextNode()) {
+      const value = node.textContent.replace(/\s+/g, " ").trim();
+      if (value && value.length <= 80) add({ key: `text${textIndex++}`, label: `Text: ${value}`, type: "text", value, kind: "text", source: value });
+    }
+    return { fileName: name, source, html, css: styles, javascript, editables };
+  }
+  function renderTranslateEditables() {
+    if (!translateSource) return;
+    const preset = $("translate-preset").value, buttonLike = ["button", "toggle", "navigation"].includes(preset), editables = translateSource.editables.filter(entry => !(buttonLike && /shadow[-_ ]?(dark|light)/i.test(`${entry.key} ${entry.label}`)));
+    if (buttonLike) editables.push(
+      { key: "shadowSize", label: "Shadow size", type: "number", value: 6, kind: "button-style" },
+      { key: "glowStrength", label: "Glow strength", type: "number", value: 3, kind: "button-style" },
+    );
+    if (!editables.some(entry => entry.key === "textSize" || /font.?size/i.test(entry.key)))
+      editables.push({ key: "textSize", label: "Text size", type: "number", value: 16, kind: "standard-style" });
+    translateSource.currentEditables = editables;
+    $("translate-editables").innerHTML = editables.length ? editables.map((entry, index) => `<label><input type="checkbox" checked data-index="${index}"><span>${entry.label}<small>${entry.type} · ${String(entry.value).replace(/</g,"&lt;")}</small></span></label>`).join("") : '<p class="hint">No editable values were detected. You can add properties manually in the component editor.</p>';
+  }
+  function renderTranslateSignals() {
+    const preset = translatePresets[$("translate-preset").value] || translatePresets.custom,
+      namespace = $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") || "CustomComponent",
+      signals = [...preset.signals, { key: "visibility", name: "Visibility", type: "digital", direction: "input", suffix: "Visibility", optionalProperty: "visibilityEnabled" }];
+    $("translate-category").value = preset.category;
+    $("translate-signals").innerHTML = signals.map((signal) => `<label><input type="checkbox" checked data-key="${signal.key}" data-name="${signal.name}" data-type="${signal.type}" data-direction="${signal.direction}" data-default="${namespace}.${signal.suffix}" data-optional-property="${signal.optionalProperty || ""}"><span>${signal.name}<small>${signal.type} · ${signal.direction} · ${namespace}.${signal.suffix}${signal.optionalProperty ? " · optional" : ""}</small></span></label>`).join("");
+  }
+  function openTranslateWizard(name, source) {
+    translateSource = analyzeSnippet(name, source);
+    $("translate-name").value = name.replace(/\.html?$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (value) => value.toUpperCase());
+    $("translate-source-name").value = name; $("translate-source-preview").value = source;
+    const guessed = /toggle|switch/i.test(name) ? "toggle" : /slider|knob|volume|dial/i.test(name) ? "slider" : /gauge|meter|status/i.test(name) ? "gauge" : /input|text|search/i.test(name) ? "text" : /nav|menu/i.test(name) ? "navigation" : "button";
+    $("translate-preset").value = guessed;
+    renderTranslateEditables(); renderTranslateSignals(); $("translate-snippet-dialog").showModal();
+  }
+  $("translate-preset").onchange = () => { renderTranslateEditables(); renderTranslateSignals(); }; $("translate-name").oninput = renderTranslateSignals;
+  $("translate-select-all").onclick = () => $("translate-editables").querySelectorAll('input[type="checkbox"]').forEach((input) => input.checked = true);
+  $("translate-snippet").onclick = async () => {
+    if (!native) { $("translate-snippet-file").click(); return; }
+    try { const files = await nativeRequest("importSnippets"); if (files.length) openTranslateWizard(files[0].name, files[0].html); if (files.length > 1) setStatus(`Translating the first of ${files.length} selected snippets`); } catch (error) { if (error.message !== "cancelled") setStatus(error.message); }
+  };
+  $("translate-snippet-file").onchange = async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) openTranslateWizard(file.name, await file.text()); };
+  $("translate-continue").onclick = () => {
+    if (!translateSource) return;
+    let html = translateSource.html, css = translateSource.css;
+    const properties = [...$("translate-editables").querySelectorAll('input[type="checkbox"]:checked')].map((input) => translateSource.currentEditables[Number(input.dataset.index)]);
+    properties.forEach((entry) => {
+      if (entry.kind === "css-variable") css = css.replace(new RegExp(`(${entry.source.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\s*:\\s*)${String(entry.value).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}`), `$1{{${entry.key}}}${/px$/i.test(String(entry.value)) ? "px" : ""}`);
+      else if (entry.kind === "literal") css = css.replaceAll(entry.source, `{{${entry.key}}}`);
+      else if (entry.kind === "text") html = html.replace(entry.source, `{{${entry.key}}}`);
+    });
+    const signals = [...$("translate-signals").querySelectorAll('input[type="checkbox"]:checked')].map((input) => ({ key: input.dataset.key, name: input.dataset.name, type: input.dataset.type, direction: input.dataset.direction, defaultValue: input.dataset.default, ...(input.dataset.optionalProperty ? { optionalProperty: input.dataset.optionalProperty } : {}) }));
+    const preset = $("translate-preset").value, buttonLike = ["button", "toggle", "navigation"].includes(preset), hasShadowSize = properties.some(entry => entry.key === "shadowSize"), hasGlowStrength = properties.some(entry => entry.key === "glowStrength");
+    if (buttonLike) css += `\nhtml,body{background:transparent!important;}\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button.active,[role="button"].active,.btn.active{box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 {{glowStrength}}px var(--glow,#04dcb9);}` : ""}`;
+    if (properties.some(entry => entry.key === "textSize")) css += '\nbutton,input,textarea,[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}';
+    const adapter = buttonLike ? `\nconst translatedTarget=root.querySelector('button,[role="button"],.btn');\nif(translatedTarget){const down=e=>{signals.publish('press',true);e.preventDefault()},up=()=>signals.publish('press',false);translatedTarget.addEventListener('pointerdown',down);translatedTarget.addEventListener('pointerup',up);translatedTarget.addEventListener('pointerleave',up);signals.subscribe('selected',value=>translatedTarget.classList.toggle('active',value===true||value===1||value==='1'));signals.subscribe('${preset === "button" || preset === "toggle" ? "label" : "name"}',value=>{const label=translatedTarget.querySelector('[data-custom-text],.label,span');if(label&&value!=null&&value!=='')label.textContent=String(value)});}` : preset === "slider" ? `\nconst translatedControl=root.querySelector('input[type="range"]');if(translatedControl){let translatedFeedback=false;translatedControl.addEventListener('input',()=>{if(!translatedFeedback)signals.publish('set',Number(translatedControl.value)||0)});signals.subscribe('feedback',value=>{translatedFeedback=true;translatedControl.value=Number(value)||0;translatedControl.dispatchEvent(new Event('input',{bubbles:true}));translatedFeedback=false});}` : preset === "gauge" ? `\nconst translatedGauge=root.querySelector('[role="progressbar"],.gauge,.meter,.value');signals.subscribe('feedback',value=>{const amount=Number(value)||0;root.documentElement.style.setProperty('--value',String(amount));root.documentElement.style.setProperty('--value-percent',(amount>100?amount/65535*100:amount)+'%');if(translatedGauge){translatedGauge.setAttribute('aria-valuenow',String(amount));const text=translatedGauge.querySelector('[data-value],.value');if(text)text.textContent=Math.round(amount>100?amount/65535*100:amount)+'%'}});` : preset === "text" ? `\nconst translatedInput=root.querySelector('input,textarea');if(translatedInput){translatedInput.addEventListener('input',()=>signals.publish('text',translatedInput.value));signals.subscribe('name',value=>{if(value!=null)translatedInput.value=String(value)})}` : "";
+    $("translate-snippet-dialog").close(); openCustomBuilder();
+    $("custom-component-name").value = $("translate-name").value; $("custom-component-category").value = $("translate-category").value; $("custom-source-html").value = html; $("custom-source-css").value = css; $("custom-source-javascript").value = `${translateSource.javascript}\n${adapter}`;
+    $("custom-property-list").innerHTML = ""; properties.forEach((entry) => addCustomPropertyRow({ key: entry.key, name: entry.label, type: entry.type, defaultValue: entry.type === "number" ? parseFloat(entry.value) || 0 : entry.value }));
+    $("custom-signal-list").innerHTML = ""; signals.forEach(addCustomSignalRow); refreshCustomPreview();
+  };
   $("snippet-files-label").onclick = async (e) => {
     if (!native) return;
     e.preventDefault();
@@ -6387,6 +6552,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("context-copy").disabled = !selection.length;
     $("context-paste").disabled = !componentClipboard;
     $("context-simulate").disabled = selection.length !== 1;
+    $("edit-source").disabled = selection.length !== 1;
+    $("create-custom-component").disabled = selection.length !== 1;
+    $("duplicate").disabled = !selection.length;
+    $("create-custom-component").textContent =
+      selection.length === 1 && state.customComponents.some((entry) => entry.id === item?.componentId)
+        ? "Edit palette component"
+        : "Create palette component";
     $("context-lock").disabled = !selection.length;
     $("context-lock").textContent = selection.some((entry) => entry.locked)
       ? "Unlock"
@@ -6633,7 +6805,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     const row = document.createElement("div");
     row.className = "custom-property-row";
     row.innerHTML =
-      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
+      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option><option>checkbox</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
     row.querySelector('[data-field="key"]').value = property.key || "";
     row.querySelector('[data-field="name"]').value = property.name || "";
     row.querySelector('[data-field="type"]').value = property.type || "text";
@@ -6653,6 +6825,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
   function addCustomSignalRow(signal = {}) {
     const row = document.createElement("div");
     row.className = "custom-signal-row";
+    row.dataset.optionalProperty = signal.optionalProperty || "";
     row.innerHTML =
       '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>digital</option><option>analog</option><option>serial</option></select><select data-field="direction"><option>output</option><option>input</option></select><input data-field="defaultValue" placeholder="Join / contract"><button type="button" class="custom-row-delete">×</button>';
     ["key", "name", "type", "direction", "defaultValue"].forEach((key) => {
@@ -6682,6 +6855,8 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
           defaultValue:
             type === "number"
               ? Number(rawDefault) || 0
+              : type === "checkbox"
+                ? /^(true|1|yes|on)$/i.test(rawDefault)
               : type === "select"
                 ? rawDefault.split(",")[0] || ""
                 : rawDefault,
@@ -6710,6 +6885,9 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
               type: value("type"),
               direction: value("direction"),
               defaultValue: value("defaultValue").trim(),
+              ...(row.dataset.optionalProperty
+                ? { optionalProperty: row.dataset.optionalProperty }
+                : {}),
             }
           : null;
       })
@@ -6719,7 +6897,9 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     const name = $("custom-component-name").value.trim(),
       version = $("custom-component-version").value.trim(),
       html = $("custom-source-html").value,
+      css = $("custom-source-css").value,
       javascript = $("custom-source-javascript").value,
+      completeSource = `${html}\n${css}\n${javascript}`,
       properties = collectCustomProperties(),
       signals = collectCustomSignals(),
       errors = [],
@@ -6740,14 +6920,14 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       errors.push(`Duplicate signal key: ${key}.`),
     );
     const knownProperties = new Set(properties.map((entry) => entry.key));
-    [...html.matchAll(/\{\{([^}]+)\}\}/g)].forEach((match) => {
+    [...completeSource.matchAll(/\{\{([^}]+)\}\}/g)].forEach((match) => {
       if (!knownProperties.has(match[1]))
         errors.push(`HTML uses undefined property token {{${match[1]}}}.`);
     });
     const runtimeProperties = new Set(["bindingMode", "visibilityEnabled"]);
     properties.forEach((property) => {
-      if (!runtimeProperties.has(property.key) && !html.includes(`{{${property.key}}}`))
-        warnings.push(`Property “${property.key}” is not used in the HTML.`);
+      if (!runtimeProperties.has(property.key) && !completeSource.includes(`{{${property.key}}}`))
+        warnings.push(`Property “${property.key}” is not used in the component source.`);
     });
     try {
       new Function("root", "signals", javascript);
@@ -6913,10 +7093,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     );
     setStatus(`Exported component package “${entry.name}”`);
   };
-  $("custom-component-delete").onclick = () => {
-    const entry = state.customComponents.find(
-      (candidate) => candidate.id === customEditingId,
-    );
+  function deleteCustomComponent(entry) {
     if (!entry) return;
     const instances = state.items.filter(
       (item) => item.componentId === entry.id,
@@ -6934,12 +7111,19 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       (component) => component.componentId !== entry.id,
     );
     state.items = state.items.filter((item) => item.componentId !== entry.id);
-    $("custom-component-dialog").close();
+    if ($("custom-component-dialog").open)
+      $("custom-component-dialog").close();
     customEditingId = "";
     renderComponentLibrary();
     renderPage();
     commitHistory();
     setStatus(`Deleted custom component “${entry.name}”`);
+  }
+  $("custom-component-delete").onclick = () => {
+    const entry = state.customComponents.find(
+      (candidate) => candidate.id === customEditingId,
+    );
+    deleteCustomComponent(entry);
   };
   [
     "custom-source-html",
