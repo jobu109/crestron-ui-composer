@@ -70,5 +70,7 @@
     ,{"file":"wifiGauge.html","componentId":"wifi-gauge","runtime":"scoped","name":"Wi-Fi Gauge","category":"Status & Information","width":220,"height":220}
     ,{"file":"cellBarGauge.html","componentId":"cell-bar-gauge","runtime":"scoped","name":"Cell Bar Gauge","category":"Status & Information","width":220,"height":220}
     ,{"file":"batteryGauge.html","componentId":"battery-gauge","runtime":"scoped","name":"Battery Gauge","category":"Status & Information","width":250,"height":220}
+    ,{"file":"musicCard.html","componentId":"music-card","runtime":"scoped","name":"Music Card","category":"Status & Information","width":220,"height":300}
+    ,{"file":"capsuleIconDots.html","componentId":"capsule-icon-dots","runtime":"scoped","name":"Capsule Icon + Dots","category":"Status & Information","width":130,"height":220}
   ]
 }
