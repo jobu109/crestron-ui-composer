@@ -337,7 +337,12 @@ h2 {
   position: absolute;
   min-width: 20px;
   min-height: 20px;
+  overflow: visible;
   outline: 1px solid transparent;
+}
+.widget > .scoped-preview,
+.widget > .scoped-preview > [data-component] {
+  overflow: visible !important;
 }
 .widget.selected {
   outline: 1px solid #fff;

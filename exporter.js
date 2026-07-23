@@ -232,9 +232,11 @@
     // such as the oval buttons and toggles rendered as bare native content.
     // A static copy also makes Preview use the same dependable stylesheet path
     // as the editor canvas.
-    const componentCss = usedComponentIds
-      .map((id) => global.ComposerRuntime.get(id)?.styles || "")
-      .join("\n");
+    const componentCss =
+      ".scoped-widget,.scoped-preview,.scoped-preview>[data-component]{overflow:visible!important}\n" +
+      usedComponentIds
+        .map((id) => global.ComposerRuntime.get(id)?.styles || "")
+        .join("\n");
     const usedDefinitions = usedComponentIds
       .map((id) => {
         const d = global.ComposerRuntime.get(id);
