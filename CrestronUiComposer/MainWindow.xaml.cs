@@ -769,6 +769,7 @@ public partial class MainWindow : Window
         {
             File.WriteAllText(Path.Combine(source, "index.html"), html);
             File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
+            WriteConstructProjectConfig(source);
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
             var runtimeLicense = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
@@ -843,6 +844,7 @@ public partial class MainWindow : Window
         {
             File.WriteAllText(Path.Combine(source, "index.html"), html);
             File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
+            WriteConstructProjectConfig(source);
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
             var runtimeLicense = Path.Combine(Path.GetDirectoryName(runtime)!, "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
@@ -934,6 +936,26 @@ public partial class MainWindow : Window
         var license = Path.Combine(packaging, "ch5-webxpanel.LICENSE.txt");
         if (File.Exists(license))
             File.Copy(license, Path.Combine(destination, "ch5-webxpanel.LICENSE.txt"), true);
+    }
+
+    private static void WriteConstructProjectConfig(string destination)
+    {
+        var dataDirectory = Path.Combine(destination, "assets", "data");
+        Directory.CreateDirectory(dataDirectory);
+        var config = new
+        {
+            useWebXPanel = true,
+            config = new
+            {
+                controlSystem = new
+                {
+                    ipId = "0x03"
+                }
+            }
+        };
+        File.WriteAllText(
+            Path.Combine(dataDirectory, "project-config.json"),
+            JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static void ValidateContractMapping(string path)
