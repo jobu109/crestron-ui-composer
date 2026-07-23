@@ -772,6 +772,7 @@ public partial class MainWindow : Window
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
             var runtimeLicense = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
+            CopyWebXPanelRuntime(source);
 
             var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
             var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\"";
@@ -845,6 +846,7 @@ public partial class MainWindow : Window
             File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
             var runtimeLicense = Path.Combine(Path.GetDirectoryName(runtime)!, "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
+            CopyWebXPanelRuntime(source);
             var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
             var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\"";
             arguments += "\"";
@@ -916,6 +918,22 @@ public partial class MainWindow : Window
         };
         File.WriteAllText(path, JsonSerializer.Serialize(mapping, new JsonSerializerOptions { WriteIndented = true }));
         return path;
+    }
+
+    private static void CopyWebXPanelRuntime(string destination)
+    {
+        var packaging = Path.Combine(AppContext.BaseDirectory, "Packaging");
+        var required = new[] { "ch5-webxpanel.js", "d4412f0cafef4f213591.worker.js" };
+        foreach (var fileName in required)
+        {
+            var source = Path.Combine(packaging, fileName);
+            if (!File.Exists(source))
+                throw new FileNotFoundException("The packaged Crestron WebXPanel runtime is missing.", source);
+            File.Copy(source, Path.Combine(destination, fileName), true);
+        }
+        var license = Path.Combine(packaging, "ch5-webxpanel.LICENSE.txt");
+        if (File.Exists(license))
+            File.Copy(license, Path.Combine(destination, "ch5-webxpanel.LICENSE.txt"), true);
     }
 
     private static void ValidateContractMapping(string path)
@@ -1208,6 +1226,8 @@ exit $deploymentExitCode
         using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing index.html.");
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("cr-com-lib.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing CrComLib.");
+        if (!payload.Entries.Any(entry => entry.FullName.Equals("ch5-webxpanel.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing the WebXPanel runtime required by CH5 Desktop.");
+        if (!payload.Entries.Any(entry => entry.FullName.EndsWith(".worker.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing the WebXPanel worker required by CH5 Desktop.");
         var contractEntry = payload.Entries.FirstOrDefault(entry => entry.FullName.EndsWith("contract.cse2j", StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidDataException("The CH5 payload is missing contract.cse2j.");
         if (contractEntry.Length == 0)
