@@ -216,6 +216,47 @@
       '[data-component="rolling-toggle"]{position:relative;display:flex;align-items:center;width:100%;height:100%;padding:8%;box-sizing:border-box}[data-component="rolling-toggle"] .state{position:absolute;opacity:0}[data-component="rolling-toggle"] .track{position:relative;width:100%;height:100%;overflow:hidden;border-radius:999px;background:#7a7676;box-shadow:0 0 10px #04aa8e;cursor:pointer}[data-component="rolling-toggle"] .thumb{position:absolute;top:5%;left:2%;display:flex;align-items:center;justify-content:center;width:48%;height:90%;overflow:hidden;border-radius:999px;background:#203332;color:#fff;font:700 12px Segoe UI;transition:left .35s,background .35s}[data-component="rolling-toggle"] .thumb span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;transition:opacity .25s,transform .35s}[data-component="rolling-toggle"] .thumb span:nth-child(2){opacity:0;transform:translateX(-25%)}[data-component="rolling-toggle"] .state:checked+.thumb{left:50%;background:#982f36;box-shadow:0 0 18px 3px rgba(236,8,8,.6)}[data-component="rolling-toggle"] .state:checked+.thumb span:first-child{opacity:0;transform:translateX(25%)}[data-component="rolling-toggle"] .state:checked+.thumb span:nth-child(2){opacity:1;transform:translateX(0)}',
   });
   runtime.register({
+    id: "rolling-toggle-vertical",
+    name: "Vertical Standard Toggle",
+    category: "Toggle Buttons",
+    defaultSize: { width: 100, height: 220 },
+    properties: [
+      { key: "offText", name: "Off label", type: "text", defaultValue: "OFF" },
+      { key: "onText", name: "On label", type: "text", defaultValue: "ON" },
+      { key: "offColor", name: "Off color", type: "color", defaultValue: "#203332" },
+      { key: "onColor", name: "On color", type: "color", defaultValue: "#982f36" },
+      { key: "glowColor", name: "Glow color", type: "color", defaultValue: "#04aa8e" },
+    ],
+    signals: [
+      { key: "press", name: "Toggle Press", type: "digital", direction: "output", defaultValue: "241" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "251" },
+    ],
+    template:
+      '<label class="track"><input class="state" type="checkbox"><span class="thumb"><span data-mode-label>OFF</span><span data-mode-label>ON</span></span></label>',
+    styles:
+      '[data-component="rolling-toggle-vertical"]{position:relative;display:flex;align-items:center;width:100%;height:100%;padding:8%;box-sizing:border-box}[data-component="rolling-toggle-vertical"] .state{position:absolute;opacity:0}[data-component="rolling-toggle-vertical"] .track{position:relative;width:100%;height:100%;overflow:hidden;border-radius:999px;background:#7a7676;box-shadow:0 0 10px var(--glow-color);cursor:pointer}[data-component="rolling-toggle-vertical"] .thumb{position:absolute;top:2%;left:5%;width:90%;height:48%;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:999px;background:var(--off-color);color:#fff;font:700 12px Segoe UI;transition:top .35s,background .35s}[data-component="rolling-toggle-vertical"] .thumb span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;transition:opacity .25s,transform .35s}[data-component="rolling-toggle-vertical"] .thumb span:nth-child(2){opacity:0;transform:translateY(-25%)}[data-component="rolling-toggle-vertical"] .state:checked+.thumb{top:50%;left:5%;background:var(--on-color);box-shadow:0 0 18px 3px var(--glow-color)}[data-component="rolling-toggle-vertical"] .state:checked+.thumb span:first-child{opacity:0;transform:translateY(25%)}[data-component="rolling-toggle-vertical"] .state:checked+.thumb span:nth-child(2){opacity:1;transform:translateY(0)}',
+    mount(root, context) {
+      const input = root.querySelector("input"),
+        labels = root.querySelectorAll("[data-mode-label]"),
+        properties = context.options.properties || {};
+      if (labels[0]) labels[0].textContent = properties.offText || "OFF";
+      if (labels[1]) labels[1].textContent = properties.onText || "ON";
+      function change() {
+        context.signals.publish("press", true);
+        setTimeout(() => context.signals.publish("press", false), 100);
+        if (context.options.targetPage)
+          context.navigate(context.options.targetPage);
+      }
+      input.addEventListener("change", change);
+      context.signals.subscribe(
+        "selected",
+        (value) =>
+          (input.checked = value === true || value === 1 || value === "1"),
+      );
+      return () => input.removeEventListener("change", change);
+    },
+  });
+  runtime.register({
     id: "hole-toggle",
     name: "Hole Toggle",
     category: "Toggle Buttons",
@@ -287,6 +328,80 @@
         .replace(">OFF<", ">UNMUTED<")
         .replace(">ON<", ">MUTED<"),
       styles: source.styles.replaceAll("hole-toggle", "mic-hole-toggle"),
+    });
+  }
+  runtime.register({
+    id: "hole-toggle-vertical",
+    name: "Vertical Hole Toggle",
+    category: "Toggle Buttons",
+    defaultSize: { width: 100, height: 220 },
+    properties: [
+      { key: "offText", name: "Off label", type: "text", defaultValue: "OFF" },
+      { key: "onText", name: "On label", type: "text", defaultValue: "ON" },
+      { key: "offColor", name: "Off color", type: "color", defaultValue: "#55605f" },
+      { key: "onColor", name: "On color", type: "color", defaultValue: "#04aa8e" },
+      { key: "trackColor", name: "Track color", type: "color", defaultValue: "#192322" },
+      { key: "offHoleColor", name: "Off hole color", type: "color", defaultValue: "#dc2d2d" },
+      { key: "onHoleColor", name: "On hole color", type: "color", defaultValue: "#04dc78" },
+      { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" },
+      { key: "glowColor", name: "Glow color", type: "color", defaultValue: "#04aa8e" },
+      { key: "textSize", name: "Label size", type: "number", min: 8, max: 72, step: 1, defaultValue: 14 },
+      { key: "glowStrength", name: "Glow strength", type: "number", min: 0, max: 50, step: 1, defaultValue: 14 },
+    ],
+    signals: [
+      { key: "press", name: "Toggle Press", type: "digital", direction: "output", defaultValue: "HoleToggleVertical.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "HoleToggleVertical.Selected" },
+    ],
+    template: '<label class="hole-switch"><input class="state" type="checkbox"><span class="track"><span class="label off" data-mode-label>OFF</span><span class="label on" data-mode-label>ON</span><span class="slider"><span class="hole"></span></span></span></label>',
+    styles: '[data-component="hole-toggle-vertical"]{position:relative;display:flex;align-items:center;width:100%;height:100%;padding:8%;box-sizing:border-box}[data-component="hole-toggle-vertical"] *{box-sizing:border-box}[data-component="hole-toggle-vertical"] .hole-switch{position:relative;display:block;width:100%;height:100%;cursor:pointer;touch-action:none}[data-component="hole-toggle-vertical"] .state{position:absolute;width:1px;height:1px;opacity:0}[data-component="hole-toggle-vertical"] .track{position:relative;display:block;width:100%;height:100%;overflow:hidden;border:1px solid color-mix(in srgb,var(--glow-color) 45%,#fff);border-radius:999px;background:linear-gradient(145deg,color-mix(in srgb,var(--track-color) 72%,#fff),var(--track-color) 42%,color-mix(in srgb,var(--track-color) 72%,#000));box-shadow:inset 0 5px 12px rgba(0,0,0,.58),inset 0 -2px 5px rgba(255,255,255,.12),0 0 var(--glow-strength-px) color-mix(in srgb,var(--glow-color) 55%,transparent);transition:border-color .35s,box-shadow .35s}[data-component="hole-toggle-vertical"] .label{position:absolute;left:0;right:0;width:auto;height:50%;display:flex;align-items:center;justify-content:center;z-index:1;color:var(--text-color);font:800 var(--text-size-px)/1 Segoe UI,sans-serif;letter-spacing:.06em;text-shadow:0 2px 4px rgba(0,0,0,.8);transition:opacity .35s,transform .35s}[data-component="hole-toggle-vertical"] .label.off{top:auto;bottom:0}[data-component="hole-toggle-vertical"] .label.on{bottom:auto;top:0;opacity:.28}[data-component="hole-toggle-vertical"] .slider{position:absolute;top:3%;left:7%;width:86%;height:44%;z-index:2;border-radius:999px;background:radial-gradient(circle at 36% 28%,color-mix(in srgb,var(--off-color) 55%,#fff),var(--off-color) 48%,color-mix(in srgb,var(--off-color) 75%,#000));box-shadow:inset 0 2px 2px rgba(255,255,255,.35),inset 0 -5px 8px rgba(0,0,0,.42),0 5px 10px rgba(0,0,0,.45),0 0 calc(var(--glow-strength-px) * .45) color-mix(in srgb,var(--glow-color) 35%,transparent);transition:top .42s cubic-bezier(.65,-.2,.25,1.2),background .35s,box-shadow .35s}[data-component="hole-toggle-vertical"] .hole{position:absolute;top:50%;left:50%;width:45%;aspect-ratio:1;transform:translate(-50%,-50%);border:clamp(3px,1.5vmin,7px) solid color-mix(in srgb,var(--off-hole-color,#dc2d2d) 58%,#fff);border-radius:50%;background:var(--off-hole-color,#dc2d2d);box-shadow:inset 0 2px 4px rgba(0,0,0,.35),0 0 calc(var(--glow-strength-px) * .7) var(--off-hole-color,#dc2d2d);transition:background .35s,border-color .35s,box-shadow .35s}[data-component="hole-toggle-vertical"] .state:checked+.track{border-color:var(--glow-color);box-shadow:inset 0 5px 12px rgba(0,0,0,.58),inset 0 -2px 5px rgba(255,255,255,.12),0 0 calc(var(--glow-strength-px) * 1.25) var(--glow-color)}[data-component="hole-toggle-vertical"] .state:checked+.track .slider{top:53%;left:7%;background:radial-gradient(circle at 36% 28%,color-mix(in srgb,var(--on-color) 50%,#fff),var(--on-color) 48%,color-mix(in srgb,var(--on-color) 72%,#000));box-shadow:inset 0 2px 2px rgba(255,255,255,.38),inset 0 -5px 8px rgba(0,0,0,.38),0 5px 10px rgba(0,0,0,.45),0 0 var(--glow-strength-px) var(--glow-color)}[data-component="hole-toggle-vertical"] .state:checked+.track .hole{border-color:color-mix(in srgb,var(--on-hole-color,#04dc78) 58%,#fff);background:var(--on-hole-color,#04dc78);box-shadow:inset 0 2px 4px rgba(0,0,0,.35),0 0 calc(var(--glow-strength-px) * .85) var(--on-hole-color,#04dc78)}[data-component="hole-toggle-vertical"] .state:checked+.track .label.off{opacity:.28}[data-component="hole-toggle-vertical"] .state:checked+.track .label.on{opacity:1}[data-component="hole-toggle-vertical"] .hole-switch:active .slider{transform:scale(.95)}',
+    mount(root, context) {
+      const input = root.querySelector("input"), labels = root.querySelectorAll("[data-mode-label]"), properties = context.options.properties || {};
+      if (labels[0]) labels[0].textContent = properties.offText || "OFF";
+      if (labels[1]) labels[1].textContent = properties.onText || "ON";
+      function change() {
+        context.signals.publish("press", true);
+        setTimeout(() => context.signals.publish("press", false), 100);
+        if (context.options.targetPage) context.navigate(context.options.targetPage);
+      }
+      input.addEventListener("change", change);
+      context.signals.subscribe("selected", (value) => { input.checked = value === true || value === 1 || value === "1"; });
+      return () => input.removeEventListener("change", change);
+    },
+  });
+  {
+    const source = runtime.get("hole-toggle-vertical"),
+      propertyDefaults = {
+        offText: "UNMUTED",
+        onText: "MUTED",
+        offColor: "#087e6c",
+        onColor: "#982f36",
+        offHoleColor: "#04dc78",
+        onHoleColor: "#dc2d2d",
+      },
+      signalDefaults = {
+        press: "MicHoleToggleVertical.Press",
+        selected: "MicHoleToggleVertical.Selected",
+        visibility: "MicHoleToggleVertical.Visibility",
+      };
+    runtime.register({
+      ...source,
+      id: "mic-hole-toggle-vertical",
+      name: "Vertical Mic Hole Toggle",
+      properties: source.properties.map((property) => ({
+        ...property,
+        defaultValue:
+          property.key in propertyDefaults
+            ? propertyDefaults[property.key]
+            : property.defaultValue,
+      })),
+      signals: source.signals.map((signal) => ({
+        ...signal,
+        defaultValue: signalDefaults[signal.key] || signal.defaultValue,
+      })),
+      template: source.template
+        .replace(">OFF<", ">UNMUTED<")
+        .replace(">ON<", ">MUTED<"),
+      styles: source.styles.replaceAll("hole-toggle-vertical", "mic-hole-toggle-vertical"),
     });
   }
   registerToggle({

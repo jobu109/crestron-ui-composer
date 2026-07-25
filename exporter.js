@@ -161,6 +161,29 @@
       selectedGraphicStyle = (item) => {
         const url = assetUrl(item.selectedGraphicAsset);
         return `--selected-graphic-url:${url ? `url(&quot;${url}&quot;)` : "none"};`;
+      },
+      perButtonAssetStyle = (item, instance) => {
+        const definition = item.componentId
+            ? global.ComposerRuntime.get(item.componentId)
+            : null,
+          assetListProperty = definition?.itemSelector
+            ? (definition.properties || []).find((prop) => prop.type === "asset-list")
+            : null;
+        if (!assetListProperty) return "";
+        const ids = String((item.properties || {})[assetListProperty.key] || "").split("|");
+        if (!ids.some((id) => id)) return "";
+        const scope = `.scoped-widget[data-instance=${JSON.stringify(instance)}] .scoped-preview `,
+          selector = definition.itemSelector,
+          rules = ids
+            .map((id, index) => {
+              const url = id ? assetUrl(id) : "";
+              return url
+                ? `${scope}${selector}:nth-of-type(${index + 1}){background-image:url(${JSON.stringify(url)})!important;background-repeat:no-repeat;background-position:center;background-size:contain}`
+                : "";
+            })
+            .filter(Boolean)
+            .join("");
+        return rules ? `<style>${rules.replace(/<\/style/gi, "<\\/style")}</style>` : "";
       };
     const pages = project.pages
       .map((page) => {
@@ -169,7 +192,7 @@
           .map((item) => {
             const instance = item.master ? `${item.id}--${page.id}` : item.id;
             return item.componentId
-              ? `<div class="scoped-widget" data-instance="${instance}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}</div>`
+              ? `<div class="scoped-widget" data-instance="${instance}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}${perButtonAssetStyle(item, instance)}</div>`
               : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`;
           })
           .join("\n");

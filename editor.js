@@ -1538,6 +1538,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       }
       root.appendChild(style);
     }
+    const assetListProperty = definition?.itemSelector
+      ? (definition.properties || []).find((prop) => prop.type === "asset-list")
+      : null;
+    if (assetListProperty) {
+      const ids = String(item.properties?.[assetListProperty.key] || "").split("|");
+      if (ids.some((id) => id)) {
+        const root = el.querySelector(".scoped-preview"),
+          style = document.createElement("style"),
+          selector = definition.itemSelector,
+          rules = ids
+            .map((id, index) => {
+              const asset = id && state.assets.find((entry) => entry.id === id);
+              return asset
+                ? `${selector}:nth-of-type(${index + 1}){background-image:url("${asset.dataUrl}")!important;background-repeat:no-repeat;background-position:center;background-size:contain}`
+                : "";
+            })
+            .filter(Boolean)
+            .join("");
+        style.textContent = rules;
+        root.appendChild(style);
+      }
+    }
     wireItemInteraction(el, item);
   }
   function renderPage() {
@@ -3110,6 +3132,38 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             select.appendChild(element);
           });
           select.value = values[i] ?? property.defaultItemValue ?? "";
+          select.onchange = () => {
+            values[i] = select.value;
+            item.properties = item.properties || {};
+            item.properties[property.key] = values.join("|");
+            renderItem(item);
+          };
+          list.appendChild(select);
+        }
+        wireReusableOverride(label, [...list.querySelectorAll("select")], property);
+        label.appendChild(list);
+        propertyHost.appendChild(label);
+        return;
+      }
+      if (property.type === "asset-list") {
+        const list = document.createElement("div"),
+          count = Math.max(1, Math.min(48, Number(item.properties?.[property.countKey]) || 1)),
+          values = String(item.properties?.[property.key] ?? property.defaultValue ?? "").split("|"),
+          images = state.assets.filter((asset) => asset.type.startsWith("image/"));
+        list.className = "property-text-list";
+        for (let i = 0; i < count; i++) {
+          const select = document.createElement("select"),
+            empty = document.createElement("option");
+          empty.value = "";
+          empty.textContent = `${property.itemName || "Item"} ${i + 1}: None`;
+          select.appendChild(empty);
+          images.forEach((asset) => {
+            const option = document.createElement("option");
+            option.value = asset.id;
+            option.textContent = `${property.itemName || "Item"} ${i + 1}: ${asset.name}`;
+            select.appendChild(option);
+          });
+          select.value = values[i] ?? "";
           select.onchange = () => {
             values[i] = select.value;
             item.properties = item.properties || {};
@@ -4778,6 +4832,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       .filter(
         (property) =>
           property.signalSetting &&
+          property.type === "checkbox" &&
           property.key !== "bindingMode" &&
           property.key !== "visibilityEnabled",
       )
