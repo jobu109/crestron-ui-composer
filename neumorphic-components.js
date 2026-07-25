@@ -57,6 +57,314 @@
   registerButton("neumorphic-circle-button", "Neumorphic Circle Button", "circle", "play");
   registerButton("neumorphic-square-button", "Neumorphic Square Button", "square", "stop");
   runtime.register({
+    id: "neumorphic-glow-dial", name: "Neumorphic Glow Dial", category: "Standard Buttons", defaultSize: { width: 160, height: 160 },
+    properties: [
+      { key: "text", name: "Standard label", type: "text", defaultValue: "Dial" },
+      { key: "selectedText", name: "Selected label", type: "text", defaultValue: "" },
+      { key: "icon", name: "Standard icon", type: "select", options: ["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), defaultValue: "none" },
+      { key: "selectedIcon", name: "Selected icon", type: "select", options: [{ value: "", label: "Match standard" }, ...["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))], defaultValue: "" },
+      { key: "surfaceColor", name: "Surface color", type: "color", defaultValue: "#20242c" },
+      { key: "shadowDarkColor", name: "Dark shadow", type: "color", defaultValue: "#14171c" },
+      { key: "shadowLightColor", name: "Light shadow", type: "color", defaultValue: "#33394d" },
+      { key: "metallicRingColor", name: "Bezel ring color", type: "color", defaultValue: "#8b93a0" },
+      { key: "glowColor", name: "Glow ring color", type: "color", defaultValue: "#ff5a1f" },
+      { key: "textColor", name: "Text / icon color", type: "color", defaultValue: "#aab2bd" },
+      { key: "selectedColor", name: "Selected text / icon color", type: "color", defaultValue: "#ffffff" },
+      { key: "textSize", name: "Text size", type: "number", min: 8, max: 42, step: 1, defaultValue: 16 },
+      { key: "iconSize", name: "Icon size", type: "number", min: 12, max: 100, step: 1, defaultValue: 34 },
+      { key: "shadowDistance", name: "Shadow distance", type: "number", min: 1, max: 20, step: 1, defaultValue: 6 },
+      { key: "glowStrength", name: "Selected glow strength", type: "number", min: 0, max: 40, step: 1, defaultValue: 6 },
+      { key: "ringGlowStrength", name: "Ring glow strength", type: "number", min: 0, max: 60, step: 1, defaultValue: 16 },
+    ],
+    signals: [
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "NeumorphicGlowDial.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "NeumorphicGlowDial.Selected" },
+      { key: "label", name: "Label", type: "serial", direction: "input", defaultValue: "NeumorphicGlowDial.Name" },
+    ],
+    template: '<div class="neo-dial-wrap"><div class="neo-dial-bezel"><div class="neo-dial-metallic"></div><div class="neo-dial-glow"></div><button class="neo-dial-button" type="button"><svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true"></svg><span class="neo-dial-label"></span></button></div></div>',
+    styles:
+      '[data-component="neumorphic-glow-dial"]{display:block;width:100%;height:100%;padding:8%;box-sizing:border-box;font-family:"Segoe UI",sans-serif}' +
+      '[data-component="neumorphic-glow-dial"] *{box-sizing:border-box}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-bezel{position:relative;width:100%;height:100%;border-radius:50%;background:var(--surface-color);box-shadow:var(--shadow-distance-px) var(--shadow-distance-px) calc(var(--shadow-distance-px) * 2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * 2) var(--shadow-light-color)}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-metallic{position:absolute;inset:6%;border-radius:50%;background:linear-gradient(145deg,color-mix(in srgb,var(--metallic-ring-color) 175%,white) 0%,var(--metallic-ring-color) 40%,color-mix(in srgb,var(--metallic-ring-color) 60%,black) 100%);box-shadow:inset 0 1px 3px color-mix(in srgb,var(--metallic-ring-color) 220%,white),inset 0 -2px 4px rgba(0,0,0,.45)}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-glow{position:absolute;inset:10.5%;border-radius:50%;background:radial-gradient(circle at 30% 76%,color-mix(in srgb,var(--glow-color) 35%,white) 0%,transparent 45%),repeating-conic-gradient(from -100deg,rgba(255,255,255,.4) 0deg 1.6deg,rgba(255,255,255,0) 1.6deg 7deg),radial-gradient(circle,color-mix(in srgb,var(--glow-color) 55%,white) 0%,var(--glow-color) 55%,color-mix(in srgb,var(--glow-color) 82%,black) 100%);background-blend-mode:normal,overlay,normal;opacity:.8;box-shadow:0 0 calc(var(--ring-glow-strength-px) * .45) color-mix(in srgb,var(--glow-color) 65%,transparent),inset 0 0 calc(var(--ring-glow-strength-px) * .2) color-mix(in srgb,var(--glow-color) 45%,transparent);transition:opacity .2s,box-shadow .2s}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-glow.lit{opacity:1;box-shadow:0 0 var(--ring-glow-strength-px) var(--glow-color),inset 0 0 calc(var(--ring-glow-strength-px) * .6) color-mix(in srgb,var(--glow-color) 70%,white)}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-button{position:absolute;inset:25%;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;border:0;appearance:none;overflow:hidden;padding:8%;background:var(--surface-color);box-shadow:calc(var(--shadow-distance-px) * .6) calc(var(--shadow-distance-px) * .6) calc(var(--shadow-distance-px) * 1.2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -.6) calc(var(--shadow-distance-px) * -.6) calc(var(--shadow-distance-px) * 1.2) var(--shadow-light-color);color:var(--text-color);cursor:pointer;outline:none;touch-action:none;transition:box-shadow .18s,color .18s}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-button.pressed,[data-component="neumorphic-glow-dial"] .neo-dial-button.active{box-shadow:inset calc(var(--shadow-distance-px) * .5) calc(var(--shadow-distance-px) * .5) calc(var(--shadow-distance-px) * 1) var(--shadow-dark-color),inset calc(var(--shadow-distance-px) * -.5) calc(var(--shadow-distance-px) * -.5) calc(var(--shadow-distance-px) * 1) var(--shadow-light-color);color:var(--selected-color)}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-button.active .neo-dial-icon{filter:drop-shadow(0 0 var(--glow-strength-px) var(--glow-color))}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-icon{width:var(--icon-size-percent);height:var(--icon-size-percent);flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:2}' +
+      '[data-component="neumorphic-glow-dial"] .neo-dial-label{display:block;max-width:100%;margin-top:6%;overflow:hidden;font-size:var(--text-size-px);font-weight:700;text-overflow:ellipsis;white-space:nowrap}',
+    mount(root, context) {
+      function iconMarkup(icon) {
+        const paths = {
+          play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
+        };
+        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+      }
+      const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
+      const standardText = String(p.text ?? "Dial"), selectedText = p.selectedText || standardText;
+      const standardIcon = p.icon || "none", selectedIcon = p.selectedIcon || standardIcon;
+      let isSelected = false, nameOverride = null;
+      function applyIcon(key) {
+        button.querySelector(".neo-dial-icon").outerHTML = iconMarkup(key);
+        button.querySelector(".neo-dial-icon").style.display = key === "none" ? "none" : "";
+        label.style.marginTop = key === "none" ? "0" : "";
+      }
+      function renderLabel() {
+        const text = nameOverride != null ? nameOverride : (isSelected ? selectedText : standardText);
+        label.textContent = text; label.style.display = text ? "" : "none";
+      }
+      applyIcon(standardIcon); renderLabel();
+      function release() { button.classList.remove("pressed"); context.signals.publish("press", false); }
+      function press(event) { button.classList.add("pressed"); context.signals.publish("press", true); event.preventDefault(); }
+      button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointerleave", release); button.addEventListener("pointercancel", release);
+      context.signals.subscribe("selected", value => {
+        isSelected = value === true || value === 1 || value === "1";
+        button.classList.toggle("active", isSelected); glow.classList.toggle("lit", isSelected);
+        applyIcon(isSelected ? selectedIcon : standardIcon); renderLabel();
+      });
+      context.signals.subscribe("label", value => {
+        nameOverride = value != null && value !== "" ? String(value) : null;
+        renderLabel();
+      });
+      return () => { button.removeEventListener("pointerdown", press); button.removeEventListener("pointerup", release); button.removeEventListener("pointerleave", release); button.removeEventListener("pointercancel", release); };
+    },
+  });
+  runtime.register({
+    id: "neumorphic-glow-square", name: "Neumorphic Glow Square", category: "Standard Buttons", defaultSize: { width: 160, height: 160 },
+    properties: [
+      { key: "text", name: "Standard label", type: "text", defaultValue: "Dial" },
+      { key: "selectedText", name: "Selected label", type: "text", defaultValue: "" },
+      { key: "icon", name: "Standard icon", type: "select", options: ["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), defaultValue: "none" },
+      { key: "selectedIcon", name: "Selected icon", type: "select", options: [{ value: "", label: "Match standard" }, ...["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))], defaultValue: "" },
+      { key: "surfaceColor", name: "Surface color", type: "color", defaultValue: "#20242c" },
+      { key: "shadowDarkColor", name: "Dark shadow", type: "color", defaultValue: "#14171c" },
+      { key: "shadowLightColor", name: "Light shadow", type: "color", defaultValue: "#33394d" },
+      { key: "metallicRingColor", name: "Bezel ring color", type: "color", defaultValue: "#8b93a0" },
+      { key: "glowColor", name: "Glow ring color", type: "color", defaultValue: "#ff5a1f" },
+      { key: "textColor", name: "Text / icon color", type: "color", defaultValue: "#aab2bd" },
+      { key: "selectedColor", name: "Selected text / icon color", type: "color", defaultValue: "#ffffff" },
+      { key: "textSize", name: "Text size", type: "number", min: 8, max: 42, step: 1, defaultValue: 16 },
+      { key: "iconSize", name: "Icon size", type: "number", min: 12, max: 100, step: 1, defaultValue: 34 },
+      { key: "shadowDistance", name: "Shadow distance", type: "number", min: 1, max: 20, step: 1, defaultValue: 6 },
+      { key: "glowStrength", name: "Selected glow strength", type: "number", min: 0, max: 40, step: 1, defaultValue: 6 },
+      { key: "ringGlowStrength", name: "Ring glow strength", type: "number", min: 0, max: 60, step: 1, defaultValue: 16 },
+      { key: "cornerRadius", name: "Corner radius", type: "number", min: 0, max: 60, step: 1, defaultValue: 22 },
+    ],
+    signals: [
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "NeumorphicGlowSquare.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "NeumorphicGlowSquare.Selected" },
+      { key: "label", name: "Label", type: "serial", direction: "input", defaultValue: "NeumorphicGlowSquare.Name" },
+    ],
+    template: '<div class="neo-dial-wrap"><div class="neo-dial-bezel"><div class="neo-dial-metallic"></div><div class="neo-dial-glow"></div><button class="neo-dial-button" type="button"><svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true"></svg><span class="neo-dial-label"></span></button></div></div>',
+    styles:
+      '[data-component="neumorphic-glow-square"]{display:block;width:100%;height:100%;padding:8%;box-sizing:border-box;font-family:"Segoe UI",sans-serif}' +
+      '[data-component="neumorphic-glow-square"] *{box-sizing:border-box}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-bezel{position:relative;width:100%;height:100%;border-radius:var(--corner-radius-px);background:var(--surface-color);box-shadow:var(--shadow-distance-px) var(--shadow-distance-px) calc(var(--shadow-distance-px) * 2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * 2) var(--shadow-light-color)}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-metallic{position:absolute;inset:6%;border-radius:calc(var(--corner-radius-px) * .82);background:linear-gradient(145deg,color-mix(in srgb,var(--metallic-ring-color) 175%,white) 0%,var(--metallic-ring-color) 40%,color-mix(in srgb,var(--metallic-ring-color) 60%,black) 100%);box-shadow:inset 0 1px 3px color-mix(in srgb,var(--metallic-ring-color) 220%,white),inset 0 -2px 4px rgba(0,0,0,.45)}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-glow{position:absolute;inset:10.5%;border-radius:calc(var(--corner-radius-px) * .68);background:radial-gradient(circle at 30% 76%,color-mix(in srgb,var(--glow-color) 35%,white) 0%,transparent 45%),repeating-conic-gradient(from -100deg,rgba(255,255,255,.4) 0deg 1.6deg,rgba(255,255,255,0) 1.6deg 7deg),radial-gradient(circle,color-mix(in srgb,var(--glow-color) 55%,white) 0%,var(--glow-color) 55%,color-mix(in srgb,var(--glow-color) 82%,black) 100%);background-blend-mode:normal,overlay,normal;opacity:.8;box-shadow:0 0 calc(var(--ring-glow-strength-px) * .45) color-mix(in srgb,var(--glow-color) 65%,transparent),inset 0 0 calc(var(--ring-glow-strength-px) * .2) color-mix(in srgb,var(--glow-color) 45%,transparent);transition:opacity .2s,box-shadow .2s}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-glow.lit{opacity:1;box-shadow:0 0 var(--ring-glow-strength-px) var(--glow-color),inset 0 0 calc(var(--ring-glow-strength-px) * .6) color-mix(in srgb,var(--glow-color) 70%,white)}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-button{position:absolute;inset:25%;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:calc(var(--corner-radius-px) * .5);border:0;appearance:none;overflow:hidden;padding:8%;background:var(--surface-color);box-shadow:calc(var(--shadow-distance-px) * .6) calc(var(--shadow-distance-px) * .6) calc(var(--shadow-distance-px) * 1.2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -.6) calc(var(--shadow-distance-px) * -.6) calc(var(--shadow-distance-px) * 1.2) var(--shadow-light-color);color:var(--text-color);cursor:pointer;outline:none;touch-action:none;transition:box-shadow .18s,color .18s}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-button.pressed,[data-component="neumorphic-glow-square"] .neo-dial-button.active{box-shadow:inset calc(var(--shadow-distance-px) * .5) calc(var(--shadow-distance-px) * .5) calc(var(--shadow-distance-px) * 1) var(--shadow-dark-color),inset calc(var(--shadow-distance-px) * -.5) calc(var(--shadow-distance-px) * -.5) calc(var(--shadow-distance-px) * 1) var(--shadow-light-color);color:var(--selected-color)}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-button.active .neo-dial-icon{filter:drop-shadow(0 0 var(--glow-strength-px) var(--glow-color))}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-icon{width:var(--icon-size-percent);height:var(--icon-size-percent);flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:2}' +
+      '[data-component="neumorphic-glow-square"] .neo-dial-label{display:block;max-width:100%;margin-top:6%;overflow:hidden;font-size:var(--text-size-px);font-weight:700;text-overflow:ellipsis;white-space:nowrap}',
+    mount(root, context) {
+      function iconMarkup(icon) {
+        const paths = {
+          play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
+        };
+        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+      }
+      const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
+      const standardText = String(p.text ?? "Dial"), selectedText = p.selectedText || standardText;
+      const standardIcon = p.icon || "none", selectedIcon = p.selectedIcon || standardIcon;
+      let isSelected = false, nameOverride = null;
+      function applyIcon(key) {
+        button.querySelector(".neo-dial-icon").outerHTML = iconMarkup(key);
+        button.querySelector(".neo-dial-icon").style.display = key === "none" ? "none" : "";
+        label.style.marginTop = key === "none" ? "0" : "";
+      }
+      function renderLabel() {
+        const text = nameOverride != null ? nameOverride : (isSelected ? selectedText : standardText);
+        label.textContent = text; label.style.display = text ? "" : "none";
+      }
+      applyIcon(standardIcon); renderLabel();
+      function release() { button.classList.remove("pressed"); context.signals.publish("press", false); }
+      function press(event) { button.classList.add("pressed"); context.signals.publish("press", true); event.preventDefault(); }
+      button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointerleave", release); button.addEventListener("pointercancel", release);
+      context.signals.subscribe("selected", value => {
+        isSelected = value === true || value === 1 || value === "1";
+        button.classList.toggle("active", isSelected); glow.classList.toggle("lit", isSelected);
+        applyIcon(isSelected ? selectedIcon : standardIcon); renderLabel();
+      });
+      context.signals.subscribe("label", value => {
+        nameOverride = value != null && value !== "" ? String(value) : null;
+        renderLabel();
+      });
+      return () => { button.removeEventListener("pointerdown", press); button.removeEventListener("pointerup", release); button.removeEventListener("pointerleave", release); button.removeEventListener("pointercancel", release); };
+    },
+  });
+  runtime.register({
+    id: "neumorphic-glow-dome", name: "Neumorphic Glow Dome", category: "Standard Buttons", defaultSize: { width: 160, height: 160 },
+    properties: [
+      { key: "text", name: "Standard label", type: "text", defaultValue: "Go" },
+      { key: "selectedText", name: "Selected label", type: "text", defaultValue: "" },
+      { key: "icon", name: "Standard icon", type: "select", options: ["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), defaultValue: "none" },
+      { key: "selectedIcon", name: "Selected icon", type: "select", options: [{ value: "", label: "Match standard" }, ...["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))], defaultValue: "" },
+      { key: "surfaceColor", name: "Surface color", type: "color", defaultValue: "#3d4a40" },
+      { key: "shadowDarkColor", name: "Dark shadow", type: "color", defaultValue: "#1c231e" },
+      { key: "shadowLightColor", name: "Light shadow", type: "color", defaultValue: "#5b6b5e" },
+      { key: "grooveColor", name: "Groove color", type: "color", defaultValue: "#12160f" },
+      { key: "metallicRingColor", name: "Bezel ring color", type: "color", defaultValue: "#6c8072" },
+      { key: "glowColor", name: "Glow ring color", type: "color", defaultValue: "#2bff6e" },
+      { key: "textColor", name: "Etched text / icon color", type: "color", defaultValue: "#2b332c" },
+      { key: "selectedColor", name: "Selected glow text / icon color", type: "color", defaultValue: "#eafff0" },
+      { key: "textSize", name: "Text size", type: "number", min: 8, max: 42, step: 1, defaultValue: 18 },
+      { key: "iconSize", name: "Icon size", type: "number", min: 12, max: 100, step: 1, defaultValue: 34 },
+      { key: "shadowDistance", name: "Shadow distance", type: "number", min: 1, max: 20, step: 1, defaultValue: 6 },
+      { key: "glowStrength", name: "Selected glow strength", type: "number", min: 0, max: 40, step: 1, defaultValue: 8 },
+      { key: "ringGlowStrength", name: "Ring glow strength", type: "number", min: 0, max: 60, step: 1, defaultValue: 18 },
+    ],
+    signals: [
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "NeumorphicGlowDome.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "NeumorphicGlowDome.Selected" },
+      { key: "label", name: "Label", type: "serial", direction: "input", defaultValue: "NeumorphicGlowDome.Name" },
+    ],
+    template: '<div class="neo-dial-wrap"><div class="neo-dial-bezel"><div class="neo-dial-groove"></div><div class="neo-dial-metallic"></div><div class="neo-dial-glow"></div><button class="neo-dial-button" type="button"><svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true"></svg><span class="neo-dial-label"></span></button></div></div>',
+    styles:
+      '[data-component="neumorphic-glow-dome"]{display:block;width:100%;height:100%;padding:8%;box-sizing:border-box;font-family:"Segoe UI",sans-serif}' +
+      '[data-component="neumorphic-glow-dome"] *{box-sizing:border-box}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-bezel{position:relative;width:100%;height:100%;border-radius:50%;background:var(--surface-color);box-shadow:var(--shadow-distance-px) var(--shadow-distance-px) calc(var(--shadow-distance-px) * 2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * 2) var(--shadow-light-color)}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-groove{position:absolute;inset:5%;border-radius:50%;background:var(--groove-color);box-shadow:inset 0 2px 5px rgba(0,0,0,.65),inset 0 -1px 2px rgba(255,255,255,.06)}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-metallic{position:absolute;inset:9%;border-radius:50%;background:linear-gradient(145deg,color-mix(in srgb,var(--metallic-ring-color) 175%,white) 0%,var(--metallic-ring-color) 40%,color-mix(in srgb,var(--metallic-ring-color) 60%,black) 100%);box-shadow:inset 0 1px 3px color-mix(in srgb,var(--metallic-ring-color) 220%,white),inset 0 -2px 4px rgba(0,0,0,.45)}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-glow{position:absolute;inset:14%;border-radius:50%;background:radial-gradient(circle at 30% 76%,color-mix(in srgb,var(--glow-color) 35%,white) 0%,transparent 45%),repeating-conic-gradient(from -100deg,rgba(255,255,255,.4) 0deg 1.6deg,rgba(255,255,255,0) 1.6deg 7deg),radial-gradient(circle,color-mix(in srgb,var(--glow-color) 55%,white) 0%,var(--glow-color) 55%,color-mix(in srgb,var(--glow-color) 82%,black) 100%);background-blend-mode:normal,overlay,normal;opacity:.8;box-shadow:0 0 calc(var(--ring-glow-strength-px) * .45) color-mix(in srgb,var(--glow-color) 65%,transparent),inset 0 0 calc(var(--ring-glow-strength-px) * .2) color-mix(in srgb,var(--glow-color) 45%,transparent);transition:opacity .2s,box-shadow .2s}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-glow.lit{opacity:1;box-shadow:0 0 var(--ring-glow-strength-px) var(--glow-color),inset 0 0 calc(var(--ring-glow-strength-px) * .6) color-mix(in srgb,var(--glow-color) 70%,white)}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-button{position:absolute;inset:27%;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;border:0;appearance:none;overflow:hidden;padding:8%;background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--surface-color) 55%,white) 0%,var(--surface-color) 46%,color-mix(in srgb,var(--surface-color) 60%,black) 100%);box-shadow:0 calc(var(--shadow-distance-px) * .4) calc(var(--shadow-distance-px) * .9) rgba(0,0,0,.5),inset 0 calc(var(--shadow-distance-px) * .3) calc(var(--shadow-distance-px) * .6) rgba(255,255,255,.18),inset 0 calc(var(--shadow-distance-px) * -.5) calc(var(--shadow-distance-px) * .9) rgba(0,0,0,.35);color:var(--text-color);cursor:pointer;outline:none;touch-action:none;transition:box-shadow .18s,background .18s,color .18s}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-button.pressed,[data-component="neumorphic-glow-dome"] .neo-dial-button.active{background:radial-gradient(circle at 34% 55%,color-mix(in srgb,var(--surface-color) 40%,black) 0%,var(--surface-color) 50%,color-mix(in srgb,var(--surface-color) 65%,black) 100%);box-shadow:inset 0 calc(var(--shadow-distance-px) * .5) calc(var(--shadow-distance-px) * 1.1) rgba(0,0,0,.55),inset 0 calc(var(--shadow-distance-px) * -.3) calc(var(--shadow-distance-px) * .6) rgba(255,255,255,.08);color:var(--selected-color)}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-icon{width:var(--icon-size-percent);height:var(--icon-size-percent);flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 1px 0 rgba(255,255,255,.2)) drop-shadow(0 -1px 0 rgba(0,0,0,.5))}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-button.active .neo-dial-icon{filter:drop-shadow(0 0 var(--glow-strength-px) var(--glow-color)) drop-shadow(0 0 calc(var(--glow-strength-px) * 2) var(--glow-color))}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-label{display:block;max-width:100%;margin-top:6%;overflow:hidden;font-size:var(--text-size-px);font-weight:700;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 1px rgba(255,255,255,.22),0 -1px 1px rgba(0,0,0,.55);transition:text-shadow .18s}' +
+      '[data-component="neumorphic-glow-dome"] .neo-dial-button.active .neo-dial-label{text-shadow:0 0 calc(var(--glow-strength-px) * .8) var(--glow-color),0 0 calc(var(--glow-strength-px) * 1.8) color-mix(in srgb,var(--glow-color) 70%,transparent)}',
+    mount(root, context) {
+      function iconMarkup(icon) {
+        const paths = {
+          play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
+        };
+        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+      }
+      const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
+      const standardText = String(p.text ?? "Go"), selectedText = p.selectedText || standardText;
+      const standardIcon = p.icon || "none", selectedIcon = p.selectedIcon || standardIcon;
+      let isSelected = false, nameOverride = null;
+      function applyIcon(key) {
+        button.querySelector(".neo-dial-icon").outerHTML = iconMarkup(key);
+        button.querySelector(".neo-dial-icon").style.display = key === "none" ? "none" : "";
+        label.style.marginTop = key === "none" ? "0" : "";
+      }
+      function renderLabel() {
+        const text = nameOverride != null ? nameOverride : (isSelected ? selectedText : standardText);
+        label.textContent = text; label.style.display = text ? "" : "none";
+      }
+      applyIcon(standardIcon); renderLabel();
+      function release() { button.classList.remove("pressed"); context.signals.publish("press", false); }
+      function press(event) { button.classList.add("pressed"); context.signals.publish("press", true); event.preventDefault(); }
+      button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointerleave", release); button.addEventListener("pointercancel", release);
+      context.signals.subscribe("selected", value => {
+        isSelected = value === true || value === 1 || value === "1";
+        button.classList.toggle("active", isSelected); glow.classList.toggle("lit", isSelected);
+        applyIcon(isSelected ? selectedIcon : standardIcon); renderLabel();
+      });
+      context.signals.subscribe("label", value => {
+        nameOverride = value != null && value !== "" ? String(value) : null;
+        renderLabel();
+      });
+      return () => { button.removeEventListener("pointerdown", press); button.removeEventListener("pointerup", release); button.removeEventListener("pointerleave", release); button.removeEventListener("pointercancel", release); };
+    },
+  });
+  runtime.register({
+    id: "neumorphic-glow-dome-square", name: "Neumorphic Glow Dome Square", category: "Standard Buttons", defaultSize: { width: 160, height: 160 },
+    properties: [
+      { key: "text", name: "Standard label", type: "text", defaultValue: "Go" },
+      { key: "selectedText", name: "Selected label", type: "text", defaultValue: "" },
+      { key: "icon", name: "Standard icon", type: "select", options: ["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), defaultValue: "none" },
+      { key: "selectedIcon", name: "Selected icon", type: "select", options: [{ value: "", label: "Match standard" }, ...["play", "pause", "stop", "check", "power", "none"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))], defaultValue: "" },
+      { key: "surfaceColor", name: "Surface color", type: "color", defaultValue: "#3d4a40" },
+      { key: "shadowDarkColor", name: "Dark shadow", type: "color", defaultValue: "#1c231e" },
+      { key: "shadowLightColor", name: "Light shadow", type: "color", defaultValue: "#5b6b5e" },
+      { key: "grooveColor", name: "Groove color", type: "color", defaultValue: "#12160f" },
+      { key: "metallicRingColor", name: "Bezel ring color", type: "color", defaultValue: "#6c8072" },
+      { key: "glowColor", name: "Glow ring color", type: "color", defaultValue: "#2bff6e" },
+      { key: "textColor", name: "Etched text / icon color", type: "color", defaultValue: "#2b332c" },
+      { key: "selectedColor", name: "Selected glow text / icon color", type: "color", defaultValue: "#eafff0" },
+      { key: "textSize", name: "Text size", type: "number", min: 8, max: 42, step: 1, defaultValue: 18 },
+      { key: "iconSize", name: "Icon size", type: "number", min: 12, max: 100, step: 1, defaultValue: 34 },
+      { key: "shadowDistance", name: "Shadow distance", type: "number", min: 1, max: 20, step: 1, defaultValue: 6 },
+      { key: "glowStrength", name: "Selected glow strength", type: "number", min: 0, max: 40, step: 1, defaultValue: 8 },
+      { key: "ringGlowStrength", name: "Ring glow strength", type: "number", min: 0, max: 60, step: 1, defaultValue: 18 },
+      { key: "cornerRadius", name: "Corner radius", type: "number", min: 0, max: 60, step: 1, defaultValue: 22 },
+    ],
+    signals: [
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "NeumorphicGlowDomeSquare.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "NeumorphicGlowDomeSquare.Selected" },
+      { key: "label", name: "Label", type: "serial", direction: "input", defaultValue: "NeumorphicGlowDomeSquare.Name" },
+    ],
+    template: '<div class="neo-dial-wrap"><div class="neo-dial-bezel"><div class="neo-dial-groove"></div><div class="neo-dial-metallic"></div><div class="neo-dial-glow"></div><button class="neo-dial-button" type="button"><svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true"></svg><span class="neo-dial-label"></span></button></div></div>',
+    styles:
+      '[data-component="neumorphic-glow-dome-square"]{display:block;width:100%;height:100%;padding:8%;box-sizing:border-box;font-family:"Segoe UI",sans-serif}' +
+      '[data-component="neumorphic-glow-dome-square"] *{box-sizing:border-box}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-bezel{position:relative;width:100%;height:100%;border-radius:var(--corner-radius-px);background:var(--surface-color);box-shadow:var(--shadow-distance-px) var(--shadow-distance-px) calc(var(--shadow-distance-px) * 2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * 2) var(--shadow-light-color)}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-groove{position:absolute;inset:5%;border-radius:calc(var(--corner-radius-px) * .88);background:var(--groove-color);box-shadow:inset 0 2px 5px rgba(0,0,0,.65),inset 0 -1px 2px rgba(255,255,255,.06)}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-metallic{position:absolute;inset:9%;border-radius:calc(var(--corner-radius-px) * .78);background:linear-gradient(145deg,color-mix(in srgb,var(--metallic-ring-color) 175%,white) 0%,var(--metallic-ring-color) 40%,color-mix(in srgb,var(--metallic-ring-color) 60%,black) 100%);box-shadow:inset 0 1px 3px color-mix(in srgb,var(--metallic-ring-color) 220%,white),inset 0 -2px 4px rgba(0,0,0,.45)}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-glow{position:absolute;inset:14%;border-radius:calc(var(--corner-radius-px) * .6);background:radial-gradient(circle at 30% 76%,color-mix(in srgb,var(--glow-color) 35%,white) 0%,transparent 45%),repeating-conic-gradient(from -100deg,rgba(255,255,255,.4) 0deg 1.6deg,rgba(255,255,255,0) 1.6deg 7deg),radial-gradient(circle,color-mix(in srgb,var(--glow-color) 55%,white) 0%,var(--glow-color) 55%,color-mix(in srgb,var(--glow-color) 82%,black) 100%);background-blend-mode:normal,overlay,normal;opacity:.8;box-shadow:0 0 calc(var(--ring-glow-strength-px) * .45) color-mix(in srgb,var(--glow-color) 65%,transparent),inset 0 0 calc(var(--ring-glow-strength-px) * .2) color-mix(in srgb,var(--glow-color) 45%,transparent);transition:opacity .2s,box-shadow .2s}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-glow.lit{opacity:1;box-shadow:0 0 var(--ring-glow-strength-px) var(--glow-color),inset 0 0 calc(var(--ring-glow-strength-px) * .6) color-mix(in srgb,var(--glow-color) 70%,white)}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-button{position:absolute;inset:27%;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:calc(var(--corner-radius-px) * .45);border:0;appearance:none;overflow:hidden;padding:8%;background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--surface-color) 55%,white) 0%,var(--surface-color) 46%,color-mix(in srgb,var(--surface-color) 60%,black) 100%);box-shadow:0 calc(var(--shadow-distance-px) * .4) calc(var(--shadow-distance-px) * .9) rgba(0,0,0,.5),inset 0 calc(var(--shadow-distance-px) * .3) calc(var(--shadow-distance-px) * .6) rgba(255,255,255,.18),inset 0 calc(var(--shadow-distance-px) * -.5) calc(var(--shadow-distance-px) * .9) rgba(0,0,0,.35);color:var(--text-color);cursor:pointer;outline:none;touch-action:none;transition:box-shadow .18s,background .18s,color .18s}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-button.pressed,[data-component="neumorphic-glow-dome-square"] .neo-dial-button.active{background:radial-gradient(circle at 34% 55%,color-mix(in srgb,var(--surface-color) 40%,black) 0%,var(--surface-color) 50%,color-mix(in srgb,var(--surface-color) 65%,black) 100%);box-shadow:inset 0 calc(var(--shadow-distance-px) * .5) calc(var(--shadow-distance-px) * 1.1) rgba(0,0,0,.55),inset 0 calc(var(--shadow-distance-px) * -.3) calc(var(--shadow-distance-px) * .6) rgba(255,255,255,.08);color:var(--selected-color)}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-icon{width:var(--icon-size-percent);height:var(--icon-size-percent);flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:2;filter:drop-shadow(0 1px 0 rgba(255,255,255,.2)) drop-shadow(0 -1px 0 rgba(0,0,0,.5))}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-button.active .neo-dial-icon{filter:drop-shadow(0 0 var(--glow-strength-px) var(--glow-color)) drop-shadow(0 0 calc(var(--glow-strength-px) * 2) var(--glow-color))}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-label{display:block;max-width:100%;margin-top:6%;overflow:hidden;font-size:var(--text-size-px);font-weight:700;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 1px rgba(255,255,255,.22),0 -1px 1px rgba(0,0,0,.55);transition:text-shadow .18s}' +
+      '[data-component="neumorphic-glow-dome-square"] .neo-dial-button.active .neo-dial-label{text-shadow:0 0 calc(var(--glow-strength-px) * .8) var(--glow-color),0 0 calc(var(--glow-strength-px) * 1.8) color-mix(in srgb,var(--glow-color) 70%,transparent)}',
+    mount(root, context) {
+      function iconMarkup(icon) {
+        const paths = {
+          play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
+        };
+        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+      }
+      const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
+      const standardText = String(p.text ?? "Go"), selectedText = p.selectedText || standardText;
+      const standardIcon = p.icon || "none", selectedIcon = p.selectedIcon || standardIcon;
+      let isSelected = false, nameOverride = null;
+      function applyIcon(key) {
+        button.querySelector(".neo-dial-icon").outerHTML = iconMarkup(key);
+        button.querySelector(".neo-dial-icon").style.display = key === "none" ? "none" : "";
+        label.style.marginTop = key === "none" ? "0" : "";
+      }
+      function renderLabel() {
+        const text = nameOverride != null ? nameOverride : (isSelected ? selectedText : standardText);
+        label.textContent = text; label.style.display = text ? "" : "none";
+      }
+      applyIcon(standardIcon); renderLabel();
+      function release() { button.classList.remove("pressed"); context.signals.publish("press", false); }
+      function press(event) { button.classList.add("pressed"); context.signals.publish("press", true); event.preventDefault(); }
+      button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointerleave", release); button.addEventListener("pointercancel", release);
+      context.signals.subscribe("selected", value => {
+        isSelected = value === true || value === 1 || value === "1";
+        button.classList.toggle("active", isSelected); glow.classList.toggle("lit", isSelected);
+        applyIcon(isSelected ? selectedIcon : standardIcon); renderLabel();
+      });
+      context.signals.subscribe("label", value => {
+        nameOverride = value != null && value !== "" ? String(value) : null;
+        renderLabel();
+      });
+      return () => { button.removeEventListener("pointerdown", press); button.removeEventListener("pointerup", release); button.removeEventListener("pointerleave", release); button.removeEventListener("pointercancel", release); };
+    },
+  });
+  runtime.register({
     id: "neumorphic-volume-knob", name: "Neumorphic Volume Knob", category: "Sliders & Levels", defaultSize: { width: 260, height: 290 },
     properties: [
       { key: "localName", name: "Local name", type: "text", defaultValue: "Volume" }, { key: "defaultPercent", name: "Default percentage", type: "number", min: 0, max: 100, step: 1, defaultValue: 40 },
