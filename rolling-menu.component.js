@@ -196,6 +196,11 @@
       const set = (value, publish) => {
         selected = ((Math.round(Number(value)) % count) + count) % count;
         rotate();
+        root.dispatchEvent(
+          new CustomEvent("composer-scroll-position", {
+            detail: { axis: "vertical", value: selected },
+          }),
+        );
         if (publish)
           context.signals.publishAddress(
             "analog",
@@ -264,7 +269,10 @@
       root.addEventListener("pointermove", (e) => {
         if (!dragging) return;
         const itemHeight = Math.max(36, root.clientHeight / 6);
-        set(dragStartSelected + Math.round((start - e.clientY) / itemHeight), false);
+        set(
+          dragStartSelected + Math.round((start - e.clientY) / itemHeight),
+          false,
+        );
       });
       root.addEventListener("pointerup", (e) => {
         const d = start - e.clientY;
@@ -273,6 +281,9 @@
       });
       root.addEventListener("pointercancel", () => {
         dragging = false;
+      });
+      root.addEventListener("composer-scroll-return", (event) => {
+        if (event.detail?.axis === "vertical") set(0, true);
       });
       context.signals.subscribeAddress("analog", p.itemCountSignal, (v) => {
         const n = Math.round(Number(v));

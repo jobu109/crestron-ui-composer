@@ -466,6 +466,76 @@
     "single-mic-control": { showLabel: ".label", showPercentage: ".value", showToggle: ".toggle" },
     "wifi-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
   };
+  function wireScrollReturn(root, holder, definition, properties) {
+    const axes = definition.scrollReturnAxes || [];
+    if (!axes.length || properties.scrollReturnEnabled === false || properties.scrollReturnEnabled === 0 || properties.scrollReturnEnabled === "0" || String(properties.scrollReturnEnabled).toLowerCase() === "false") return function () {};
+    holder = holder || root;
+    holder.querySelectorAll(":scope > .composer-scroll-return").forEach((button) => button.remove());
+    const threshold = Math.max(0, Number(properties.scrollReturnThreshold) || 80),
+      size = Math.max(28, Math.min(80, Number(properties.scrollReturnSize) || 44)),
+      color = properties.scrollReturnColor || "#04aa8e",
+      textColor = properties.scrollReturnTextColor || "#071210",
+      glowColor = properties.scrollReturnGlowColor || color,
+      buttons = [], cleanups = [], targets = new Map(), semanticPosition = { vertical: 0, horizontal: 0 };
+    function findTarget(axis) {
+      const candidates = [root, ...root.querySelectorAll("*")].filter((element) => {
+        const style = getComputedStyle(element), overflow = axis === "vertical" ? style.overflowY : style.overflowX;
+        return /(auto|scroll)/.test(overflow) && (axis === "vertical" ? element.scrollHeight - element.clientHeight : element.scrollWidth - element.clientWidth) > 2;
+      });
+      return candidates.sort((a, b) => (axis === "vertical" ? b.scrollHeight - b.clientHeight - (a.scrollHeight - a.clientHeight) : b.scrollWidth - b.clientWidth - (a.scrollWidth - a.clientWidth)))[0] || null;
+    }
+    function update(button, axis) {
+      const target = targets.get(axis), position = target ? (axis === "vertical" ? target.scrollTop : target.scrollLeft) : semanticPosition[axis];
+      button.classList.toggle("show", target ? position > threshold : position > 0);
+    }
+    axes.forEach((axis, axisIndex) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `composer-scroll-return ${axis}`;
+      button.setAttribute("aria-label", axis === "vertical" ? "Jump to top" : "Jump to beginning");
+      button.textContent = axis === "vertical" ? "↑" : "←";
+      button.style.cssText = `position:absolute;right:${14 + axisIndex * (size + 8)}px;bottom:14px;width:${size}px;height:${size}px;padding:0;border:1px solid rgba(255,255,255,.46);border-radius:50%;background:${color};color:${textColor};font:800 ${Math.round(size * .5)}px/1 "Segoe UI",sans-serif;display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.38),0 0 12px ${glowColor};opacity:0;transform:translateY(10px) scale(.84);pointer-events:none;transition:opacity .2s ease,transform .2s ease,filter .15s ease;z-index:9000;cursor:pointer;`;
+      button.addEventListener("pointerdown", (event) => { event.preventDefault(); event.stopPropagation(); });
+      button.addEventListener("click", (event) => {
+        event.preventDefault(); event.stopPropagation();
+        const target = targets.get(axis);
+        if (target) target.scrollTo(axis === "vertical" ? { top: 0, behavior: "smooth" } : { left: 0, behavior: "smooth" });
+        else root.dispatchEvent(new CustomEvent("composer-scroll-return", { detail: { axis }, bubbles: false }));
+      });
+      holder.appendChild(button); buttons.push(button);
+      const target = findTarget(axis);
+      if (target) {
+        targets.set(axis, target);
+        const listener = () => update(button, axis);
+        target.addEventListener("scroll", listener, { passive: true });
+        cleanups.push(() => target.removeEventListener("scroll", listener));
+      }
+      update(button, axis);
+    });
+    const positionListener = (event) => {
+      const axis = event.detail?.axis;
+      if (!axes.includes(axis)) return;
+      semanticPosition[axis] = Math.max(0, Number(event.detail?.value) || 0);
+      const button = buttons[axes.indexOf(axis)];
+      if (button) update(button, axis);
+    };
+    root.addEventListener("composer-scroll-position", positionListener);
+    cleanups.push(() => root.removeEventListener("composer-scroll-position", positionListener));
+    requestAnimationFrame(() => buttons.forEach((button, index) => {
+      const axis = axes[index], target = findTarget(axis);
+      if (target && !targets.has(axis)) {
+        targets.set(axis, target);
+        const listener = () => update(button, axis);
+        target.addEventListener("scroll", listener, { passive: true });
+        cleanups.push(() => target.removeEventListener("scroll", listener));
+      }
+      update(button, axis);
+    }));
+    const style = document.createElement("style");
+    style.textContent = ".composer-scroll-return.show{opacity:1!important;transform:translateY(0) scale(1)!important;pointer-events:auto!important}.composer-scroll-return:active{filter:brightness(1.2);transform:translateY(0) scale(.92)!important}";
+    holder.appendChild(style);
+    return () => { cleanups.forEach((cleanup) => cleanup()); buttons.forEach((button) => button.remove()); style.remove(); };
+  }
   function register(definition) {
     if (!definition || !definition.id)
       throw new Error("A component definition requires an id");
@@ -786,6 +856,43 @@
       });
       definition.styles += `[data-component="${definition.id}"].wrap-text button,[data-component="${definition.id}"].wrap-text button *,[data-component="${definition.id}"].wrap-text [data-local-text],[data-component="${definition.id}"].wrap-text .label,[data-component="${definition.id}"].wrap-text .name,[data-component="${definition.id}"].wrap-text .note,[data-component="${definition.id}"].wrap-text .big,[data-component="${definition.id}"].wrap-text .value,[data-component="${definition.id}"].wrap-text .position,[data-component="${definition.id}"].wrap-text .status,[data-component="${definition.id}"].wrap-text .btn-txt,[data-component="${definition.id}"].wrap-text .mic-text,[data-component="${definition.id}"].wrap-text .mic-label,[data-component="${definition.id}"].wrap-text .shade-name,[data-component="${definition.id}"].wrap-text .hold-label,[data-component="${definition.id}"].wrap-text .countdown-label,[data-component="${definition.id}"].wrap-text .safety-label{white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;text-overflow:clip!important}`;
     }
+    const wrapTextProperty = definition.properties.find((property) => property.key === "wrapText");
+    if (wrapTextProperty) {
+      definition.properties.splice(definition.properties.indexOf(wrapTextProperty), 1);
+      const textOptionIndexes = definition.properties
+        .map((property, index) => ({ property, index }))
+        .filter(({ property }) =>
+          !property.signalSetting &&
+          property.key !== "visibilityEnabled" &&
+          /text|label|name|title|message|font/i.test(`${property.key} ${property.name || ""}`),
+        )
+        .map(({ index }) => index);
+      const insertionIndex = textOptionIndexes.length
+        ? Math.max(...textOptionIndexes) + 1
+        : definition.properties.length;
+      definition.properties.splice(insertionIndex, 0, wrapTextProperty);
+    }
+    const semanticScrollAxes = {
+        "vertical-carousel": ["vertical"],
+        "horizontal-carousel": ["horizontal"],
+        "rolling-menu": ["vertical"],
+        "swiping-cards": ["horizontal"],
+      },
+      styleText = String(definition.styles || ""), axes = new Set(semanticScrollAxes[definition.id] || []);
+    if (/overflow-x\s*:\s*(?:auto|scroll)/i.test(styleText) || /overflow\s*:\s*(?:auto|scroll)/i.test(styleText)) axes.add("horizontal");
+    if (/overflow-y\s*:\s*(?:auto|scroll)/i.test(styleText) || /overflow\s*:\s*(?:auto|scroll)/i.test(styleText)) axes.add("vertical");
+    definition.scrollReturnAxes = [...axes];
+    if (definition.scrollReturnAxes.length) {
+      const scrollProperties = [
+        { key: "scrollReturnEnabled", name: "Show jump-to-start button", type: "checkbox", defaultValue: true },
+        { key: "scrollReturnThreshold", name: "Jump button appearance threshold", type: "number", defaultValue: 80 },
+        { key: "scrollReturnSize", name: "Jump button size", type: "number", defaultValue: 44 },
+        { key: "scrollReturnColor", name: "Jump button color", type: "color", defaultValue: "#04aa8e" },
+        { key: "scrollReturnTextColor", name: "Jump arrow color", type: "color", defaultValue: "#071210" },
+        { key: "scrollReturnGlowColor", name: "Jump button glow color", type: "color", defaultValue: "#04aa8e" },
+      ];
+      scrollProperties.forEach((property) => { if (!definition.properties.some((entry) => entry.key === property.key)) definition.properties.push(property); });
+    }
     definition.properties.forEach((property) => {
       if (property.signalSetting && typeof property.defaultValue === "string")
         property.defaultValue = contractPattern(property.defaultValue);
@@ -967,6 +1074,7 @@
         navigate: options.navigate || function () {},
         options,
       });
+      cleanups.push(wireScrollReturn(root, root.closest(".widget,.scoped-widget") || root, definition, options.properties || {}));
       const disposeCip = wireCipText(root, signals);
       cleanups.push(disposeCip);
       const visibility = optionalContent[id],
@@ -1052,6 +1160,7 @@
     mount,
     definitions,
     simulator,
+    wireScrollReturn,
     resolveAddress: contractAddress,
     typeCode,
   };

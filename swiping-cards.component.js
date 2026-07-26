@@ -36,34 +36,204 @@
         countKey: "defaultCardCount",
         itemName: "Card",
       },
-      { key: "pressBase", name: "Press pattern", type: "text", defaultValue: "SwipingCards.Items.{index}.Press", signalSetting: true },
-      { key: "pressIncrement", name: "Press join increment", type: "number", min: 1, max: 100, defaultValue: 1, signalSetting: true },
-      { key: "feedbackBase", name: "Selected pattern", type: "text", defaultValue: "SwipingCards.Items.{index}.Selected", signalSetting: true },
-      { key: "feedbackIncrement", name: "Selected join increment", type: "number", min: 1, max: 100, defaultValue: 1, signalSetting: true },
-      { key: "labelBase", name: "Name pattern", type: "text", defaultValue: "SwipingCards.Items.{index}.Name", signalSetting: true },
-      { key: "labelIncrement", name: "Name join increment", type: "number", min: 1, max: 100, defaultValue: 1, signalSetting: true },
-      { key: "cardColor", name: "Card color", type: "color", defaultValue: "#1b2030" },
-      { key: "cardBottomColor", name: "Card gradient color", type: "color", defaultValue: "#0d0f16" },
-      { key: "selectedCardColor", name: "Selected card color", type: "color", defaultValue: "#253436" },
-      { key: "borderColor", name: "Border color", type: "color", defaultValue: "#44505f" },
-      { key: "textColor", name: "Text color", type: "color", defaultValue: "#e6e8ec" },
-      { key: "selectedTextColor", name: "Selected text color", type: "color", defaultValue: "#ffffff" },
-      { key: "glowColor", name: "Selected glow color", type: "color", defaultValue: "#04dcb9" },
-      { key: "fontSize", name: "Text size", type: "number", min: 8, max: 100, defaultValue: 24 },
-      { key: "cornerRadius", name: "Corner radius", type: "number", min: 0, max: 80, defaultValue: 18 },
-      { key: "glowStrength", name: "Glow strength", type: "number", min: 0, max: 40, defaultValue: 14 },
-      { key: "cardWidth", name: "Card width %", type: "number", min: 30, max: 100, defaultValue: 78 },
-      { key: "cardHeight", name: "Card height %", type: "number", min: 30, max: 100, defaultValue: 76 },
-      { key: "stackDepth", name: "Visible cards", type: "select", options: [{ value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }, { value: "5", label: "5" }], defaultValue: "3" },
-      { key: "stackOffset", name: "Vertical stack spacing", type: "number", min: 0, max: 30, defaultValue: 8 },
-      { key: "stackHorizontalOffset", name: "Left stack spacing", type: "number", min: 0, max: 30, defaultValue: 6 },
-      { key: "swipeThreshold", name: "Swipe distance", type: "number", min: 20, max: 200, defaultValue: 60 },
-      { key: "animationDuration", name: "Animation duration (ms)", type: "number", min: 100, max: 1500, defaultValue: 300 },
+      {
+        key: "pressBase",
+        name: "Press pattern",
+        type: "text",
+        defaultValue: "SwipingCards.Items.{index}.Press",
+        signalSetting: true,
+      },
+      {
+        key: "pressIncrement",
+        name: "Press join increment",
+        type: "number",
+        min: 1,
+        max: 100,
+        defaultValue: 1,
+        signalSetting: true,
+      },
+      {
+        key: "feedbackBase",
+        name: "Selected pattern",
+        type: "text",
+        defaultValue: "SwipingCards.Items.{index}.Selected",
+        signalSetting: true,
+      },
+      {
+        key: "feedbackIncrement",
+        name: "Selected join increment",
+        type: "number",
+        min: 1,
+        max: 100,
+        defaultValue: 1,
+        signalSetting: true,
+      },
+      {
+        key: "labelBase",
+        name: "Name pattern",
+        type: "text",
+        defaultValue: "SwipingCards.Items.{index}.Name",
+        signalSetting: true,
+      },
+      {
+        key: "labelIncrement",
+        name: "Name join increment",
+        type: "number",
+        min: 1,
+        max: 100,
+        defaultValue: 1,
+        signalSetting: true,
+      },
+      {
+        key: "cardColor",
+        name: "Card color",
+        type: "color",
+        defaultValue: "#1b2030",
+      },
+      {
+        key: "cardBottomColor",
+        name: "Card gradient color",
+        type: "color",
+        defaultValue: "#0d0f16",
+      },
+      {
+        key: "selectedCardColor",
+        name: "Selected card color",
+        type: "color",
+        defaultValue: "#253436",
+      },
+      {
+        key: "borderColor",
+        name: "Border color",
+        type: "color",
+        defaultValue: "#44505f",
+      },
+      {
+        key: "textColor",
+        name: "Text color",
+        type: "color",
+        defaultValue: "#e6e8ec",
+      },
+      {
+        key: "selectedTextColor",
+        name: "Selected text color",
+        type: "color",
+        defaultValue: "#ffffff",
+      },
+      {
+        key: "glowColor",
+        name: "Selected glow color",
+        type: "color",
+        defaultValue: "#04dcb9",
+      },
+      {
+        key: "fontSize",
+        name: "Text size",
+        type: "number",
+        min: 8,
+        max: 100,
+        defaultValue: 24,
+      },
+      {
+        key: "cornerRadius",
+        name: "Corner radius",
+        type: "number",
+        min: 0,
+        max: 80,
+        defaultValue: 18,
+      },
+      {
+        key: "glowStrength",
+        name: "Glow strength",
+        type: "number",
+        min: 0,
+        max: 40,
+        defaultValue: 14,
+      },
+      {
+        key: "cardWidth",
+        name: "Card width %",
+        type: "number",
+        min: 30,
+        max: 100,
+        defaultValue: 78,
+      },
+      {
+        key: "cardHeight",
+        name: "Card height %",
+        type: "number",
+        min: 30,
+        max: 100,
+        defaultValue: 76,
+      },
+      {
+        key: "stackDepth",
+        name: "Visible cards",
+        type: "select",
+        options: [
+          { value: "1", label: "1" },
+          { value: "2", label: "2" },
+          { value: "3", label: "3" },
+          { value: "4", label: "4" },
+          { value: "5", label: "5" },
+        ],
+        defaultValue: "3",
+      },
+      {
+        key: "stackOffset",
+        name: "Vertical stack spacing",
+        type: "number",
+        min: 0,
+        max: 30,
+        defaultValue: 8,
+      },
+      {
+        key: "stackHorizontalOffset",
+        name: "Left stack spacing",
+        type: "number",
+        min: 0,
+        max: 30,
+        defaultValue: 6,
+      },
+      {
+        key: "swipeThreshold",
+        name: "Swipe distance",
+        type: "number",
+        min: 20,
+        max: 200,
+        defaultValue: 60,
+      },
+      {
+        key: "animationDuration",
+        name: "Animation duration (ms)",
+        type: "number",
+        min: 100,
+        max: 1500,
+        defaultValue: 300,
+      },
     ],
     signals: [
-      { key: "set", name: "Selected card value set", type: "analog", direction: "output", defaultValue: "SwipingCards.ValueSet" },
-      { key: "feedback", name: "Selected card feedback", type: "analog", direction: "input", defaultValue: "SwipingCards.Feedback" },
-      { key: "count", name: "Number of cards", type: "analog", direction: "input", defaultValue: "SwipingCards.CardCount.Feedback" },
+      {
+        key: "set",
+        name: "Selected card value set",
+        type: "analog",
+        direction: "output",
+        defaultValue: "SwipingCards.ValueSet",
+      },
+      {
+        key: "feedback",
+        name: "Selected card feedback",
+        type: "analog",
+        direction: "input",
+        defaultValue: "SwipingCards.Feedback",
+      },
+      {
+        key: "count",
+        name: "Number of cards",
+        type: "analog",
+        direction: "input",
+        defaultValue: "SwipingCards.CardCount.Feedback",
+      },
     ],
     signalGroups: [
       { name: "Card press range", type: "digital", direction: "output" },
@@ -71,9 +241,30 @@
       { name: "Card name range", type: "serial", direction: "input" },
     ],
     rangeBindings: [
-      { name: "Digital card press range", type: "digital", direction: "output", baseKey: "pressBase", incrementKey: "pressIncrement", countKey: "defaultCardCount" },
-      { name: "Digital card selected range", type: "digital", direction: "input", baseKey: "feedbackBase", incrementKey: "feedbackIncrement", countKey: "defaultCardCount" },
-      { name: "Serial card name range", type: "serial", direction: "input", baseKey: "labelBase", incrementKey: "labelIncrement", countKey: "defaultCardCount" },
+      {
+        name: "Digital card press range",
+        type: "digital",
+        direction: "output",
+        baseKey: "pressBase",
+        incrementKey: "pressIncrement",
+        countKey: "defaultCardCount",
+      },
+      {
+        name: "Digital card selected range",
+        type: "digital",
+        direction: "input",
+        baseKey: "feedbackBase",
+        incrementKey: "feedbackIncrement",
+        countKey: "defaultCardCount",
+      },
+      {
+        name: "Serial card name range",
+        type: "serial",
+        direction: "input",
+        baseKey: "labelBase",
+        incrementKey: "labelIncrement",
+        countKey: "defaultCardCount",
+      },
     ],
     template: '<div class="swipe-stage"><div class="swipe-deck"></div></div>',
     styles:
@@ -87,12 +278,16 @@
     mount(root, context) {
       const p = context.options.properties || {},
         deck = root.querySelector(".swipe-deck"),
-        clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value)),
-        truthy = (value) => value === true || value === 1 || value === "1" || value === "true",
+        clamp = (value, minimum, maximum) =>
+          Math.max(minimum, Math.min(maximum, value)),
+        truthy = (value) =>
+          value === true || value === 1 || value === "1" || value === "true",
         address = (base, increment, index) =>
           p.bindingMode === "join"
             ? String((Number(base) || 0) + index * (Number(increment) || 1))
-            : String(base || "").replace(/\{n\}/g, String(index + 1)).replace(/\{index\}/g, String(index));
+            : String(base || "")
+                .replace(/\{n\}/g, String(index + 1))
+                .replace(/\{index\}/g, String(index));
       let count = clamp(Math.round(Number(p.defaultCardCount) || 5), 1, 20),
         labels = String(p.cardLabels || defaultLabels).split("|"),
         current = 0,
@@ -100,30 +295,71 @@
         releaseTimer = 0;
       while (labels.length < 20) labels.push("");
       root.style.position = "relative";
-      root.style.setProperty("--card-width", clamp(Number(p.cardWidth) || 78, 30, 100) + "%");
-      root.style.setProperty("--card-height", clamp(Number(p.cardHeight) || 76, 30, 100) + "%");
+      root.style.setProperty(
+        "--card-width",
+        clamp(Number(p.cardWidth) || 78, 30, 100) + "%",
+      );
+      root.style.setProperty(
+        "--card-height",
+        clamp(Number(p.cardHeight) || 76, 30, 100) + "%",
+      );
       root.style.setProperty("--card-color", p.cardColor || "#1b2030");
-      root.style.setProperty("--card-bottom-color", p.cardBottomColor || "#0d0f16");
-      root.style.setProperty("--selected-card-color", p.selectedCardColor || "#253436");
+      root.style.setProperty(
+        "--card-bottom-color",
+        p.cardBottomColor || "#0d0f16",
+      );
+      root.style.setProperty(
+        "--selected-card-color",
+        p.selectedCardColor || "#253436",
+      );
       root.style.setProperty("--border-color", p.borderColor || "#44505f");
       root.style.setProperty("--text-color", p.textColor || "#e6e8ec");
-      root.style.setProperty("--selected-text-color", p.selectedTextColor || "#ffffff");
+      root.style.setProperty(
+        "--selected-text-color",
+        p.selectedTextColor || "#ffffff",
+      );
       root.style.setProperty("--glow-color", p.glowColor || "#04dcb9");
-      root.style.setProperty("--font-size", clamp(Number(p.fontSize) || 24, 8, 100) + "px");
-      root.style.setProperty("--corner-radius", clamp(Number(p.cornerRadius) || 18, 0, 80) + "px");
-      root.style.setProperty("--glow-strength", clamp(Number(p.glowStrength) || 14, 0, 40) + "px");
-      root.style.setProperty("--animation-duration", clamp(Number(p.animationDuration) || 300, 100, 1500) + "ms");
+      root.style.setProperty(
+        "--font-size",
+        clamp(Number(p.fontSize) || 24, 8, 100) + "px",
+      );
+      root.style.setProperty(
+        "--corner-radius",
+        clamp(Number(p.cornerRadius) || 18, 0, 80) + "px",
+      );
+      root.style.setProperty(
+        "--glow-strength",
+        clamp(Number(p.glowStrength) || 14, 0, 40) + "px",
+      );
+      root.style.setProperty(
+        "--animation-duration",
+        clamp(Number(p.animationDuration) || 300, 100, 1500) + "ms",
+      );
 
       function publishPress(index, value) {
-        context.signals.publishAddress("digital", address(p.pressBase, p.pressIncrement, index), value);
+        context.signals.publishAddress(
+          "digital",
+          address(p.pressBase, p.pressIncrement, index),
+          value,
+        );
       }
       function select(index, publish) {
         current = ((Math.round(Number(index) || 0) % count) + count) % count;
         render();
+        root.dispatchEvent(
+          new CustomEvent("composer-scroll-position", {
+            detail: { axis: "horizontal", value: current },
+          }),
+        );
         if (publish) context.signals.publish("set", current);
       }
       function attachDrag(card, index) {
-        let pointerId = null, startX = 0, startY = 0, dx = 0, dy = 0, moved = false;
+        let pointerId = null,
+          startX = 0,
+          startY = 0,
+          dx = 0,
+          dy = 0,
+          moved = false;
         const duration = clamp(Number(p.animationDuration) || 300, 100, 1500),
           threshold = clamp(Number(p.swipeThreshold) || 60, 20, 200);
         card.addEventListener("pointerdown", (event) => {
@@ -146,7 +382,11 @@
           card.style.transform = `translate(${dx}px,${dy}px) rotate(${dx * 0.055}deg)`;
         });
         const release = (event) => {
-          if (pointerId == null || (event.pointerId != null && event.pointerId !== pointerId)) return;
+          if (
+            pointerId == null ||
+            (event.pointerId != null && event.pointerId !== pointerId)
+          )
+            return;
           const releasedId = pointerId;
           pointerId = null;
           card.releasePointerCapture?.(releasedId);
@@ -157,9 +397,12 @@
             card.style.transition = `transform ${duration}ms ease`;
             card.style.transform = `translate(${dx < 0 ? -deck.clientWidth * 2 : deck.clientWidth * 2}px,${dy * 1.5}px) rotate(${dx * 0.12}deg)`;
             clearTimeout(releaseTimer);
-            releaseTimer = setTimeout(() => {
-              if (!disposed) select(current + direction, true);
-            }, Math.round(duration * 0.72));
+            releaseTimer = setTimeout(
+              () => {
+                if (!disposed) select(current + direction, true);
+              },
+              Math.round(duration * 0.72),
+            );
           } else {
             card.style.transform = "translate(0,0) rotate(0deg)";
             layoutStack(1, true);
@@ -170,13 +413,17 @@
         card.addEventListener("pointercancel", release);
       }
       function layoutStack(direction, preserveActive) {
-        const depthCount = Math.min(count, clamp(Number(p.stackDepth) || 3, 1, 5)),
+        const depthCount = Math.min(
+            count,
+            clamp(Number(p.stackDepth) || 3, 1, 5),
+          ),
           offset = clamp(Number(p.stackOffset) || 8, 0, 30),
           horizontalOffset = clamp(Number(p.stackHorizontalOffset) || 6, 0, 30);
         [...deck.children].forEach((card, index) => {
-          const depth = direction > 0
-              ? (index - current + count) % count
-              : (current - index + count) % count,
+          const depth =
+              direction > 0
+                ? (index - current + count) % count
+                : (current - index + count) % count,
             visible = depth < depthCount;
           card.classList.toggle("active", depth === 0);
           card.style.zIndex = String(100 - depth);
@@ -198,6 +445,9 @@
         layoutStack(1, false);
       }
       context.signals.subscribe("feedback", (value) => select(value, false));
+      root.addEventListener("composer-scroll-return", (event) => {
+        if (event.detail?.axis === "horizontal") select(0, true);
+      });
       context.signals.subscribe("count", (value) => {
         const nextCount = Math.round(Number(value));
         if (nextCount > 0) {
@@ -207,14 +457,22 @@
         }
       });
       for (let index = 0; index < 20; index++) {
-        context.signals.subscribeAddress("digital", address(p.feedbackBase, p.feedbackIncrement, index), (value) => {
-          if (truthy(value) && index < count) select(index, false);
-        });
-        context.signals.subscribeAddress("serial", address(p.labelBase, p.labelIncrement, index), (value) => {
-          if (value == null) return;
-          labels[index] = String(value);
-          render();
-        });
+        context.signals.subscribeAddress(
+          "digital",
+          address(p.feedbackBase, p.feedbackIncrement, index),
+          (value) => {
+            if (truthy(value) && index < count) select(index, false);
+          },
+        );
+        context.signals.subscribeAddress(
+          "serial",
+          address(p.labelBase, p.labelIncrement, index),
+          (value) => {
+            if (value == null) return;
+            labels[index] = String(value);
+            render();
+          },
+        );
       }
       render();
       return () => {

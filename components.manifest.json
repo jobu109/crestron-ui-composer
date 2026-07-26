@@ -73,6 +73,7 @@
     {"file":"Folding Menu.html","componentId":"folding-menu","runtime":"scoped","name":"Folding Menu","category":"Navigation & Menus","width":320,"height":420},
     {"file":"HamburgerPopup.html","componentId":"hamburger-popup","runtime":"scoped","name":"Hamburger Menu","category":"Navigation & Menus","width":360,"height":420},
     {"file":"menuItem.html","componentId":"menu-item","runtime":"scoped","name":"Menu Item","category":"Navigation & Menus","width":280,"height":90},
+    {"file":"splitButton.html","componentId":"split-button","runtime":"scoped","name":"Split Button","category":"Navigation & Menus","width":360,"height":220},
     {"file":"rollingMenu.html","componentId":"rolling-menu","runtime":"scoped","name":"Rolling Menu","category":"Lists & Selectors","width":340,"height":420},
     {"file":"buttonListCheckBox.html","componentId":"checkbox-button-list","runtime":"scoped","name":"Checkbox Button List","category":"Lists & Selectors","width":360,"height":420},
     {"file":"buttonListHorizontal.html","componentId":"horizontal-button-list","runtime":"scoped","name":"Horizontal Button List","category":"Lists & Selectors","width":520,"height":130},

@@ -133,4 +133,44 @@ for (const id of [
 for (const id of ["neumorphic-circle-button", "neumorphic-square-button", "music-card", "capsule-icon-dots"])
   assert.ok(definitions.get(id).properties.some((property) => property.key === "selectedIcon"), `${id} lacks selected-state icon`);
 
+for (const definition of definitions.values()) {
+  const orderedProperties = definition.properties.filter((property) => !property.key.startsWith("scrollReturn"));
+  const wrapIndex = orderedProperties.findIndex((property) => property.key === "wrapText");
+  if (wrapIndex < 0) continue;
+  const textIndexes = orderedProperties
+    .map((property, index) => ({ property, index }))
+    .filter(({ property }) =>
+      property.key !== "wrapText" &&
+      !property.key.startsWith("scrollReturn") &&
+      !property.signalSetting &&
+      property.key !== "visibilityEnabled" &&
+      /text|label|name|title|message|font/i.test(`${property.key} ${property.name || ""}`),
+    )
+    .map(({ index }) => index);
+  assert.equal(wrapIndex, Math.max(...textIndexes) + 1, `${definition.id} does not place Wrap Text beside its text options`);
+}
+
+for (const [id, axis] of [
+  ["vertical-carousel", "vertical"],
+  ["rolling-menu", "vertical"],
+  ["horizontal-carousel", "horizontal"],
+  ["swiping-cards", "horizontal"],
+]) {
+  const definition = definitions.get(id);
+  assert.ok(definition.scrollReturnAxes.includes(axis), `${id} lacks its ${axis} jump-to-start behavior`);
+}
+for (const definition of definitions.values()) {
+  if (!definition.scrollReturnAxes?.length) continue;
+  const keys = new Set(definition.properties.map((property) => property.key));
+  for (const key of [
+    "scrollReturnEnabled",
+    "scrollReturnThreshold",
+    "scrollReturnSize",
+    "scrollReturnColor",
+    "scrollReturnTextColor",
+    "scrollReturnGlowColor",
+  ])
+    assert.ok(keys.has(key), `${definition.id} lacks ${key}`);
+}
+
 console.log(`PASS continuity profiles across ${definitions.size} components`);
