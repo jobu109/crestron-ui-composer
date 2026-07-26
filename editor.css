@@ -370,6 +370,12 @@ h2 {
 .widget > .scoped-preview > [data-component] {
   overflow: visible !important;
 }
+.widget > .composer-press-effect,
+.widget > .scoped-preview > .composer-press-effect,
+.widget > .scoped-preview > [data-component] > .composer-press-effect {
+  overflow: visible !important;
+  pointer-events: none !important;
+}
 .widget.selected {
   outline: 1px solid #fff;
   box-shadow: 0 0 0 2px #000;
@@ -1400,10 +1406,6 @@ textarea {
   font-size: 9px;
   text-align: right;
 }
-.asset-import-button {
-  display: block;
-  text-align: center;
-}
 .asset-list {
   display: grid;
   gap: 6px;
@@ -1501,7 +1503,6 @@ textarea {
   margin-top: 5px;
 }
 .design-buttons button,
-#save-reusable,
 #save-page-template {
   padding: 5px 7px;
   border: 1px solid #3b5553;
@@ -1511,7 +1512,6 @@ textarea {
   font-size: 10px;
   cursor: pointer;
 }
-#save-reusable,
 #save-page-template {
   width: 100%;
 }

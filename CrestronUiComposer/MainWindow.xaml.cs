@@ -1097,11 +1097,17 @@ Write-Host "Package: $Package"
 Write-Host "Log:     $LogPath"
 Write-Host ""
 $deploymentExitCode = 1
+$previousNodeOptions = $env:NODE_OPTIONS
 try {
     Start-Transcript -Path $LogPath -Force | Out-Null
+    # Crestron's current deployment CLI still calls Node's deprecated util.isDate API.
+    # Suppress dependency deprecation noise for this child process without hiding
+    # upload failures, authentication prompts, or touchscreen installation errors.
+    $env:NODE_OPTIONS = (($previousNodeOptions, '--no-deprecation') -join ' ').Trim()
     & $Cli deploy -p -H $PanelHost -t $DeploymentType $Package --slow-mode -vvv
     $deploymentExitCode = $LASTEXITCODE
 } finally {
+    $env:NODE_OPTIONS = $previousNodeOptions
     try { Stop-Transcript | Out-Null } catch { }
 }
 if (Test-Path -LiteralPath $LogPath) {

@@ -805,10 +805,11 @@
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
       properties,
       signals: entry.signals || [],
+      rangeBindings: entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
       template: '<div class="custom-component-host"></div>',
       styles:
         "[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}",
-      data: { html: prepareCustomSource(entry.html) },
+      data: { html: prepareCustomSource(entry.html), signals: entry.signals || [], repeatedItems: entry.repeatedItems || null, repeatRuntime: customRepeatedFrameRuntime(entry.repeatedItems || null) },
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
           frame = document.createElement("iframe"),
@@ -845,9 +846,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             : "",
           frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:${properties.contentInset == null || properties.contentInset === "" ? 10 : Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
           bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
+          repeatRuntime = context.options.definitionData.repeatRuntime || '',
           documentText = /<\/body>/i.test(resolved)
-            ? resolved.replace(/<\/body>/i, frameBaseStyle + appearance + localTextScript + bridge + "</body>")
-            : resolved + frameBaseStyle + appearance + localTextScript + bridge;
+            ? resolved.replace(/<\/body>/i, frameBaseStyle + appearance + localTextScript + bridge + repeatRuntime + "</body>")
+            : resolved + frameBaseStyle + appearance + localTextScript + bridge + repeatRuntime;
         let frameReady = false;
         function sendFeedback(key, value) {
           latestFeedback.set(key, value);
@@ -881,8 +883,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           if (
             event.source === frame.contentWindow &&
             event.data?.type === "composer-custom-publish"
-          )
-            context.signals.publish(event.data.key, event.data.value);
+          ) {
+            const repeated = context.options.definitionData.repeatedItems,
+              match = repeated && String(event.data.key || '').match(/^__repeatPress:(\d+)$/);
+            if (match) {
+              const index = Number(match[1]), base = properties.pressBase || `${repeated.namespace}.Items[{index}].Press`, increment = Math.max(1, Number(properties.signalIncrement) || 1), address = /^\d+$/.test(String(base)) ? String(Number(base) + index * increment) : String(base).replaceAll('{index}', String(index)).replaceAll('{n}', String(index));
+              context.signals.publishAddress('digital', address, event.data.value);
+            } else context.signals.publish(event.data.key, event.data.value);
+          }
         }
         addEventListener("message", receive);
         signals
@@ -892,6 +900,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               sendFeedback(signal.key, value),
             ),
           );
+        const repeated = context.options.definitionData.repeatedItems;
+        if (repeated) {
+          const increment = Math.max(1, Number(properties.signalIncrement) || 1), addressAt = (base, index) => /^\d+$/.test(String(base)) ? String(Number(base) + index * increment) : String(base).replaceAll('{index}', String(index)).replaceAll('{n}', String(index));
+          for (let index = 0; index < repeated.maxCount; index++) {
+            context.signals.subscribeAddress('digital', addressAt(properties.feedbackBase || `${repeated.namespace}.Items[{index}].Selected`, index), value => sendFeedback(`__repeatSelected:${index}`, value));
+            context.signals.subscribeAddress('serial', addressAt(properties.labelBase || `${repeated.namespace}.Items[{index}].Name`, index), value => sendFeedback(`__repeatName:${index}`, value));
+          }
+        }
         return () => {
           frame.removeEventListener("load", replayFeedback);
           removeEventListener("message", receive);
@@ -1005,7 +1021,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     setStatus(
       count
         ? count + " manifest components loaded"
-        : "Import snippets to begin",
+        : "No manifest components loaded",
     );
   }
   async function loadDevices() {
@@ -1175,6 +1191,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                     { transform: "scale(1)", filter: "brightness(1)" },
                     { transform: "scale(.94)", filter: "brightness(1.14)" },
                   ]
+                : preset === "shake"
+                  ? [
+                      { transform: "translateX(0)" },
+                      { transform: "translateX(-4px)" },
+                      { transform: "translateX(7px)" },
+                      { transform: "translateX(-7px)" },
+                      { transform: "translateX(5px)" },
+                      { transform: "translateX(-3px)" },
+                      { transform: "translateX(0)" },
+                    ]
                 : [{ opacity: 0 }, { opacity: 1 }];
     return reverse ? frames.slice().reverse() : frames;
   }
@@ -1204,6 +1230,108 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       easing: interaction.easing || "ease-out",
     });
   }
+  function playPressEffect(element, interaction, clientX, clientY) {
+    const effect = interaction?.pressEffect || "none";
+    if (!element || effect === "none") return;
+    const rect = element.getBoundingClientRect();
+    const host = element.closest("#stage") || element.parentElement || element;
+    const hostRect = host.getBoundingClientRect();
+    const scaleX = host.offsetWidth / hostRect.width || 1;
+    const scaleY = host.offsetHeight / hostRect.height || 1;
+    const x = Number.isFinite(clientX)
+      ? (clientX - hostRect.left) * scaleX
+      : (rect.left + rect.width / 2 - hostRect.left) * scaleX;
+    const y = Number.isFinite(clientY)
+      ? (clientY - hostRect.top) * scaleY
+      : (rect.top + rect.height / 2 - hostRect.top) * scaleY;
+    const duration = Math.max(100, Number(interaction.effectDuration) || 650);
+    const size = Math.max(25, Number(interaction.effectSize) || 125) / 100;
+    const color = interaction.effectColor || "#04dcb9";
+    if (effect === "shake") {
+      const target = element.querySelector(".scoped-preview") || element;
+      const distance = Math.max(2, 6 * size);
+      target.animate(
+        [
+          { transform: "translateX(0)" },
+          { transform: `translateX(${-0.65 * distance}px)` },
+          { transform: `translateX(${distance}px)` },
+          { transform: `translateX(${-distance}px)` },
+          { transform: `translateX(${0.72 * distance}px)` },
+          { transform: `translateX(${-0.42 * distance}px)` },
+          { transform: "translateX(0)" },
+        ],
+        { duration, easing: "ease-out" },
+      );
+      return;
+    }
+    if (effect === "particle-burst") {
+      const glowColor =
+        getComputedStyle(element).getPropertyValue("--glow-color").trim() ||
+        getComputedStyle(element.querySelector(".scoped-preview") || element)
+          .getPropertyValue("--glow-color").trim() || "#04dcb9";
+      const layer = document.createElement("span");
+      Object.assign(layer.style, {
+        position: "absolute", inset: "0", overflow: "visible",
+        pointerEvents: "none", zIndex: "9999",
+      });
+      const particleDuration = duration * 2.5;
+      const travel = Math.max(element.offsetWidth, element.offsetHeight) * 0.42 * size;
+      for (let index = 0; index < 28; index += 1) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = travel * (0.42 + Math.random() * 0.58);
+        const particle = document.createElement("span");
+        const particleSize = 3 + Math.random() * 4;
+        Object.assign(particle.style, {
+          position: "absolute", left: `${x}px`, top: `${y}px`,
+          width: `${particleSize}px`, height: `${particleSize}px`,
+          margin: `${-particleSize / 2}px`, borderRadius: "50%",
+          background: glowColor,
+          boxShadow: `0 0 ${particleSize * 2}px ${glowColor}`,
+          pointerEvents: "none",
+        });
+        layer.appendChild(particle);
+        particle.animate(
+          [
+            { transform: "translate(0,0) scale(1)", opacity: 1 },
+            { transform: `translate(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px) scale(.15)`, opacity: 0 },
+          ],
+          { duration: particleDuration * (0.72 + Math.random() * 0.28), easing: "cubic-bezier(.1,.7,.2,1)" },
+        );
+      }
+      host.appendChild(layer);
+      setTimeout(() => layer.remove(), particleDuration + 50);
+      return;
+    }
+    const layer = document.createElement("span");
+    layer.className = `composer-press-effect composer-press-effect-${effect}`;
+    Object.assign(layer.style, {
+      position: "absolute", inset: "0", overflow: "visible",
+      pointerEvents: "none", borderRadius: "inherit", zIndex: "9999",
+    });
+    const count = effect === "wave" ? 3 : 2;
+    const diameter = Math.max(element.offsetWidth, element.offsetHeight) * 1.15 * size;
+    for (let index = 0; index < count; index += 1) {
+      const ring = document.createElement("span");
+      Object.assign(ring.style, {
+        position: "absolute", left: `${x}px`, top: `${y}px`,
+        width: `${diameter}px`, height: `${diameter}px`, borderRadius: "50%",
+        pointerEvents: "none", transform: "translate(-50%,-50%) scale(0)",
+        border: effect === "water-ripple" ? `2px solid ${color}` : "0",
+        background: effect === "wave" ? color : "transparent",
+        opacity: effect === "wave" ? ".24" : ".9",
+      });
+      layer.appendChild(ring);
+      ring.animate(
+        [
+          { transform: "translate(-50%,-50%) scale(0)", opacity: effect === "wave" ? 0.28 : 0.95 },
+          { transform: "translate(-50%,-50%) scale(1)", opacity: 0 },
+        ],
+        { duration, delay: index * Math.round(duration * 0.16), easing: "ease-out" },
+      );
+    }
+    host.appendChild(layer);
+    setTimeout(() => layer.remove(), duration + count * duration * 0.16 + 40);
+  }
   function interactionList(item) {
     return item.interactions?.length
       ? item.interactions
@@ -1221,7 +1349,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (element.interactionAbort) element.interactionAbort.abort();
     element.interactionAbort = new AbortController();
     const listenerOptions = { signal: element.interactionAbort.signal };
-    const interactions = interactionList(item).filter(
+    const allInteractions = interactionList(item);
+    const interactions = allInteractions.filter(
       (interaction) => interaction.trigger && interaction.trigger !== "none",
     );
     const actions = item.actions || [];
@@ -1266,7 +1395,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     let holdTimer = 0;
     element.addEventListener(
       "pointerdown",
-      () => {
+      (event) => {
+        const effectInteraction = allInteractions.find(
+          (interaction) => interaction.pressEffect && interaction.pressEffect !== "none",
+        ) || item.interaction;
+        playPressEffect(element, effectInteraction, event.clientX, event.clientY);
         interactions
           .filter((interaction) => interaction.trigger === "press")
           .forEach((interaction) =>
@@ -1464,6 +1597,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         item.graphicAssetPlacement === "items" && !!definition?.itemSelector;
     if (definition) {
       item.properties = item.properties || {};
+      if (item.componentId === "countdown-auto-fire") {
+        if (item.properties.text === "ARM") item.properties.text = "Shutdown";
+        if (item.properties.completedText === "FIRED")
+          item.properties.completedText = "Shutting Down...";
+        if (String(item.properties.faceColor || "").toLowerCase() === "#203332")
+          item.properties.faceColor = "#04aa8e";
+      }
       definition.properties.forEach((property) => {
         if (!Object.prototype.hasOwnProperty.call(item.properties, property.key))
           item.properties[property.key] = structuredClone(property.defaultValue);
@@ -2597,29 +2737,47 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       duration: 300,
       delay: 0,
       easing: "ease-out",
+      pressEffect: "none",
+      effectColor: "#04dcb9",
+      effectDuration: 650,
+      effectSize: 125,
     };
-    const interaction = { ...defaults, ...(item.interaction || {}) };
-    ["trigger", "preset", "direction", "duration", "delay", "easing"].forEach(
+    const interaction = {
+      ...defaults,
+      ...(item.interactions?.[0] || item.interaction || {}),
+    };
+    ["trigger", "preset", "direction", "duration", "delay", "easing", "pressEffect", "effectColor", "effectDuration", "effectSize"].forEach(
       (key) => {
         const input = $("interaction-" + key);
         input.value = interaction[key];
         input.oninput = () => {
-          interaction[key] = /duration|delay/.test(key)
+          interaction[key] = /duration|delay|effectSize/i.test(key)
             ? Number(input.value)
             : input.value;
           item.interaction = { ...interaction };
+          if (item.interactions?.length)
+            item.interactions[0] = {
+              ...item.interactions[0],
+              ...interaction,
+              start: Number(interaction.delay) || 0,
+            };
           $("interaction-direction-label").hidden =
             interaction.preset !== "slide";
+          $("interaction-press-effect-options").hidden =
+            interaction.pressEffect === "none";
+          $("interaction-effect-color-label").hidden =
+            ["particle-burst", "shake"].includes(interaction.pressEffect);
           scheduleHistory();
         };
       },
     );
     $("interaction-direction-label").hidden = interaction.preset !== "slide";
+    $("interaction-press-effect-options").hidden = interaction.pressEffect === "none";
+    $("interaction-effect-color-label").hidden =
+      ["particle-burst", "shake"].includes(interaction.pressEffect);
     $("interaction-preview").onclick = () => {
-      const original = item.interaction;
-      item.interaction = interaction;
-      playItemInteraction(item);
-      item.interaction = original;
+      playItemInteraction(item, false, interaction);
+      playPressEffect(stage.querySelector(`.widget[data-id="${item.id}"]`), interaction);
     };
     $("interaction-reset").onclick = () => resetItemInteraction(item);
     $("interaction-timeline-open").onclick = () => openTimeline(item);
@@ -2881,6 +3039,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           ["scale", "Scale"],
           ["glow", "Glow"],
           ["press", "Press state"],
+          ["shake", "Shake"],
         ],
         track.preset,
       );
@@ -6085,10 +6244,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       (e.clientY - r.top) / panelZoom,
     );
   };
-  $("snippet-files").onchange = async (e) => {
-    for (const f of e.target.files) addComponent(f.name, await f.text());
-    setStatus(e.target.files.length + " snippets imported");
-  };
   let translateSource = null;
   const translatePresets = {
     button: { category: "Standard Buttons", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "label", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
@@ -6110,7 +6265,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       body = documentValue.body.cloneNode(true),
       variableValues = new Set();
     body.querySelectorAll("script,style").forEach((element) => element.remove());
-    const html = body.innerHTML.trim(), editables = [], seen = new Set(), add = (entry) => { if (!seen.has(entry.key)) { seen.add(entry.key); editables.push(entry); } };
+    const editables = [], seen = new Set(), add = (entry) => { if (!seen.has(entry.key)) { seen.add(entry.key); editables.push(entry); } };
     for (const match of styles.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;}{]+)\s*;/g)) {
       const raw = match[2].trim(), type = /^#[0-9a-f]{6}$/i.test(raw) ? "color" : /^-?\d+(?:\.\d+)?(?:px)?$/i.test(raw) ? "number" : "text";
       variableValues.add(raw.toLowerCase());
@@ -6124,30 +6279,77 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         key = translatorKey(role) + (index ? index + 1 : "");
       add({ key, label: role, type: "color", value, kind: "literal", source: value });
     });
+    const allButtonElements = [...body.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],.btn,.button')],
+      repeatedGroups = [...body.querySelectorAll('*')].map(container => ({ container, items: [...container.children].filter(child => allButtonElements.includes(child)) })).filter(group => group.items.length >= 2).sort((a, b) => b.items.length - a.items.length),
+      repeatedGroup = repeatedGroups[0] || null,
+      repeatedSet = new Set(repeatedGroup?.items || []),
+      buttonElements = allButtonElements.filter(element => !repeatedSet.has(element)),
+      numericElements = [...body.querySelectorAll('input[type="range"],input[type="number"],meter,progress,[role="slider"],[role="progressbar"],.gauge,.meter,.level,.fill,.progress,.slider')].filter((element, index, all) => all.indexOf(element) === index),
+      interactiveNumeric = numericElements.filter((element) => element.matches('input,[role="slider"],.slider'));
+    if (repeatedGroup) {
+      repeatedGroup.container.setAttribute('data-translated-repeat-container', '');
+      repeatedGroup.items.forEach(item => item.setAttribute('data-translated-repeat-item', ''));
+    }
+    buttonElements.forEach((element, index) => element.dataset.translatedButton = String(index));
+    numericElements.forEach((element, index) => element.dataset.translatedNumeric = String(index));
     let textIndex = 1;
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node && textIndex <= 8; node = walker.nextNode()) {
       const value = node.textContent.replace(/\s+/g, " ").trim();
-      if (value && value.length <= 80) add({ key: `text${textIndex++}`, label: `Text: ${value}`, type: "text", value, kind: "text", source: value });
+      if (value && value.length <= 80 && !node.parentElement?.closest('[data-translated-repeat-item]')) {
+        const key = textIndex === 1 ? "text" : `text${textIndex}`;
+        node.parentElement?.setAttribute("data-translated-text", key);
+        add({ key, label: `Text: ${value}`, type: "text", value, kind: "text", source: value });
+        textIndex++;
+      }
     }
-    return { fileName: name, source, html, css: styles, javascript, editables };
+    return { fileName: name, source, html: body.innerHTML.trim(), css: styles, javascript, editables, features: { buttonCount: buttonElements.length, numericCount: numericElements.length, interactiveNumericCount: interactiveNumeric.length, textKeys: editables.filter((entry) => entry.kind === "text").map((entry) => entry.key), repeatedItems: repeatedGroup ? { containerSelector: '[data-translated-repeat-container]', itemSelector: '[data-translated-repeat-item]', labelSelector: '', defaultCount: repeatedGroup.items.length, maxCount: 20 } : null } };
   }
   function renderTranslateEditables() {
     if (!translateSource) return;
     const preset = $("translate-preset").value, buttonLike = ["button", "toggle", "navigation"].includes(preset), editables = translateSource.editables.filter(entry => !(buttonLike && /shadow[-_ ]?(dark|light)/i.test(`${entry.key} ${entry.label}`)));
-    if (buttonLike) editables.push(
+    if (buttonLike || translateSource.features.buttonCount) editables.push(
       { key: "shadowSize", label: "Shadow size", type: "number", value: 6, kind: "button-style" },
       { key: "glowStrength", label: "Glow strength", type: "number", value: 3, kind: "button-style" },
+      { key: "faceColor", label: "Standard state — background color", type: "color", value: "#263b3c", kind: "button-style" },
+      { key: "selectedFaceColor", label: "Selected state — background color", type: "color", value: "#078f7d", kind: "button-style" },
+      { key: "textColor", label: "Standard state — text / icon color", type: "color", value: "#ffffff", kind: "button-style" },
+      { key: "selectedTextColor", label: "Selected state — text / icon color", type: "color", value: "#ffffff", kind: "button-style" },
+      { key: "borderColor", label: "Standard state — border color", type: "color", value: "#7ba7a3", kind: "button-style" },
+      { key: "selectedBorderColor", label: "Selected state — border color", type: "color", value: "#04dcb9", kind: "button-style" },
+      { key: "glowColor", label: "Standard state — glow color", type: "color", value: "#04dcb9", kind: "button-style" },
+      { key: "selectedGlowColor", label: "Selected state — glow color", type: "color", value: "#04dcb9", kind: "button-style" },
+      { key: "cornerRadius", label: "Corner radius", type: "number", value: 18, kind: "button-style" },
+      { key: "iconSize", label: "Icon size", type: "number", value: 24, kind: "button-style" },
     );
+    if ((buttonLike || translateSource.features.buttonCount) && translateSource.features.textKeys.length && !editables.some((entry) => entry.key === "selectedText"))
+      editables.push({ key: "selectedText", label: "Selected state — text", type: "text", value: editables.find((entry) => entry.kind === "text")?.value || "", kind: "button-style" });
     if (!editables.some(entry => entry.key === "textSize" || /font.?size/i.test(entry.key)))
       editables.push({ key: "textSize", label: "Text size", type: "number", value: 16, kind: "standard-style" });
+    if (translateSource.features.textKeys.length && !editables.some(entry => entry.key === "textColor"))
+      editables.push({ key: "textColor", label: "Text color", type: "color", value: "#ffffff", kind: "standard-style" });
     translateSource.currentEditables = editables;
     $("translate-editables").innerHTML = editables.length ? editables.map((entry, index) => `<label><input type="checkbox" checked data-index="${index}"><span>${entry.label}<small>${entry.type} · ${String(entry.value).replace(/</g,"&lt;")}</small></span></label>`).join("") : '<p class="hint">No editable values were detected. You can add properties manually in the component editor.</p>';
   }
   function renderTranslateSignals() {
     const preset = translatePresets[$("translate-preset").value] || translatePresets.custom,
       namespace = $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") || "CustomComponent",
-      signals = [...preset.signals, { key: "visibility", name: "Visibility", type: "digital", direction: "input", suffix: "Visibility", optionalProperty: "visibilityEnabled" }];
+      detected = translateSource?.features || {}, signals = [], addSignal = (signal) => { if (!signals.some((entry) => entry.key === signal.key)) signals.push(signal); },
+      buttonCount = detected.buttonCount || 0;
+    preset.signals.forEach(addSignal);
+    if (buttonCount) {
+      ["press", "selected", "label"].forEach((key) => { const existing = signals.find((entry) => entry.key === key); if (existing && buttonCount > 1) signals.splice(signals.indexOf(existing), 1); });
+      for (let index = 0; index < buttonCount; index++) {
+        const suffix = buttonCount === 1 ? "" : String(index + 1), title = buttonCount === 1 ? "" : ` ${index + 1}`;
+        addSignal({ key: `press${suffix}`, name: `Press${title}`, type: "digital", direction: "output", suffix: buttonCount === 1 ? "Press" : `Button${index + 1}.Press` });
+        addSignal({ key: `selected${suffix}`, name: `Selected${title}`, type: "digital", direction: "input", suffix: buttonCount === 1 ? "Selected" : `Button${index + 1}.Selected` });
+        addSignal({ key: `name${suffix}`, name: `Name${title}`, type: "serial", direction: "input", suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name` });
+      }
+    }
+    (detected.textKeys || []).forEach((key, index) => addSignal({ key: `name${index ? index + 1 : ""}`, name: index ? `Text ${index + 1} Name` : "Name", type: "serial", direction: "input", suffix: index ? `Text${index + 1}.Name` : "Name" }));
+    if (detected.numericCount) addSignal({ key: "feedback", name: "Feedback", type: "analog", direction: "input", suffix: "Feedback" });
+    if (detected.interactiveNumericCount) addSignal({ key: "set", name: "Value Set", type: "analog", direction: "output", suffix: "ValueSet" });
+    addSignal({ key: "visibility", name: "Visibility", type: "digital", direction: "input", suffix: "Visibility", optionalProperty: "visibilityEnabled" });
     $("translate-category").value = preset.category;
     $("translate-signals").innerHTML = signals.map((signal) => `<label><input type="checkbox" checked data-key="${signal.key}" data-name="${signal.name}" data-type="${signal.type}" data-direction="${signal.direction}" data-default="${namespace}.${signal.suffix}" data-optional-property="${signal.optionalProperty || ""}"><span>${signal.name}<small>${signal.type} · ${signal.direction} · ${namespace}.${signal.suffix}${signal.optionalProperty ? " · optional" : ""}</small></span></label>`).join("");
   }
@@ -6155,7 +6357,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     translateSource = analyzeSnippet(name, source);
     $("translate-name").value = name.replace(/\.html?$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (value) => value.toUpperCase());
     $("translate-source-name").value = name; $("translate-source-preview").value = source;
-    const guessed = /toggle|switch/i.test(name) ? "toggle" : /slider|knob|volume|dial/i.test(name) ? "slider" : /gauge|meter|status/i.test(name) ? "gauge" : /input|text|search/i.test(name) ? "text" : /nav|menu/i.test(name) ? "navigation" : "button";
+    const features = translateSource.features, guessed = /toggle|switch/i.test(name) ? "toggle" : features.interactiveNumericCount || /slider|knob|volume|dial/i.test(name) ? "slider" : features.numericCount || /gauge|meter|status/i.test(name) ? "gauge" : /input|text|search/i.test(name) && !features.buttonCount ? "text" : /nav|menu/i.test(name) ? "navigation" : "button";
     $("translate-preset").value = guessed;
     renderTranslateEditables(); renderTranslateSignals(); $("translate-snippet-dialog").showModal();
   }
@@ -6176,24 +6378,23 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       else if (entry.kind === "text") html = html.replace(entry.source, `{{${entry.key}}}`);
     });
     const signals = [...$("translate-signals").querySelectorAll('input[type="checkbox"]:checked')].map((input) => ({ key: input.dataset.key, name: input.dataset.name, type: input.dataset.type, direction: input.dataset.direction, defaultValue: input.dataset.default, ...(input.dataset.optionalProperty ? { optionalProperty: input.dataset.optionalProperty } : {}) }));
-    const preset = $("translate-preset").value, buttonLike = ["button", "toggle", "navigation"].includes(preset), hasShadowSize = properties.some(entry => entry.key === "shadowSize"), hasGlowStrength = properties.some(entry => entry.key === "glowStrength");
-    if (buttonLike) css += `\nhtml,body{background:transparent!important;}\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button.active,[role="button"].active,.btn.active{box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 {{glowStrength}}px var(--glow,#04dcb9);}` : ""}`;
-    if (properties.some(entry => entry.key === "textSize")) css += '\nbutton,input,textarea,[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}';
-    const adapter = buttonLike ? `\nconst translatedTarget=root.querySelector('button,[role="button"],.btn');\nif(translatedTarget){const down=e=>{signals.publish('press',true);e.preventDefault()},up=()=>signals.publish('press',false);translatedTarget.addEventListener('pointerdown',down);translatedTarget.addEventListener('pointerup',up);translatedTarget.addEventListener('pointerleave',up);signals.subscribe('selected',value=>translatedTarget.classList.toggle('active',value===true||value===1||value==='1'));signals.subscribe('${preset === "button" || preset === "toggle" ? "label" : "name"}',value=>{const label=translatedTarget.querySelector('[data-custom-text],.label,span');if(label&&value!=null&&value!=='')label.textContent=String(value)});}` : preset === "slider" ? `\nconst translatedControl=root.querySelector('input[type="range"]');if(translatedControl){let translatedFeedback=false;translatedControl.addEventListener('input',()=>{if(!translatedFeedback)signals.publish('set',Number(translatedControl.value)||0)});signals.subscribe('feedback',value=>{translatedFeedback=true;translatedControl.value=Number(value)||0;translatedControl.dispatchEvent(new Event('input',{bubbles:true}));translatedFeedback=false});}` : preset === "gauge" ? `\nconst translatedGauge=root.querySelector('[role="progressbar"],.gauge,.meter,.value');signals.subscribe('feedback',value=>{const amount=Number(value)||0;root.documentElement.style.setProperty('--value',String(amount));root.documentElement.style.setProperty('--value-percent',(amount>100?amount/65535*100:amount)+'%');if(translatedGauge){translatedGauge.setAttribute('aria-valuenow',String(amount));const text=translatedGauge.querySelector('[data-value],.value');if(text)text.textContent=Math.round(amount>100?amount/65535*100:amount)+'%'}});` : preset === "text" ? `\nconst translatedInput=root.querySelector('input,textarea');if(translatedInput){translatedInput.addEventListener('input',()=>signals.publish('text',translatedInput.value));signals.subscribe('name',value=>{if(value!=null)translatedInput.value=String(value)})}` : "";
+    const preset = $("translate-preset").value, detected = translateSource.features, buttonLike = ["button", "toggle", "navigation"].includes(preset) || detected.buttonCount > 0, hasShadowSize = properties.some(entry => entry.key === "shadowSize"), hasGlowStrength = properties.some(entry => entry.key === "glowStrength");
+    if (buttonLike) css += `\nhtml,body{background:transparent!important;}\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\nbutton,[role="button"],.btn{background:{{faceColor}};color:{{textColor}};border-color:{{borderColor}};border-radius:{{cornerRadius}}px;}\nbutton.active,[role="button"].active,.btn.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button,[role="button"],.btn{--translated-glow:{{glowColor}};}button.active,[role="button"].active,.btn.active{--translated-glow:{{selectedGlowColor}};box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 calc({{glowStrength}}px * 2) var(--translated-glow);}` : ""}\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}`;
+    if (properties.some(entry => entry.key === "textSize")) css += '\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}';
+    if (properties.some(entry => entry.key === "textColor")) css += '\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{color:{{textColor}};}';
+    const buttonAdapter = detected.buttonCount ? `\nroot.querySelectorAll('[data-translated-button]').forEach((translatedTarget,index)=>{const suffix=${detected.buttonCount}===1?'':String(index+1),pressKey='press'+suffix,selectedKey='selected'+suffix,nameKey='name'+suffix,label=translatedTarget.querySelector('[data-translated-text], [data-custom-text],.label,span')||translatedTarget;const standardText=label.textContent;const down=e=>{signals.publish(pressKey,true);e.preventDefault()},up=()=>signals.publish(pressKey,false);translatedTarget.addEventListener('pointerdown',down);translatedTarget.addEventListener('pointerup',up);translatedTarget.addEventListener('pointercancel',up);translatedTarget.addEventListener('pointerleave',up);signals.subscribe(selectedKey,value=>{const active=value===true||value===1||value==='1';translatedTarget.classList.toggle('active',active);if(index===0&&active&&'{{selectedText}}')label.textContent='{{selectedText}}';else if(index===0&&!active)label.textContent=translatedTarget.dataset.standardText||standardText});signals.subscribe(nameKey,value=>{if(value!=null&&value!==''){translatedTarget.dataset.standardText=String(value);if(!translatedTarget.classList.contains('active'))label.textContent=String(value)}});});` : "";
+    const textAdapter = detected.textKeys.map((key, index) => `signals.subscribe('name${index ? index + 1 : ""}',value=>{const target=root.querySelector('[data-translated-text="${key}"]');if(target&&value!=null&&value!=='')target.textContent=String(value)});`).join("\n");
+    const numericAdapter = detected.numericCount ? `\nconst translatedNumbers=[...root.querySelectorAll('[data-translated-numeric]')];let translatedFeedback=false;const normalize=value=>{const number=Number(value)||0;return number>100?number/65535*100:number};translatedNumbers.forEach(control=>{if(control.matches('input,[role="slider"],.slider'))control.addEventListener('input',()=>{if(!translatedFeedback)signals.publish('set',Math.round(((Number(control.value)||0)-(Number(control.min)||0))/Math.max(1,(Number(control.max)||100)-(Number(control.min)||0))*65535))})});signals.subscribe('feedback',value=>{translatedFeedback=true;const percent=normalize(value);root.documentElement.style.setProperty('--value',String(value));root.documentElement.style.setProperty('--value-percent',percent+'%');translatedNumbers.forEach(control=>{const min=Number(control.min)||0,max=Number(control.max)||100,mapped=min+(max-min)*percent/100;if('value' in control)control.value=String(mapped);control.setAttribute('aria-valuenow',String(mapped));const fill=control.querySelector?.('[data-value],.value');if(fill)fill.textContent=Math.round(percent)+'%'});translatedFeedback=false});` : "";
+    const inputAdapter = preset === "text" ? `\nconst translatedInput=root.querySelector('input,textarea');if(translatedInput){translatedInput.addEventListener('input',()=>signals.publish('text',translatedInput.value));signals.subscribe('name',value=>{if(value!=null)translatedInput.value=String(value)})}` : "";
+    const adapter = `${buttonAdapter}\n${textAdapter}\n${numericAdapter}\n${inputAdapter}`;
     $("translate-snippet-dialog").close(); openCustomBuilder();
     $("custom-component-name").value = $("translate-name").value; $("custom-component-category").value = $("translate-category").value; $("custom-source-html").value = html; $("custom-source-css").value = css; $("custom-source-javascript").value = `${translateSource.javascript}\n${adapter}`;
     $("custom-property-list").innerHTML = ""; properties.forEach((entry) => addCustomPropertyRow({ key: entry.key, name: entry.label, type: entry.type, defaultValue: entry.type === "number" ? parseFloat(entry.value) || 0 : entry.value }));
     $("custom-signal-list").innerHTML = ""; signals.forEach(addCustomSignalRow); refreshCustomPreview();
-  };
-  $("snippet-files-label").onclick = async (e) => {
-    if (!native) return;
-    e.preventDefault();
-    try {
-      const files = await nativeRequest("importSnippets");
-      files.forEach((f) => addComponent(f.name, f.html));
-      setStatus(files.length + " snippets imported");
-    } catch (error) {
-      if (error.message !== "cancelled") setStatus(error.message);
+    if (translateSource.features.repeatedItems) {
+      const namespace = $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") || "CustomComponent";
+      setCustomRepeatedControls({ ...translateSource.features.repeatedItems, namespace });
+      syncCustomRepeatedRows();
     }
   };
   $("component-search").oninput = renderComponentLibrary;
@@ -6973,6 +7174,55 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       })
       .filter(Boolean);
   }
+  function collectCustomRepeatedItems() {
+    if (!$('custom-repeat-enabled').checked) return null;
+    const namespace = $('custom-repeat-namespace').value.trim().replace(/[^A-Za-z0-9_]/g, '') || 'CustomComponent';
+    return {
+      containerSelector: $('custom-repeat-container').value.trim() || '.split-menu',
+      itemSelector: $('custom-repeat-item').value.trim() || 'button',
+      labelSelector: $('custom-repeat-label').value.trim(),
+      defaultCount: Math.max(0, Math.min(100, Math.round(Number($('custom-repeat-default').value) || 0))),
+      maxCount: Math.max(1, Math.min(100, Math.round(Number($('custom-repeat-max').value) || 20))),
+      namespace,
+    };
+  }
+  function repeatedItemProperties(config) {
+    if (!config) return [];
+    return [
+      { key: 'defaultCount', name: 'Default sub-items', type: 'number', defaultValue: config.defaultCount },
+      { key: 'signalIncrement', name: 'Join increment', type: 'number', defaultValue: 1 },
+      { key: 'pressBase', name: 'Digital item press base / pattern', type: 'text', defaultValue: `${config.namespace}.Items[{index}].Press` },
+      { key: 'feedbackBase', name: 'Digital item selected base / pattern', type: 'text', defaultValue: `${config.namespace}.Items[{index}].Selected` },
+      { key: 'labelBase', name: 'Serial item name base / pattern', type: 'text', defaultValue: `${config.namespace}.Items[{index}].Name` },
+    ];
+  }
+  function repeatedItemSignals(config) {
+    return config ? [{ key: 'itemCount', name: 'Number of sub-items', type: 'analog', direction: 'input', defaultValue: `${config.namespace}.ItemCount` }] : [];
+  }
+  function repeatedItemRanges(config) {
+    if (!config) return [];
+    return [
+      { name: 'Digital sub-item press range', type: 'digital', direction: 'output', baseKey: 'pressBase', incrementKey: 'signalIncrement' },
+      { name: 'Digital sub-item selected range', type: 'digital', direction: 'input', baseKey: 'feedbackBase', incrementKey: 'signalIncrement' },
+      { name: 'Serial sub-item name range', type: 'serial', direction: 'input', baseKey: 'labelBase', incrementKey: 'signalIncrement' },
+    ];
+  }
+  function mergeCustomRows(base, generated) {
+    const result = base.filter((entry) => !generated.some((item) => item.key === entry.key));
+    return [...result, ...generated];
+  }
+  function customRepeatedFrameRuntime(config) {
+    if (!config) return '';
+    return `<script>(function(){
+var config=${JSON.stringify(config)},container=document.querySelector(config.containerSelector);if(!container)return;
+var originals=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector)),template=originals[0]?originals[0].cloneNode(true):document.createElement('button'),labels=originals.map(function(item){var label=config.labelSelector?item.querySelector(config.labelSelector):item.querySelector('[data-repeat-label],.label,.text,span');return (label||item).textContent.trim()});
+function target(item){return (config.labelSelector&&item.querySelector(config.labelSelector))||item.querySelector('[data-repeat-label],.label,.text,span')||item}
+function truthy(value){return value===true||value===1||value==='1'||String(value).toLowerCase()==='true'}
+function wire(item,index){item.dataset.repeatIndex=String(index);if(item.dataset.repeatWired==='1')return;item.dataset.repeatWired='1';var release=function(){window.ComposerSignals.publish('__repeatPress:'+index,false)};item.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish('__repeatPress:'+index,true)});item.addEventListener('pointerup',release);item.addEventListener('pointercancel',release);item.addEventListener('pointerleave',release);window.ComposerSignals.subscribe('__repeatSelected:'+index,function(value){item.classList.toggle('active',truthy(value))});window.ComposerSignals.subscribe('__repeatName:'+index,function(value){if(value!=null&&value!=='')target(item).textContent=String(value)})}
+function render(value){var count=Math.max(0,Math.min(config.maxCount,Math.round(Number(value)||0))),items=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector));while(items.length>count){items.pop().remove()}while(items.length<count){var item=template.cloneNode(true);item.removeAttribute('id');container.appendChild(item);items.push(item)}items.forEach(function(item,index){if(!target(item).textContent.trim())target(item).textContent=labels[index]||('Item '+(index+1));wire(item,index)})}
+window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount);
+})();<\/script>`;
+  }
   function validateCustomComponent() {
     const name = $("custom-component-name").value.trim(),
       version = $("custom-component-version").value.trim(),
@@ -7004,7 +7254,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       if (!knownProperties.has(match[1]))
         errors.push(`HTML uses undefined property token {{${match[1]}}}.`);
     });
-    const runtimeProperties = new Set(["bindingMode", "visibilityEnabled"]);
+    const runtimeProperties = new Set(["bindingMode", "visibilityEnabled", "defaultCount", "signalIncrement", "pressBase", "feedbackBase", "labelBase"]);
     properties.forEach((property) => {
       if (!runtimeProperties.has(property.key) && !completeSource.includes(`{{${property.key}}}`))
         warnings.push(`Property “${property.key}” is not used in the component source.`);
@@ -7045,7 +7295,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     $("custom-preview-send").disabled = !signals.length;
   }
   function refreshCustomPreview() {
-    let source = composeCustomSource(true);
+    let source = composeCustomSource(true) + customRepeatedFrameRuntime(collectCustomRepeatedItems());
     collectCustomProperties().forEach((property) => {
       source = source.replaceAll(
         `{{${property.key}}}`,
@@ -7061,6 +7311,81 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     );
     refreshCustomSignalTester();
     validateCustomComponent();
+  }
+  const customButtonProperties = [
+      { key: "text", name: "Standard state — text", type: "text", defaultValue: "Button" },
+      { key: "selectedText", name: "Selected state — text", type: "text", defaultValue: "Button" },
+      { key: "icon", name: "Standard state — icon / symbol", type: "text", defaultValue: "" },
+      { key: "selectedIcon", name: "Selected state — icon / symbol", type: "text", defaultValue: "" },
+      { key: "textSize", name: "Text size", type: "number", defaultValue: 18 },
+      { key: "iconSize", name: "Icon size", type: "number", defaultValue: 24 },
+      { key: "faceColor", name: "Standard state — background color", type: "color", defaultValue: "#263b3c" },
+      { key: "selectedFaceColor", name: "Selected state — background color", type: "color", defaultValue: "#078f7d" },
+      { key: "textColor", name: "Standard state — text / icon color", type: "color", defaultValue: "#ffffff" },
+      { key: "selectedTextColor", name: "Selected state — text / icon color", type: "color", defaultValue: "#ffffff" },
+      { key: "borderColor", name: "Standard state — border color", type: "color", defaultValue: "#7ba7a3" },
+      { key: "selectedBorderColor", name: "Selected state — border color", type: "color", defaultValue: "#04dcb9" },
+      { key: "glowColor", name: "Standard state — glow color", type: "color", defaultValue: "#04dcb9" },
+      { key: "selectedGlowColor", name: "Selected state — glow color", type: "color", defaultValue: "#04dcb9" },
+      { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 8 },
+      { key: "shadowSize", name: "Shadow size", type: "number", defaultValue: 6 },
+      { key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: 18 },
+    ],
+    customStandardSignals = [
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "CustomButton.Press" },
+      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "CustomButton.Selected" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomButton.Name" },
+      { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: "CustomButton.Visibility", optionalProperty: "visibilityEnabled" },
+    ],
+    customButtonCss = `html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-button{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:{{cornerRadius}}px;box-shadow:0 0 {{glowStrength}}px {{glowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819;transition:background .18s,color .18s,border-color .18s,box-shadow .18s;touch-action:none}.custom-button.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};box-shadow:0 0 calc({{glowStrength}}px * 2) {{selectedGlowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819}.custom-icon{font-size:{{iconSize}}px;line-height:1}.custom-label{font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}`,
+    customButtonJavascript = `const button=root.querySelector('.custom-button'),label=root.querySelector('.custom-label'),icon=root.querySelector('.custom-icon');let selected=false,localName='{{text}}';const truthy=value=>value===true||value===1||value==='1'||String(value).toLowerCase()==='true';const render=()=>{button.classList.toggle('active',selected);label.textContent=selected?'{{selectedText}}':localName;icon.textContent=selected?'{{selectedIcon}}':'{{icon}}'};const release=()=>signals.publish('press',false);button.addEventListener('pointerdown',event=>{event.preventDefault();signals.publish('press',true)});button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('pointerleave',release);signals.subscribe('selected',value=>{selected=truthy(value);render()});signals.subscribe('name',value=>{if(value!=null&&value!==''){localName=String(value);if(!selected)render()}});render();`;
+  const customStarterTemplates = {
+    button: { name: "Custom Button", category: "Standard Buttons", icon: "🔘", properties: customButtonProperties, signals: customStandardSignals, html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>', css: customButtonCss, javascript: customButtonJavascript },
+    toggle: { name: "Custom Toggle", category: "Toggle Buttons", icon: "🔘", properties: customButtonProperties, signals: customStandardSignals, html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>', css: customButtonCss, javascript: customButtonJavascript },
+    slider: { name: "Custom Slider", category: "Sliders & Levels", icon: "🎚️", properties: [
+      { key: "text", name: "Label", type: "text", defaultValue: "Level" }, { key: "textSize", name: "Text size", type: "number", defaultValue: 18 }, { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" }, { key: "trackColor", name: "Track color", type: "color", defaultValue: "#263b3c" }, { key: "fillColor", name: "Fill / glow color", type: "color", defaultValue: "#04dcb9" }, { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 8 },
+    ], signals: [
+      { key: "set", name: "Value Set", type: "analog", direction: "output", defaultValue: "CustomSlider.ValueSet" }, { key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "CustomSlider.Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomSlider.Name" },
+    ], html: '<div class="custom-slider"><label>{{text}}</label><input type="range" min="0" max="65535" value="0"><output>0%</output></div>', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-slider{width:100%;height:100%;display:grid;grid-template-rows:auto 1fr auto;align-items:center;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}.custom-slider input{width:100%;accent-color:{{fillColor}};filter:drop-shadow(0 0 {{glowStrength}}px {{fillColor}})}.custom-slider input::-webkit-slider-runnable-track{background:{{trackColor}}}', javascript: `const control=root.querySelector('input'),label=root.querySelector('label'),output=root.querySelector('output');let feedback=false;control.addEventListener('input',()=>{output.textContent=Math.round(Number(control.value)/65535*100)+'%';if(!feedback)signals.publish('set',Number(control.value))});signals.subscribe('feedback',value=>{feedback=true;control.value=String(Math.max(0,Math.min(65535,Number(value)||0)));control.dispatchEvent(new Event('input'));feedback=false});signals.subscribe('name',value=>{if(value!=null&&value!=='')label.textContent=String(value)});` },
+    gauge: { name: "Custom Gauge", category: "Status & Information", icon: "🎚️", properties: [
+      { key: "text", name: "Label", type: "text", defaultValue: "Level" }, { key: "textSize", name: "Text size", type: "number", defaultValue: 18 }, { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" }, { key: "fillColor", name: "Fill / glow color", type: "color", defaultValue: "#04dcb9" }, { key: "backgroundColor", name: "Unfilled color", type: "color", defaultValue: "#263b3c" },
+    ], signals: [{ key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "CustomGauge.Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomGauge.Name" }], html: '<div class="custom-gauge"><label>{{text}}</label><div class="gauge-track"><div class="gauge-fill"></div></div><output>0%</output></div>', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-gauge{width:100%;height:100%;display:grid;grid-template-rows:auto 1fr auto;align-items:center;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}.gauge-track{height:18px;background:{{backgroundColor}};border-radius:20px;overflow:hidden}.gauge-fill{width:0;height:100%;background:{{fillColor}};box-shadow:0 0 10px {{fillColor}}}', javascript: `const fill=root.querySelector('.gauge-fill'),label=root.querySelector('label'),output=root.querySelector('output');signals.subscribe('feedback',value=>{const percent=Math.max(0,Math.min(100,(Number(value)||0)/65535*100));fill.style.width=percent+'%';output.textContent=Math.round(percent)+'%'});signals.subscribe('name',value=>{if(value!=null&&value!=='')label.textContent=String(value)});` },
+    text: { name: "Custom Text Input", category: "Text & Input", icon: "📝", properties: [{ key: "placeholder", name: "Placeholder", type: "text", defaultValue: "Enter text" }, { key: "textSize", name: "Text size", type: "number", defaultValue: 18 }, { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" }, { key: "faceColor", name: "Background color", type: "color", defaultValue: "#263b3c" }, { key: "borderColor", name: "Border / glow color", type: "color", defaultValue: "#04dcb9" }], signals: [{ key: "text", name: "Text", type: "serial", direction: "output", defaultValue: "CustomText.Text" }, { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomText.Name" }], html: '<input class="custom-text" placeholder="{{placeholder}}">', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-text{box-sizing:border-box;width:100%;height:100%;padding:12px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:12px;box-shadow:0 0 8px {{borderColor}};font:{{textSize}}px "Segoe UI",sans-serif}', javascript: `const input=root.querySelector('input');input.addEventListener('input',()=>signals.publish('text',input.value));signals.subscribe('name',value=>{if(value!=null)input.value=String(value)});` },
+    blank: { name: "Custom Component", category: "Custom", icon: "🧩", properties: [{ key: "backgroundColor", name: "Background color", type: "color", defaultValue: "transparent" }], signals: [], html: '<div class="custom-component"></div>', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-component{width:100%;height:100%;background:{{backgroundColor}}}', javascript: "" },
+  };
+  function applyCustomStarterTemplate(key, refresh = true, preserveIdentity = false) {
+    const template = customStarterTemplates[key] || customStarterTemplates.button;
+    const currentName = $("custom-component-name").value,
+      currentCategory = $("custom-component-category").value;
+    $("custom-component-name").value = preserveIdentity ? currentName : template.name;
+    $("custom-component-category").value = preserveIdentity ? currentCategory : template.category;
+    if (!preserveIdentity) $("custom-component-icon").value = template.icon;
+    $("custom-source-html").value = template.html;
+    $("custom-source-css").value = template.css;
+    $("custom-source-javascript").value = template.javascript;
+    $("custom-property-list").innerHTML = "";
+    $("custom-signal-list").innerHTML = "";
+    $('custom-repeat-enabled').checked = false;
+    template.properties.forEach((property) => addCustomPropertyRow(structuredClone(property)));
+    template.signals.forEach((signal) => addCustomSignalRow(structuredClone(signal)));
+    if (refresh) refreshCustomPreview();
+  }
+  function setCustomRepeatedControls(config) {
+    $('custom-repeat-enabled').checked = !!config;
+    $('custom-repeat-container').value = config?.containerSelector || '.split-menu';
+    $('custom-repeat-item').value = config?.itemSelector || 'button';
+    $('custom-repeat-label').value = config?.labelSelector || '';
+    $('custom-repeat-default').value = config?.defaultCount ?? 3;
+    $('custom-repeat-max').value = config?.maxCount ?? 20;
+    $('custom-repeat-namespace').value = config?.namespace || 'CustomComponent';
+  }
+  function syncCustomRepeatedRows() {
+    const config = collectCustomRepeatedItems(), propertyKeys = new Set(['defaultCount', 'signalIncrement', 'pressBase', 'feedbackBase', 'labelBase']);
+    [...$('custom-property-list').children].filter(row => propertyKeys.has(row.querySelector('[data-field="key"]')?.value)).forEach(row => row.remove());
+    [...$('custom-signal-list').children].filter(row => row.querySelector('[data-field="key"]')?.value === 'itemCount').forEach(row => row.remove());
+    repeatedItemProperties(config).forEach(addCustomPropertyRow);
+    repeatedItemSignals(config).forEach(addCustomSignalRow);
+    refreshCustomPreview();
   }
   function openCustomBuilder(item = null, entry = null) {
     customEditingId = entry?.id || "";
@@ -7109,10 +7434,17 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     $("custom-source-javascript").value = source.javascript;
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
+    setCustomRepeatedControls(entry?.repeatedItems || null);
     $("custom-preview-log").textContent =
       "Preview signal activity appears here.";
     properties.forEach(addCustomPropertyRow);
     signals.forEach(addCustomSignalRow);
+    $("custom-component-template").disabled = !!entry;
+    $("custom-component-apply-template").disabled = !!entry;
+    if (!item && !entry) {
+      $("custom-component-template").value = "button";
+      applyCustomStarterTemplate("button", false);
+    }
     refreshCustomPreview();
     $("custom-component-dialog").showModal();
   }
@@ -7125,8 +7457,21 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     openCustomBuilder(item, entry || null);
   };
   $("new-custom-component").onclick = () => openCustomBuilder();
+  $("custom-component-template").onchange = () => {
+    if (customEditingId) return;
+    applyCustomStarterTemplate($("custom-component-template").value);
+    setStatus(`Applied the ${$("custom-component-template").selectedOptions[0]?.textContent || "selected"} starting template`);
+  };
+  $("custom-component-apply-template").onclick = () => {
+    if (customEditingId || !confirm("Replace the current starter markup, properties, and signals with this template?")) return;
+    applyCustomStarterTemplate($("custom-component-template").value);
+  };
   $("custom-property-add").onclick = () => addCustomPropertyRow();
   $("custom-signal-add").onclick = () => addCustomSignalRow();
+  $('custom-repeat-enabled').onchange = syncCustomRepeatedRows;
+  ['custom-repeat-container', 'custom-repeat-item', 'custom-repeat-label', 'custom-repeat-default', 'custom-repeat-max', 'custom-repeat-namespace'].forEach(id => {
+    $(id).onchange = syncCustomRepeatedRows;
+  });
   $("custom-preview-refresh").onclick = refreshCustomPreview;
   $("custom-preview-send").onclick = () => {
     const key = $("custom-preview-signal").value,
@@ -7249,6 +7594,9 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       entry = { id };
       state.customComponents.push(entry);
     }
+    const repeatedItems = collectCustomRepeatedItems(),
+      customProperties = mergeCustomRows(collectCustomProperties(), repeatedItemProperties(repeatedItems)),
+      customSignals = mergeCustomRows(collectCustomSignals(), repeatedItemSignals(repeatedItems));
     Object.assign(entry, {
       name,
       category: $("custom-component-category").value.trim() || "Custom",
@@ -7261,8 +7609,10 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
         width: item?.w || 240,
         height: item?.h || 140,
       },
-      properties: collectCustomProperties(),
-      signals: collectCustomSignals(),
+      properties: customProperties,
+      signals: customSignals,
+      repeatedItems,
+      rangeBindings: repeatedItemRanges(repeatedItems),
     });
     const libraryEntry = state.components.find(
       (component) => component.componentId === entry.id,
@@ -7345,7 +7695,6 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     }
   };
   $("add-page").onclick = addPage;
-  $("save-reusable").onclick = saveReusableSelection;
   $("save-page-template").onclick = savePageTemplate;
   $("theme-selection").onclick = () => applyTheme("selection");
   $("theme-component-type").onclick = () => applyTheme("component-type");

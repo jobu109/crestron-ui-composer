@@ -154,6 +154,7 @@ run("exported action runtime is valid JavaScript", () => {
       items: [{
         id: "one", pageId: "home", name: "Regression Button", componentId: "regression-button",
         x: 0, y: 0, w: 100, h: 50, z: 1, properties: {}, signalBindings: {},
+        interaction: { trigger: "none", pressEffect: "particle-burst", effectDuration: 650, effectSize: 125 },
         actions: [{ event: "signal-change", triggerType: "analog", triggerSignal: "Room.Level", condition: "greater", compareValue: "100", type: "navigate", target: "home", delay: 0, timing: "parallel" }],
       }],
     }),
@@ -186,6 +187,14 @@ run("exported action runtime is valid JavaScript", () => {
   );
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
+  assert.ok(
+    html.includes("particleBurst(root,c,e)"),
+    "Exported runtime must include Particle Burst press effects",
+  );
+  assert.ok(
+    html.includes("distance=Math.max(2,6*s)"),
+    "Exported runtime must include Shake press effects",
+  );
   assert.ok(
     html.includes("bundle.getWebXPanel(!inContainer)"),
     "Export must select the correct Web XPanel transport for CH5 Desktop or Web XPanel",
@@ -294,6 +303,45 @@ run("migration repairs legacy Rolling Menu collection paths", () => {
     }],
   });
   assert.equal(result.project.items[0].properties.feedbackBase, "RollingMenu.Items[{index}].Selected");
+});
+
+run("Import & Translate infers standard text, button, and analog capabilities", () => {
+  const source = read("editor.js");
+  assert.ok(source.includes("features: { buttonCount:"), "translator must record detected buttons");
+  assert.ok(source.includes("interactiveNumericCount"), "translator must distinguish interactive numeric controls");
+  assert.ok(source.includes('name: "Value Set", type: "analog", direction: "output"'), "interactive numeric controls need Value Set");
+  assert.ok(source.includes('name: "Feedback", type: "analog", direction: "input"'), "numeric displays need Feedback");
+  assert.ok(source.includes("data-translated-text"), "detected text must be addressable by serial feedback");
+  assert.ok(source.includes("data-translated-button"), "every detected button must receive an adapter");
+  ["faceColor", "selectedFaceColor", "textColor", "selectedTextColor", "borderColor", "selectedBorderColor", "glowColor", "selectedGlowColor", "cornerRadius", "iconSize", "textSize"].forEach((key) =>
+    assert.ok(source.includes(`key: "${key}"`), `translated buttons need ${key}`),
+  );
+});
+
+run("custom component creator provides functional starter templates", () => {
+  const editor = read("editor.js"), markup = read("editor.html");
+  ["button", "toggle", "slider", "gauge", "text", "blank"].forEach((key) =>
+    assert.ok(editor.includes(`${key}: { name:`), `creator needs a ${key} starter`),
+  );
+  assert.ok(markup.includes('id="custom-component-template"'));
+  assert.ok(markup.includes('id="custom-component-apply-template"'));
+  assert.ok(editor.includes("customStandardSignals"));
+  assert.ok(editor.includes("customButtonProperties"));
+  assert.ok(editor.includes("applyCustomStarterTemplate"));
+});
+
+run("custom components support generated repeated-item contract ranges", () => {
+  const editor = read("editor.js"), markup = read("editor.html");
+  assert.ok(markup.includes('id="custom-repeat-enabled"'));
+  assert.ok(markup.includes('id="custom-repeat-container"'));
+  assert.ok(editor.includes("repeatedItemRanges"));
+  assert.ok(editor.includes("Digital sub-item press range"));
+  assert.ok(editor.includes("Digital sub-item selected range"));
+  assert.ok(editor.includes("Serial sub-item name range"));
+  assert.ok(editor.includes("__repeatPress:"));
+  assert.ok(editor.includes("__repeatSelected:"));
+  assert.ok(editor.includes("__repeatName:"));
+  assert.ok(editor.includes("data-translated-repeat-container"), "Import & Translate must detect repeated sibling buttons");
 });
 
 if (process.exitCode) process.exit(process.exitCode);

@@ -253,13 +253,6 @@
         <h2>Components</h2>
         <p class="hint">Drag a component onto the panel.</p>
         <div class="component-import-actions">
-          <label id="snippet-files-label" class="button primary"
-            >Import snippets<input
-              id="snippet-files"
-              type="file"
-              accept="text/html,.html"
-              multiple
-          /></label>
           <button id="translate-snippet" type="button">Import &amp; translate</button>
           <input id="translate-snippet-file" type="file" accept="text/html,.html" hidden />
           <label class="button custom-package-import"
@@ -283,14 +276,14 @@
         <div id="page-list" class="page-list"></div>
         <button id="add-page" type="button">+ Add page</button>
         <h2 style="margin-top: 24px">Assets</h2>
-        <label class="button primary asset-import-button"
-          >Import assets<input
-            id="asset-files"
-            type="file"
-            accept="image/*,audio/*,video/*,.woff,.woff2,.ttf,.otf"
-            multiple
-        /></label>
-        <button id="asset-library-import" type="button">Import from asset library</button>
+        <button id="asset-library-import" type="button" class="primary">Import assets</button>
+        <input
+          id="asset-files"
+          type="file"
+          accept="image/*,audio/*,video/*,.woff,.woff2,.ttf,.otf"
+          multiple
+          hidden
+        />
         <input
           id="asset-replace-file"
           type="file"
@@ -309,7 +302,6 @@
         </div>
         <div id="asset-list" class="asset-list"></div>
         <h2 style="margin-top: 24px">Reusable designs</h2>
-        <button id="save-reusable" type="button">Save selection</button>
         <div id="reusable-list" class="design-list"></div>
         <h2 style="margin-top: 24px">Page templates</h2>
         <button id="save-page-template" type="button">Save current page</button>
@@ -464,6 +456,7 @@
                 <option value="scale">Scale</option>
                 <option value="glow">Glow</option>
                 <option value="press">Press state</option>
+                <option value="shake">Shake</option>
               </select></label
             >
             <label id="interaction-direction-label"
@@ -498,6 +491,38 @@
                 <option value="cubic-bezier(.2,.8,.2,1)">Smooth</option>
               </select></label
             >
+            <label
+              >Press effect<select id="interaction-pressEffect">
+                <option value="none">None</option>
+                <option value="water-ripple">Water ripple</option>
+                <option value="wave">Wave</option>
+                <option value="particle-burst">Particle burst</option>
+                <option value="shake">Shake</option>
+              </select></label
+            >
+            <div id="interaction-press-effect-options">
+              <div class="grid2">
+                <label id="interaction-effect-color-label"
+                  >Effect color<input id="interaction-effectColor" type="color"
+                /></label>
+                <label
+                  >Effect duration (ms)<input
+                    id="interaction-effectDuration"
+                    type="number"
+                    min="100"
+                    max="5000"
+                  />
+                </label>
+              </div>
+              <label
+                >Effect size %<input
+                  id="interaction-effectSize"
+                  type="number"
+                  min="25"
+                  max="300"
+                />
+              </label>
+            </div>
             <div class="interaction-actions">
               <button id="interaction-preview" type="button">Play</button>
               <button id="interaction-reset" type="button">Reset</button>
@@ -879,6 +904,23 @@
         <div class="custom-builder-layout">
           <section class="custom-builder-controls">
             <div class="grid2">
+              <label
+                >Starting template
+                <select id="custom-component-template">
+                  <option value="button">Standard button</option>
+                  <option value="toggle">Toggle button</option>
+                  <option value="slider">Slider / knob</option>
+                  <option value="gauge">Gauge / status</option>
+                  <option value="text">Text input</option>
+                  <option value="blank">Blank component</option>
+                </select>
+              </label>
+              <label
+                >Template actions
+                <button id="custom-component-apply-template" type="button">
+                  Apply starting template
+                </button>
+              </label>
               <label>Name<input id="custom-component-name" /></label>
               <label
                 >Category<input id="custom-component-category" value="Custom"
@@ -922,6 +964,20 @@
               ><span>Direction</span><span>Default</span><span></span>
             </div>
             <div id="custom-signal-list" class="custom-builder-list"></div>
+            <details class="custom-repeated-items">
+              <summary>Repeated sub-items</summary>
+              <p class="hint">Generate a local default count, analog count override, and zero-based Press, Selected, and Name ranges.</p>
+              <label><input id="custom-repeat-enabled" type="checkbox" /> Enable repeated sub-items</label>
+              <div class="grid2">
+                <label>Container selector<input id="custom-repeat-container" value=".split-menu" /></label>
+                <label>Item selector<input id="custom-repeat-item" value="button" /></label>
+                <label>Label selector<input id="custom-repeat-label" placeholder="Optional; e.g. .label" /></label>
+                <label>Default sub-items<input id="custom-repeat-default" type="number" min="0" max="100" value="3" /></label>
+                <label>Maximum sub-items<input id="custom-repeat-max" type="number" min="1" max="100" value="20" /></label>
+                <label>Contract namespace<input id="custom-repeat-namespace" value="CustomComponent" /></label>
+              </div>
+              <small>Generated contracts: Namespace.ItemCount and Namespace.Items[{index}].Press / Selected / Name.</small>
+            </details>
           </section>
           <section class="custom-source-panel">
             <div class="custom-source-tabs">
@@ -1149,6 +1205,12 @@ Preview signal activity appears here.</pre
     <script src="responsive-layout.js"></script>
     <script src="component-runtime.js"></script>
     <script src="standard-button.component.js"></script>
+    <script src="hold-button.component.js"></script>
+    <script src="circular-hold-button.component.js"></script>
+    <script src="countdown-auto-fire.component.js"></script>
+    <script src="safety-armed.component.js"></script>
+    <script src="ptz-joystick.component.js"></script>
+    <script src="radio-group.component.js"></script>
     <script src="multi-mode-button.component.js"></script>
     <script src="button-components.js"></script>
     <script src="more-button-components.js"></script>
@@ -1170,6 +1232,7 @@ Preview signal activity appears here.</pre
     <script src="vertical-scrolling-text.component.js"></script>
     <script src="horizontal-carousel.component.js"></script>
     <script src="vertical-carousel.component.js"></script>
+    <script src="swiping-cards.component.js"></script>
     <script src="directional-pad.component.js"></script>
     <script src="folding-menu.component.js"></script>
     <script src="hamburger-popup.component.js"></script>

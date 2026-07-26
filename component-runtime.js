@@ -740,7 +740,8 @@
       const pairedProperties = definition.properties.filter(
         (property) => selectedPairs[property.key],
       );
-      if (!definition.properties.some((property) => property.key === "selectedSameAsStandard")) {
+      const hasIndependentHoldStates = definition.id === "hold-button" || definition.id === "circular-hold-button" || definition.id === "countdown-auto-fire" || definition.id === "safety-armed-on-off";
+      if (!hasIndependentHoldStates && !definition.properties.some((property) => property.key === "selectedSameAsStandard")) {
         const insertion = pairedProperties.length
           ? definition.properties.indexOf(pairedProperties[0])
           : Math.min(1, definition.properties.length);
@@ -756,7 +757,7 @@
         const standardKey = stateLabelPairs[property.key];
         if (standardKey) {
           property.name = `Selected state — ${String(property.name || property.key).replace(/^(?:Selected|Active)\s*/i, "").replace(/^state\s*[—:-]?\s*/i, "")}`;
-          if (selectedPairs[property.key])
+          if (selectedPairs[property.key] && !hasIndependentHoldStates)
             property.disabledWhen = { key: "selectedSameAsStandard", value: true };
           else delete property.disabledWhen;
           const standard = definition.properties.find((entry) => entry.key === standardKey);
@@ -768,7 +769,22 @@
         else if (/^Inactive\s/i.test(property.name || ""))
           property.name = String(property.name).replace(/^Inactive\s*/i, "Standard state — ");
       });
-      definition.selectedStatePairs = { ...selectedPairs };
+      definition.selectedStatePairs = hasIndependentHoldStates ? {} : { ...selectedPairs };
+    }
+    const textCapable = definition.properties.some(
+      (property) =>
+        !property.signalSetting &&
+        (property.type === "text" || property.key === "textSize") &&
+        /text|label|name|title|message|font/i.test(property.key),
+    );
+    if (textCapable && !definition.properties.some((property) => property.key === "wrapText")) {
+      definition.properties.push({
+        key: "wrapText",
+        name: "Wrap text to next line",
+        type: "checkbox",
+        defaultValue: false,
+      });
+      definition.styles += `[data-component="${definition.id}"].wrap-text button,[data-component="${definition.id}"].wrap-text button *,[data-component="${definition.id}"].wrap-text [data-local-text],[data-component="${definition.id}"].wrap-text .label,[data-component="${definition.id}"].wrap-text .name,[data-component="${definition.id}"].wrap-text .note,[data-component="${definition.id}"].wrap-text .big,[data-component="${definition.id}"].wrap-text .value,[data-component="${definition.id}"].wrap-text .position,[data-component="${definition.id}"].wrap-text .status,[data-component="${definition.id}"].wrap-text .btn-txt,[data-component="${definition.id}"].wrap-text .mic-text,[data-component="${definition.id}"].wrap-text .mic-label,[data-component="${definition.id}"].wrap-text .shade-name,[data-component="${definition.id}"].wrap-text .hold-label,[data-component="${definition.id}"].wrap-text .countdown-label,[data-component="${definition.id}"].wrap-text .safety-label{white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;text-overflow:clip!important}`;
     }
     definition.properties.forEach((property) => {
       if (property.signalSetting && typeof property.defaultValue === "string")
@@ -804,6 +820,13 @@
     const definition = get(id);
     if (!definition) throw new Error("Unknown component: " + id);
     options.properties = { ...(options.properties || {}) };
+    if (id === "countdown-auto-fire") {
+      if (options.properties.text === "ARM") options.properties.text = "Shutdown";
+      if (options.properties.completedText === "FIRED")
+        options.properties.completedText = "Shutting Down...";
+      if (String(options.properties.faceColor || "").toLowerCase() === "#203332")
+        options.properties.faceColor = "#04aa8e";
+    }
     const sameAsStandard =
       options.properties.selectedSameAsStandard == null ||
       options.properties.selectedSameAsStandard === true ||
@@ -823,6 +846,13 @@
         ]),
       );
     root.dataset.component = id;
+    root.classList.toggle(
+      "wrap-text",
+      options.properties.wrapText === true ||
+        options.properties.wrapText === 1 ||
+        options.properties.wrapText === "1" ||
+        String(options.properties.wrapText).toLowerCase() === "true",
+    );
     Object.entries(options.properties || {}).forEach(([key, value]) => {
       const name = "--" + key.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
       root.style.setProperty(name, String(value));

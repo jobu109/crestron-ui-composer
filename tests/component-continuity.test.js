@@ -73,8 +73,12 @@ const semanticStatePairs = [
 for (const definition of directStateComponents) {
   const keys = new Set(definition.properties.map((property) => property.key));
   const inheritance = definition.properties.find((property) => property.key === "selectedSameAsStandard");
-  assert.ok(inheritance, `${definition.id} lacks the selected-state inheritance control`);
-  assert.equal(inheritance.defaultValue, true, `${definition.id} must inherit its Standard state by default`);
+  if (["hold-button", "circular-hold-button", "countdown-auto-fire", "safety-armed-on-off"].includes(definition.id))
+    assert.equal(inheritance, undefined, `${definition.id} must keep its four text states independent`);
+  else {
+    assert.ok(inheritance, `${definition.id} lacks the selected-state inheritance control`);
+    assert.equal(inheritance.defaultValue, true, `${definition.id} must inherit its Standard state by default`);
+  }
   for (const [standard, selected, ...alternatives] of semanticStatePairs) {
     if (!keys.has(standard)) continue;
     assert.ok(
@@ -83,6 +87,17 @@ for (const definition of directStateComponents) {
     );
   }
 }
+const holdButton = definitions.get("hold-button");
+assert.ok(holdButton.properties.some((property) => property.key === "selectedText"), "hold-button lacks Selected text");
+assert.equal(
+  holdButton.properties.find((property) => property.key === "selectedText").disabledWhen,
+  undefined,
+  "hold-button Selected text must always remain editable",
+);
+const circularHoldButton = definitions.get("circular-hold-button");
+assert.ok(circularHoldButton, "circular-hold-button is not registered");
+assert.ok(circularHoldButton.properties.some((property) => property.key === "selectedText"), "circular-hold-button lacks Selected text");
+assert.equal(circularHoldButton.properties.find((property) => property.key === "selectedText").disabledWhen, undefined, "circular-hold-button Selected text must always remain editable");
 for (const definition of directStateComponents)
   for (const selectedKey of Object.keys(definition.selectedStatePairs || {})) {
     const property = definition.properties.find((entry) => entry.key === selectedKey);
