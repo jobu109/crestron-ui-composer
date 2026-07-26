@@ -3,6 +3,7 @@
 
   const properties = (name) => [
     { key: "text", name: "Default name", type: "text", defaultValue: name },
+    { key: "selectedText", name: "Selected name", type: "text", defaultValue: "" },
     { key: "outputScale", name: "Outgoing analog scale", type: "select", options: [{ value: "65535", label: "0–65535" }, { value: "100", label: "0–100" }], defaultValue: "65535" },
   ];
   runtime.register({
@@ -21,7 +22,7 @@
       const output = (value, options) => options.outputScale === "100" ? value : Math.round(value / 100 * 65535);
       const truthy = value => value === true || value === 1 || value === "1";
       const p = context.options.properties || {}, button = root.querySelector(".load"), fill = root.querySelector(".fill"), glow = root.querySelector(".glow"), label = root.querySelector(".name"), level = root.querySelector(".level"), fallback = p.text ?? "Light Load";
-      let active = false;
+      let active = false, selected = false, remoteName = "";
       label.textContent = fallback;
       const update = value => { const percent = analog(value); fill.style.height = percent + "%"; glow.style.opacity = String(percent / 100 * .55); level.textContent = percent + "%"; };
       const publish = event => { const rect = button.getBoundingClientRect(), value = Math.round(100 - Math.max(0, Math.min(100, (event.clientY - rect.top) / rect.height * 100))); update(value); context.signals.publish("valueSet", output(value, p)); };
@@ -29,9 +30,9 @@
       button.addEventListener("pointerdown", event => { active = true; button.classList.add("pressed"); context.signals.publish("press", true); if (button.setPointerCapture) button.setPointerCapture(event.pointerId); publish(event); event.preventDefault(); });
       button.addEventListener("pointermove", event => { if (active) publish(event); });
       ["pointerup", "pointercancel", "lostpointercapture"].forEach(event => button.addEventListener(event, release));
-      context.signals.subscribe("selected", value => button.classList.toggle("selected", truthy(value)));
+      context.signals.subscribe("selected", value => { selected = truthy(value); button.classList.toggle("selected", selected); label.textContent = remoteName || (selected && p.selectedText ? p.selectedText : fallback); });
       context.signals.subscribe("feedback", update);
-      context.signals.subscribe("name", value => label.textContent = value || fallback);
+      context.signals.subscribe("name", value => { remoteName = value || ""; label.textContent = remoteName || (selected && p.selectedText ? p.selectedText : fallback); });
       update(0);
     },
   });
@@ -50,7 +51,7 @@
       const analog = value => { const number = Number(value) || 0; return Math.max(0, Math.min(100, Math.round(number > 100 ? number / 65535 * 100 : number))); };
       const output = (value, options) => options.outputScale === "100" ? value : Math.round(value / 100 * 65535);
       const p = context.options.properties || {}, button = root.querySelector(".shade"), panel = root.querySelector(".panel"), label = root.querySelector(".name"), position = root.querySelector(".position"), fallback = p.text ?? "Window Shade";
-      let active = false;
+      let active = false, selected = false, remoteName = "";
       label.textContent = fallback;
       const update = value => { const percent = analog(value); panel.style.transform = "translateY(-" + percent + "%)"; position.textContent = percent + "%"; };
       const publish = event => { const rect = button.getBoundingClientRect(), value = Math.round(100 - Math.max(0, Math.min(100, (event.clientY - rect.top) / rect.height * 100))); update(value); context.signals.publish("valueSet", output(value, p)); };
@@ -90,9 +91,9 @@
       ["pointerup", "pointercancel", "lostpointercapture"].forEach(event => gauge.addEventListener(event, () => active = false));
       toggle.addEventListener("pointerdown", event => { context.signals.publish("press", true); event.preventDefault(); });
       ["pointerup", "pointerleave", "pointercancel"].forEach(event => toggle.addEventListener(event, () => context.signals.publish("press", false)));
-      context.signals.subscribe("selected", value => toggle.classList.toggle("selected", truthy(value)));
+      context.signals.subscribe("selected", value => { selected = truthy(value); toggle.classList.toggle("selected", selected); root.classList.toggle("state-selected", selected); label.textContent = remoteName || (selected && p.selectedText ? p.selectedText : fallback); });
       context.signals.subscribe("feedback", update);
-      context.signals.subscribe("name", value => label.textContent = value || fallback);
+      context.signals.subscribe("name", value => { remoteName = value || ""; label.textContent = remoteName || (selected && p.selectedText ? p.selectedText : fallback); });
       update(0);
     },
   });

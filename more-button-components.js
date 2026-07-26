@@ -26,8 +26,10 @@
   function mountButton(root, context) {
     const button = root.querySelector("button"),
       label = root.querySelector("[data-label]"),
-      defaultLabel =
-        (context.options.properties && context.options.properties.text) || "";
+      properties = context.options.properties || {},
+      defaultLabel = properties.text || "",
+      selectedLabel = properties.selectedText || defaultLabel;
+    let remoteLabel = "";
     if (label) label.textContent = defaultLabel;
     function down(e) {
       button.classList.add("pressed");
@@ -47,16 +49,18 @@
     button.addEventListener("pointerup", navigate);
     button.addEventListener("pointerleave", up);
     button.addEventListener("pointercancel", up);
-    context.signals.subscribe("selected", (value) =>
-      button.classList.toggle(
-        "active",
-        value === true || value === 1 || value === "1",
-      ),
-    );
+    context.signals.subscribe("selected", (value) => {
+      const selected = value === true || value === 1 || value === "1";
+      button.classList.toggle("active", selected);
+      if (label) label.textContent = remoteLabel || (selected ? selectedLabel : defaultLabel);
+    });
     if (label)
       context.signals.subscribe(
         "label",
-        (value) => (label.textContent = value || defaultLabel),
+        (value) => {
+          remoteLabel = value || "";
+          label.textContent = remoteLabel || (button.classList.contains("active") ? selectedLabel : defaultLabel);
+        },
       );
     return () => {
       button.removeEventListener("pointerdown", down);
@@ -84,8 +88,20 @@
           defaultValue: defaultText,
         },
         {
+          key: "selectedText",
+          name: "Selected label",
+          type: "text",
+          defaultValue: "",
+        },
+        {
           key: "textColor",
           name: "Text/icon color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "selectedTextColor",
+          name: "Selected text/icon color",
           type: "color",
           defaultValue: "#ffffff",
         },
@@ -114,8 +130,20 @@
           defaultValue: "#04aa8e",
         },
         {
+          key: "selectedGlowColor",
+          name: "Selected glow color",
+          type: "color",
+          defaultValue: "#04aa8e",
+        },
+        {
           key: "borderColor",
           name: "Border color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "selectedBorderColor",
+          name: "Selected border color",
           type: "color",
           defaultValue: "#ffffff",
         },
@@ -134,7 +162,7 @@
         scope +
         " .oval.pressed{background:var(--pressed-color);box-shadow:0 0 15px var(--glow-color)}" +
         scope +
-        " .oval.active{background:var(--selected-color);box-shadow:0 0 25px var(--glow-color)}",
+        " .oval.active{color:var(--selected-text-color);border-color:var(--selected-border-color);background:var(--selected-color);box-shadow:0 0 25px var(--selected-glow-color)}",
       mount: mountButton,
     });
   }
@@ -170,6 +198,7 @@
     defaultSize: { width: 220, height: 100 },
     properties: [
       { key: "text", name: "Default label", type: "text", defaultValue: "SET" },
+      { key: "selectedText", name: "Selected label", type: "text", defaultValue: "" },
     ],
     signals: commonSignals("81", "91", "101"),
     template:

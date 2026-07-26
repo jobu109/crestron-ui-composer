@@ -122,13 +122,21 @@
           url = item.graphicAssetMode === "background" && !repeats ? assetUrl(item.graphicAsset) : "";
         return url ? `background-image:url(&quot;${url}&quot;);background-size:${item.graphicAssetFit || "contain"};background-position:${Number(item.graphicAssetX ?? 50)}% ${Number(item.graphicAssetY ?? 50)}%;background-repeat:no-repeat;` : "";
       },
+      selectedSameAsStandard = (item) =>
+        item.properties?.selectedSameAsStandard == null ||
+        item.properties?.selectedSameAsStandard === true ||
+        item.properties?.selectedSameAsStandard === 1 ||
+        item.properties?.selectedSameAsStandard === "1" ||
+        String(item.properties?.selectedSameAsStandard).toLowerCase() === "true",
+      selectedAssetId = (item) =>
+        selectedSameAsStandard(item) ? item.graphicAsset : item.selectedGraphicAsset,
       graphicOverlay = (item, selected = false) => {
         const definition = item.componentId
             ? global.ComposerRuntime.get(item.componentId)
             : null,
           repeats = item.graphicAssetPlacement === "items" && !!definition?.itemSelector,
           url = item.graphicAssetMode === "overlay" && !repeats
-          ? assetUrl(selected ? item.selectedGraphicAsset : item.graphicAsset)
+          ? assetUrl(selected ? selectedAssetId(item) : item.graphicAsset)
           : "";
         return url ? `<img class="widget-asset-overlay widget-asset-overlay-${selected ? "selected" : "normal"}" alt="" style="position:absolute;z-index:50;left:${Number(item.graphicAssetX ?? 50)}%;top:${Number(item.graphicAssetY ?? 50)}%;width:${Number(item.graphicAssetWidth ?? 35)}%;height:${Number(item.graphicAssetHeight ?? 35)}%;max-width:none;object-fit:${item.graphicAspectLocked ? item.graphicAssetFit || "contain" : "fill"};opacity:${Math.max(0,Math.min(100,Number(item.graphicAssetOpacity ?? 100)))/100};pointer-events:none;transform:translate(-50%,-50%)" src="${url}">` : "";
       },
@@ -139,7 +147,7 @@
           selector = definition?.itemSelector;
         if (item.graphicAssetPlacement !== "items" || !selector) return "";
         const normal = assetUrl(item.graphicAsset),
-          selected = assetUrl(item.selectedGraphicAsset) || normal;
+          selected = assetUrl(selectedAssetId(item)) || normal;
         if (!normal && !selected) return "";
         const scope = `.scoped-widget[data-instance=${JSON.stringify(instance)}] .scoped-preview `,
           normalUrl = normal ? `url(${JSON.stringify(normal)})` : "none",
@@ -159,7 +167,7 @@
         return css ? `<style>${css.replace(/<\/style/gi, "<\\/style")}</style>` : "";
       },
       selectedGraphicStyle = (item) => {
-        const url = assetUrl(item.selectedGraphicAsset);
+        const url = assetUrl(selectedAssetId(item));
         return `--selected-graphic-url:${url ? `url(&quot;${url}&quot;)` : "none"};`;
       },
       perButtonAssetStyle = (item, instance) => {

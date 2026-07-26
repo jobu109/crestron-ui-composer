@@ -7,6 +7,7 @@
     defaultSize: { width: 280, height: 90 },
     properties: [
       { key: "text", name: "Local / advanced text", type: "cip-text", defaultValue: "Text" },
+      { key: "selectedText", name: "Selected local / advanced text", type: "cip-text", defaultValue: "" },
       {
         key: "backgroundMode",
         name: "Background",
@@ -50,7 +51,9 @@
       const block = root.querySelector(".text-block"),
         label = root.querySelector(".text-block-label"),
         properties = context.options.properties || {},
-        defaultText = String(properties.text || "Text");
+        defaultText = String(properties.text || "Text"),
+        selectedText = String(properties.selectedText || ""),
+        selected = false;
       const tagPattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi,
         tokens = [], values = [];
       let templateText = defaultText;
@@ -84,7 +87,8 @@
         return String(Math.round(number));
       }
       function renderText() {
-        label.textContent = templateText.replace(/\u0000(\d+)\u0000/g, (_, index) => values[Number(index)] ?? "");
+        const rendered = templateText.replace(/\u0000(\d+)\u0000/g, (_, index) => values[Number(index)] ?? "");
+        label.textContent = selected && selectedText ? selectedText : rendered;
       }
       tokens.forEach((token, index) => {
         const type = token.kind === "s" ? "serial" : token.kind === "d" ? "digital" : "analog";
@@ -122,9 +126,11 @@
       block.addEventListener("pointerup", release);
       block.addEventListener("pointerleave", release);
       block.addEventListener("pointercancel", release);
-      context.signals.subscribe("selected", (value) =>
-        block.classList.toggle("active", value === true || value === 1 || value === "1"),
-      );
+      context.signals.subscribe("selected", (value) => {
+        selected = value === true || value === 1 || value === "1";
+        block.classList.toggle("active", selected);
+        renderText();
+      });
       context.signals.subscribe("name", (value) => {
         if (!tokens.length) label.textContent = String(value == null || value === "" ? defaultText : value);
       });

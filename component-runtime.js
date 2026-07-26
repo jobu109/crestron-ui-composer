@@ -213,11 +213,14 @@
     "wave-button": {
       props: [
         "textColor|Text color|#ffffff",
+        "selectedTextColor|Selected text color|#ffffff",
         "waveColor|Wave color|#04aa8e",
         "glowColor|Glow color|#04aa8e",
+        "selectedGlowColor|Selected glow color|#04aa8e",
         "borderColor|Border color|#ffffff",
+        "selectedBorderColor|Selected border color|#04aa8e",
       ],
-      css: '[data-component="wave-button"] .wave{color:var(--text-color);border-color:var(--border-color);box-shadow:inset 0 1px rgba(255,255,255,.42),0 0 10px var(--glow-color),0 6px 12px rgba(0,0,0,.22)}[data-component="wave-button"] .wave i{background:radial-gradient(circle,color-mix(in srgb,var(--wave-color) 40%,transparent),transparent 70%)}[data-component="wave-button"] .wave.active{border-color:var(--glow-color);box-shadow:0 0 18px var(--glow-color)}',
+      css: '[data-component="wave-button"] .wave{color:var(--text-color);border-color:var(--border-color);box-shadow:inset 0 1px rgba(255,255,255,.42),0 0 10px var(--glow-color),0 6px 12px rgba(0,0,0,.22)}[data-component="wave-button"] .wave i{background:radial-gradient(circle,color-mix(in srgb,var(--wave-color) 40%,transparent),transparent 70%)}[data-component="wave-button"] .wave.active{color:var(--selected-text-color);border-color:var(--selected-border-color);box-shadow:0 0 18px var(--selected-glow-color)}',
     },
     "display-flip": {
       props: [
@@ -303,6 +306,36 @@
         "borderColor|Border color|#94eee2",
       ],
       css: '[data-component="shade-control"] .shade-card{background:linear-gradient(145deg,rgba(255,255,255,.13),color-mix(in srgb,var(--frame-color) 36%,transparent)),color-mix(in srgb,var(--frame-color) 32%,transparent);border-color:color-mix(in srgb,var(--border-color) 54%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--glow-color) 24%,transparent)}[data-component="shade-control"] .panel{background:repeating-linear-gradient(to bottom,var(--shade-color) 0,var(--shade-color) 10px,#2a2a2a 11px,#2a2a2a 13px)}[data-component="shade-control"] .name{color:var(--text-color)}[data-component="shade-control"] .position{color:var(--status-color)}',
+    },
+    "single-light-control": {
+      props: [
+        "textColor|Name color|#ffffff", "valueColor|Level-value color|#ffffff",
+        "selectedTextColor|Selected name color|#ffffff",
+        "faceColor|Load face color|#222222", "levelLowColor|Level low color|#f5b700",
+        "selectedFaceColor|Selected load face color|#222222",
+        "levelHighColor|Level high color|#fff36a", "glowColor|Glow color|#ffe61e",
+        "selectedGlowColor|Selected glow color|#ffe61e",
+        "borderColor|Border color|#ffffff",
+        "selectedBorderColor|Selected border color|#ffffff",
+      ],
+      css: '[data-component="single-light-control"] .load{background:var(--face-color);color:var(--text-color);border-color:color-mix(in srgb,var(--border-color) 30%,transparent);box-shadow:inset 0 1px rgba(255,255,255,.35),0 0 var(--glow-strength-px) color-mix(in srgb,var(--glow-color) 45%,transparent)}[data-component="single-light-control"] .load.selected{background:var(--selected-face-color);color:var(--selected-text-color);border-color:var(--selected-border-color);box-shadow:inset 0 1px rgba(255,255,255,.35),0 0 var(--glow-strength-px) var(--selected-glow-color)}[data-component="single-light-control"] .fill{background:linear-gradient(to top,var(--level-low-color),var(--level-high-color))}[data-component="single-light-control"] .glow{background:radial-gradient(circle at 50% 90%,color-mix(in srgb,var(--glow-color) 60%,transparent),transparent 70%)}[data-component="single-light-control"] .name{color:var(--text-color)}[data-component="single-light-control"] .load.selected .name{color:var(--selected-text-color)}[data-component="single-light-control"] .level{color:var(--value-color)}',
+    },
+    "single-shade-control": {
+      props: [
+        "textColor|Name color|#ffffff", "statusColor|Position-value color|#04dcb9",
+        "frameColor|Frame tint|#045548", "shadeColor|Shade color|#121212",
+        "glowColor|Glow color|#04aa8e", "borderColor|Border color|#94eee2",
+      ],
+      css: '[data-component="single-shade-control"] .shade-card{background:linear-gradient(145deg,rgba(255,255,255,.13),color-mix(in srgb,var(--frame-color) 36%,transparent)),color-mix(in srgb,var(--frame-color) 32%,transparent);border-color:color-mix(in srgb,var(--border-color) 54%,transparent);box-shadow:inset 0 0 20px rgba(255,255,255,.08),0 0 var(--glow-strength-px) color-mix(in srgb,var(--glow-color) 35%,transparent)}[data-component="single-shade-control"] .panel{background:repeating-linear-gradient(to bottom,var(--shade-color) 0,var(--shade-color) 10px,color-mix(in srgb,var(--shade-color) 72%,#fff) 11px,color-mix(in srgb,var(--shade-color) 72%,#fff) 13px)}[data-component="single-shade-control"] .panel:after{background:var(--shade-color);box-shadow:0 0 var(--glow-strength-px) var(--glow-color)}[data-component="single-shade-control"] .name{color:var(--text-color)}[data-component="single-shade-control"] .position{color:var(--status-color)}',
+    },
+    "single-mic-control": {
+      props: [
+        "textColor|Name/value color|#ffffff", "cardColor|Card tint|#045548",
+        "selectedTextColor|Selected name/value color|#ffffff", "selectedCardColor|Selected card tint|#045548",
+        "gaugeColor|Gauge color|#04aa8e", "toggleOffColor|Toggle off color|#8a7c79",
+        "toggleOnColor|Toggle on color|#04aa8e", "glowColor|Glow color|#04dcb9", "selectedGlowColor|Selected glow color|#04dcb9",
+      ],
+      css: '[data-component="single-mic-control"]{color:var(--text-color)}[data-component="single-mic-control"] .mic-card{background:linear-gradient(145deg,rgba(255,255,255,.15),color-mix(in srgb,var(--card-color) 40%,transparent)),color-mix(in srgb,var(--card-color) 32%,transparent);box-shadow:inset 0 0 20px rgba(255,255,255,.08),0 0 var(--glow-strength-px) color-mix(in srgb,var(--glow-color) 35%,transparent)}[data-component="single-mic-control"].state-selected .mic-card{background:linear-gradient(145deg,rgba(255,255,255,.15),color-mix(in srgb,var(--selected-card-color) 40%,transparent)),color-mix(in srgb,var(--selected-card-color) 32%,transparent);box-shadow:inset 0 0 20px rgba(255,255,255,.08),0 0 var(--glow-strength-px) var(--selected-glow-color)}[data-component="single-mic-control"] .label,[data-component="single-mic-control"] .value{color:var(--text-color)}[data-component="single-mic-control"].state-selected .label{color:var(--selected-text-color)}[data-component="single-mic-control"] .toggle{background:var(--toggle-off-color)}[data-component="single-mic-control"] .toggle.selected{background:var(--toggle-on-color);border-color:var(--selected-glow-color);box-shadow:0 0 var(--glow-strength-px) var(--selected-glow-color)}',
     },
   };
   const componentSizes = {
@@ -390,6 +423,22 @@
       props: ["textSize|Slide-label size|28", "iconSize|Arrow size|34"],
       css: '[data-component="vertical-carousel"] .glass-label{font-size:var(--text-size-px)}[data-component="vertical-carousel"] .carousel-controls button{font-size:var(--icon-size-px)}',
     },
+    "single-light-control": {
+      props: ["textSize|Load-name size|18", "valueTextSize|Level-value size|26", "glowStrength|Glow strength|12"],
+      css: '[data-component="single-light-control"] .name{font-size:var(--text-size-px)}[data-component="single-light-control"] .level{font-size:var(--value-text-size-px)}',
+    },
+    "single-shade-control": {
+      props: ["textSize|Shade-name size|16", "valueTextSize|Position-value size|25", "glowStrength|Glow strength|12"],
+      css: '[data-component="single-shade-control"] .name{font-size:var(--text-size-px)}[data-component="single-shade-control"] .position{font-size:var(--value-text-size-px)}',
+    },
+    "single-mic-control": {
+      props: ["textSize|Microphone-label size|15", "valueTextSize|Level-value size|22", "iconSize|Gauge size|190", "glowStrength|Glow strength|12"],
+      css: '[data-component="single-mic-control"] .label{font-size:var(--text-size-px)}[data-component="single-mic-control"] .value{font-size:var(--value-text-size-px)}[data-component="single-mic-control"] .gauge{max-width:var(--icon-size-px)}',
+    },
+    "rolling-toggle-vertical": {
+      props: ["textSize|Label size|12"],
+      css: '[data-component="rolling-toggle-vertical"] .thumb{font-size:var(--text-size-px)}',
+    },
   };
   const repeatedItemSelectors = {
     "card-flip": ".card-wrap",
@@ -412,6 +461,9 @@
     "microphone-control": { showLabel: ".label", showPercentage: ".value", showToggle: ".toggle" },
     "rotary-knob": { showLabel: ".rotary-name", showPercentage: ".rotary-value" },
     "shade-control": { showLabel: ".name", showPercentage: ".position" },
+    "single-light-control": { showLabel: ".name", showPercentage: ".level" },
+    "single-shade-control": { showLabel: ".name", showPercentage: ".position" },
+    "single-mic-control": { showLabel: ".label", showPercentage: ".value", showToggle: ".toggle" },
     "wifi-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
   };
   function register(definition) {
@@ -640,6 +692,84 @@
       });
       if (sizes.css) definition.styles = (definition.styles || "") + sizes.css;
     }
+    const selectedPairs = {
+        selectedText: "text",
+        selectedTitle: "localTitle",
+        selectedArtist: "localArtist",
+        selectedLabel: "localLabel",
+        selectedIcon: "icon",
+        selectedContentMode: "contentMode",
+        selectedSymbol: "symbol",
+      },
+      stateLabelPairs = {
+        ...selectedPairs,
+        selectedTextColor: "textColor",
+        selectedFaceColor: "faceColor",
+        selectedBorderColor: "borderColor",
+        selectedGlowColor: "glowColor",
+        selectedSurfaceColor: "surfaceColor",
+        selectedShadowDarkColor: "shadowDarkColor",
+        selectedShadowLightColor: "shadowLightColor",
+        selectedAccentColor: "accentColor",
+        selectedTitleColor: "titleColor",
+        selectedArtistColor: "artistColor",
+        selectedLabelColor: "labelColor",
+        selectedCardColor: "cardColor",
+        selectedBackgroundColor: "backgroundColor",
+      },
+      hasSelectedState = definition.signals.some(
+        (signal) =>
+          signal.type === "digital" &&
+          signal.direction === "input" &&
+          /selected$/i.test(signal.key),
+      ) || definition.properties.some((property) => property.key === "selectedBase");
+    if (hasSelectedState) {
+      if (definition.properties.some((property) => property.key === "selectedColor"))
+        stateLabelPairs.selectedColor =
+          definition.properties.some((property) => property.key === "trackColor")
+            ? "trackColor"
+            : definition.properties.some((property) => property.key === "faceColor")
+              ? "faceColor"
+              : definition.properties.some((property) => property.key === "surfaceColor")
+                ? "surfaceColor"
+                : "textColor";
+      if (definition.properties.some((property) => property.key === "selectedIconColor"))
+        stateLabelPairs.selectedIconColor = "iconColor";
+      if (definition.properties.some((property) => property.key === "activeLabelColor"))
+        stateLabelPairs.activeLabelColor = "inactiveLabelColor";
+      const pairedProperties = definition.properties.filter(
+        (property) => selectedPairs[property.key],
+      );
+      if (!definition.properties.some((property) => property.key === "selectedSameAsStandard")) {
+        const insertion = pairedProperties.length
+          ? definition.properties.indexOf(pairedProperties[0])
+          : Math.min(1, definition.properties.length);
+        definition.properties.splice(insertion, 0, {
+          key: "selectedSameAsStandard",
+          name: "Selected state same as Standard state",
+          type: "checkbox",
+          defaultValue: true,
+          affectsProperties: true,
+        });
+      }
+      definition.properties.forEach((property) => {
+        const standardKey = stateLabelPairs[property.key];
+        if (standardKey) {
+          property.name = `Selected state — ${String(property.name || property.key).replace(/^(?:Selected|Active)\s*/i, "").replace(/^state\s*[—:-]?\s*/i, "")}`;
+          if (selectedPairs[property.key])
+            property.disabledWhen = { key: "selectedSameAsStandard", value: true };
+          else delete property.disabledWhen;
+          const standard = definition.properties.find((entry) => entry.key === standardKey);
+          if (standard)
+            standard.name = `Standard state — ${String(standard.name || standard.key).replace(/^(?:Default|Standard|Inactive)\s*/i, "").replace(/^state\s*[—:-]?\s*/i, "")}`;
+        }
+        if (/^Active\s/i.test(property.name || ""))
+          property.name = String(property.name).replace(/^Active\s*/i, "Selected state — ");
+        else if (/^Inactive\s/i.test(property.name || ""))
+          property.name = String(property.name).replace(/^Inactive\s*/i, "Standard state — ");
+      });
+      definition.selectedStatePairs = { ...selectedPairs };
+    }
     definition.properties.forEach((property) => {
       if (property.signalSetting && typeof property.defaultValue === "string")
         property.defaultValue = contractPattern(property.defaultValue);
@@ -673,6 +803,18 @@
   function mount(root, id, options = {}) {
     const definition = get(id);
     if (!definition) throw new Error("Unknown component: " + id);
+    options.properties = { ...(options.properties || {}) };
+    const sameAsStandard =
+      options.properties.selectedSameAsStandard == null ||
+      options.properties.selectedSameAsStandard === true ||
+      options.properties.selectedSameAsStandard === 1 ||
+      options.properties.selectedSameAsStandard === "1" ||
+      String(options.properties.selectedSameAsStandard).toLowerCase() === "true";
+    if (sameAsStandard && definition.selectedStatePairs)
+      Object.entries(definition.selectedStatePairs).forEach(([selectedKey, standardKey]) => {
+        if (Object.prototype.hasOwnProperty.call(options.properties, standardKey))
+          options.properties[selectedKey] = options.properties[standardKey];
+      });
     if (options.properties?.bindingMode === "contract")
       options.properties = Object.fromEntries(
         Object.entries(options.properties).map(([key, value]) => [
@@ -701,7 +843,16 @@
     function binding(key) {
       return bindings[key] && bindings[key].value ? bindings[key].value : "";
     }
-    const signals = {
+    const selectedSignalValues = new Map(),
+      updateSelectedAssetState = (key, value) => {
+        selectedSignalValues.set(key, value === true || value === 1 || value === "1");
+        const holder = root.closest(".widget,.scoped-widget");
+        if (holder)
+          holder.dataset.assetSelected = [...selectedSignalValues.values()].some(Boolean)
+            ? "true"
+            : "false";
+      },
+      signals = {
       publish(key, value) {
         const spec = definition.signals.find((s) => s.key === key),
           signal = contractAddress(
@@ -723,14 +874,9 @@
             contractPrefix,
           ),
           handler =
-            key === "selected"
+            spec?.type === "digital" && spec?.direction === "input" && /selected$/i.test(key)
               ? (value) => {
-                  const holder = root.closest(".widget,.scoped-widget");
-                  if (holder)
-                    holder.dataset.assetSelected =
-                      value === true || value === 1 || value === "1"
-                        ? "true"
-                        : "false";
+                  updateSelectedAssetState(key, value);
                   callback(value);
                 }
               : callback;

@@ -158,7 +158,7 @@ run("exported action runtime is valid JavaScript", () => {
       }],
     }),
     start = html.indexOf("<script>", html.indexOf("<body")) + 8,
-    end = html.lastIndexOf("</script>");
+    end = html.indexOf("</script>", start);
   assert.ok(html.includes("Room.Level"));
   assert.ok(
     html.includes('<style id="composer-component-styles">'),
@@ -187,12 +187,12 @@ run("exported action runtime is valid JavaScript", () => {
   assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
   assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
   assert.ok(
-    html.includes("factory(bundle.runsInContainerApp())"),
-    "Export must select the correct Web XPanel transport before CrComLib initializes",
+    html.includes("bundle.getWebXPanel(!inContainer)"),
+    "Export must select the correct Web XPanel transport for CH5 Desktop or Web XPanel",
   );
   assert.equal(
     (html.match(/<\/script>/g) || []).length,
-    3,
+    4,
     "Embedded custom-component scripts must not close the exported runtime script",
   );
   const resolverStart = html.indexOf("function standardAttribute"),

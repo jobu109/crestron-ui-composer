@@ -1445,9 +1445,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const graphicAsset = state.assets.find(
         (asset) => asset.id === item.graphicAsset && asset.type.startsWith("image/"),
       ),
+      selectedSameAsStandard =
+        item.properties?.selectedSameAsStandard == null ||
+        item.properties?.selectedSameAsStandard === true ||
+        item.properties?.selectedSameAsStandard === 1 ||
+        item.properties?.selectedSameAsStandard === "1" ||
+        String(item.properties?.selectedSameAsStandard).toLowerCase() === "true",
       selectedGraphicAsset = state.assets.find(
         (asset) =>
-          asset.id === item.selectedGraphicAsset && asset.type.startsWith("image/"),
+          asset.id === (selectedSameAsStandard ? item.graphicAsset : item.selectedGraphicAsset) &&
+          asset.type.startsWith("image/"),
       ),
       graphicMode = item.graphicAssetMode || "none",
       definition = item.componentId
@@ -3017,6 +3024,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
     let propertyGroup = "", propertyHost = host;
     properties.forEach((property) => {
+      if (property.disabledWhen) {
+        const actual = item.properties?.[property.disabledWhen.key] ??
+          properties.find((entry) => entry.key === property.disabledWhen.key)?.defaultValue;
+        const expected = property.disabledWhen.value;
+        if (
+          (expected === true && (actual === true || actual === 1 || actual === "1" || String(actual).toLowerCase() === "true")) ||
+          actual === expected
+        ) return;
+      }
       if (property.group && property.group !== propertyGroup) {
         const details = document.createElement("details"),
           heading = document.createElement("summary"),
@@ -3267,8 +3283,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       select.appendChild(option);
       selectedSelect.appendChild(option.cloneNode(true));
     });
+    const selectedSameAsStandard =
+      item.properties?.selectedSameAsStandard == null ||
+      item.properties?.selectedSameAsStandard === true ||
+      item.properties?.selectedSameAsStandard === 1 ||
+      item.properties?.selectedSameAsStandard === "1" ||
+      String(item.properties?.selectedSameAsStandard).toLowerCase() === "true";
     select.value = item.graphicAsset || "";
-    selectedSelect.value = item.selectedGraphicAsset || "";
+    selectedSelect.value = selectedSameAsStandard
+      ? item.graphicAsset || ""
+      : item.selectedGraphicAsset || "";
+    selectedSelect.disabled = selectedSameAsStandard;
     $("prop-asset-mode").value = item.graphicAssetMode || "none";
     const definition = item.componentId
       ? window.ComposerRuntime.get(item.componentId)

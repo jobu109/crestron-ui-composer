@@ -7,13 +7,21 @@
     defaultSize: { width: 220, height: 260 },
     properties: [
       { key: "text", name: "Default name", type: "text", defaultValue: "POWER" },
+      { key: "offText", name: "Off name", type: "text", defaultValue: "" },
+      { key: "onText", name: "On name", type: "text", defaultValue: "" },
       { key: "faceColor", name: "Rocker face color", type: "color", defaultValue: "#25292a" },
+      { key: "offFaceColor", name: "Off rocker face color", type: "color", defaultValue: "#25292a" },
+      { key: "onFaceColor", name: "On rocker face color", type: "color", defaultValue: "#25292a" },
       { key: "rimColor", name: "Outer rim color", type: "color", defaultValue: "#101313" },
       { key: "borderColor", name: "Border color", type: "color", defaultValue: "#454c4c" },
       { key: "onLedColor", name: "On LED color", type: "color", defaultValue: "#00e65c" },
       { key: "offLedColor", name: "Off LED color", type: "color", defaultValue: "#e32636" },
       { key: "textColor", name: "Name color", type: "color", defaultValue: "#ffffff" },
+      { key: "offTextColor", name: "Off name color", type: "color", defaultValue: "#ffffff" },
+      { key: "onTextColor", name: "On name color", type: "color", defaultValue: "#ffffff" },
       { key: "glowColor", name: "Rocker glow color", type: "color", defaultValue: "#04aa8e" },
+      { key: "offGlowColor", name: "Off rocker glow color", type: "color", defaultValue: "#04aa8e" },
+      { key: "onGlowColor", name: "On rocker glow color", type: "color", defaultValue: "#04aa8e" },
       { key: "textSize", name: "Name size", type: "number", min: 8, max: 72, step: 1, defaultValue: 20 },
       { key: "ledSize", name: "LED size", type: "number", min: 6, max: 42, step: 1, defaultValue: 20 },
       { key: "glowStrength", name: "Glow strength", type: "number", min: 0, max: 40, step: 1, defaultValue: 12 },
@@ -37,7 +45,8 @@
         properties = context.options.properties || {},
         defaultName = properties.text || "POWER";
       let state = false,
-        pressedKey = "";
+        pressedKey = "",
+        remoteName = "";
       label.textContent = defaultName;
       label.hidden =
         properties.showLabel === false ||
@@ -46,6 +55,10 @@
         state = !!next;
         button.classList.toggle("on", state);
         button.setAttribute("aria-pressed", state ? "true" : "false");
+        root.style.setProperty("--face-color", state ? properties.onFaceColor || properties.faceColor || "#25292a" : properties.offFaceColor || properties.faceColor || "#25292a");
+        root.style.setProperty("--text-color", state ? properties.onTextColor || properties.textColor || "#ffffff" : properties.offTextColor || properties.textColor || "#ffffff");
+        root.style.setProperty("--glow-color", state ? properties.onGlowColor || properties.glowColor || "#04aa8e" : properties.offGlowColor || properties.glowColor || "#04aa8e");
+        label.textContent = remoteName || (state ? properties.onText : properties.offText) || defaultName;
       }
       function release() {
         button.classList.remove("pressed");
@@ -72,7 +85,8 @@
         if (high(value)) display(false);
       });
       context.signals.subscribe("name", (value) => {
-        label.textContent = value == null || value === "" ? defaultName : String(value);
+        remoteName = value == null || value === "" ? "" : String(value);
+        display(state);
       });
       display(false);
       return () => {

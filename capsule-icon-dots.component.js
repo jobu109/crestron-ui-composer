@@ -8,11 +8,16 @@
     defaultSize: { width: 130, height: 220 },
     properties: [
       { key: "localLabel", name: "Default label", type: "text", defaultValue: "" },
+      { key: "selectedLabel", name: "Selected label", type: "text", defaultValue: "" },
       { key: "icon", name: "Icon", type: "select", options: [
         { value: "sun", label: "Sun" }, { value: "moon", label: "Moon" },
         { value: "power", label: "Power" }, { value: "bell", label: "Bell" },
         { value: "none", label: "None" }
       ], defaultValue: "sun" },
+      { key: "selectedIcon", name: "Selected icon", type: "select", options: [
+        { value: "", label: "Match standard" }, { value: "sun", label: "Sun" }, { value: "moon", label: "Moon" },
+        { value: "power", label: "Power" }, { value: "bell", label: "Bell" }, { value: "none", label: "None" }
+      ], defaultValue: "" },
       { key: "showIcon", name: "Show icon", type: "checkbox", defaultValue: true },
       { key: "showLabel", name: "Show label", type: "checkbox", defaultValue: true },
       { key: "showDots", name: "Show dots", type: "checkbox", defaultValue: true },
@@ -22,10 +27,13 @@
       { key: "labelSize", name: "Label size", type: "number", min: 8, max: 32, step: 1, defaultValue: 13 },
       { key: "iconSize", name: "Icon button size", type: "number", min: 30, max: 120, step: 1, defaultValue: 56 },
       { key: "surfaceColor", name: "Surface color", type: "color", defaultValue: "#2c3038" },
+      { key: "selectedSurfaceColor", name: "Selected surface color", type: "color", defaultValue: "#2c3038" },
       { key: "shadowColor", name: "Dark shadow", type: "color", defaultValue: "#1a1c21" },
       { key: "highlightColor", name: "Light shadow", type: "color", defaultValue: "#3e444f" },
       { key: "accentColor", name: "Accent / glow color", type: "color", defaultValue: "#4fc7ff" },
+      { key: "selectedAccentColor", name: "Selected accent / glow color", type: "color", defaultValue: "#4fc7ff" },
       { key: "labelColor", name: "Label color", type: "color", defaultValue: "#aab2bd" },
+      { key: "selectedLabelColor", name: "Selected label color", type: "color", defaultValue: "#aab2bd" },
       { key: "cornerRadius", name: "Corner radius", type: "number", min: 0, max: 70, step: 1, defaultValue: 52 },
       { key: "shadowSize", name: "Shadow size", type: "number", min: 0, max: 24, step: 1, defaultValue: 8 },
       { key: "glowStrength", name: "Glow strength", type: "number", min: 0, max: 30, step: 1, defaultValue: 8 }
@@ -40,11 +48,11 @@
     mount(root, context) {
       const p = context.options.properties || {}, button = root.querySelector(".cid-icon-btn"), icon = root.querySelector(".cid-icon"), label = root.querySelector(".cid-label"), dotsHost = root.querySelector(".cid-dots"), truthy = (value, fallback) => value == null ? fallback : value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true", paths = { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>', moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>', power: '<path d="M12 2v9"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/>', bell: '<path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/>', none: "" };
       root.style.setProperty("--surface", p.surfaceColor || "#2c3038"); root.style.setProperty("--shadow", p.shadowColor || "#1a1c21"); root.style.setProperty("--highlight", p.highlightColor || "#3e444f"); root.style.setProperty("--accent", p.accentColor || "#4fc7ff"); root.style.setProperty("--label", p.labelColor || "#aab2bd"); root.style.setProperty("--corner", `${Number(p.cornerRadius ?? 52)}px`); root.style.setProperty("--shadow-size", `${Number(p.shadowSize ?? 8)}px`); root.style.setProperty("--glow", `${Number(p.glowStrength ?? 8)}px`); root.style.setProperty("--icon-btn-size", `${Number(p.iconSize ?? 56)}px`); root.style.setProperty("--label-size", `${Number(p.labelSize ?? 13)}px`); root.style.setProperty("--dot-size", `${Number(p.dotSize ?? 7)}px`); root.style.setProperty("--dot-gap", `${Number(p.dotGap ?? 12)}px`);
-      icon.innerHTML = paths[p.icon || "sun"] || ""; button.style.display = truthy(p.showIcon, true) && p.icon !== "none" ? "" : "none"; label.textContent = String(p.localLabel ?? ""); label.style.display = truthy(p.showLabel, true) ? "" : "none"; dotsHost.style.display = truthy(p.showDots, true) ? "" : "none";
+      let selected=false,remoteLabel="";function renderState(){const iconKey=selected?(p.selectedIcon||p.icon||"sun"):(p.icon||"sun");icon.innerHTML=paths[iconKey]||"";button.style.display=truthy(p.showIcon,true)&&iconKey!=="none"?"":"none";label.textContent=remoteLabel||(selected&&p.selectedLabel?p.selectedLabel:String(p.localLabel??""));root.style.setProperty("--surface",selected?(p.selectedSurfaceColor||p.surfaceColor||"#2c3038"):(p.surfaceColor||"#2c3038"));root.style.setProperty("--accent",selected?(p.selectedAccentColor||p.accentColor||"#4fc7ff"):(p.accentColor||"#4fc7ff"));root.style.setProperty("--label",selected?(p.selectedLabelColor||p.labelColor||"#aab2bd"):(p.labelColor||"#aab2bd"))}renderState(); label.style.display = truthy(p.showLabel, true) ? "" : "none"; dotsHost.style.display = truthy(p.showDots, true) ? "" : "none";
       const dots = []; String(p.dotLayout ?? "2|3|3").split("|").map(value => Math.max(0, Math.min(12, parseInt(value, 10) || 0))).forEach(count => { const row = document.createElement("div"); row.className = "cid-dot-row"; for (let index = 0; index < count; index++) { const dot = document.createElement("i"); dot.className = "cid-dot"; row.appendChild(dot); dots.push(dot); } dotsHost.appendChild(row); });
       function setLit(on) { dots.forEach(dot => dot.classList.toggle("lit", on)); }
       const down = event => { button.classList.add("pressed"); context.signals.publish("press", true); event.preventDefault(); }, up = () => { button.classList.remove("pressed"); context.signals.publish("press", false); }; button.addEventListener("pointerdown", down); button.addEventListener("pointerup", up); button.addEventListener("pointerleave", up); button.addEventListener("pointercancel", up);
-      context.signals.subscribe("selected", value => { const selected = truthy(value, false); button.classList.toggle("active", selected); if (!selected) button.classList.remove("pressed"); setLit(selected); }); context.signals.subscribe("label", value => { if (value != null) label.textContent = String(value); });
+      context.signals.subscribe("selected", value => { selected = truthy(value, false); button.classList.toggle("active", selected); if (!selected) button.classList.remove("pressed"); setLit(selected);renderState(); }); context.signals.subscribe("label", value => {remoteLabel=value==null?"":String(value);renderState(); });
       return () => { button.removeEventListener("pointerdown", down); button.removeEventListener("pointerup", up); button.removeEventListener("pointerleave", up); button.removeEventListener("pointercancel", up); };
     }
   });

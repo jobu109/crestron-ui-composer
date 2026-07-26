@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.0.5</Version>
-    <FileVersion>1.0.5.0</FileVersion>
-    <AssemblyVersion>1.0.5.0</AssemblyVersion>
+    <Version>1.0.6</Version>
+    <FileVersion>1.0.6.0</FileVersion>
+    <AssemblyVersion>1.0.6.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -46,6 +46,7 @@
     <Content Include="..\music-card.component.js" Link="Web\music-card.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\capsule-icon-dots.component.js" Link="Web\capsule-icon-dots.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\text-block.component.js" Link="Web\text-block.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\text-scramble.component.js" Link="Web\text-scramble.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\lighting-control.component.js" Link="Web\lighting-control.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\microphone-control.component.js" Link="Web\microphone-control.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\shade-control.component.js" Link="Web\shade-control.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

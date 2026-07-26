@@ -91,6 +91,9 @@
         step: 1,
         defaultValue: 58,
       },
+      { key: "controlSize", name: "Navigation button size", type: "number", min: 36, max: 120, step: 1, defaultValue: 72 },
+      { key: "controlIconSize", name: "Navigation icon size (%)", type: "number", min: 20, max: 80, step: 1, defaultValue: 42 },
+      { key: "controlGlowStrength", name: "Navigation glow strength", type: "number", min: 0, max: 24, step: 1, defaultValue: 3 },
     ],
     signals: [
       {
@@ -208,6 +211,14 @@
         video = root.querySelector("ch5-video"),
         ptz = root.querySelector(".ptz"),
         p = context.options.properties || {};
+      ptz.querySelectorAll("button").forEach((button) => {
+        button.style.width = `${Number(p.controlSize ?? 72)}px`;
+        button.style.height = `${Number(p.controlSize ?? 72)}px`;
+        const icon = button.querySelector("span");
+        icon.style.width = `${Number(p.controlIconSize ?? 42)}%`;
+        icon.style.height = `${Number(p.controlIconSize ?? 42)}%`;
+        icon.style.filter = `drop-shadow(0 0 ${Number(p.controlGlowStrength ?? 3)}px ${p.controlGlowColor || "#04aa8e"})`;
+      });
       const bool = (value) =>
         value === true ||
         value === 1 ||

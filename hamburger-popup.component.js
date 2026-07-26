@@ -142,11 +142,27 @@
         type: "number",
         defaultValue: 1,
       },
+      {
+        key: "submenuDirection",
+        name: "Submenu direction",
+        type: "select",
+        options: [
+          { value: "above", label: "Above" },
+          { value: "above-right", label: "Above right" },
+          { value: "right", label: "Right" },
+          { value: "below-right", label: "Below right" },
+          { value: "below", label: "Below" },
+          { value: "below-left", label: "Below left" },
+          { value: "left", label: "Left" },
+          { value: "above-left", label: "Above left" },
+        ],
+        defaultValue: "above-left",
+      },
     ],
     template:
       '<div class="hp-root"><div class="hp-container"><div class="hp-list"></div><div class="hp-scroll-track"><div class="hp-scroll-thumb"></div></div><button class="hp-toggle" type="button" aria-label="Menu"><i></i><i></i><i></i></button></div></div>',
     styles:
-      '[data-component="hamburger-popup"],[data-component="hamburger-popup"] *{box-sizing:border-box}[data-component="hamburger-popup"]{display:block;width:100%;height:100%;font-family:"Segoe UI",sans-serif}[data-component="hamburger-popup"] .hp-root{width:100%;height:100%;padding:4%;overflow:hidden}[data-component="hamburger-popup"] .hp-container{position:relative;width:100%;height:100%;min-width:170px;min-height:120px;overflow:hidden}[data-component="hamburger-popup"] .hp-toggle{position:absolute;right:0;bottom:0;width:calc(clamp(44px,16vmin,70px) * var(--button-size));height:calc(clamp(44px,16vmin,70px) * var(--button-size));border:0;border-radius:50%;padding:0;cursor:pointer;display:flex;flex-direction:column;gap:16%;align-items:center;justify-content:center;color:var(--text-color);background:var(--accent-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent-color) 25%,transparent),0 0 18px color-mix(in srgb,var(--glow-color) 45%,transparent);z-index:2}.hp-toggle i{display:block;width:42%;height:2px;background:currentColor;border-radius:2px}.hp-container.open .hp-toggle{filter:brightness(1.12);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent-color) 18%,transparent),0 0 22px color-mix(in srgb,var(--glow-color) 72%,transparent)}.hp-toggle:active{transform:scale(.94)}[data-component="hamburger-popup"] .hp-list{position:absolute;left:0;right:clamp(58px,20vmin,86px);bottom:0;max-height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:clamp(7px,2.5vmin,12px);margin:0;padding:clamp(10px,4vmin,18px);border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.24),rgba(52,68,68,.24) 42%,color-mix(in srgb,var(--accent-color) 16%,transparent));border:1px solid rgba(255,255,255,.36);box-shadow:inset 0 1px rgba(255,255,255,.42),inset 0 -20px 34px color-mix(in srgb,var(--accent-color) 10%,transparent),0 0 14px color-mix(in srgb,var(--glow-color) 42%,transparent),0 8px 18px rgba(0,0,0,.28);opacity:0;transform:translateX(16px) scale(.92);transform-origin:right bottom;pointer-events:none;transition:opacity .22s,transform .28s}.hp-container.open .hp-list{opacity:1;transform:none;pointer-events:auto}.hp-list::-webkit-scrollbar{display:none}.hp-item{display:flex;align-items:center;gap:9px;width:100%;min-height:clamp(42px,16vmin,62px);border:0;border-radius:10px;background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(50,60,60,.28) 46%,color-mix(in srgb,var(--accent-color) 14%,transparent));color:var(--text-color);padding:10px 12px;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.3),inset 0 -12px 22px rgba(0,0,0,.16),0 0 8px color-mix(in srgb,var(--glow-color) 26%,transparent);font-family:inherit;text-align:left}.hp-item.pressed{transform:scale(.97);box-shadow:inset 0 0 18px color-mix(in srgb,var(--accent-color) 28%,transparent),0 0 18px color-mix(in srgb,var(--glow-color) 58%,transparent)}.hp-item.selected{background:linear-gradient(145deg,color-mix(in srgb,var(--accent-color) 82%,transparent),color-mix(in srgb,var(--accent-color) 90%,#043f36));box-shadow:inset 0 0 14px rgba(255,255,255,.22),0 0 18px color-mix(in srgb,var(--glow-color) 68%,transparent)}.hp-icon{width:clamp(16px,6vmin,24px);height:clamp(16px,6vmin,24px);flex:none}.hp-label{min-width:0;flex:1;font-size:calc(clamp(14px,6vmin,22px) * var(--item-text-size));font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '[data-component="hamburger-popup"],[data-component="hamburger-popup"] *{box-sizing:border-box}[data-component="hamburger-popup"]{display:block;width:100%;height:100%;font-family:"Segoe UI",sans-serif}[data-component="hamburger-popup"] .hp-root{width:100%;height:100%;padding:clamp(22px,8%,34px);overflow:hidden}[data-component="hamburger-popup"] .hp-container{position:relative;width:100%;height:100%;min-width:120px;min-height:90px;overflow:visible}[data-component="hamburger-popup"] .hp-toggle{position:absolute;width:calc(clamp(44px,16vmin,70px) * var(--button-size));height:calc(clamp(44px,16vmin,70px) * var(--button-size));border:0;border-radius:50%;padding:0;cursor:pointer;display:flex;flex-direction:column;gap:16%;align-items:center;justify-content:center;color:var(--text-color);background:var(--accent-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent-color) 25%,transparent),0 0 18px color-mix(in srgb,var(--glow-color) 45%,transparent);z-index:2}.hp-toggle i{display:block;width:42%;height:2px;background:currentColor;border-radius:2px}.hp-container.open .hp-toggle{filter:brightness(1.12);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent-color) 18%,transparent),0 0 22px color-mix(in srgb,var(--glow-color) 72%,transparent)}.hp-toggle:active{filter:brightness(1.18)}[data-component="hamburger-popup"] .hp-list{position:absolute;max-height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:clamp(7px,2.5vmin,12px);margin:0;padding:clamp(10px,4vmin,18px);border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.24),rgba(52,68,68,.24) 42%,color-mix(in srgb,var(--accent-color) 16%,transparent));border:1px solid rgba(255,255,255,.36);box-shadow:inset 0 1px rgba(255,255,255,.42),inset 0 -20px 34px color-mix(in srgb,var(--accent-color) 10%,transparent),0 0 14px color-mix(in srgb,var(--glow-color) 42%,transparent),0 8px 18px rgba(0,0,0,.28);opacity:0;transform:var(--hp-closed-transform,translateX(16px) scale(.92));transform-origin:var(--hp-transform-origin,right bottom);pointer-events:none;transition:opacity .22s,transform .28s}.hp-container.open .hp-list{opacity:1;transform:none;pointer-events:auto}.hp-list::-webkit-scrollbar{display:none}.hp-item{display:flex;align-items:center;gap:9px;width:100%;min-height:clamp(42px,16vmin,62px);border:0;border-radius:10px;background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(50,60,60,.28) 46%,color-mix(in srgb,var(--accent-color) 14%,transparent));color:var(--text-color);padding:10px 12px;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.3),inset 0 -12px 22px rgba(0,0,0,.16),0 0 8px color-mix(in srgb,var(--glow-color) 26%,transparent);font-family:inherit;text-align:left}.hp-item.pressed{transform:scale(.97);box-shadow:inset 0 0 18px color-mix(in srgb,var(--accent-color) 28%,transparent),0 0 18px color-mix(in srgb,var(--glow-color) 58%,transparent)}.hp-item.selected{background:linear-gradient(145deg,color-mix(in srgb,var(--accent-color) 82%,transparent),color-mix(in srgb,var(--accent-color) 90%,#043f36));box-shadow:inset 0 0 14px rgba(255,255,255,.22),0 0 18px color-mix(in srgb,var(--glow-color) 68%,transparent)}.hp-icon{width:clamp(16px,6vmin,24px);height:clamp(16px,6vmin,24px);flex:none}.hp-label{min-width:0;flex:1;font-size:calc(clamp(14px,6vmin,22px) * var(--item-text-size));font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     mount(root, context) {
       const high = (value) =>
         value === true || value === 1 || value === "1" || value === "true";
@@ -159,6 +175,55 @@
         local = String(p.menuLabels || labels).split("|"),
         max = 12;
       let count = Math.max(1, Math.min(max, Number(p.defaultCount) || 5));
+      function applyDirection() {
+        const direction = p.submenuDirection || "above-left",
+          space = "calc(clamp(44px,16vmin,70px) * var(--button-size) + 12px)",
+          halfButton = "calc(50% - (clamp(44px,16vmin,70px) * var(--button-size) / 2))";
+        [toggle, list].forEach((element) => {
+          ["left", "right", "top", "bottom"].forEach((side) => (element.style[side] = ""));
+        });
+        if (direction.startsWith("above")) {
+          toggle.style.bottom = "0";
+          list.style.top = "0";
+          list.style.bottom = space;
+        } else if (direction.startsWith("below")) {
+          toggle.style.top = "0";
+          list.style.top = space;
+          list.style.bottom = "0";
+        } else {
+          toggle.style.top = halfButton;
+          list.style.top = "0";
+          list.style.bottom = "0";
+        }
+        if (direction.endsWith("right") || direction === "right") {
+          toggle.style.left = "0";
+          if (direction === "right") list.style.left = space;
+          else list.style.left = "0";
+          list.style.right = "0";
+        } else if (direction.endsWith("left") || direction === "left") {
+          toggle.style.right = "0";
+          list.style.left = "0";
+          if (direction === "left") list.style.right = space;
+          else list.style.right = "0";
+        } else {
+          toggle.style.left = halfButton;
+          list.style.left = "0";
+          list.style.right = "0";
+        }
+        const transforms = {
+          above: ["translateY(16px) scale(.92)", "center bottom"],
+          "above-right": ["translate(-12px,16px) scale(.92)", "left bottom"],
+          right: ["translateX(-16px) scale(.92)", "left center"],
+          "below-right": ["translate(-12px,-16px) scale(.92)", "left top"],
+          below: ["translateY(-16px) scale(.92)", "center top"],
+          "below-left": ["translate(12px,-16px) scale(.92)", "right top"],
+          left: ["translateX(16px) scale(.92)", "right center"],
+          "above-left": ["translate(12px,16px) scale(.92)", "right bottom"],
+        };
+        root.style.setProperty("--hp-closed-transform", transforms[direction][0]);
+        root.style.setProperty("--hp-transform-origin", transforms[direction][1]);
+      }
+      applyDirection();
       Object.assign(scrollTrack.style, {
         position: "absolute",
         width: "8px",
