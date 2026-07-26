@@ -1060,6 +1060,70 @@ dialog {
   user-select: none;
   touch-action: none;
 }
+
+.inspector .section-help-button {
+  display: block;
+  justify-self: end;
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #557271;
+  border-radius: 50%;
+  background: #253436;
+  color: #bffaf1;
+  font-weight: 800;
+  line-height: 26px;
+}
+
+.inspector .section-help-button:hover,
+.inspector .section-help-button:focus-visible {
+  border-color: #04dcb9;
+  box-shadow: 0 0 9px #04dcb966;
+  outline: none;
+}
+
+.feature-help-dialog {
+  width: min(760px, 90vw);
+  height: min(720px, 90vh);
+}
+
+.feature-help-dialog h2 {
+  margin-right: 44px;
+}
+
+.feature-help-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 14px 18px 2px;
+  overflow: auto;
+  color: #d7e8e6;
+  line-height: 1.5;
+}
+
+.feature-help-content h3 {
+  margin: 20px 0 6px;
+  color: #fff;
+}
+
+.feature-help-content p,
+.feature-help-content ul,
+.feature-help-content dl {
+  margin: 8px 0;
+}
+
+.feature-help-content dt {
+  margin-top: 10px;
+  color: #9ff3e5;
+  font-weight: 700;
+}
+
+.feature-help-content dd {
+  margin: 2px 0 0 18px;
+}
 dialog form {
   height: 100%;
   display: flex;

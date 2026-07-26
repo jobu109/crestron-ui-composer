@@ -402,6 +402,7 @@
           <label>Z-index<input id="prop-z" type="number" min="1" /></label>
           <section class="signal-section">
             <h2>Responsive layout</h2>
+            <button id="responsive-help-open" class="section-help-button" type="button" title="Responsive layout help" aria-label="Responsive layout help">?</button>
             <div class="grid2">
               <label>Horizontal anchor<select id="layout-anchor-x"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="stretch">Stretch</option></select></label>
               <label>Vertical anchor<select id="layout-anchor-y"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option><option value="stretch">Stretch</option></select></label>
@@ -440,6 +441,7 @@
           </section>
           <section class="signal-section interaction-section">
             <h2>Interaction & animation</h2>
+            <button class="section-help-button timeline-action-help-open" type="button" title="Timeline and action editor help" aria-label="Timeline and action editor help">?</button>
             <label
               >Trigger<select id="interaction-trigger">
                 <option value="none">None</option>
@@ -1089,6 +1091,7 @@ Preview signal activity appears here.</pre
             <p id="timeline-widget-name" class="hint"></p>
           </div>
           <div class="timeline-toolbar">
+            <button class="timeline-action-help-open" type="button">Help</button>
             <button id="timeline-add" type="button">+ Add track</button>
             <button id="timeline-play" type="button" class="primary">
               Play all
@@ -1111,9 +1114,10 @@ Preview signal activity appears here.</pre
             <h2>Event actions</h2>
             <p id="action-widget-name" class="hint"></p>
           </div>
-          <button id="action-add" type="button" class="primary">
-            + Add action
-          </button>
+          <div class="timeline-toolbar">
+            <button class="timeline-action-help-open" type="button">Help</button>
+            <button id="action-add" type="button" class="primary">+ Add action</button>
+          </div>
         </div>
         <p class="hint">
           Actions run top-to-bottom. “After previous” waits for the preceding
@@ -1140,6 +1144,65 @@ Preview signal activity appears here.</pre
           <button id="action-preview" type="button">Preview event</button>
           <button value="default">Done</button>
         </div>
+      </form>
+    </dialog>
+    <dialog id="feature-help-dialog" class="feature-help-dialog">
+      <form method="dialog">
+        <h2 id="feature-help-title">Help</h2>
+        <div id="responsive-help-content" class="feature-help-content" hidden>
+          <p>Responsive Layout controls how each widget changes position and size when the project is built for panels with different viewport dimensions. The saved widget coordinates remain the base design; responsive settings describe how those coordinates adapt for each target panel.</p>
+          <h3>Start with a base panel</h3>
+          <p>Choose the panel you want to design around—typically a TSW-1070 with its effective CH5 viewport of 1280 × 800. Place and resize widgets normally on this base layout, then choose how each widget behaves on wider or taller targets.</p>
+          <h3>Responsive modes</h3>
+          <dl>
+            <dt>Fixed</dt><dd>Keeps the widget’s original size. Use it for logos, small indicators, and controls that must remain an exact size.</dd>
+            <dt>Anchors</dt><dd>Preserve the distance to the selected panel edge. Left/Top, Right/Top, Left/Bottom, and Right/Bottom anchors keep controls attached to the corresponding corner.</dd>
+            <dt>Center</dt><dd>Keeps the widget centered on the selected axis. This is useful for dialogs, loading indicators, central controls, and page titles.</dd>
+            <dt>Stretch</dt><dd>Anchoring to both opposing edges changes the widget size with the panel. Left + Right stretches its width; Top + Bottom stretches its height.</dd>
+            <dt>Proportional</dt><dd>Scales the widget’s position and dimensions according to the base and target viewport ratios. Use carefully because controls and text can become unnecessarily large.</dd>
+          </dl>
+          <h3>Recommended pattern</h3>
+          <ul>
+            <li>Anchor navigation to the left.</li>
+            <li>Stretch headers and footers between the left and right edges.</li>
+            <li>Anchor status information to the upper-right.</li>
+            <li>Center dialogs and loading indicators.</li>
+            <li>Stretch lists, camera feeds, and large content containers.</li>
+            <li>Keep frequently touched buttons at a consistent physical size.</li>
+          </ul>
+          <h3>Testing and panel overrides</h3>
+          <p>Switch Target panel, use Fit panel, and inspect every intended target. Preview confirms the exported result. Save a panel-specific layout when anchors cannot adapt a design cleanly—for example, when navigation orientation, column count, spacing, or dialog size must differ on one panel.</p>
+        </div>
+        <div id="timeline-action-help-content" class="feature-help-content" hidden>
+          <h3>Timeline Editor</h3>
+          <p>The Timeline Editor controls how a widget visually animates. You can add multiple animation tracks to the same widget and configure:</p>
+          <ul>
+            <li>Trigger: press, release, page entry, or delayed start</li>
+            <li>Animation: fade, slide, scale, glow, press state, or shake</li>
+            <li>Start delay and duration</li>
+            <li>Direction for slide animations</li>
+            <li>Easing, which controls how the animation accelerates</li>
+            <li>Multiple overlapping or sequential animation tracks</li>
+          </ul>
+          <p><strong>Example:</strong> when a page opens, a button can slide in from the left while simultaneously fading and glowing.</p>
+          <h3>Action Editor</h3>
+          <p>The Action Editor controls what the project does when an event occurs. It is for behavior and logic rather than appearance. Actions can be triggered by press, release, hold, page entry, timer, or digital, analog, and serial signal changes.</p>
+          <p>An action can:</p>
+          <ul>
+            <li>Navigate to another page</li>
+            <li>Show or hide a widget</li>
+            <li>Enable, disable, or select a widget</li>
+            <li>Change displayed text or a property</li>
+            <li>Start another widget’s animation</li>
+            <li>Publish a digital, analog, or serial signal</li>
+            <li>Run immediately, after a delay, or sequentially after earlier actions</li>
+            <li>Run conditionally based on a signal’s value</li>
+          </ul>
+          <p><strong>Example:</strong> pressing a Shutdown button could publish a digital signal, disable other controls, show a “Shutting Down…” message, animate a progress widget, and navigate to a standby page after five seconds.</p>
+          <p><strong>In short:</strong><br><strong>Timeline Editor:</strong> how a widget moves or visually changes.<br><strong>Action Editor:</strong> what happens when an event occurs.</p>
+          <p>Both are saved in the project and included in Preview, exported HTML, and CH5Z builds.</p>
+        </div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
     <dialog id="health-dialog" class="health-dialog">

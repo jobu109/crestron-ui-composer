@@ -853,7 +853,7 @@
   function dpadDefinition(id, name, circular) {
     const ns = name.replace(/[^A-Za-z0-9_]/g, ""),
       circularMarkup =
-        '<div class="nd circular"><svg class="nd-ring" viewBox="0 0 220 220" aria-label="Circular directional pad"><g class="nd-sector" data-index="0"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g><g class="nd-sector" data-index="2" transform="rotate(90 110 110)"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g><g class="nd-sector" data-index="3" transform="rotate(180 110 110)"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g><g class="nd-sector" data-index="1" transform="rotate(270 110 110)"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g></svg><button class="nd-button nd-center" data-index="4" type="button">⏻</button></div>';
+        '<div class="nd circular"><svg class="nd-ring" viewBox="0 0 220 220" aria-label="Circular directional pad"><g class="nd-sector" data-index="0"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g><g class="nd-sector" data-index="3" transform="rotate(90 110 110)"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g><g class="nd-sector" data-index="1" transform="rotate(180 110 110)"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g><g class="nd-sector" data-index="2" transform="rotate(270 110 110)"><path d="M49 51 A86 86 0 0 1 171 51 L143 82 A45 45 0 0 0 77 82 Z"/><text x="110" y="49">⌃</text></g></svg><button class="nd-button nd-center" data-index="4" type="button">⏻</button></div>';
     return {
       id,
       name,
@@ -863,6 +863,14 @@
       properties: [
         mode,
         {
+          key: "buttonLabels",
+          name: "Local button labels",
+          type: "text-list",
+          countKey: "buttonCount",
+          itemName: "Direction",
+          defaultValue: "Up|Down|Left|Right|Home",
+        },
+        {
           key: "buttonCount",
           name: "Directional buttons",
           type: "number",
@@ -870,6 +878,17 @@
           max: 5,
           defaultValue: 5,
           signalSetting: true,
+        },
+        {
+          key: "directionDisplay",
+          name: "Directional button display",
+          type: "select",
+          options: [
+            { value: "icon", label: "Icon" },
+            { value: "text", label: "Text / serial Name" },
+            { value: "blank", label: "Blank" },
+          ],
+          defaultValue: "icon",
         },
         {
           key: "centerDisplay",
@@ -904,7 +923,15 @@
         },
         {
           key: "iconSize",
-          name: "Icon / text size",
+          name: "Icon size",
+          type: "number",
+          min: 8,
+          max: 64,
+          defaultValue: 26,
+        },
+        {
+          key: "textSize",
+          name: "Text size",
           type: "number",
           min: 8,
           max: 64,
@@ -924,6 +951,20 @@
           defaultValue: `${ns}.Items.{index}.Selected`,
           signalSetting: true,
         },
+        {
+          key: "labelBase",
+          name: "Name pattern",
+          type: "text",
+          defaultValue: `${ns}.Items.{index}.Name`,
+          signalSetting: true,
+        },
+        {
+          key: "signalIncrement",
+          name: "Join increment",
+          type: "number",
+          defaultValue: 1,
+          signalSetting: true,
+        },
         ...colors,
       ],
       signals: [],
@@ -934,6 +975,7 @@
           type: "digital",
           direction: "input",
         },
+        { name: "Directional names", type: "serial", direction: "input" },
       ],
       rangeBindings: [
         {
@@ -942,6 +984,15 @@
           direction: "output",
           baseKey: "pressBase",
           countKey: "buttonCount",
+          incrementKey: "signalIncrement",
+        },
+        {
+          name: "Name range",
+          type: "serial",
+          direction: "input",
+          baseKey: "labelBase",
+          countKey: "buttonCount",
+          incrementKey: "signalIncrement",
         },
         {
           name: "Selected range",
@@ -949,6 +1000,7 @@
           direction: "input",
           baseKey: "selectedBase",
           countKey: "buttonCount",
+          incrementKey: "signalIncrement",
         },
       ],
       template: circular ? circularMarkup : '<div class="nd square"></div>',
@@ -963,7 +1015,10 @@
             String(value).toLowerCase() === "true",
           address = (base, index) =>
             (p.bindingMode || "contract") === "join"
-              ? String((Number(base) || 0) + index)
+              ? String(
+                  (Number(base) || 0) +
+                    index * (Number(p.signalIncrement) || 1),
+                )
               : String(base || "")
                   .replace(/\{n\}/g, String(index + 1))
                   .replace(/\{index\}/g, String(index)),
@@ -984,12 +1039,15 @@
               : display === "text"
                 ? String(p.centerText ?? "OK")
                 : icons[p.centerIcon || "power"] || "⏻",
+          labels = String(p.buttonLabels || "Up|Down|Left|Right|Home").split(
+            "|",
+          ),
           values = [
             { t: "⌃", a: 0, grid: "1/2" },
-            { t: "‹", a: 1, grid: "2/1" },
+            { t: "‹", a: 2, grid: "2/1" },
             { t: centerContent, a: 4, grid: "2/2" },
-            { t: "›", a: 2, grid: "2/3" },
-            { t: "⌄", a: 3, grid: "3/2" },
+            { t: "›", a: 3, grid: "2/3" },
+            { t: "⌄", a: 1, grid: "3/2" },
           ];
         root.style.setProperty("--surface", p.surfaceColor || "#2c3038");
         root.style.setProperty("--shadow", p.shadowColor || "#171a20");
@@ -1012,6 +1070,28 @@
             const index = target.hasAttribute("data-index")
                 ? Number(target.dataset.index)
                 : values[position].a,
+              localLabel =
+                (index === 4 && p.centerText) ||
+                labels[index] ||
+                ["Up", "Down", "Left", "Right", "Home"][index],
+              renderLabel = (value) => {
+                target.setAttribute("aria-label", value);
+                if (index === 4) {
+                  if ((p.centerDisplay || "icon") === "text") {
+                    target.textContent = value || p.centerText || "OK";
+                    target.style.fontSize = `${Number(p.textSize) || 26}px`;
+                  }
+                  return;
+                }
+                const display = p.directionDisplay || "icon",
+                  textNode = target.matches(".nd-sector")
+                    ? target.querySelector("text")
+                    : target;
+                if (display === "text") {
+                  textNode.textContent = value;
+                  textNode.style.fontSize = `${Number(p.textSize) || 26}px`;
+                } else if (display === "blank") textNode.textContent = "";
+              },
               down = (event) => {
                 target.classList.add("pressed");
                 context.signals.publishAddress(
@@ -1029,6 +1109,7 @@
                   false,
                 );
               };
+            renderLabel(localLabel);
             target.addEventListener("pointerdown", down);
             target.addEventListener("pointerup", up);
             target.addEventListener("pointerleave", up);
@@ -1037,6 +1118,11 @@
               "digital",
               address(p.selectedBase, index),
               (state) => target.classList.toggle("active", truthy(state)),
+            );
+            context.signals.subscribeAddress(
+              "serial",
+              address(p.labelBase, index),
+              (value) => renderLabel(String(value || localLabel)),
             );
           },
         );

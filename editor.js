@@ -8500,6 +8500,19 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
   };
   $("action-paste").disabled = true;
+  function openFeatureHelp(kind) {
+    const responsive = kind === "responsive";
+    $("feature-help-title").textContent = responsive
+      ? "Responsive Layout Help"
+      : "Timeline & Action Editor Help";
+    $("responsive-help-content").hidden = !responsive;
+    $("timeline-action-help-content").hidden = responsive;
+    $("feature-help-dialog").showModal();
+  }
+  $("responsive-help-open").onclick = () => openFeatureHelp("responsive");
+  document.querySelectorAll(".timeline-action-help-open").forEach((button) => {
+    button.onclick = () => openFeatureHelp("timeline-action");
+  });
   initializeCollapsibleSidePanels();
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
