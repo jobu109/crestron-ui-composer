@@ -1,7 +1,7 @@
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id),
-      stage = $("stage"),
+    stage = $("stage"),
     list = $("component-list");
   const firstPage = {
     id: "page-home",
@@ -56,7 +56,11 @@
   let panelZoom = 1;
   let lastRenderedPageId = "";
   let customEditingId = "";
+  let customBehaviorRules = [];
+  let customElementPickerActive = false;
   let customBuilderSourceItemId = "";
+  let customPreviewEvents = [];
+  let customSelfTestResolve = null;
   let sourceEditingComponent = false;
   let snapEnabled = true,
     snapSize = 10;
@@ -118,7 +122,13 @@
       addEventListener("pointerup", up);
     };
   }
-  function collapsiblePanelSection(title, nodes, key, open = true, anchor = nodes[0]) {
+  function collapsiblePanelSection(
+    title,
+    nodes,
+    key,
+    open = true,
+    anchor = nodes[0],
+  ) {
     if (!anchor || !nodes.length) return null;
     const details = document.createElement("details"),
       summary = document.createElement("summary"),
@@ -143,13 +153,15 @@
     const sidebar = document.querySelector(".sidebar"),
       headings = [...sidebar.querySelectorAll(":scope > h2")];
     headings.forEach((heading, index) => {
-      const stop = headings[index + 1], nodes = [];
+      const stop = headings[index + 1],
+        nodes = [];
       for (let node = heading.nextElementSibling; node && node !== stop; ) {
         const next = node.nextElementSibling;
         nodes.push(node);
         node = next;
       }
-      const title = heading.textContent.trim(), key = `library-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      const title = heading.textContent.trim(),
+        key = `library-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
       if (nodes.length) {
         const details = collapsiblePanelSection(
           title,
@@ -171,7 +183,8 @@
       basicNodes.push(node);
       node = next;
     }
-    if (basicNodes.length) collapsiblePanelSection("Widget", basicNodes, "inspector-widget", true);
+    if (basicNodes.length)
+      collapsiblePanelSection("Widget", basicNodes, "inspector-widget", true);
     [...form.querySelectorAll(":scope > section")].forEach((section) => {
       const heading = section.querySelector(":scope > h2"),
         title = heading?.textContent.trim() || "Section",
@@ -185,15 +198,25 @@
         );
       if (details) {
         details.id = section.id;
-        details.classList.add(...[...section.classList].filter((name) => name !== "signal-section"));
+        details.classList.add(
+          ...[...section.classList].filter((name) => name !== "signal-section"),
+        );
         details.hidden = section.hidden;
       }
       heading?.remove();
       section.remove();
     });
     const navigation = $("prop-target")?.closest("label");
-    if (navigation) collapsiblePanelSection("Navigation", [navigation], "inspector-navigation", false);
-    const pageHeading = [...inspector.querySelectorAll(":scope > h2")].find((heading) => heading.textContent.trim() === "Page");
+    if (navigation)
+      collapsiblePanelSection(
+        "Navigation",
+        [navigation],
+        "inspector-navigation",
+        false,
+      );
+    const pageHeading = [...inspector.querySelectorAll(":scope > h2")].find(
+      (heading) => heading.textContent.trim() === "Page",
+    );
     if (pageHeading) {
       const pageNodes = [];
       for (let node = pageHeading.nextElementSibling; node; ) {
@@ -704,7 +727,9 @@
     native.addEventListener("message", (event) => {
       const m = event.data;
       if (m && m.type === "openProjectFile") {
-        loadProjectText(m.contents, true, m.path).then(() => setStatus("Opened " + m.path));
+        loadProjectText(m.contents, true, m.path).then(() =>
+          setStatus("Opened " + m.path),
+        );
         return;
       }
       if (!m || m.type !== "nativeResponse") return;
@@ -740,11 +765,19 @@
     $("status").textContent = s;
   }
   const topToolbar = document.querySelector(".toolbar");
-  topToolbar.addEventListener("wheel", (event) => {
-    if (topToolbar.scrollWidth <= topToolbar.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-    topToolbar.scrollLeft += event.deltaY;
-    event.preventDefault();
-  }, { passive: false });
+  topToolbar.addEventListener(
+    "wheel",
+    (event) => {
+      if (
+        topToolbar.scrollWidth <= topToolbar.clientWidth ||
+        Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+      )
+        return;
+      topToolbar.scrollLeft += event.deltaY;
+      event.preventDefault();
+    },
+    { passive: false },
+  );
   function safeDoc(html, target) {
     const bridge = target
       ? `<script>document.addEventListener("pointerup",function(){parent.postMessage({type:"crestron-local-page",page:${JSON.stringify(target)}},"*")});<\/script>`
@@ -757,7 +790,8 @@
     if (/button/.test(n)) return "Standard Buttons";
     if (/slider|level|volume|shade|light|mic/.test(n))
       return "Sliders & Levels";
-    if (/text|label|scroll|keyboard|password|input/.test(n)) return "Text & Input";
+    if (/text|label|scroll|keyboard|password|input/.test(n))
+      return "Text & Input";
     if (/menu|nav|carousel|dpad/.test(n)) return "Navigation & Menus";
     if (/list|selector|preset/.test(n)) return "Lists & Selectors";
     if (/clock|weather|display|progress|wait|status|led/.test(n))
@@ -781,21 +815,75 @@
   }
   function registerCustomComponent(entry) {
     const appearanceProperties = [
-        { key: "appearanceEnabled", name: "Override custom appearance", type: "checkbox", defaultValue: false },
-        { key: "localText", name: "Local text", type: "text", defaultValue: "" },
-        { key: "backgroundColor", name: "Background color", type: "color", defaultValue: "#253436" },
-        { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" },
-        { key: "borderColor", name: "Border color", type: "color", defaultValue: "#04dcb9" },
-        { key: "glowColor", name: "Glow color", type: "color", defaultValue: "#04dcb9" },
-        { key: "fontSize", name: "Text size", type: "number", defaultValue: 18 },
-        { key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: 8 },
-        { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 12 },
-        { key: "contentInset", name: "Glow-safe inset", type: "number", defaultValue: 10 },
+        {
+          key: "appearanceEnabled",
+          name: "Override custom appearance",
+          type: "checkbox",
+          defaultValue: false,
+        },
+        {
+          key: "localText",
+          name: "Local text",
+          type: "text",
+          defaultValue: "",
+        },
+        {
+          key: "backgroundColor",
+          name: "Background color",
+          type: "color",
+          defaultValue: "#253436",
+        },
+        {
+          key: "textColor",
+          name: "Text color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "borderColor",
+          name: "Border color",
+          type: "color",
+          defaultValue: "#04dcb9",
+        },
+        {
+          key: "glowColor",
+          name: "Glow color",
+          type: "color",
+          defaultValue: "#04dcb9",
+        },
+        {
+          key: "fontSize",
+          name: "Text size",
+          type: "number",
+          defaultValue: 18,
+        },
+        {
+          key: "cornerRadius",
+          name: "Corner radius",
+          type: "number",
+          defaultValue: 8,
+        },
+        {
+          key: "glowStrength",
+          name: "Glow strength",
+          type: "number",
+          defaultValue: 12,
+        },
+        {
+          key: "contentInset",
+          name: "Glow-safe inset",
+          type: "number",
+          defaultValue: 10,
+        },
       ],
-      declaredKeys = new Set((entry.properties || []).map((property) => property.key)),
+      declaredKeys = new Set(
+        (entry.properties || []).map((property) => property.key),
+      ),
       properties = [
         ...(entry.properties || []),
-        ...appearanceProperties.filter((property) => !declaredKeys.has(property.key)),
+        ...appearanceProperties.filter(
+          (property) => !declaredKeys.has(property.key),
+        ),
       ];
     window.ComposerRuntime.register({
       id: entry.id,
@@ -805,11 +893,31 @@
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
       properties,
       signals: entry.signals || [],
-      rangeBindings: entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
+      rangeBindings:
+        entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
       template: '<div class="custom-component-host"></div>',
       styles:
         "[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}",
-      data: { html: prepareCustomSource(entry.html), signals: entry.signals || [], repeatedItems: entry.repeatedItems || null, repeatRuntime: customRepeatedFrameRuntime(entry.repeatedItems || null) },
+      data: {
+        html: prepareCustomSource(entry.html),
+        signals: entry.signals || [],
+        repeatedItems: entry.repeatedItems || null,
+        repeatRuntime: customRepeatedFrameRuntime(entry.repeatedItems || null),
+        behaviorRuntime: customBehaviorRuntime(
+          entry.behaviors || [],
+          Object.fromEntries(
+            (entry.properties || []).map((property) => [
+              property.key,
+              property.type === "asset"
+                ? `{{${property.key}Data}}`
+                : `{{${property.key}}}`,
+            ]),
+          ),
+        ),
+        behaviorCss: customBehaviorCss(entry.behaviors || []),
+        stateCss: customStateCss(entry.stateStyles || null),
+        stateRuntime: customStateRuntime(entry.stateStyles || null),
+      },
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
           frame = document.createElement("iframe"),
@@ -845,11 +953,52 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
             : "",
           frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:${properties.contentInset == null || properties.contentInset === "" ? 10 : Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
-          bridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')});<\/script>`,
-          repeatRuntime = context.options.definitionData.repeatRuntime || '',
+          bridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback);return function(){callbacks[key]=(callbacks[key]||[]).filter(function(entry){return entry!==callback)}}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')})})();<\/script>`,
+          repeatRuntime = context.options.definitionData.repeatRuntime || "",
+          behaviorRuntime = String(
+            context.options.definitionData.behaviorRuntime || "",
+          ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
+            String(properties[key] ?? ""),
+          ),
+          behaviorCss = String(
+            context.options.definitionData.behaviorCss || "",
+          ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
+            String(properties[key] ?? ""),
+          ),
+          behaviorStyle = behaviorCss
+            ? `<style data-composer-generated>${behaviorCss}</style>`
+            : "",
+          stateCss = String(context.options.definitionData.stateCss || ""),
+          stateStyle = stateCss
+            ? `<style data-composer-states>${stateCss}</style>`
+            : "",
+          stateRuntime = String(
+            context.options.definitionData.stateRuntime || "",
+          ),
           documentText = /<\/body>/i.test(resolved)
-            ? resolved.replace(/<\/body>/i, frameBaseStyle + appearance + localTextScript + bridge + repeatRuntime + "</body>")
-            : resolved + frameBaseStyle + appearance + localTextScript + bridge + repeatRuntime;
+            ? resolved.replace(
+                /<\/body>/i,
+                frameBaseStyle +
+                  appearance +
+                  localTextScript +
+                  bridge +
+                  repeatRuntime +
+                  stateStyle +
+                  stateRuntime +
+                  behaviorStyle +
+                  behaviorRuntime +
+                  "</body>",
+              )
+            : resolved +
+              frameBaseStyle +
+              appearance +
+              localTextScript +
+              bridge +
+              repeatRuntime +
+              stateStyle +
+              stateRuntime +
+              behaviorStyle +
+              behaviorRuntime;
         let frameReady = false;
         function sendFeedback(key, value) {
           latestFeedback.set(key, value);
@@ -885,10 +1034,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             event.data?.type === "composer-custom-publish"
           ) {
             const repeated = context.options.definitionData.repeatedItems,
-              match = repeated && String(event.data.key || '').match(/^__repeatPress:(\d+)$/);
+              match =
+                repeated &&
+                String(event.data.key || "").match(/^__repeatPress:(\d+)$/);
             if (match) {
-              const index = Number(match[1]), base = properties.pressBase || `${repeated.namespace}.Items[{index}].Press`, increment = Math.max(1, Number(properties.signalIncrement) || 1), address = /^\d+$/.test(String(base)) ? String(Number(base) + index * increment) : String(base).replaceAll('{index}', String(index)).replaceAll('{n}', String(index));
-              context.signals.publishAddress('digital', address, event.data.value);
+              const index = Number(match[1]),
+                base =
+                  properties.pressBase ||
+                  `${repeated.namespace}.Items[{index}].Press`,
+                increment = Math.max(
+                  1,
+                  Number(properties.signalIncrement) || 1,
+                ),
+                address = /^\d+$/.test(String(base))
+                  ? String(Number(base) + index * increment)
+                  : String(base)
+                      .replaceAll("{index}", String(index))
+                      .replaceAll("{n}", String(index));
+              context.signals.publishAddress(
+                "digital",
+                address,
+                event.data.value,
+              );
             } else context.signals.publish(event.data.key, event.data.value);
           }
         }
@@ -902,10 +1069,35 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           );
         const repeated = context.options.definitionData.repeatedItems;
         if (repeated) {
-          const increment = Math.max(1, Number(properties.signalIncrement) || 1), addressAt = (base, index) => /^\d+$/.test(String(base)) ? String(Number(base) + index * increment) : String(base).replaceAll('{index}', String(index)).replaceAll('{n}', String(index));
+          const increment = Math.max(
+              1,
+              Number(properties.signalIncrement) || 1,
+            ),
+            addressAt = (base, index) =>
+              /^\d+$/.test(String(base))
+                ? String(Number(base) + index * increment)
+                : String(base)
+                    .replaceAll("{index}", String(index))
+                    .replaceAll("{n}", String(index));
           for (let index = 0; index < repeated.maxCount; index++) {
-            context.signals.subscribeAddress('digital', addressAt(properties.feedbackBase || `${repeated.namespace}.Items[{index}].Selected`, index), value => sendFeedback(`__repeatSelected:${index}`, value));
-            context.signals.subscribeAddress('serial', addressAt(properties.labelBase || `${repeated.namespace}.Items[{index}].Name`, index), value => sendFeedback(`__repeatName:${index}`, value));
+            context.signals.subscribeAddress(
+              "digital",
+              addressAt(
+                properties.feedbackBase ||
+                  `${repeated.namespace}.Items[{index}].Selected`,
+                index,
+              ),
+              (value) => sendFeedback(`__repeatSelected:${index}`, value),
+            );
+            context.signals.subscribeAddress(
+              "serial",
+              addressAt(
+                properties.labelBase ||
+                  `${repeated.namespace}.Items[{index}].Name`,
+                index,
+              ),
+              (value) => sendFeedback(`__repeatName:${index}`, value),
+            );
           }
         }
         return () => {
@@ -949,7 +1141,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         items = document.createElement("div");
       group.className = "component-category";
       group.open =
-        !!query || ["Standard Buttons", "Sliders & Levels", "Text & Input"].includes(category);
+        !!query ||
+        ["Standard Buttons", "Sliders & Levels", "Text & Input"].includes(
+          category,
+        );
       summary.innerHTML =
         category +
         '<span class="category-count">' +
@@ -1066,42 +1261,75 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     item.deviceOverrides ||= {};
     return item.layout;
   }
-  function panelLayoutKey(id = state.targetDevice, width = state.width, height = state.height) {
+  function panelLayoutKey(
+    id = state.targetDevice,
+    width = state.width,
+    height = state.height,
+  ) {
     return id === "custom" ? `custom:${width}x${height}` : id;
   }
-  function savePanelLayouts(id = state.targetDevice, width = state.width, height = state.height) {
+  function savePanelLayouts(
+    id = state.targetDevice,
+    width = state.width,
+    height = state.height,
+  ) {
     const key = panelLayoutKey(id, width, height);
     state.items.forEach((item) => {
       layoutDefaults(item);
-      item.deviceOverrides[key] = { x: item.x, y: item.y, w: item.w, h: item.h, panelWidth: width, panelHeight: height };
+      item.deviceOverrides[key] = {
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+        panelWidth: width,
+        panelHeight: height,
+      };
     });
   }
   function applyResponsiveSize(width, height, destinationKey) {
     const from = { width: state.width, height: state.height };
     state.items.forEach((item) => {
-      const layout = layoutDefaults(item), saved = item.deviceOverrides[destinationKey];
-      const rect = saved || window.ComposerResponsiveLayout.adaptRect(item, from, { width, height }, layout);
+      const layout = layoutDefaults(item),
+        saved = item.deviceOverrides[destinationKey];
+      const rect =
+        saved ||
+        window.ComposerResponsiveLayout.adaptRect(
+          item,
+          from,
+          { width, height },
+          layout,
+        );
       Object.assign(item, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
     });
     resize(width, height);
     renderPage();
   }
   function applyDevice(id) {
-    const previousId = state.targetDevice, previousWidth = state.width, previousHeight = state.height;
+    const previousId = state.targetDevice,
+      previousWidth = state.width,
+      previousHeight = state.height;
     savePanelLayouts(previousId, previousWidth, previousHeight);
     state.targetDevice = id;
     const device = selectedDevice(),
       custom = id === "custom";
     $("custom-size").hidden = !custom;
     if (!custom) {
-      applyResponsiveSize(device.width, device.height, panelLayoutKey(id, device.width, device.height));
+      applyResponsiveSize(
+        device.width,
+        device.height,
+        panelLayoutKey(id, device.width, device.height),
+      );
       $("panel-width").value = device.width;
       $("panel-height").value = device.height;
       setStatus(`${device.name}: ${device.width} × ${device.height}`);
     } else {
       const returningToCustom = previousId === "custom",
-        width = returningToCustom ? Number($("panel-width").value) || device.width : device.width,
-        height = returningToCustom ? Number($("panel-height").value) || device.height : device.height;
+        width = returningToCustom
+          ? Number($("panel-width").value) || device.width
+          : device.width,
+        height = returningToCustom
+          ? Number($("panel-height").value) || device.height
+          : device.height;
       $("panel-width").value = width;
       $("panel-height").value = height;
       applyResponsiveSize(width, height, panelLayoutKey(id, width, height));
@@ -1151,7 +1379,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           easing: "ease-out",
         },
         actions: [],
-        layout: { anchorX: "left", anchorY: "top", scaleMode: "fixed", safeMargin: 0 },
+        layout: {
+          anchorX: "left",
+          anchorY: "top",
+          scaleMode: "fixed",
+          safeMargin: 0,
+        },
         deviceOverrides: {},
       },
       data || {},
@@ -1201,7 +1434,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                       { transform: "translateX(-3px)" },
                       { transform: "translateX(0)" },
                     ]
-                : [{ opacity: 0 }, { opacity: 1 }];
+                  : [{ opacity: 0 }, { opacity: 1 }];
     return reverse ? frames.slice().reverse() : frames;
   }
   function resetItemInteraction(item) {
@@ -1268,23 +1501,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       const glowColor =
         getComputedStyle(element).getPropertyValue("--glow-color").trim() ||
         getComputedStyle(element.querySelector(".scoped-preview") || element)
-          .getPropertyValue("--glow-color").trim() || "#04dcb9";
+          .getPropertyValue("--glow-color")
+          .trim() ||
+        "#04dcb9";
       const layer = document.createElement("span");
       Object.assign(layer.style, {
-        position: "absolute", inset: "0", overflow: "visible",
-        pointerEvents: "none", zIndex: "9999",
+        position: "absolute",
+        inset: "0",
+        overflow: "visible",
+        pointerEvents: "none",
+        zIndex: "9999",
       });
       const particleDuration = duration * 2.5;
-      const travel = Math.max(element.offsetWidth, element.offsetHeight) * 0.42 * size;
+      const travel =
+        Math.max(element.offsetWidth, element.offsetHeight) * 0.42 * size;
       for (let index = 0; index < 28; index += 1) {
         const angle = Math.random() * Math.PI * 2;
         const distance = travel * (0.42 + Math.random() * 0.58);
         const particle = document.createElement("span");
         const particleSize = 3 + Math.random() * 4;
         Object.assign(particle.style, {
-          position: "absolute", left: `${x}px`, top: `${y}px`,
-          width: `${particleSize}px`, height: `${particleSize}px`,
-          margin: `${-particleSize / 2}px`, borderRadius: "50%",
+          position: "absolute",
+          left: `${x}px`,
+          top: `${y}px`,
+          width: `${particleSize}px`,
+          height: `${particleSize}px`,
+          margin: `${-particleSize / 2}px`,
+          borderRadius: "50%",
           background: glowColor,
           boxShadow: `0 0 ${particleSize * 2}px ${glowColor}`,
           pointerEvents: "none",
@@ -1293,9 +1536,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         particle.animate(
           [
             { transform: "translate(0,0) scale(1)", opacity: 1 },
-            { transform: `translate(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px) scale(.15)`, opacity: 0 },
+            {
+              transform: `translate(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px) scale(.15)`,
+              opacity: 0,
+            },
           ],
-          { duration: particleDuration * (0.72 + Math.random() * 0.28), easing: "cubic-bezier(.1,.7,.2,1)" },
+          {
+            duration: particleDuration * (0.72 + Math.random() * 0.28),
+            easing: "cubic-bezier(.1,.7,.2,1)",
+          },
         );
       }
       host.appendChild(layer);
@@ -1305,17 +1554,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const layer = document.createElement("span");
     layer.className = `composer-press-effect composer-press-effect-${effect}`;
     Object.assign(layer.style, {
-      position: "absolute", inset: "0", overflow: "visible",
-      pointerEvents: "none", borderRadius: "inherit", zIndex: "9999",
+      position: "absolute",
+      inset: "0",
+      overflow: "visible",
+      pointerEvents: "none",
+      borderRadius: "inherit",
+      zIndex: "9999",
     });
     const count = effect === "wave" ? 3 : 2;
-    const diameter = Math.max(element.offsetWidth, element.offsetHeight) * 1.15 * size;
+    const diameter =
+      Math.max(element.offsetWidth, element.offsetHeight) * 1.15 * size;
     for (let index = 0; index < count; index += 1) {
       const ring = document.createElement("span");
       Object.assign(ring.style, {
-        position: "absolute", left: `${x}px`, top: `${y}px`,
-        width: `${diameter}px`, height: `${diameter}px`, borderRadius: "50%",
-        pointerEvents: "none", transform: "translate(-50%,-50%) scale(0)",
+        position: "absolute",
+        left: `${x}px`,
+        top: `${y}px`,
+        width: `${diameter}px`,
+        height: `${diameter}px`,
+        borderRadius: "50%",
+        pointerEvents: "none",
+        transform: "translate(-50%,-50%) scale(0)",
         border: effect === "water-ripple" ? `2px solid ${color}` : "0",
         background: effect === "wave" ? color : "transparent",
         opacity: effect === "wave" ? ".24" : ".9",
@@ -1323,10 +1582,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       layer.appendChild(ring);
       ring.animate(
         [
-          { transform: "translate(-50%,-50%) scale(0)", opacity: effect === "wave" ? 0.28 : 0.95 },
+          {
+            transform: "translate(-50%,-50%) scale(0)",
+            opacity: effect === "wave" ? 0.28 : 0.95,
+          },
           { transform: "translate(-50%,-50%) scale(1)", opacity: 0 },
         ],
-        { duration, delay: index * Math.round(duration * 0.16), easing: "ease-out" },
+        {
+          duration,
+          delay: index * Math.round(duration * 0.16),
+          easing: "ease-out",
+        },
       );
     }
     host.appendChild(layer);
@@ -1396,10 +1662,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     element.addEventListener(
       "pointerdown",
       (event) => {
-        const effectInteraction = allInteractions.find(
-          (interaction) => interaction.pressEffect && interaction.pressEffect !== "none",
-        ) || item.interaction;
-        playPressEffect(element, effectInteraction, event.clientX, event.clientY);
+        const effectInteraction =
+          allInteractions.find(
+            (interaction) =>
+              interaction.pressEffect && interaction.pressEffect !== "none",
+          ) || item.interaction;
+        playPressEffect(
+          element,
+          effectInteraction,
+          event.clientX,
+          event.clientY,
+        );
         interactions
           .filter((interaction) => interaction.trigger === "press")
           .forEach((interaction) =>
@@ -1576,18 +1849,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     el.style.backgroundSize = backgroundAsset ? "cover" : "";
     el.style.backgroundPosition = backgroundAsset ? "center" : "";
     const graphicAsset = state.assets.find(
-        (asset) => asset.id === item.graphicAsset && asset.type.startsWith("image/"),
+        (asset) =>
+          asset.id === item.graphicAsset && asset.type.startsWith("image/"),
       ),
       selectedSameAsStandard =
         item.properties?.selectedSameAsStandard == null ||
         item.properties?.selectedSameAsStandard === true ||
         item.properties?.selectedSameAsStandard === 1 ||
         item.properties?.selectedSameAsStandard === "1" ||
-        String(item.properties?.selectedSameAsStandard).toLowerCase() === "true",
+        String(item.properties?.selectedSameAsStandard).toLowerCase() ===
+          "true",
       selectedGraphicAsset = state.assets.find(
         (asset) =>
-          asset.id === (selectedSameAsStandard ? item.graphicAsset : item.selectedGraphicAsset) &&
-          asset.type.startsWith("image/"),
+          asset.id ===
+            (selectedSameAsStandard
+              ? item.graphicAsset
+              : item.selectedGraphicAsset) && asset.type.startsWith("image/"),
       ),
       graphicMode = item.graphicAssetMode || "none",
       definition = item.componentId
@@ -1605,12 +1882,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           item.properties.faceColor = "#04aa8e";
       }
       definition.properties.forEach((property) => {
-        if (!Object.prototype.hasOwnProperty.call(item.properties, property.key))
-          item.properties[property.key] = structuredClone(property.defaultValue);
+        if (
+          !Object.prototype.hasOwnProperty.call(item.properties, property.key)
+        )
+          item.properties[property.key] = structuredClone(
+            property.defaultValue,
+          );
       });
       item.signalBindings = item.signalBindings || {};
       definition.signals.forEach((signal) => {
-        if (!Object.prototype.hasOwnProperty.call(item.signalBindings, signal.key))
+        if (
+          !Object.prototype.hasOwnProperty.call(item.signalBindings, signal.key)
+        )
           item.signalBindings[signal.key] = {
             mode: /^\d+$/.test(String(signal.defaultValue || ""))
               ? "join"
@@ -1642,7 +1925,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         top: `${Number(item.graphicAssetY ?? 50)}%`,
         width: `${Number(item.graphicAssetWidth ?? 35)}%`,
         height: `${Number(item.graphicAssetHeight ?? 35)}%`,
-        opacity: String(Math.max(0, Math.min(100, Number(item.graphicAssetOpacity ?? 100))) / 100),
+        opacity: String(
+          Math.max(0, Math.min(100, Number(item.graphicAssetOpacity ?? 100))) /
+            100,
+        ),
         objectFit: item.graphicAspectLocked
           ? item.graphicAssetFit || "contain"
           : "fill",
@@ -1689,7 +1975,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ? (definition.properties || []).find((prop) => prop.type === "asset-list")
       : null;
     if (assetListProperty) {
-      const ids = String(item.properties?.[assetListProperty.key] || "").split("|");
+      const ids = String(item.properties?.[assetListProperty.key] || "").split(
+        "|",
+      );
       if (ids.some((id) => id)) {
         const root = el.querySelector(".scoped-preview"),
           style = document.createElement("style"),
@@ -2049,7 +2337,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function ensureReusableMasters() {
     state.reusables.forEach((definition) => {
       const instanceIds = state.items
-        .filter((item) => item.reusableId === definition.id && item.linkedInstanceId)
+        .filter(
+          (item) => item.reusableId === definition.id && item.linkedInstanceId,
+        )
         .map((item) => item.linkedInstanceId);
       if (!instanceIds.includes(definition.masterInstanceId))
         definition.masterInstanceId = instanceIds[0] || "";
@@ -2057,42 +2347,68 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function isReusableMaster(item) {
     if (!item?.reusableId || !item.linkedInstanceId) return false;
-    const definition = state.reusables.find((entry) => entry.id === item.reusableId);
-    return !!definition && definition.masterInstanceId === item.linkedInstanceId;
+    const definition = state.reusables.find(
+      (entry) => entry.id === item.reusableId,
+    );
+    return (
+      !!definition && definition.masterInstanceId === item.linkedInstanceId
+    );
   }
   function synchronizeReusableMasters(forceDefinitionId = "") {
     ensureReusableMasters();
     state.reusables.forEach((definition) => {
       if (forceDefinitionId && definition.id !== forceDefinitionId) return;
       const masterItems = state.items.filter(
-        (item) => item.reusableId === definition.id && item.linkedInstanceId === definition.masterInstanceId,
+        (item) =>
+          item.reusableId === definition.id &&
+          item.linkedInstanceId === definition.masterInstanceId,
       );
       if (!masterItems.length) return;
       const snapshot = reusableSnapshot(masterItems),
-        changed = forceDefinitionId === definition.id || JSON.stringify(snapshot) !== JSON.stringify(definition.items || []);
+        changed =
+          forceDefinitionId === definition.id ||
+          JSON.stringify(snapshot) !== JSON.stringify(definition.items || []);
       if (!changed) return;
       definition.items = snapshot;
-      const instanceIds = [...new Set(state.items
-        .filter((item) => item.reusableId === definition.id && item.linkedInstanceId !== definition.masterInstanceId)
-        .map((item) => item.linkedInstanceId))];
+      const instanceIds = [
+        ...new Set(
+          state.items
+            .filter(
+              (item) =>
+                item.reusableId === definition.id &&
+                item.linkedInstanceId !== definition.masterInstanceId,
+            )
+            .map((item) => item.linkedInstanceId),
+        ),
+      ];
       instanceIds.forEach((instanceId) => {
-        const items = state.items.filter((item) => item.linkedInstanceId === instanceId),
+        const items = state.items.filter(
+            (item) => item.linkedInstanceId === instanceId,
+          ),
           left = Math.min(...items.map((item) => item.x)),
           top = Math.min(...items.map((item) => item.y));
         items.forEach((item) => {
-          const source = snapshot.find((entry) => entry.reusableKey === item.reusableKey);
+          const source = snapshot.find(
+            (entry) => entry.reusableKey === item.reusableKey,
+          );
           if (!source) return;
           const overrideKeys = [...new Set(item.reusableOverrides || [])],
             overridden = Object.fromEntries(
               overrideKeys
-                .filter((key) => Object.prototype.hasOwnProperty.call(item.properties || {}, key))
+                .filter((key) =>
+                  Object.prototype.hasOwnProperty.call(
+                    item.properties || {},
+                    key,
+                  ),
+                )
                 .map((key) => [key, structuredClone(item.properties[key])]),
             ),
             customBindings = !!item.reusableBindingsOverride,
             preservedBindings = customBindings
               ? structuredClone(item.signalBindings || {})
               : null,
-            preservedSource = customBindings && !item.componentId ? item.source : null,
+            preservedSource =
+              customBindings && !item.componentId ? item.source : null,
             componentDefinition = item.componentId
               ? window.ComposerRuntime.get(item.componentId)
               : null,
@@ -2107,7 +2423,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             ]),
             preservedSignalProperties = customBindings
               ? Object.fromEntries(
-                  Object.entries(item.properties || {}).filter(([key]) => signalPropertyKeys.has(key)),
+                  Object.entries(item.properties || {}).filter(([key]) =>
+                    signalPropertyKeys.has(key),
+                  ),
                 )
               : {},
             keep = {
@@ -2126,7 +2444,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           item.properties = { ...(item.properties || {}), ...overridden };
           if (customBindings) {
             item.signalBindings = preservedBindings;
-            item.properties = { ...item.properties, ...preservedSignalProperties };
+            item.properties = {
+              ...item.properties,
+              ...preservedSignalProperties,
+            };
             if (!item.componentId) item.source = preservedSource;
           }
           renderItem(item);
@@ -2136,7 +2457,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function makeReusableMaster(item) {
     if (!item?.reusableId || !item.linkedInstanceId) return;
-    const definition = state.reusables.find((entry) => entry.id === item.reusableId);
+    const definition = state.reusables.find(
+      (entry) => entry.id === item.reusableId,
+    );
     if (!definition) return;
     definition.masterInstanceId = item.linkedInstanceId;
     synchronizeReusableMasters(definition.id);
@@ -2371,8 +2694,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function currentTheme() {
     const tokenKeys = [
-      "page", "surface", "accent", "text", "glow", "border", "font-size",
-      "corner-radius", "glow-strength", "animation-duration", "animation-easing",
+      "page",
+      "surface",
+      "accent",
+      "text",
+      "glow",
+      "border",
+      "font-size",
+      "corner-radius",
+      "glow-strength",
+      "animation-duration",
+      "animation-easing",
     ];
     return {
       page: $("theme-page").value,
@@ -2384,9 +2716,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       fontSize: Math.max(1, Number($("theme-font-size").value) || 18),
       cornerRadius: Math.max(0, Number($("theme-corner-radius").value) || 0),
       glowStrength: Math.max(0, Number($("theme-glow-strength").value) || 0),
-      animationDuration: Math.max(50, Number($("theme-animation-duration").value) || 300),
+      animationDuration: Math.max(
+        50,
+        Number($("theme-animation-duration").value) || 300,
+      ),
       animationEasing: $("theme-animation-easing").value,
-      enabled: Object.fromEntries(tokenKeys.map((key) => [key, $("theme-" + key + "-enabled").checked])),
+      enabled: Object.fromEntries(
+        tokenKeys.map((key) => [key, $("theme-" + key + "-enabled").checked]),
+      ),
     };
   }
   function loadTheme(theme) {
@@ -2403,9 +2740,25 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     Object.entries(extended).forEach(([key, value]) => {
       if (value !== undefined) $("theme-" + key).value = value;
     });
-    ["page", "surface", "accent", "text", "glow", "border", ...Object.keys(extended)].forEach((key) => {
-      const legacyColor = ["page", "surface", "accent", "text", "glow", "border"].includes(key);
-      $("theme-" + key + "-enabled").checked = theme.enabled?.[key] ?? legacyColor;
+    [
+      "page",
+      "surface",
+      "accent",
+      "text",
+      "glow",
+      "border",
+      ...Object.keys(extended),
+    ].forEach((key) => {
+      const legacyColor = [
+        "page",
+        "surface",
+        "accent",
+        "text",
+        "glow",
+        "border",
+      ].includes(key);
+      $("theme-" + key + "-enabled").checked =
+        theme.enabled?.[key] ?? legacyColor;
     });
     setStatus(`Loaded theme “${theme.name || "palette"}”`);
   }
@@ -2413,8 +2766,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const name = key.toLowerCase();
     if (!/color/.test(name)) return "";
     if (/glow/.test(name)) return theme.enabled.glow ? theme.glow : "";
-    if (/border|outline/.test(name)) return theme.enabled.border ? theme.border : "";
-    if (/text|label|status|value/.test(name)) return theme.enabled.text ? theme.text : "";
+    if (/border|outline/.test(name))
+      return theme.enabled.border ? theme.border : "";
+    if (/text|label|status|value/.test(name))
+      return theme.enabled.text ? theme.text : "";
     if (
       /off|background|surface|face|button|card|frame|panel|track|knob|shade/.test(
         name,
@@ -2437,18 +2792,34 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       Object.keys(item.properties).forEach((key) => {
         if (theme.enabled["font-size"] && /^(?:fontSize|textSize)$/i.test(key))
           item.properties[key] = theme.fontSize;
-        if (theme.enabled["corner-radius"] && /^(?:cornerRadius|borderRadius)$/i.test(key))
+        if (
+          theme.enabled["corner-radius"] &&
+          /^(?:cornerRadius|borderRadius)$/i.test(key)
+        )
           item.properties[key] = theme.cornerRadius;
-        if (theme.enabled["glow-strength"] && /^(?:glowStrength|glowSize)$/i.test(key))
+        if (
+          theme.enabled["glow-strength"] &&
+          /^(?:glowStrength|glowSize)$/i.test(key)
+        )
           item.properties[key] = theme.glowStrength;
       });
       if (theme.enabled["animation-duration"]) {
-        item.interaction = { ...(item.interaction || {}), duration: theme.animationDuration };
-        (item.interactions || []).forEach((track) => (track.duration = theme.animationDuration));
+        item.interaction = {
+          ...(item.interaction || {}),
+          duration: theme.animationDuration,
+        };
+        (item.interactions || []).forEach(
+          (track) => (track.duration = theme.animationDuration),
+        );
       }
       if (theme.enabled["animation-easing"]) {
-        item.interaction = { ...(item.interaction || {}), easing: theme.animationEasing };
-        (item.interactions || []).forEach((track) => (track.easing = theme.animationEasing));
+        item.interaction = {
+          ...(item.interaction || {}),
+          easing: theme.animationEasing,
+        };
+        (item.interactions || []).forEach(
+          (track) => (track.easing = theme.animationEasing),
+        );
       }
       renderItem(item);
     });
@@ -2464,7 +2835,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         return;
       }
       items = state.items.filter((item) =>
-        selected.componentId ? item.componentId === selected.componentId : !item.componentId && item.name === selected.name,
+        selected.componentId
+          ? item.componentId === selected.componentId
+          : !item.componentId && item.name === selected.name,
       );
     }
     if (scope === "page") {
@@ -2475,7 +2848,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
     if (scope === "project") {
       items = state.items;
-      if (theme.enabled.page) state.pages.forEach((page) => (page.background = theme.page));
+      if (theme.enabled.page)
+        state.pages.forEach((page) => (page.background = theme.page));
     }
     if (!items.length && scope === "selection") {
       setStatus("Select one or more components first");
@@ -2671,44 +3045,81 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     guide.className = "responsive-safe-guide";
     guide.dataset.label = `${margin}px safe margin`;
     Object.assign(guide.style, {
-      left: margin + "px", top: margin + "px",
+      left: margin + "px",
+      top: margin + "px",
       width: Math.max(0, state.width - margin * 2) + "px",
       height: Math.max(0, state.height - margin * 2) + "px",
     });
     stage.appendChild(guide);
   }
   function renderResponsiveEditor(item) {
-    const layout = layoutDefaults(item), key = panelLayoutKey();
+    const layout = layoutDefaults(item),
+      key = panelLayoutKey();
     ["anchor-x", "anchor-y", "scale-mode", "safe-margin"].forEach((suffix) => {
-      const property = { "anchor-x": "anchorX", "anchor-y": "anchorY", "scale-mode": "scaleMode", "safe-margin": "safeMargin" }[suffix],
+      const property = {
+          "anchor-x": "anchorX",
+          "anchor-y": "anchorY",
+          "scale-mode": "scaleMode",
+          "safe-margin": "safeMargin",
+        }[suffix],
         input = $("layout-" + suffix);
       input.value = layout[property];
       input.oninput = () => {
-        layout[property] = property === "safeMargin" ? Math.max(0, Number(input.value) || 0) : input.value;
+        layout[property] =
+          property === "safeMargin"
+            ? Math.max(0, Number(input.value) || 0)
+            : input.value;
         if (property === "safeMargin") renderSafeMarginGuide(item);
         scheduleHistory();
       };
     });
     $("layout-override-status").textContent = item.deviceOverrides[key]
-      ? `Saved override for ${key}` : `Using responsive rules for ${key}`;
+      ? `Saved override for ${key}`
+      : `Using responsive rules for ${key}`;
     $("layout-save-override").onclick = () => {
-      item.deviceOverrides[key] = { x: item.x, y: item.y, w: item.w, h: item.h, panelWidth: state.width, panelHeight: state.height };
-      renderResponsiveEditor(item); commitHistory(); setStatus(`Saved “${item.name}” layout for ${key}`);
+      item.deviceOverrides[key] = {
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+        panelWidth: state.width,
+        panelHeight: state.height,
+      };
+      renderResponsiveEditor(item);
+      commitHistory();
+      setStatus(`Saved “${item.name}” layout for ${key}`);
     };
     $("layout-reset-override").onclick = () => {
-      delete item.deviceOverrides[key]; renderResponsiveEditor(item); commitHistory();
+      delete item.deviceOverrides[key];
+      renderResponsiveEditor(item);
+      commitHistory();
       setStatus(`Reset “${item.name}” override for ${key}`);
     };
     function applyRules(scope) {
-      const targets = state.items.filter((entry) =>
-        scope === "project" || entry.master || entry.pageId === state.activePage,
+      const targets = state.items.filter(
+        (entry) =>
+          scope === "project" ||
+          entry.master ||
+          entry.pageId === state.activePage,
       );
-      const label = scope === "project" ? "the entire project" : `page “${currentPage().name}”`;
-      if (!confirm(`Apply these responsive rules to ${targets.length} widgets on ${label}?`)) return;
-      targets.forEach((entry) => { entry.layout = { ...layout }; });
+      const label =
+        scope === "project"
+          ? "the entire project"
+          : `page “${currentPage().name}”`;
+      if (
+        !confirm(
+          `Apply these responsive rules to ${targets.length} widgets on ${label}?`,
+        )
+      )
+        return;
+      targets.forEach((entry) => {
+        entry.layout = { ...layout };
+      });
       renderSafeMarginGuide(item);
       commitHistory();
-      setStatus(`Applied responsive rules to ${targets.length} widgets on ${label}`);
+      setStatus(
+        `Applied responsive rules to ${targets.length} widgets on ${label}`,
+      );
     }
     $("layout-apply-page").onclick = () => applyRules("page");
     $("layout-apply-project").onclick = () => applyRules("project");
@@ -2746,38 +3157,55 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ...defaults,
       ...(item.interactions?.[0] || item.interaction || {}),
     };
-    ["trigger", "preset", "direction", "duration", "delay", "easing", "pressEffect", "effectColor", "effectDuration", "effectSize"].forEach(
-      (key) => {
-        const input = $("interaction-" + key);
-        input.value = interaction[key];
-        input.oninput = () => {
-          interaction[key] = /duration|delay|effectSize/i.test(key)
-            ? Number(input.value)
-            : input.value;
-          item.interaction = { ...interaction };
-          if (item.interactions?.length)
-            item.interactions[0] = {
-              ...item.interactions[0],
-              ...interaction,
-              start: Number(interaction.delay) || 0,
-            };
-          $("interaction-direction-label").hidden =
-            interaction.preset !== "slide";
-          $("interaction-press-effect-options").hidden =
-            interaction.pressEffect === "none";
-          $("interaction-effect-color-label").hidden =
-            ["particle-burst", "shake"].includes(interaction.pressEffect);
-          scheduleHistory();
-        };
-      },
-    );
+    [
+      "trigger",
+      "preset",
+      "direction",
+      "duration",
+      "delay",
+      "easing",
+      "pressEffect",
+      "effectColor",
+      "effectDuration",
+      "effectSize",
+    ].forEach((key) => {
+      const input = $("interaction-" + key);
+      input.value = interaction[key];
+      input.oninput = () => {
+        interaction[key] = /duration|delay|effectSize/i.test(key)
+          ? Number(input.value)
+          : input.value;
+        item.interaction = { ...interaction };
+        if (item.interactions?.length)
+          item.interactions[0] = {
+            ...item.interactions[0],
+            ...interaction,
+            start: Number(interaction.delay) || 0,
+          };
+        $("interaction-direction-label").hidden =
+          interaction.preset !== "slide";
+        $("interaction-press-effect-options").hidden =
+          interaction.pressEffect === "none";
+        $("interaction-effect-color-label").hidden = [
+          "particle-burst",
+          "shake",
+        ].includes(interaction.pressEffect);
+        scheduleHistory();
+      };
+    });
     $("interaction-direction-label").hidden = interaction.preset !== "slide";
-    $("interaction-press-effect-options").hidden = interaction.pressEffect === "none";
-    $("interaction-effect-color-label").hidden =
-      ["particle-burst", "shake"].includes(interaction.pressEffect);
+    $("interaction-press-effect-options").hidden =
+      interaction.pressEffect === "none";
+    $("interaction-effect-color-label").hidden = [
+      "particle-burst",
+      "shake",
+    ].includes(interaction.pressEffect);
     $("interaction-preview").onclick = () => {
       playItemInteraction(item, false, interaction);
-      playPressEffect(stage.querySelector(`.widget[data-id="${item.id}"]`), interaction);
+      playPressEffect(
+        stage.querySelector(`.widget[data-id="${item.id}"]`),
+        interaction,
+      );
     };
     $("interaction-reset").onclick = () => resetItemInteraction(item);
     $("interaction-timeline-open").onclick = () => openTimeline(item);
@@ -3131,13 +3559,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         item.componentId && window.ComposerRuntime.get(item.componentId),
       properties = ((definition && definition.properties) || []).filter(
         (property) => {
-          if (property.signalSetting || property.key === "bindingMode") return false;
+          if (property.signalSetting || property.key === "bindingMode")
+            return false;
           if (!property.visibleWhen) return true;
           const raw = item.properties?.[property.visibleWhen.key];
           if (property.visibleWhen.equals != null)
             return String(raw ?? "") === String(property.visibleWhen.equals);
           const actual = Number(raw ?? 0);
-          return property.visibleWhen.gte == null || actual >= Number(property.visibleWhen.gte);
+          return (
+            property.visibleWhen.gte == null ||
+            actual >= Number(property.visibleWhen.gte)
+          );
         },
       );
     section.hidden = !properties.length;
@@ -3163,7 +3595,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       checkbox.type = "checkbox";
       checkbox.checked = keys.has(property.key);
       controls.forEach((control) => (control.disabled = !checkbox.checked));
-      override.append(checkbox, document.createTextNode("Override for this instance"));
+      override.append(
+        checkbox,
+        document.createTextNode("Override for this instance"),
+      );
       checkbox.onchange = () => {
         if (checkbox.checked) keys.add(property.key);
         else {
@@ -3171,8 +3606,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           const source = (reusableDefinition.items || []).find(
             (entry) => entry.reusableKey === item.reusableKey,
           );
-          if (source?.properties && Object.prototype.hasOwnProperty.call(source.properties, property.key))
-            item.properties[property.key] = structuredClone(source.properties[property.key]);
+          if (
+            source?.properties &&
+            Object.prototype.hasOwnProperty.call(
+              source.properties,
+              property.key,
+            )
+          )
+            item.properties[property.key] = structuredClone(
+              source.properties[property.key],
+            );
         }
         item.reusableOverrides = [...keys];
         renderItem(item);
@@ -3181,16 +3624,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
       label.appendChild(override);
     }
-    let propertyGroup = "", propertyHost = host;
+    let propertyGroup = "",
+      propertyHost = host;
     properties.forEach((property) => {
       if (property.disabledWhen) {
-        const actual = item.properties?.[property.disabledWhen.key] ??
-          properties.find((entry) => entry.key === property.disabledWhen.key)?.defaultValue;
+        const actual =
+          item.properties?.[property.disabledWhen.key] ??
+          properties.find((entry) => entry.key === property.disabledWhen.key)
+            ?.defaultValue;
         const expected = property.disabledWhen.value;
         if (
-          (expected === true && (actual === true || actual === 1 || actual === "1" || String(actual).toLowerCase() === "true")) ||
+          (expected === true &&
+            (actual === true ||
+              actual === 1 ||
+              actual === "1" ||
+              String(actual).toLowerCase() === "true")) ||
           actual === expected
-        ) return;
+        )
+          return;
       }
       if (property.group && property.group !== propertyGroup) {
         const details = document.createElement("details"),
@@ -3201,7 +3652,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         details.className = "component-property-group";
         heading.textContent = property.group;
         body.className = "component-property-group-body";
-        details.open = saved === null ? property.group === "Mode 0" : saved === "open";
+        details.open =
+          saved === null ? property.group === "Mode 0" : saved === "open";
         details.append(heading, body);
         details.addEventListener("toggle", () =>
           localStorage.setItem(storageKey, details.open ? "open" : "closed"),
@@ -3218,7 +3670,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         const editor = document.createElement("textarea"),
           actions = document.createElement("div");
         editor.className = "cip-text-editor";
-        editor.value = String(item.properties?.[property.key] ?? property.defaultValue ?? "");
+        editor.value = String(
+          item.properties?.[property.key] ?? property.defaultValue ?? "",
+        );
         actions.className = "cip-text-actions";
         function update(value) {
           item.properties = item.properties || {};
@@ -3227,7 +3681,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           scheduleHistory();
         }
         function insertTag(type) {
-          const address = prompt(`${type} contract name or join number:`, type === "Serial" ? "TextBlock.Status.Name" : type === "Digital" ? "TextBlock.State.Selected" : "TextBlock.Level.Feedback");
+          const address = prompt(
+            `${type} contract name or join number:`,
+            type === "Serial"
+              ? "TextBlock.Status.Name"
+              : type === "Digital"
+                ? "TextBlock.State.Selected"
+                : "TextBlock.Level.Feedback",
+          );
           if (!address) return;
           let tag;
           if (type === "Digital") {
@@ -3235,14 +3696,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               whenFalse = prompt("Text when false:", "Off") ?? "Off";
             tag = `<cipd>${address}?${whenTrue}:${whenFalse}</cipd>`;
           } else if (type === "Analog") {
-            const format = prompt("Analog format (%r raw, %x hex, %t time, %65535.0p percent):", "%r") || "%r";
+            const format =
+              prompt(
+                "Analog format (%r raw, %x hex, %t time, %65535.0p percent):",
+                "%r",
+              ) || "%r";
             tag = `<cipa>${address}?${format}</cipa>`;
           } else {
-            const fallback = prompt("Design-time/default text:", "Unknown") ?? "";
+            const fallback =
+              prompt("Design-time/default text:", "Unknown") ?? "";
             tag = `<cips>${address}:${fallback}</cips>`;
           }
-          const start = editor.selectionStart, end = editor.selectionEnd;
-          editor.value = editor.value.slice(0, start) + tag + editor.value.slice(end);
+          const start = editor.selectionStart,
+            end = editor.selectionEnd;
+          editor.value =
+            editor.value.slice(0, start) + tag + editor.value.slice(end);
           editor.focus();
           editor.setSelectionRange(start + tag.length, start + tag.length);
           update(editor.value);
@@ -3288,15 +3756,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           };
           list.appendChild(input);
         }
-        wireReusableOverride(label, [...list.querySelectorAll("input")], property);
+        wireReusableOverride(
+          label,
+          [...list.querySelectorAll("input")],
+          property,
+        );
         label.appendChild(list);
         propertyHost.appendChild(label);
         return;
       }
       if (property.type === "select-list") {
         const list = document.createElement("div"),
-          count = Math.max(1, Math.min(48, Number(item.properties?.[property.countKey]) || 1)),
-          values = String(item.properties?.[property.key] ?? property.defaultValue ?? "").split("|");
+          count = Math.max(
+            1,
+            Math.min(48, Number(item.properties?.[property.countKey]) || 1),
+          ),
+          values = String(
+            item.properties?.[property.key] ?? property.defaultValue ?? "",
+          ).split("|");
         list.className = "property-text-list";
         for (let i = 0; i < count; i++) {
           const select = document.createElement("select");
@@ -3315,16 +3792,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           };
           list.appendChild(select);
         }
-        wireReusableOverride(label, [...list.querySelectorAll("select")], property);
+        wireReusableOverride(
+          label,
+          [...list.querySelectorAll("select")],
+          property,
+        );
         label.appendChild(list);
         propertyHost.appendChild(label);
         return;
       }
       if (property.type === "asset-list") {
         const list = document.createElement("div"),
-          count = Math.max(1, Math.min(48, Number(item.properties?.[property.countKey]) || 1)),
-          values = String(item.properties?.[property.key] ?? property.defaultValue ?? "").split("|"),
-          images = state.assets.filter((asset) => asset.type.startsWith("image/"));
+          count = Math.max(
+            1,
+            Math.min(48, Number(item.properties?.[property.countKey]) || 1),
+          ),
+          values = String(
+            item.properties?.[property.key] ?? property.defaultValue ?? "",
+          ).split("|"),
+          images = state.assets.filter((asset) =>
+            asset.type.startsWith("image/"),
+          );
         list.className = "property-text-list";
         for (let i = 0; i < count; i++) {
           const select = document.createElement("select"),
@@ -3347,13 +3835,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           };
           list.appendChild(select);
         }
-        wireReusableOverride(label, [...list.querySelectorAll("select")], property);
+        wireReusableOverride(
+          label,
+          [...list.querySelectorAll("select")],
+          property,
+        );
         label.appendChild(list);
         propertyHost.appendChild(label);
         return;
       }
       const input = document.createElement(
-        property.type === "select" || property.type === "asset" ? "select" : "input",
+        property.type === "select" || property.type === "asset"
+          ? "select"
+          : "input",
       );
       if (property.type === "asset") {
         const empty = document.createElement("option");
@@ -3383,19 +3877,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               ? "color"
               : property.type === "checkbox"
                 ? "checkbox"
-              : "text";
+                : "text";
       if (property.type === "number") {
         if (property.min != null) input.min = String(property.min);
         if (property.max != null) input.max = String(property.max);
         if (property.step != null) input.step = String(property.step);
       }
       const propertyValue =
-        (item.properties && item.properties[property.key]) ?? property.defaultValue ?? "";
+        (item.properties && item.properties[property.key]) ??
+        property.defaultValue ??
+        "";
       if (property.type === "checkbox")
-        input.checked = propertyValue === true || propertyValue === 1 || propertyValue === "1" || String(propertyValue).toLowerCase() === "true";
+        input.checked =
+          propertyValue === true ||
+          propertyValue === 1 ||
+          propertyValue === "1" ||
+          String(propertyValue).toLowerCase() === "true";
       else input.value = propertyValue;
       if (property.type === "asset") {
-        const selectedAsset = state.assets.find((asset) => asset.id === propertyValue);
+        const selectedAsset = state.assets.find(
+          (asset) => asset.id === propertyValue,
+        );
         item.properties[`${property.key}Data`] = selectedAsset?.dataUrl || "";
       }
       input.oninput = () => {
@@ -3417,7 +3919,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
         item.properties[property.key] = nextValue;
         if (property.type === "asset") {
-          const selectedAsset = state.assets.find((asset) => asset.id === nextValue);
+          const selectedAsset = state.assets.find(
+            (asset) => asset.id === nextValue,
+          );
           item.properties[`${property.key}Data`] = selectedAsset?.dataUrl || "";
         }
         renderItem(item);
@@ -3432,7 +3936,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function renderAssetInspector(item) {
     const select = $("prop-asset"),
       selectedSelect = $("prop-asset-selected"),
-      imageAssets = state.assets.filter((asset) => asset.type.startsWith("image/"));
+      imageAssets = state.assets.filter((asset) =>
+        asset.type.startsWith("image/"),
+      );
     select.innerHTML = '<option value="">None</option>';
     selectedSelect.innerHTML = '<option value="">None</option>';
     imageAssets.forEach((asset) => {
@@ -3623,12 +4129,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return `${contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
   }
   function parseCipTextSignals(text) {
-    const signals = [], pattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi;
+    const signals = [],
+      pattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi;
     let match;
     while ((match = pattern.exec(String(text || "")))) {
-      const kind = match[1].toLowerCase(), content = match[2].trim(), delimiter = kind === "s" ? content.indexOf(":") : content.indexOf("?"),
+      const kind = match[1].toLowerCase(),
+        content = match[2].trim(),
+        delimiter = kind === "s" ? content.indexOf(":") : content.indexOf("?"),
         value = (delimiter >= 0 ? content.slice(0, delimiter) : content).trim();
-      if (value) signals.push({ type: kind === "s" ? "serial" : kind === "d" ? "digital" : "analog", value });
+      if (value)
+        signals.push({
+          type: kind === "s" ? "serial" : kind === "d" ? "digital" : "analog",
+          value,
+        });
     }
     return signals;
   }
@@ -3820,18 +4333,41 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       results = [];
     host.innerHTML = "";
     if (!needle) {
-      $("project-search-summary").textContent = "Type a value to search the entire project. Exact join numbers and full contract names are supported.";
-      host.innerHTML = '<p class="hint" style="padding:14px">Tip: paste a contract name or join number here to answer “Where is this signal used?”</p>';
+      $("project-search-summary").textContent =
+        "Type a value to search the entire project. Exact join numbers and full contract names are supported.";
+      host.innerHTML =
+        '<p class="hint" style="padding:14px">Tip: paste a contract name or join number here to answer “Where is this signal used?”</p>';
       return;
     }
     state.pages.forEach((page) => {
-      const fields = [page.name, page.id, page.bindingMode, page.binding, page.background];
-      if (fields.some((value) => String(value || "").toLowerCase().includes(needle)))
-        results.push({ kind: "Page", title: page.name, detail: page.binding ? `${page.bindingMode}: ${page.binding}` : "Page definition", pageId: page.id });
+      const fields = [
+        page.name,
+        page.id,
+        page.bindingMode,
+        page.binding,
+        page.background,
+      ];
+      if (
+        fields.some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(needle),
+        )
+      )
+        results.push({
+          kind: "Page",
+          title: page.name,
+          detail: page.binding
+            ? `${page.bindingMode}: ${page.binding}`
+            : "Page definition",
+          pageId: page.id,
+        });
     });
     state.items.forEach((item) => {
       const page = state.pages.find((entry) => entry.id === item.pageId),
-        definition = item.componentId ? window.ComposerRuntime.get(item.componentId) : null,
+        definition = item.componentId
+          ? window.ComposerRuntime.get(item.componentId)
+          : null,
         fields = {
           name: item.name,
           page: page?.name || (item.master ? "Global" : ""),
@@ -3842,7 +4378,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           source: item.source || "",
         },
         matches = Object.entries(fields)
-          .filter(([, value]) => String(value || "").toLowerCase().includes(needle))
+          .filter(([, value]) =>
+            String(value || "")
+              .toLowerCase()
+              .includes(needle),
+          )
           .map(([key]) => key);
       if (matches.length)
         results.push({
@@ -3854,11 +4394,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         });
     });
     collectProjectSignals().forEach((signal) => {
-      const haystack = [signal.value, signal.name, signal.widget, signal.page, signal.type, signal.direction, signal.mode]
-        .map((value) => String(value || "").toLowerCase());
+      const haystack = [
+        signal.value,
+        signal.name,
+        signal.widget,
+        signal.page,
+        signal.type,
+        signal.direction,
+        signal.mode,
+      ].map((value) => String(value || "").toLowerCase());
       if (!haystack.some((value) => value.includes(needle))) return;
-      const item = signal.itemId ? state.items.find((entry) => entry.id === signal.itemId) : null,
-        page = item ? state.pages.find((entry) => entry.id === item.pageId) : state.pages.find((entry) => entry.name === signal.page);
+      const item = signal.itemId
+          ? state.items.find((entry) => entry.id === signal.itemId)
+          : null,
+        page = item
+          ? state.pages.find((entry) => entry.id === item.pageId)
+          : state.pages.find((entry) => entry.name === signal.page);
       results.push({
         kind: "Signal use",
         title: signal.value || "Unbound signal",
@@ -3885,8 +4436,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       button.append(kind, title, detail);
       host.appendChild(button);
     });
-    $("project-search-summary").textContent = `${results.length} result${results.length === 1 ? "" : "s"}${results.length > 500 ? " · showing first 500" : ""} for “${query}”.`;
-    if (!results.length) host.innerHTML = '<p class="hint" style="padding:14px">No pages, widgets, text, joins, contracts, or signal uses matched.</p>';
+    $("project-search-summary").textContent =
+      `${results.length} result${results.length === 1 ? "" : "s"}${results.length > 500 ? " · showing first 500" : ""} for “${query}”.`;
+    if (!results.length)
+      host.innerHTML =
+        '<p class="hint" style="padding:14px">No pages, widgets, text, joins, contracts, or signal uses matched.</p>';
   }
   function renderSignalManager() {
     const rows = collectProjectSignals(),
@@ -4471,14 +5025,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return deploymentSettings().profiles || [];
   }
   function defaultDeploymentType(deviceId) {
-    return deviceId === "ipad-landscape" ? "mobile" : deviceId === "monitor-4k" ? "web" : "touchscreen";
+    return deviceId === "ipad-landscape"
+      ? "mobile"
+      : deviceId === "monitor-4k"
+        ? "web"
+        : "touchscreen";
   }
   function activeDeploymentProfile() {
-    const id = $("deploy-profile")?.value || deploymentSettings().activeProfileId || "";
+    const id =
+      $("deploy-profile")?.value || deploymentSettings().activeProfileId || "";
     return deploymentProfiles().find((profile) => profile.id === id) || null;
   }
-  function renderDeploymentProfiles(selectedId = deploymentSettings().activeProfileId || "") {
-    const profileSelect = $("deploy-profile"), deviceSelect = $("deploy-profile-device"),
+  function renderDeploymentProfiles(
+    selectedId = deploymentSettings().activeProfileId || "",
+  ) {
+    const profileSelect = $("deploy-profile"),
+      deviceSelect = $("deploy-profile-device"),
       profiles = deploymentProfiles();
     profileSelect.innerHTML = '<option value="">Unsaved profile</option>';
     profiles.forEach((profile) => {
@@ -4488,13 +5050,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       profileSelect.appendChild(option);
     });
     deviceSelect.innerHTML = "";
-    deviceProfiles.filter((device) => device.id !== "custom").forEach((device) => {
-      const option = document.createElement("option");
-      option.value = device.id;
-      option.textContent = device.name;
-      deviceSelect.appendChild(option);
-    });
-    profileSelect.value = profiles.some((profile) => profile.id === selectedId) ? selectedId : "";
+    deviceProfiles
+      .filter((device) => device.id !== "custom")
+      .forEach((device) => {
+        const option = document.createElement("option");
+        option.value = device.id;
+        option.textContent = device.name;
+        deviceSelect.appendChild(option);
+      });
+    profileSelect.value = profiles.some((profile) => profile.id === selectedId)
+      ? selectedId
+      : "";
     loadDeploymentProfile(profileSelect.value);
     renderDeploymentQueue();
   }
@@ -4502,12 +5068,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const host = $("deployment-profile-list");
     if (!host) return;
     const hadEntries = host.querySelectorAll("input").length > 0,
-      checked = new Set([...host.querySelectorAll("input:checked")].map((input) => input.value));
+      checked = new Set(
+        [...host.querySelectorAll("input:checked")].map((input) => input.value),
+      );
     host.innerHTML = "";
     deploymentProfiles().forEach((profile) => {
-      const row = document.createElement("label"), select = document.createElement("input"),
-        name = document.createElement("strong"), target = document.createElement("small"), stateLabel = document.createElement("span"),
-        device = deviceProfiles.find((entry) => entry.id === profile.deviceId), queue = deploymentQueueStatus.get(profile.id);
+      const row = document.createElement("label"),
+        select = document.createElement("input"),
+        name = document.createElement("strong"),
+        target = document.createElement("small"),
+        stateLabel = document.createElement("span"),
+        device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
+        queue = deploymentQueueStatus.get(profile.id);
       row.className = `deployment-queue-entry ${queue?.state || ""}`;
       select.type = "checkbox";
       select.value = profile.id;
@@ -4519,10 +5091,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       row.append(select, name, target, stateLabel);
       host.appendChild(row);
     });
-    if (!deploymentProfiles().length) host.innerHTML = '<p class="hint">Create and save a deployment profile to use the queue.</p>';
+    if (!deploymentProfiles().length)
+      host.innerHTML =
+        '<p class="hint">Create and save a deployment profile to use the queue.</p>';
   }
   function selectedDeploymentQueueProfiles() {
-    const ids = new Set([...document.querySelectorAll("#deployment-profile-list input:checked")].map((input) => input.value));
+    const ids = new Set(
+      [
+        ...document.querySelectorAll("#deployment-profile-list input:checked"),
+      ].map((input) => input.value),
+    );
     return deploymentProfiles().filter((profile) => ids.has(profile.id));
   }
   function setDeploymentQueueState(profileId, state, message, details = {}) {
@@ -4530,23 +5108,38 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     renderDeploymentQueue();
   }
   function loadDeploymentProfile(id) {
-    const profile = deploymentProfiles().find((entry) => entry.id === id), settings = deploymentSettings();
+    const profile = deploymentProfiles().find((entry) => entry.id === id),
+      settings = deploymentSettings();
     $("deploy-profile-name").value = profile?.name || "";
     $("deploy-profile-device").value = profile?.deviceId || state.targetDevice;
-    $("deploy-target-type").value = profile?.deploymentType || defaultDeploymentType(profile?.deviceId || state.targetDevice);
+    $("deploy-target-type").value =
+      profile?.deploymentType ||
+      defaultDeploymentType(profile?.deviceId || state.targetDevice);
     $("deploy-host").value = profile?.host || settings.host || "";
     $("deploy-username").value = profile?.username || "";
-    $("deploy-package").value = profile?.packagePath || settings.packagePath || "";
+    $("deploy-package").value =
+      profile?.packagePath || settings.packagePath || "";
     $("deploy-profile-delete").disabled = !profile;
     saveDeploymentSettings({ activeProfileId: profile?.id || "" });
   }
   function saveCurrentDeploymentProfile() {
-    const settings = deploymentSettings(), profiles = deploymentProfiles(), selected = activeDeploymentProfile(),
-      name = $("deploy-profile-name").value.trim(), host = $("deploy-host").value.trim();
-    if (!name) { alert("Enter a deployment profile name."); return; }
-    if (!host) { alert("Enter the panel IP address or host name."); return; }
+    const settings = deploymentSettings(),
+      profiles = deploymentProfiles(),
+      selected = activeDeploymentProfile(),
+      name = $("deploy-profile-name").value.trim(),
+      host = $("deploy-host").value.trim();
+    if (!name) {
+      alert("Enter a deployment profile name.");
+      return;
+    }
+    if (!host) {
+      alert("Enter the panel IP address or host name.");
+      return;
+    }
     const profile = {
-      id: selected?.id || uid("deploy-"), name, host,
+      id: selected?.id || uid("deploy-"),
+      name,
+      host,
       username: $("deploy-username").value.trim(),
       deviceId: $("deploy-profile-device").value,
       deploymentType: $("deploy-target-type").value,
@@ -4555,17 +5148,30 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       updatedAt: new Date().toISOString(),
       lastCheck: selected?.lastCheck || null,
     };
-    const next = selected ? profiles.map((entry) => entry.id === selected.id ? profile : entry) : [...profiles, profile];
-    saveDeploymentSettings({ ...settings, profiles: next, activeProfileId: profile.id, host, packagePath: profile.packagePath, slowMode: profile.slowMode });
+    const next = selected
+      ? profiles.map((entry) => (entry.id === selected.id ? profile : entry))
+      : [...profiles, profile];
+    saveDeploymentSettings({
+      ...settings,
+      profiles: next,
+      activeProfileId: profile.id,
+      host,
+      packagePath: profile.packagePath,
+      slowMode: profile.slowMode,
+    });
     renderDeploymentProfiles(profile.id);
-    $("deploy-status").textContent = `Saved deployment profile “${profile.name}”.`;
+    $("deploy-status").textContent =
+      `Saved deployment profile “${profile.name}”.`;
   }
   function updateActiveDeploymentProfile(patch) {
     const selected = activeDeploymentProfile();
     if (!selected) return;
     saveDeploymentSettings({
-      profiles: deploymentProfiles().map((profile) => profile.id === selected.id
-        ? { ...profile, ...patch, updatedAt: new Date().toISOString() } : profile),
+      profiles: deploymentProfiles().map((profile) =>
+        profile.id === selected.id
+          ? { ...profile, ...patch, updatedAt: new Date().toISOString() }
+          : profile,
+      ),
     });
     renderDeploymentProfiles(selected.id);
   }
@@ -4678,7 +5284,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         contractIndex: index,
         value:
           row.mode === "join"
-            ? String((Number(row.value) || 0) + index * (row.rangeIncrement || 1))
+            ? String(
+                (Number(row.value) || 0) + index * (row.rangeIncrement || 1),
+              )
             : String(row.value || "")
                 .replace(/\{n\}/g, String(index + 1))
                 .replace(/\{index\}/g, String(index)),
@@ -4832,10 +5440,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         renderPage();
       }
       requestAnimationFrame(() => {
-        const element = stage.querySelector(`.widget[data-id="${CSS.escape(item.id)}"]`);
+        const element = stage.querySelector(
+          `.widget[data-id="${CSS.escape(item.id)}"]`,
+        );
         if (element) {
           element.classList.add("simulator-focus");
-          element.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+          element.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "center",
+          });
         }
       });
     }
@@ -4869,7 +5483,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = !!item.reusableBindingsOverride;
-        label.append(checkbox, document.createTextNode("Use custom signal bindings for this instance"));
+        label.append(
+          checkbox,
+          document.createTextNode(
+            "Use custom signal bindings for this instance",
+          ),
+        );
         checkbox.onchange = () => {
           item.reusableBindingsOverride = checkbox.checked;
           if (!checkbox.checked) {
@@ -4883,11 +5502,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           scheduleHistory();
         };
         panel.appendChild(label);
-      } else panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
+      } else
+        panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
       host.appendChild(panel);
     }
     if (!bindings.length) {
-      host.insertAdjacentHTML("beforeend", '<div class="signal-empty">No variables ending in “Signal” were detected.</div>');
+      host.insertAdjacentHTML(
+        "beforeend",
+        '<div class="signal-empty">No variables ending in “Signal” were detected.</div>',
+      );
       return;
     }
     bindings.forEach((binding) => {
@@ -4959,7 +5582,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = !!item.reusableBindingsOverride;
-        label.append(checkbox, document.createTextNode("Use custom signal bindings for this instance"));
+        label.append(
+          checkbox,
+          document.createTextNode(
+            "Use custom signal bindings for this instance",
+          ),
+        );
         panel.appendChild(label);
         checkbox.onchange = () => {
           item.reusableBindingsOverride = checkbox.checked;
@@ -4968,7 +5596,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               (entry) => entry.reusableKey === item.reusableKey,
             );
             if (source) {
-              item.signalBindings = structuredClone(source.signalBindings || {});
+              item.signalBindings = structuredClone(
+                source.signalBindings || {},
+              );
               const signalKeys = new Set([
                 "bindingMode",
                 ...(definition.signals || [])
@@ -4978,19 +5608,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                   .filter((property) => property.signalSetting)
                   .map((property) => property.key),
               ]);
-              Object.entries(source.properties || {}).forEach(([key, value]) => {
-                if (signalKeys.has(key)) item.properties[key] = structuredClone(value);
-              });
+              Object.entries(source.properties || {}).forEach(
+                ([key, value]) => {
+                  if (signalKeys.has(key))
+                    item.properties[key] = structuredClone(value);
+                },
+              );
             }
           }
           renderItem(item);
           renderBindings(item);
           scheduleHistory();
         };
-      } else panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
+      } else
+        panel.textContent = `Master bindings for “${reusableDefinition.name}” — linked instances inherit these by default.`;
       host.appendChild(panel);
     }
-    if ((definition.properties || []).some((property) => property.key === "bindingMode")) {
+    if (
+      (definition.properties || []).some(
+        (property) => property.key === "bindingMode",
+      )
+    ) {
       const modeLabel = document.createElement("label"),
         modeSelect = document.createElement("select");
       modeLabel.className = "signal-binding-mode";
@@ -5252,7 +5890,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       });
     if (inheritedBindings)
       host
-        .querySelectorAll(".signal-binding input,.signal-binding select,.signal-optional-toggle input")
+        .querySelectorAll(
+          ".signal-binding input,.signal-binding select,.signal-optional-toggle input",
+        )
         .forEach((control) => (control.disabled = true));
   }
   function pointerOp(e, resize) {
@@ -5419,7 +6059,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         checkAsset(item.assetId, `Page template “${template.name}”`);
         checkAsset(item.backgroundAsset, `Page template “${template.name}”`);
         checkAsset(item.graphicAsset, `Page template “${template.name}”`);
-        checkAsset(item.selectedGraphicAsset, `Page template “${template.name}”`);
+        checkAsset(
+          item.selectedGraphicAsset,
+          `Page template “${template.name}”`,
+        );
       });
     });
     state.reusables.forEach((reusable) =>
@@ -5450,10 +6093,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           `“${item.name}” is outside the ${state.width} × ${state.height} panel bounds.`,
         );
       const safeMargin = Math.max(0, Number(item.layout?.safeMargin) || 0);
-      if (safeMargin && !window.ComposerResponsiveLayout.fitsSafeArea(
-        item, { width: state.width, height: state.height }, safeMargin,
-      ))
-        add("warning", `“${item.name}” crosses its ${safeMargin}px safe margin.`);
+      if (
+        safeMargin &&
+        !window.ComposerResponsiveLayout.fitsSafeArea(
+          item,
+          { width: state.width, height: state.height },
+          safeMargin,
+        )
+      )
+        add(
+          "warning",
+          `“${item.name}” crosses its ${safeMargin}px safe margin.`,
+        );
       if (item.w < 20 || item.h < 20)
         add("error", `“${item.name}” is smaller than the editor minimum.`);
       if (![item.x, item.y, item.w, item.h, item.z].every(Number.isFinite))
@@ -5733,7 +6384,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       `Target: ${selectedDevice().name} (${state.width} × ${state.height})`,
       `Pages: ${state.pages.length}   Widgets: ${state.items.length}   Assets: ${state.assets.length}`,
       "",
-      issues.length ? validationReport(issues) : "0 error(s), 0 warning(s)\n\nValidation passed. No project issues were found.",
+      issues.length
+        ? validationReport(issues)
+        : "0 error(s), 0 warning(s)\n\nValidation passed. No project issues were found.",
     ].join("\n");
     if (interactive) {
       $("health-title").textContent = "Project health report";
@@ -5756,14 +6409,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   async function runBuildSelfTest() {
     const dialog = $("health-dialog");
     $("health-title").textContent = "Export/build self-test";
-    $("health-summary").textContent = "Running widget export and Crestron CLI package checks…";
-    $("health-report").textContent = "Preparing the complete widget catalog. This can take several seconds.";
+    $("health-summary").textContent =
+      "Running widget export and Crestron CLI package checks…";
+    $("health-report").textContent =
+      "Preparing the complete widget catalog. This can take several seconds.";
     $("compatibility-device").hidden = true;
     $("compatibility-preview").hidden = true;
     $("compatibility-autofit").hidden = true;
     if (!dialog.open) dialog.showModal();
     setStatus("Running export/build self-test…");
-    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => setTimeout(resolve, 0)),
+    );
     try {
       await performBuildSelfTest();
     } catch (error) {
@@ -5776,30 +6433,71 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   async function performBuildSelfTest() {
     const projectResult = runValidation(false),
       definitions = [...window.ComposerRuntime.definitions.values()],
-      errors = projectResult.errors.map((issue) => `Current project: ${issue.message}`),
+      errors = projectResult.errors.map(
+        (issue) => `Current project: ${issue.message}`,
+      ),
       validTypes = new Set(["digital", "analog", "serial"]),
       validDirections = new Set(["input", "output"]);
     definitions.forEach((definition) => {
-      const properties = new Map((definition.properties || []).map((property) => [property.key, property]));
+      const properties = new Map(
+        (definition.properties || []).map((property) => [
+          property.key,
+          property,
+        ]),
+      );
       (definition.signals || []).forEach((signal) => {
         if (!signal.key) errors.push(`${definition.name}: signal has no key`);
-        if (!validTypes.has(signal.type)) errors.push(`${definition.name}.${signal.key}: invalid type ${signal.type}`);
-        if (!validDirections.has(signal.direction)) errors.push(`${definition.name}.${signal.key}: invalid direction ${signal.direction}`);
-        if (signal.defaultValue && !window.ComposerRuntime.resolveAddress(signal.defaultValue, signal.type, signal.direction, `SelfTest.${definition.id}`))
-          errors.push(`${definition.name}.${signal.key}: address does not resolve`);
+        if (!validTypes.has(signal.type))
+          errors.push(
+            `${definition.name}.${signal.key}: invalid type ${signal.type}`,
+          );
+        if (!validDirections.has(signal.direction))
+          errors.push(
+            `${definition.name}.${signal.key}: invalid direction ${signal.direction}`,
+          );
+        if (
+          signal.defaultValue &&
+          !window.ComposerRuntime.resolveAddress(
+            signal.defaultValue,
+            signal.type,
+            signal.direction,
+            `SelfTest.${definition.id}`,
+          )
+        )
+          errors.push(
+            `${definition.name}.${signal.key}: address does not resolve`,
+          );
       });
-      [...(definition.addressBindings || []).map((binding) => ({ ...binding, propertyKey: binding.key })),
-        ...(definition.rangeBindings || []).map((binding) => ({ ...binding, propertyKey: binding.baseKey }))]
-        .forEach((binding) => {
-          const property = properties.get(binding.propertyKey);
-          if (!property) errors.push(`${definition.name}: binding references missing property ${binding.propertyKey}`);
-          else if (!String(property.defaultValue || "").trim()) errors.push(`${definition.name}.${binding.propertyKey}: binding has no default address`);
-        });
+      [
+        ...(definition.addressBindings || []).map((binding) => ({
+          ...binding,
+          propertyKey: binding.key,
+        })),
+        ...(definition.rangeBindings || []).map((binding) => ({
+          ...binding,
+          propertyKey: binding.baseKey,
+        })),
+      ].forEach((binding) => {
+        const property = properties.get(binding.propertyKey);
+        if (!property)
+          errors.push(
+            `${definition.name}: binding references missing property ${binding.propertyKey}`,
+          );
+        else if (!String(property.defaultValue || "").trim())
+          errors.push(
+            `${definition.name}.${binding.propertyKey}: binding has no default address`,
+          );
+      });
     });
     if (errors.length) {
-      lastHealthReport = ["EXPORT/BUILD SELF-TEST — FAILED", "", ...errors.map((error) => `- ${error}`)].join("\n");
+      lastHealthReport = [
+        "EXPORT/BUILD SELF-TEST — FAILED",
+        "",
+        ...errors.map((error) => `- ${error}`),
+      ].join("\n");
       $("health-title").textContent = "Export/build self-test";
-      $("health-summary").textContent = `${errors.length} blocking problem${errors.length === 1 ? "" : "s"} found.`;
+      $("health-summary").textContent =
+        `${errors.length} blocking problem${errors.length === 1 ? "" : "s"} found.`;
       $("health-report").textContent = lastHealthReport;
       $("compatibility-device").hidden = true;
       $("compatibility-preview").hidden = true;
@@ -5821,18 +6519,37 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         w: definition.defaultSize?.width || 280,
         h: definition.defaultSize?.height || 180,
         z: index + 1,
-        properties: Object.fromEntries((definition.properties || []).map((property) => [property.key, property.defaultValue])),
-        signalBindings: Object.fromEntries((definition.signals || []).map((signal) => [signal.key, {
-          mode: /^\d+$/.test(String(signal.defaultValue || "")) ? "join" : "contract",
-          value: signal.defaultValue || "",
-        }])),
+        properties: Object.fromEntries(
+          (definition.properties || []).map((property) => [
+            property.key,
+            property.defaultValue,
+          ]),
+        ),
+        signalBindings: Object.fromEntries(
+          (definition.signals || []).map((signal) => [
+            signal.key,
+            {
+              mode: /^\d+$/.test(String(signal.defaultValue || ""))
+                ? "join"
+                : "contract",
+              value: signal.defaultValue || "",
+            },
+          ]),
+        ),
       })),
       catalog = {
         version: window.ComposerProjectMigrations.CURRENT_VERSION,
         width: columns * cellWidth,
         height: Math.ceil(items.length / columns) * cellHeight,
         targetDevice: "self-test",
-        pages: [{ id: "self-test-page", name: "Widget Catalog", background: "#182126", bindingMode: "none" }],
+        pages: [
+          {
+            id: "self-test-page",
+            name: "Widget Catalog",
+            background: "#182126",
+            bindingMode: "none",
+          },
+        ],
         activePage: "self-test-page",
         items,
         assets: [],
@@ -5844,16 +6561,26 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       !html.includes('id="self-test-page"') ||
       !html.includes('data-instance="self-test-0"')
     )
-      throw new Error("The catalog export is missing its runtime or page markup.");
+      throw new Error(
+        "The catalog export is missing its runtime or page markup.",
+      );
     if (!native) {
-      alert("The HTML catalog passed. CH5 archive verification requires the Windows application.");
+      alert(
+        "The HTML catalog passed. CH5 archive verification requires the Windows application.",
+      );
       return;
     }
-    setStatus(`Testing export and CH5 build for ${definitions.length} widgets…`);
+    setStatus(
+      `Testing export and CH5 build for ${definitions.length} widgets…`,
+    );
     try {
       const result = await nativeRequest("buildSelfTest", {
         html,
-        device: { id: "self-test", width: catalog.width, height: catalog.height },
+        device: {
+          id: "self-test",
+          width: catalog.width,
+          height: catalog.height,
+        },
       });
       lastHealthReport = [
         "EXPORT/BUILD SELF-TEST — PASSED",
@@ -5867,7 +6594,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         "The temporary archive contained a manifest, .ch5 payload, index.html, and CrComLib runtime.",
       ].join("\n");
       $("health-title").textContent = "Export/build self-test";
-      $("health-summary").textContent = `PASS — ${definitions.length} widgets exported and a temporary CH5Z was validated.`;
+      $("health-summary").textContent =
+        `PASS — ${definitions.length} widgets exported and a temporary CH5Z was validated.`;
       $("health-report").textContent = lastHealthReport;
       $("compatibility-device").hidden = true;
       $("compatibility-preview").hidden = true;
@@ -5889,33 +6617,57 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ];
     let problemCount = 0;
     profiles.forEach((device) => {
-      const key = panelLayoutKey(device.id, device.width, device.height), problems = [];
+      const key = panelLayoutKey(device.id, device.width, device.height),
+        problems = [];
       state.items.forEach((item) => {
-        const layout = layoutDefaults(item), saved = item.deviceOverrides[key],
-          rect = saved || window.ComposerResponsiveLayout.adaptRect(
-            item, { width: state.width, height: state.height },
-            { width: device.width, height: device.height }, layout,
-          ),
+        const layout = layoutDefaults(item),
+          saved = item.deviceOverrides[key],
+          rect =
+            saved ||
+            window.ComposerResponsiveLayout.adaptRect(
+              item,
+              { width: state.width, height: state.height },
+              { width: device.width, height: device.height },
+              layout,
+            ),
           margin = Math.max(0, Number(layout.safeMargin) || 0),
-          page = state.pages.find((entry) => entry.id === item.pageId)?.name || "Unknown page";
-        if (!window.ComposerResponsiveLayout.fitsSafeArea(
-          rect, { width: device.width, height: device.height }, margin,
-        )) problems.push(`${page} / ${item.name}: ${rect.x},${rect.y} ${rect.w}×${rect.h}${margin ? ` (safe margin ${margin}px)` : ""}`);
+          page =
+            state.pages.find((entry) => entry.id === item.pageId)?.name ||
+            "Unknown page";
+        if (
+          !window.ComposerResponsiveLayout.fitsSafeArea(
+            rect,
+            { width: device.width, height: device.height },
+            margin,
+          )
+        )
+          problems.push(
+            `${page} / ${item.name}: ${rect.x},${rect.y} ${rect.w}×${rect.h}${margin ? ` (safe margin ${margin}px)` : ""}`,
+          );
       });
-      if (device.supportsCh5 === false) problems.unshift("This panel does not support CH5 projects.");
+      if (device.supportsCh5 === false)
+        problems.unshift("This panel does not support CH5 projects.");
       problemCount += problems.length;
-      lines.push(`${device.name} — ${device.width} × ${device.height}: ${problems.length ? `${problems.length} issue(s)` : "PASS"}`);
+      lines.push(
+        `${device.name} — ${device.width} × ${device.height}: ${problems.length ? `${problems.length} issue(s)` : "PASS"}`,
+      );
       problems.forEach((problem) => lines.push(`  - ${problem}`));
       lines.push("");
     });
     lastHealthReport = lines.join("\n");
     $("health-title").textContent = "Panel compatibility report";
     const profileSelect = $("compatibility-device");
-    profileSelect.innerHTML = profiles.map((device) =>
-      `<option value="${device.id}">${device.name} — ${device.width} × ${device.height}</option>`,
-    ).join("");
-    profileSelect.value = profiles.some((device) => device.id === state.targetDevice)
-      ? state.targetDevice : profiles[0]?.id || "";
+    profileSelect.innerHTML = profiles
+      .map(
+        (device) =>
+          `<option value="${device.id}">${device.name} — ${device.width} × ${device.height}</option>`,
+      )
+      .join("");
+    profileSelect.value = profiles.some(
+      (device) => device.id === state.targetDevice,
+    )
+      ? state.targetDevice
+      : profiles[0]?.id || "";
     profileSelect.hidden = false;
     $("compatibility-preview").hidden = false;
     $("compatibility-autofit").hidden = false;
@@ -5924,10 +6676,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       : `All ${profiles.length} panel profiles fit.`;
     $("health-report").textContent = lastHealthReport;
     $("health-dialog").showModal();
-    setStatus(problemCount ? `${problemCount} panel fit issues found` : "All panel profiles fit");
+    setStatus(
+      problemCount
+        ? `${problemCount} panel fit issues found`
+        : "All panel profiles fit",
+    );
   }
   async function createProjectBackup(reason = "manual") {
-    if (!native) throw new Error("Project backups are available in the Windows application.");
+    if (!native)
+      throw new Error(
+        "Project backups are available in the Windows application.",
+      );
     return nativeRequest("createProjectBackup", {
       contents: JSON.stringify(project(), null, 2),
       name: state.contract.name || "CrestronUiProject",
@@ -5936,7 +6695,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   async function renderProjectBackups() {
     const host = $("backup-list");
-    host.innerHTML = '<p class="hint" style="padding:14px">Loading backups…</p>';
+    host.innerHTML =
+      '<p class="hint" style="padding:14px">Loading backups…</p>';
     try {
       const backups = await nativeRequest("listProjectBackups");
       host.innerHTML = "";
@@ -5957,10 +6717,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         remove.textContent = "Delete";
         remove.className = "danger";
         restore.onclick = async () => {
-          if (!confirm(`Restore “${backup.name}”? The current project will be backed up first.`)) return;
+          if (
+            !confirm(
+              `Restore “${backup.name}”? The current project will be backed up first.`,
+            )
+          )
+            return;
           try {
             await createProjectBackup("before-restore");
-            const result = await nativeRequest("readProjectBackup", { path: backup.path });
+            const result = await nativeRequest("readProjectBackup", {
+              path: backup.path,
+            });
             await loadProjectText(result.contents, false, result.path);
             projectDirty = true;
             setAutosaveState("Restored · unsaved", "dirty");
@@ -5982,7 +6749,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         row.append(info, meta, restore, remove);
         host.appendChild(row);
       });
-      if (!backups.length) host.innerHTML = '<p class="hint" style="padding:14px">No project backups have been created yet.</p>';
+      if (!backups.length)
+        host.innerHTML =
+          '<p class="hint" style="padding:14px">No project backups have been created yet.</p>';
     } catch (error) {
       host.innerHTML = `<p class="hint" style="padding:14px"></p>`;
       host.firstElementChild.textContent = error.message;
@@ -5997,11 +6766,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     templates: "Components / templates",
   };
   async function renderStorageSettings() {
-    const host = $("storage-location-list"), settings = await nativeRequest("getStorageSettings");
+    const host = $("storage-location-list"),
+      settings = await nativeRequest("getStorageSettings");
     host.innerHTML = "";
     Object.entries(storageLabels).forEach(([key, label]) => {
-      const row = document.createElement("div"), name = document.createElement("strong"),
-        path = document.createElement("div"), choose = document.createElement("button"), open = document.createElement("button");
+      const row = document.createElement("div"),
+        name = document.createElement("strong"),
+        path = document.createElement("div"),
+        choose = document.createElement("button"),
+        open = document.createElement("button");
       row.className = "storage-location-row";
       name.textContent = label;
       path.className = "storage-location-path";
@@ -6014,15 +6787,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         try {
           await nativeRequest("selectStorageFolder", { key });
           await renderStorageSettings();
-        } catch (error) { if (error.message !== "cancelled") alert(error.message); }
+        } catch (error) {
+          if (error.message !== "cancelled") alert(error.message);
+        }
       };
-      open.onclick = () => nativeRequest("openStorageFolder", { key }).catch((error) => alert(error.message));
+      open.onclick = () =>
+        nativeRequest("openStorageFolder", { key }).catch((error) =>
+          alert(error.message),
+        );
       row.append(name, path, choose, open);
       host.appendChild(row);
     });
   }
   async function checkForUpdates() {
-    const dialog = $("update-dialog"), downloadButton = $("update-download");
+    const dialog = $("update-dialog"),
+      downloadButton = $("update-download");
     $("update-summary").textContent = "Checking the public GitHub repository…";
     $("update-current-version").textContent = "—";
     $("update-latest-version").textContent = "—";
@@ -6030,21 +6809,29 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     downloadButton.hidden = true;
     if (!dialog.open) dialog.showModal();
     if (!native) {
-      $("update-summary").textContent = "Update checking is available in the Windows application.";
+      $("update-summary").textContent =
+        "Update checking is available in the Windows application.";
       return;
     }
     try {
       const result = await nativeRequest("checkForUpdates");
       $("update-current-version").textContent = result.currentVersion;
-      $("update-latest-version").textContent = result.latestVersion || "No published release";
-      $("update-notes").textContent = result.releaseNotes || "No GitHub release has been published yet.";
+      $("update-latest-version").textContent =
+        result.latestVersion || "No published release";
+      $("update-notes").textContent =
+        result.releaseNotes || "No GitHub release has been published yet.";
       $("update-summary").textContent = result.updateAvailable
         ? `Version ${result.latestVersion} is available.`
-        : result.latestVersion ? "You have the latest published version." : "No published releases were found.";
+        : result.latestVersion
+          ? "You have the latest published version."
+          : "No published releases were found.";
       if (result.downloadUrl || result.releaseUrl) {
         downloadButton.hidden = !result.updateAvailable;
-        downloadButton.onclick = () => nativeRequest("openExternalUrl", result.downloadUrl || result.releaseUrl)
-          .catch((error) => alert(error.message));
+        downloadButton.onclick = () =>
+          nativeRequest(
+            "openExternalUrl",
+            result.downloadUrl || result.releaseUrl,
+          ).catch((error) => alert(error.message));
       }
     } catch (error) {
       $("update-summary").textContent = "The update check failed.";
@@ -6052,7 +6839,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
   }
   function selectedCompatibilityDevice() {
-    return deviceProfiles.find((device) => device.id === $("compatibility-device").value);
+    return deviceProfiles.find(
+      (device) => device.id === $("compatibility-device").value,
+    );
   }
   function previewCompatibilityDevice() {
     const device = selectedCompatibilityDevice();
@@ -6070,7 +6859,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       applyDevice(device.id);
     }
     const key = panelLayoutKey(device.id, device.width, device.height),
-      items = state.items.filter((item) => item.master || item.pageId === state.activePage);
+      items = state.items.filter(
+        (item) => item.master || item.pageId === state.activePage,
+      );
     let changed = 0;
     items.forEach((item) => {
       const margin = Math.max(0, Number(layoutDefaults(item).safeMargin) || 0),
@@ -6079,18 +6870,30 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         before = `${item.x},${item.y},${item.w},${item.h}`;
       item.w = Math.min(item.w, availableWidth);
       item.h = Math.min(item.h, availableHeight);
-      item.x = Math.max(margin, Math.min(item.x, state.width - margin - item.w));
-      item.y = Math.max(margin, Math.min(item.y, state.height - margin - item.h));
+      item.x = Math.max(
+        margin,
+        Math.min(item.x, state.width - margin - item.w),
+      );
+      item.y = Math.max(
+        margin,
+        Math.min(item.y, state.height - margin - item.h),
+      );
       item.deviceOverrides[key] = {
-        x: item.x, y: item.y, w: item.w, h: item.h,
-        panelWidth: state.width, panelHeight: state.height,
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+        panelWidth: state.width,
+        panelHeight: state.height,
       };
       if (before !== `${item.x},${item.y},${item.w},${item.h}`) changed++;
     });
     renderPage();
     commitHistory();
     runPanelCompatibility();
-    setStatus(`Auto-fit ${changed} widget${changed === 1 ? "" : "s"} on ${currentPage().name} for ${device.name}`);
+    setStatus(
+      `Auto-fit ${changed} widget${changed === 1 ? "" : "s"} on ${currentPage().name} for ${device.name}`,
+    );
   }
   function approveExport() {
     const result = runValidation(false);
@@ -6142,10 +6945,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     output.items = state.items.map((item) => {
       const copy = structuredClone(item),
         saved = key === currentKey ? item : item.deviceOverrides?.[key],
-        rect = saved || window.ComposerResponsiveLayout.adaptRect(
-          item, { width: state.width, height: state.height },
-          { width: device.width, height: device.height }, layoutDefaults(item),
-        );
+        rect =
+          saved ||
+          window.ComposerResponsiveLayout.adaptRect(
+            item,
+            { width: state.width, height: state.height },
+            { width: device.width, height: device.height },
+            layoutDefaults(item),
+          );
       Object.assign(copy, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
       return copy;
     });
@@ -6154,19 +6961,23 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function renderBuildPanelList() {
     const host = $("build-panel-list");
     host.innerHTML = "";
-    deviceProfiles.filter((device) => device.id !== "custom").forEach((device) => {
-      const label = document.createElement("label"), input = document.createElement("input"),
-        name = document.createElement("span"), size = document.createElement("small");
-      label.className = "build-panel-option";
-      input.type = "checkbox";
-      input.value = device.id;
-      input.checked = device.id === state.targetDevice;
-      input.disabled = device.supportsCh5 === false;
-      name.textContent = device.name;
-      size.textContent = `${device.width}×${device.height}`;
-      label.append(input, name, size);
-      host.appendChild(label);
-    });
+    deviceProfiles
+      .filter((device) => device.id !== "custom")
+      .forEach((device) => {
+        const label = document.createElement("label"),
+          input = document.createElement("input"),
+          name = document.createElement("span"),
+          size = document.createElement("small");
+        label.className = "build-panel-option";
+        input.type = "checkbox";
+        input.value = device.id;
+        input.checked = device.id === state.targetDevice;
+        input.disabled = device.supportsCh5 === false;
+        name.textContent = device.name;
+        size.textContent = `${device.width}×${device.height}`;
+        label.append(input, name, size);
+        host.appendChild(label);
+      });
   }
   function syncPageBinding() {
     const mode = $("page-binding-mode").value,
@@ -6246,154 +7057,725 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   };
   let translateSource = null;
   const translatePresets = {
-    button: { category: "Standard Buttons", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "label", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
-    toggle: { category: "Toggle Buttons", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "label", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
-    slider: { category: "Sliders & Levels", signals: [{ key: "set", name: "Value Set", type: "analog", direction: "output", suffix: "ValueSet" }, { key: "feedback", name: "Feedback", type: "analog", direction: "input", suffix: "Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
-    gauge: { category: "Status & Information", signals: [{ key: "feedback", name: "Feedback", type: "analog", direction: "input", suffix: "Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
-    text: { category: "Text & Input", signals: [{ key: "text", name: "Text", type: "serial", direction: "output", suffix: "Text" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
-    navigation: { category: "Navigation & Menus", signals: [{ key: "press", name: "Press", type: "digital", direction: "output", suffix: "Press" }, { key: "selected", name: "Selected", type: "digital", direction: "input", suffix: "Selected" }, { key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" }] },
+    button: {
+      category: "Standard Buttons",
+      signals: [
+        {
+          key: "press",
+          name: "Press",
+          type: "digital",
+          direction: "output",
+          suffix: "Press",
+        },
+        {
+          key: "selected",
+          name: "Selected",
+          type: "digital",
+          direction: "input",
+          suffix: "Selected",
+        },
+        {
+          key: "label",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          suffix: "Name",
+        },
+      ],
+    },
+    toggle: {
+      category: "Toggle Buttons",
+      signals: [
+        {
+          key: "press",
+          name: "Press",
+          type: "digital",
+          direction: "output",
+          suffix: "Press",
+        },
+        {
+          key: "selected",
+          name: "Selected",
+          type: "digital",
+          direction: "input",
+          suffix: "Selected",
+        },
+        {
+          key: "label",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          suffix: "Name",
+        },
+      ],
+    },
+    slider: {
+      category: "Sliders & Levels",
+      signals: [
+        {
+          key: "set",
+          name: "Value Set",
+          type: "analog",
+          direction: "output",
+          suffix: "ValueSet",
+        },
+        {
+          key: "feedback",
+          name: "Feedback",
+          type: "analog",
+          direction: "input",
+          suffix: "Feedback",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          suffix: "Name",
+        },
+      ],
+    },
+    gauge: {
+      category: "Status & Information",
+      signals: [
+        {
+          key: "feedback",
+          name: "Feedback",
+          type: "analog",
+          direction: "input",
+          suffix: "Feedback",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          suffix: "Name",
+        },
+      ],
+    },
+    text: {
+      category: "Text & Input",
+      signals: [
+        {
+          key: "text",
+          name: "Text",
+          type: "serial",
+          direction: "output",
+          suffix: "Text",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          suffix: "Name",
+        },
+      ],
+    },
+    navigation: {
+      category: "Navigation & Menus",
+      signals: [
+        {
+          key: "press",
+          name: "Press",
+          type: "digital",
+          direction: "output",
+          suffix: "Press",
+        },
+        {
+          key: "selected",
+          name: "Selected",
+          type: "digital",
+          direction: "input",
+          suffix: "Selected",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          suffix: "Name",
+        },
+      ],
+    },
     custom: { category: "Custom", signals: [] },
   };
   function translatorKey(value, fallback = "property") {
-    const words = String(value || "").replace(/^--/, "").replace(/[^A-Za-z0-9]+(.)/g, (_, next) => next.toUpperCase()).replace(/^[^A-Za-z_$]+/, "");
+    const words = String(value || "")
+      .replace(/^--/, "")
+      .replace(/[^A-Za-z0-9]+(.)/g, (_, next) => next.toUpperCase())
+      .replace(/^[^A-Za-z_$]+/, "");
     return words || fallback;
   }
   function analyzeSnippet(name, source) {
-    const documentValue = new DOMParser().parseFromString(String(source || ""), "text/html"),
-      styles = [...documentValue.querySelectorAll("style")].map((element) => element.textContent).join("\n"),
-      javascript = [...documentValue.querySelectorAll("script")].map((element) => element.textContent).join("\n"),
+    const documentValue = new DOMParser().parseFromString(
+        String(source || ""),
+        "text/html",
+      ),
+      styles = [...documentValue.querySelectorAll("style")]
+        .map((element) => element.textContent)
+        .join("\n"),
+      javascript = [...documentValue.querySelectorAll("script")]
+        .map((element) => element.textContent)
+        .join("\n"),
       body = documentValue.body.cloneNode(true),
       variableValues = new Set();
-    body.querySelectorAll("script,style").forEach((element) => element.remove());
-    const editables = [], seen = new Set(), add = (entry) => { if (!seen.has(entry.key)) { seen.add(entry.key); editables.push(entry); } };
-    for (const match of styles.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;}{]+)\s*;/g)) {
-      const raw = match[2].trim(), type = /^#[0-9a-f]{6}$/i.test(raw) ? "color" : /^-?\d+(?:\.\d+)?(?:px)?$/i.test(raw) ? "number" : "text";
+    body
+      .querySelectorAll("script,style")
+      .forEach((element) => element.remove());
+    const editables = [],
+      seen = new Set(),
+      add = (entry) => {
+        if (!seen.has(entry.key)) {
+          seen.add(entry.key);
+          editables.push(entry);
+        }
+      };
+    for (const match of styles.matchAll(
+      /(--[A-Za-z0-9_-]+)\s*:\s*([^;}{]+)\s*;/g,
+    )) {
+      const raw = match[2].trim(),
+        type = /^#[0-9a-f]{6}$/i.test(raw)
+          ? "color"
+          : /^-?\d+(?:\.\d+)?(?:px)?$/i.test(raw)
+            ? "number"
+            : "text";
       variableValues.add(raw.toLowerCase());
-      const semantic = { "--bg": "Button color", "--background": "Button color", "--glow": "Glow color", "--text": "Icon / text color", "--color": "Color" }[match[1].toLowerCase()];
-      add({ key: translatorKey(match[1]), label: semantic || match[1].replace(/^--/, "").replace(/[-_]+/g, " ").replace(/\b\w/g, letter => letter.toUpperCase()), type, value: raw, kind: "css-variable", source: match[1] });
+      const semantic = {
+        "--bg": "Button color",
+        "--background": "Button color",
+        "--glow": "Glow color",
+        "--text": "Icon / text color",
+        "--color": "Color",
+      }[match[1].toLowerCase()];
+      add({
+        key: translatorKey(match[1]),
+        label:
+          semantic ||
+          match[1]
+            .replace(/^--/, "")
+            .replace(/[-_]+/g, " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        type,
+        value: raw,
+        kind: "css-variable",
+        source: match[1],
+      });
     }
-    const literalColors = [...new Set([...styles.matchAll(/#[0-9a-f]{6}\b/gi)].map(match => match[0].toLowerCase()))].filter(value => !variableValues.has(value));
+    const literalColors = [
+      ...new Set(
+        [...styles.matchAll(/#[0-9a-f]{6}\b/gi)].map((match) =>
+          match[0].toLowerCase(),
+        ),
+      ),
+    ].filter((value) => !variableValues.has(value));
     literalColors.forEach((value, index) => {
-      const before = styles.slice(Math.max(0, styles.toLowerCase().indexOf(value) - 50), styles.toLowerCase().indexOf(value)), property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
-        role = /border/.test(property) ? "Border color" : /background/.test(property) ? "Background color" : /shadow/.test(property) ? "Shadow color" : /stroke|fill|color/.test(property) ? "Text / icon color" : `Additional color ${index + 1}`,
+      const before = styles.slice(
+          Math.max(0, styles.toLowerCase().indexOf(value) - 50),
+          styles.toLowerCase().indexOf(value),
+        ),
+        property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
+        role = /border/.test(property)
+          ? "Border color"
+          : /background/.test(property)
+            ? "Background color"
+            : /shadow/.test(property)
+              ? "Shadow color"
+              : /stroke|fill|color/.test(property)
+                ? "Text / icon color"
+                : `Additional color ${index + 1}`,
         key = translatorKey(role) + (index ? index + 1 : "");
-      add({ key, label: role, type: "color", value, kind: "literal", source: value });
+      add({
+        key,
+        label: role,
+        type: "color",
+        value,
+        kind: "literal",
+        source: value,
+      });
     });
-    const allButtonElements = [...body.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],.btn,.button')],
-      repeatedGroups = [...body.querySelectorAll('*')].map(container => ({ container, items: [...container.children].filter(child => allButtonElements.includes(child)) })).filter(group => group.items.length >= 2).sort((a, b) => b.items.length - a.items.length),
+    const allButtonElements = [
+        ...body.querySelectorAll(
+          'button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],.btn,.button',
+        ),
+      ],
+      repeatedGroups = [...body.querySelectorAll("*")]
+        .map((container) => ({
+          container,
+          items: [...container.children].filter((child) =>
+            allButtonElements.includes(child),
+          ),
+        }))
+        .filter((group) => group.items.length >= 2)
+        .sort((a, b) => b.items.length - a.items.length),
       repeatedGroup = repeatedGroups[0] || null,
       repeatedSet = new Set(repeatedGroup?.items || []),
-      buttonElements = allButtonElements.filter(element => !repeatedSet.has(element)),
-      numericElements = [...body.querySelectorAll('input[type="range"],input[type="number"],meter,progress,[role="slider"],[role="progressbar"],.gauge,.meter,.level,.fill,.progress,.slider')].filter((element, index, all) => all.indexOf(element) === index),
-      interactiveNumeric = numericElements.filter((element) => element.matches('input,[role="slider"],.slider'));
+      buttonElements = allButtonElements.filter(
+        (element) => !repeatedSet.has(element),
+      ),
+      numericElements = [
+        ...body.querySelectorAll(
+          'input[type="range"],input[type="number"],meter,progress,[role="slider"],[role="progressbar"],.gauge,.meter,.level,.fill,.progress,.slider',
+        ),
+      ].filter((element, index, all) => all.indexOf(element) === index),
+      interactiveNumeric = numericElements.filter((element) =>
+        element.matches('input,[role="slider"],.slider'),
+      );
     if (repeatedGroup) {
-      repeatedGroup.container.setAttribute('data-translated-repeat-container', '');
-      repeatedGroup.items.forEach(item => item.setAttribute('data-translated-repeat-item', ''));
+      repeatedGroup.container.setAttribute(
+        "data-translated-repeat-container",
+        "",
+      );
+      repeatedGroup.items.forEach((item) =>
+        item.setAttribute("data-translated-repeat-item", ""),
+      );
     }
-    buttonElements.forEach((element, index) => element.dataset.translatedButton = String(index));
-    numericElements.forEach((element, index) => element.dataset.translatedNumeric = String(index));
+    buttonElements.forEach(
+      (element, index) => (element.dataset.translatedButton = String(index)),
+    );
+    numericElements.forEach(
+      (element, index) => (element.dataset.translatedNumeric = String(index)),
+    );
     let textIndex = 1;
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node && textIndex <= 8; node = walker.nextNode()) {
+    for (
+      let node = walker.nextNode();
+      node && textIndex <= 8;
+      node = walker.nextNode()
+    ) {
       const value = node.textContent.replace(/\s+/g, " ").trim();
-      if (value && value.length <= 80 && !node.parentElement?.closest('[data-translated-repeat-item]')) {
+      if (
+        value &&
+        value.length <= 80 &&
+        !node.parentElement?.closest("[data-translated-repeat-item]")
+      ) {
         const key = textIndex === 1 ? "text" : `text${textIndex}`;
         node.parentElement?.setAttribute("data-translated-text", key);
-        add({ key, label: `Text: ${value}`, type: "text", value, kind: "text", source: value });
+        add({
+          key,
+          label: `Text: ${value}`,
+          type: "text",
+          value,
+          kind: "text",
+          source: value,
+        });
         textIndex++;
       }
     }
-    return { fileName: name, source, html: body.innerHTML.trim(), css: styles, javascript, editables, features: { buttonCount: buttonElements.length, numericCount: numericElements.length, interactiveNumericCount: interactiveNumeric.length, textKeys: editables.filter((entry) => entry.kind === "text").map((entry) => entry.key), repeatedItems: repeatedGroup ? { containerSelector: '[data-translated-repeat-container]', itemSelector: '[data-translated-repeat-item]', labelSelector: '', defaultCount: repeatedGroup.items.length, maxCount: 20 } : null } };
+    return {
+      fileName: name,
+      source,
+      html: body.innerHTML.trim(),
+      css: styles,
+      javascript,
+      editables,
+      features: {
+        buttonCount: buttonElements.length,
+        numericCount: numericElements.length,
+        interactiveNumericCount: interactiveNumeric.length,
+        textKeys: editables
+          .filter((entry) => entry.kind === "text")
+          .map((entry) => entry.key),
+        repeatedItems: repeatedGroup
+          ? {
+              containerSelector: "[data-translated-repeat-container]",
+              itemSelector: "[data-translated-repeat-item]",
+              labelSelector: "",
+              defaultCount: repeatedGroup.items.length,
+              maxCount: 20,
+            }
+          : null,
+      },
+    };
   }
   function renderTranslateEditables() {
     if (!translateSource) return;
-    const preset = $("translate-preset").value, buttonLike = ["button", "toggle", "navigation"].includes(preset), editables = translateSource.editables.filter(entry => !(buttonLike && /shadow[-_ ]?(dark|light)/i.test(`${entry.key} ${entry.label}`)));
-    if (buttonLike || translateSource.features.buttonCount) editables.push(
-      { key: "shadowSize", label: "Shadow size", type: "number", value: 6, kind: "button-style" },
-      { key: "glowStrength", label: "Glow strength", type: "number", value: 3, kind: "button-style" },
-      { key: "faceColor", label: "Standard state — background color", type: "color", value: "#263b3c", kind: "button-style" },
-      { key: "selectedFaceColor", label: "Selected state — background color", type: "color", value: "#078f7d", kind: "button-style" },
-      { key: "textColor", label: "Standard state — text / icon color", type: "color", value: "#ffffff", kind: "button-style" },
-      { key: "selectedTextColor", label: "Selected state — text / icon color", type: "color", value: "#ffffff", kind: "button-style" },
-      { key: "borderColor", label: "Standard state — border color", type: "color", value: "#7ba7a3", kind: "button-style" },
-      { key: "selectedBorderColor", label: "Selected state — border color", type: "color", value: "#04dcb9", kind: "button-style" },
-      { key: "glowColor", label: "Standard state — glow color", type: "color", value: "#04dcb9", kind: "button-style" },
-      { key: "selectedGlowColor", label: "Selected state — glow color", type: "color", value: "#04dcb9", kind: "button-style" },
-      { key: "cornerRadius", label: "Corner radius", type: "number", value: 18, kind: "button-style" },
-      { key: "iconSize", label: "Icon size", type: "number", value: 24, kind: "button-style" },
-    );
-    if ((buttonLike || translateSource.features.buttonCount) && translateSource.features.textKeys.length && !editables.some((entry) => entry.key === "selectedText"))
-      editables.push({ key: "selectedText", label: "Selected state — text", type: "text", value: editables.find((entry) => entry.kind === "text")?.value || "", kind: "button-style" });
-    if (!editables.some(entry => entry.key === "textSize" || /font.?size/i.test(entry.key)))
-      editables.push({ key: "textSize", label: "Text size", type: "number", value: 16, kind: "standard-style" });
-    if (translateSource.features.textKeys.length && !editables.some(entry => entry.key === "textColor"))
-      editables.push({ key: "textColor", label: "Text color", type: "color", value: "#ffffff", kind: "standard-style" });
+    const preset = $("translate-preset").value,
+      buttonLike = ["button", "toggle", "navigation"].includes(preset),
+      editables = translateSource.editables.filter(
+        (entry) =>
+          !(
+            buttonLike &&
+            /shadow[-_ ]?(dark|light)/i.test(`${entry.key} ${entry.label}`)
+          ),
+      );
+    if (buttonLike || translateSource.features.buttonCount)
+      editables.push(
+        {
+          key: "shadowSize",
+          label: "Shadow size",
+          type: "number",
+          value: 6,
+          kind: "button-style",
+        },
+        {
+          key: "glowStrength",
+          label: "Glow strength",
+          type: "number",
+          value: 3,
+          kind: "button-style",
+        },
+        {
+          key: "faceColor",
+          label: "Standard state — background color",
+          type: "color",
+          value: "#263b3c",
+          kind: "button-style",
+        },
+        {
+          key: "selectedFaceColor",
+          label: "Selected state — background color",
+          type: "color",
+          value: "#078f7d",
+          kind: "button-style",
+        },
+        {
+          key: "textColor",
+          label: "Standard state — text / icon color",
+          type: "color",
+          value: "#ffffff",
+          kind: "button-style",
+        },
+        {
+          key: "selectedTextColor",
+          label: "Selected state — text / icon color",
+          type: "color",
+          value: "#ffffff",
+          kind: "button-style",
+        },
+        {
+          key: "borderColor",
+          label: "Standard state — border color",
+          type: "color",
+          value: "#7ba7a3",
+          kind: "button-style",
+        },
+        {
+          key: "selectedBorderColor",
+          label: "Selected state — border color",
+          type: "color",
+          value: "#04dcb9",
+          kind: "button-style",
+        },
+        {
+          key: "glowColor",
+          label: "Standard state — glow color",
+          type: "color",
+          value: "#04dcb9",
+          kind: "button-style",
+        },
+        {
+          key: "selectedGlowColor",
+          label: "Selected state — glow color",
+          type: "color",
+          value: "#04dcb9",
+          kind: "button-style",
+        },
+        {
+          key: "cornerRadius",
+          label: "Corner radius",
+          type: "number",
+          value: 18,
+          kind: "button-style",
+        },
+        {
+          key: "iconSize",
+          label: "Icon size",
+          type: "number",
+          value: 24,
+          kind: "button-style",
+        },
+      );
+    if (
+      (buttonLike || translateSource.features.buttonCount) &&
+      translateSource.features.textKeys.length &&
+      !editables.some((entry) => entry.key === "selectedText")
+    )
+      editables.push({
+        key: "selectedText",
+        label: "Selected state — text",
+        type: "text",
+        value: editables.find((entry) => entry.kind === "text")?.value || "",
+        kind: "button-style",
+      });
+    if (
+      !editables.some(
+        (entry) => entry.key === "textSize" || /font.?size/i.test(entry.key),
+      )
+    )
+      editables.push({
+        key: "textSize",
+        label: "Text size",
+        type: "number",
+        value: 16,
+        kind: "standard-style",
+      });
+    if (
+      translateSource.features.textKeys.length &&
+      !editables.some((entry) => entry.key === "textColor")
+    )
+      editables.push({
+        key: "textColor",
+        label: "Text color",
+        type: "color",
+        value: "#ffffff",
+        kind: "standard-style",
+      });
     translateSource.currentEditables = editables;
-    $("translate-editables").innerHTML = editables.length ? editables.map((entry, index) => `<label><input type="checkbox" checked data-index="${index}"><span>${entry.label}<small>${entry.type} · ${String(entry.value).replace(/</g,"&lt;")}</small></span></label>`).join("") : '<p class="hint">No editable values were detected. You can add properties manually in the component editor.</p>';
+    $("translate-editables").innerHTML = editables.length
+      ? editables
+          .map(
+            (entry, index) =>
+              `<label><input type="checkbox" checked data-index="${index}"><span>${entry.label}<small>${entry.type} · ${String(entry.value).replace(/</g, "&lt;")}</small></span></label>`,
+          )
+          .join("")
+      : '<p class="hint">No editable values were detected. You can add properties manually in the component editor.</p>';
   }
   function renderTranslateSignals() {
-    const preset = translatePresets[$("translate-preset").value] || translatePresets.custom,
-      namespace = $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") || "CustomComponent",
-      detected = translateSource?.features || {}, signals = [], addSignal = (signal) => { if (!signals.some((entry) => entry.key === signal.key)) signals.push(signal); },
+    const preset =
+        translatePresets[$("translate-preset").value] ||
+        translatePresets.custom,
+      namespace =
+        $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") ||
+        "CustomComponent",
+      detected = translateSource?.features || {},
+      signals = [],
+      addSignal = (signal) => {
+        if (!signals.some((entry) => entry.key === signal.key))
+          signals.push(signal);
+      },
       buttonCount = detected.buttonCount || 0;
     preset.signals.forEach(addSignal);
     if (buttonCount) {
-      ["press", "selected", "label"].forEach((key) => { const existing = signals.find((entry) => entry.key === key); if (existing && buttonCount > 1) signals.splice(signals.indexOf(existing), 1); });
+      ["press", "selected", "label"].forEach((key) => {
+        const existing = signals.find((entry) => entry.key === key);
+        if (existing && buttonCount > 1)
+          signals.splice(signals.indexOf(existing), 1);
+      });
       for (let index = 0; index < buttonCount; index++) {
-        const suffix = buttonCount === 1 ? "" : String(index + 1), title = buttonCount === 1 ? "" : ` ${index + 1}`;
-        addSignal({ key: `press${suffix}`, name: `Press${title}`, type: "digital", direction: "output", suffix: buttonCount === 1 ? "Press" : `Button${index + 1}.Press` });
-        addSignal({ key: `selected${suffix}`, name: `Selected${title}`, type: "digital", direction: "input", suffix: buttonCount === 1 ? "Selected" : `Button${index + 1}.Selected` });
-        addSignal({ key: `name${suffix}`, name: `Name${title}`, type: "serial", direction: "input", suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name` });
+        const suffix = buttonCount === 1 ? "" : String(index + 1),
+          title = buttonCount === 1 ? "" : ` ${index + 1}`;
+        addSignal({
+          key: `press${suffix}`,
+          name: `Press${title}`,
+          type: "digital",
+          direction: "output",
+          suffix: buttonCount === 1 ? "Press" : `Button${index + 1}.Press`,
+        });
+        addSignal({
+          key: `selected${suffix}`,
+          name: `Selected${title}`,
+          type: "digital",
+          direction: "input",
+          suffix:
+            buttonCount === 1 ? "Selected" : `Button${index + 1}.Selected`,
+        });
+        addSignal({
+          key: `name${suffix}`,
+          name: `Name${title}`,
+          type: "serial",
+          direction: "input",
+          suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name`,
+        });
       }
     }
-    (detected.textKeys || []).forEach((key, index) => addSignal({ key: `name${index ? index + 1 : ""}`, name: index ? `Text ${index + 1} Name` : "Name", type: "serial", direction: "input", suffix: index ? `Text${index + 1}.Name` : "Name" }));
-    if (detected.numericCount) addSignal({ key: "feedback", name: "Feedback", type: "analog", direction: "input", suffix: "Feedback" });
-    if (detected.interactiveNumericCount) addSignal({ key: "set", name: "Value Set", type: "analog", direction: "output", suffix: "ValueSet" });
-    addSignal({ key: "visibility", name: "Visibility", type: "digital", direction: "input", suffix: "Visibility", optionalProperty: "visibilityEnabled" });
+    (detected.textKeys || []).forEach((key, index) =>
+      addSignal({
+        key: `name${index ? index + 1 : ""}`,
+        name: index ? `Text ${index + 1} Name` : "Name",
+        type: "serial",
+        direction: "input",
+        suffix: index ? `Text${index + 1}.Name` : "Name",
+      }),
+    );
+    if (detected.numericCount)
+      addSignal({
+        key: "feedback",
+        name: "Feedback",
+        type: "analog",
+        direction: "input",
+        suffix: "Feedback",
+      });
+    if (detected.interactiveNumericCount)
+      addSignal({
+        key: "set",
+        name: "Value Set",
+        type: "analog",
+        direction: "output",
+        suffix: "ValueSet",
+      });
+    addSignal({
+      key: "visibility",
+      name: "Visibility",
+      type: "digital",
+      direction: "input",
+      suffix: "Visibility",
+      optionalProperty: "visibilityEnabled",
+    });
     $("translate-category").value = preset.category;
-    $("translate-signals").innerHTML = signals.map((signal) => `<label><input type="checkbox" checked data-key="${signal.key}" data-name="${signal.name}" data-type="${signal.type}" data-direction="${signal.direction}" data-default="${namespace}.${signal.suffix}" data-optional-property="${signal.optionalProperty || ""}"><span>${signal.name}<small>${signal.type} · ${signal.direction} · ${namespace}.${signal.suffix}${signal.optionalProperty ? " · optional" : ""}</small></span></label>`).join("");
+    $("translate-signals").innerHTML = signals
+      .map(
+        (signal) =>
+          `<label><input type="checkbox" checked data-key="${signal.key}" data-name="${signal.name}" data-type="${signal.type}" data-direction="${signal.direction}" data-default="${namespace}.${signal.suffix}" data-optional-property="${signal.optionalProperty || ""}"><span>${signal.name}<small>${signal.type} · ${signal.direction} · ${namespace}.${signal.suffix}${signal.optionalProperty ? " · optional" : ""}</small></span></label>`,
+      )
+      .join("");
   }
   function openTranslateWizard(name, source) {
     translateSource = analyzeSnippet(name, source);
-    $("translate-name").value = name.replace(/\.html?$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (value) => value.toUpperCase());
-    $("translate-source-name").value = name; $("translate-source-preview").value = source;
-    const features = translateSource.features, guessed = /toggle|switch/i.test(name) ? "toggle" : features.interactiveNumericCount || /slider|knob|volume|dial/i.test(name) ? "slider" : features.numericCount || /gauge|meter|status/i.test(name) ? "gauge" : /input|text|search/i.test(name) && !features.buttonCount ? "text" : /nav|menu/i.test(name) ? "navigation" : "button";
+    $("translate-name").value = name
+      .replace(/\.html?$/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (value) => value.toUpperCase());
+    $("translate-source-name").value = name;
+    $("translate-source-preview").value = source;
+    const features = translateSource.features,
+      guessed = /toggle|switch/i.test(name)
+        ? "toggle"
+        : features.interactiveNumericCount ||
+            /slider|knob|volume|dial/i.test(name)
+          ? "slider"
+          : features.numericCount || /gauge|meter|status/i.test(name)
+            ? "gauge"
+            : /input|text|search/i.test(name) && !features.buttonCount
+              ? "text"
+              : /nav|menu/i.test(name)
+                ? "navigation"
+                : "button";
     $("translate-preset").value = guessed;
-    renderTranslateEditables(); renderTranslateSignals(); $("translate-snippet-dialog").showModal();
+    renderTranslateEditables();
+    renderTranslateSignals();
+    $("translate-snippet-dialog").showModal();
   }
-  $("translate-preset").onchange = () => { renderTranslateEditables(); renderTranslateSignals(); }; $("translate-name").oninput = renderTranslateSignals;
-  $("translate-select-all").onclick = () => $("translate-editables").querySelectorAll('input[type="checkbox"]').forEach((input) => input.checked = true);
-  $("translate-snippet").onclick = async () => {
-    if (!native) { $("translate-snippet-file").click(); return; }
-    try { const files = await nativeRequest("importSnippets"); if (files.length) openTranslateWizard(files[0].name, files[0].html); if (files.length > 1) setStatus(`Translating the first of ${files.length} selected snippets`); } catch (error) { if (error.message !== "cancelled") setStatus(error.message); }
+  $("translate-preset").onchange = () => {
+    renderTranslateEditables();
+    renderTranslateSignals();
   };
-  $("translate-snippet-file").onchange = async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) openTranslateWizard(file.name, await file.text()); };
+  $("translate-name").oninput = renderTranslateSignals;
+  $("translate-select-all").onclick = () =>
+    $("translate-editables")
+      .querySelectorAll('input[type="checkbox"]')
+      .forEach((input) => (input.checked = true));
+  $("translate-snippet").onclick = async () => {
+    if (!native) {
+      $("translate-snippet-file").click();
+      return;
+    }
+    try {
+      const files = await nativeRequest("importSnippets");
+      if (files.length) openTranslateWizard(files[0].name, files[0].html);
+      if (files.length > 1)
+        setStatus(`Translating the first of ${files.length} selected snippets`);
+    } catch (error) {
+      if (error.message !== "cancelled") setStatus(error.message);
+    }
+  };
+  $("translate-snippet-file").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) openTranslateWizard(file.name, await file.text());
+  };
   $("translate-continue").onclick = () => {
     if (!translateSource) return;
-    let html = translateSource.html, css = translateSource.css;
-    const properties = [...$("translate-editables").querySelectorAll('input[type="checkbox"]:checked')].map((input) => translateSource.currentEditables[Number(input.dataset.index)]);
+    let html = translateSource.html,
+      css = translateSource.css;
+    const properties = [
+      ...$("translate-editables").querySelectorAll(
+        'input[type="checkbox"]:checked',
+      ),
+    ].map(
+      (input) => translateSource.currentEditables[Number(input.dataset.index)],
+    );
     properties.forEach((entry) => {
-      if (entry.kind === "css-variable") css = css.replace(new RegExp(`(${entry.source.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\s*:\\s*)${String(entry.value).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}`), `$1{{${entry.key}}}${/px$/i.test(String(entry.value)) ? "px" : ""}`);
-      else if (entry.kind === "literal") css = css.replaceAll(entry.source, `{{${entry.key}}}`);
-      else if (entry.kind === "text") html = html.replace(entry.source, `{{${entry.key}}}`);
+      if (entry.kind === "css-variable")
+        css = css.replace(
+          new RegExp(
+            `(${entry.source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*)${String(entry.value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          ),
+          `$1{{${entry.key}}}${/px$/i.test(String(entry.value)) ? "px" : ""}`,
+        );
+      else if (entry.kind === "literal")
+        css = css.replaceAll(entry.source, `{{${entry.key}}}`);
+      else if (entry.kind === "text")
+        html = html.replace(entry.source, `{{${entry.key}}}`);
     });
-    const signals = [...$("translate-signals").querySelectorAll('input[type="checkbox"]:checked')].map((input) => ({ key: input.dataset.key, name: input.dataset.name, type: input.dataset.type, direction: input.dataset.direction, defaultValue: input.dataset.default, ...(input.dataset.optionalProperty ? { optionalProperty: input.dataset.optionalProperty } : {}) }));
-    const preset = $("translate-preset").value, detected = translateSource.features, buttonLike = ["button", "toggle", "navigation"].includes(preset) || detected.buttonCount > 0, hasShadowSize = properties.some(entry => entry.key === "shadowSize"), hasGlowStrength = properties.some(entry => entry.key === "glowStrength");
-    if (buttonLike) css += `\nhtml,body{background:transparent!important;}\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\nbutton,[role="button"],.btn{background:{{faceColor}};color:{{textColor}};border-color:{{borderColor}};border-radius:{{cornerRadius}}px;}\nbutton.active,[role="button"].active,.btn.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button,[role="button"],.btn{--translated-glow:{{glowColor}};}button.active,[role="button"].active,.btn.active{--translated-glow:{{selectedGlowColor}};box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 calc({{glowStrength}}px * 2) var(--translated-glow);}` : ""}\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}`;
-    if (properties.some(entry => entry.key === "textSize")) css += '\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}';
-    if (properties.some(entry => entry.key === "textColor")) css += '\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{color:{{textColor}};}';
-    const buttonAdapter = detected.buttonCount ? `\nroot.querySelectorAll('[data-translated-button]').forEach((translatedTarget,index)=>{const suffix=${detected.buttonCount}===1?'':String(index+1),pressKey='press'+suffix,selectedKey='selected'+suffix,nameKey='name'+suffix,label=translatedTarget.querySelector('[data-translated-text], [data-custom-text],.label,span')||translatedTarget;const standardText=label.textContent;const down=e=>{signals.publish(pressKey,true);e.preventDefault()},up=()=>signals.publish(pressKey,false);translatedTarget.addEventListener('pointerdown',down);translatedTarget.addEventListener('pointerup',up);translatedTarget.addEventListener('pointercancel',up);translatedTarget.addEventListener('pointerleave',up);signals.subscribe(selectedKey,value=>{const active=value===true||value===1||value==='1';translatedTarget.classList.toggle('active',active);if(index===0&&active&&'{{selectedText}}')label.textContent='{{selectedText}}';else if(index===0&&!active)label.textContent=translatedTarget.dataset.standardText||standardText});signals.subscribe(nameKey,value=>{if(value!=null&&value!==''){translatedTarget.dataset.standardText=String(value);if(!translatedTarget.classList.contains('active'))label.textContent=String(value)}});});` : "";
-    const textAdapter = detected.textKeys.map((key, index) => `signals.subscribe('name${index ? index + 1 : ""}',value=>{const target=root.querySelector('[data-translated-text="${key}"]');if(target&&value!=null&&value!=='')target.textContent=String(value)});`).join("\n");
-    const numericAdapter = detected.numericCount ? `\nconst translatedNumbers=[...root.querySelectorAll('[data-translated-numeric]')];let translatedFeedback=false;const normalize=value=>{const number=Number(value)||0;return number>100?number/65535*100:number};translatedNumbers.forEach(control=>{if(control.matches('input,[role="slider"],.slider'))control.addEventListener('input',()=>{if(!translatedFeedback)signals.publish('set',Math.round(((Number(control.value)||0)-(Number(control.min)||0))/Math.max(1,(Number(control.max)||100)-(Number(control.min)||0))*65535))})});signals.subscribe('feedback',value=>{translatedFeedback=true;const percent=normalize(value);root.documentElement.style.setProperty('--value',String(value));root.documentElement.style.setProperty('--value-percent',percent+'%');translatedNumbers.forEach(control=>{const min=Number(control.min)||0,max=Number(control.max)||100,mapped=min+(max-min)*percent/100;if('value' in control)control.value=String(mapped);control.setAttribute('aria-valuenow',String(mapped));const fill=control.querySelector?.('[data-value],.value');if(fill)fill.textContent=Math.round(percent)+'%'});translatedFeedback=false});` : "";
-    const inputAdapter = preset === "text" ? `\nconst translatedInput=root.querySelector('input,textarea');if(translatedInput){translatedInput.addEventListener('input',()=>signals.publish('text',translatedInput.value));signals.subscribe('name',value=>{if(value!=null)translatedInput.value=String(value)})}` : "";
+    const signals = [
+      ...$("translate-signals").querySelectorAll(
+        'input[type="checkbox"]:checked',
+      ),
+    ].map((input) => ({
+      key: input.dataset.key,
+      name: input.dataset.name,
+      type: input.dataset.type,
+      direction: input.dataset.direction,
+      defaultValue: input.dataset.default,
+      ...(input.dataset.optionalProperty
+        ? { optionalProperty: input.dataset.optionalProperty }
+        : {}),
+    }));
+    const preset = $("translate-preset").value,
+      detected = translateSource.features,
+      buttonLike =
+        ["button", "toggle", "navigation"].includes(preset) ||
+        detected.buttonCount > 0,
+      hasShadowSize = properties.some((entry) => entry.key === "shadowSize"),
+      hasGlowStrength = properties.some(
+        (entry) => entry.key === "glowStrength",
+      );
+    if (buttonLike)
+      css += `\nhtml,body{background:transparent!important;}\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\nbutton,[role="button"],.btn{background:{{faceColor}};color:{{textColor}};border-color:{{borderColor}};border-radius:{{cornerRadius}}px;}\nbutton.active,[role="button"].active,.btn.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button,[role="button"],.btn{--translated-glow:{{glowColor}};}button.active,[role="button"].active,.btn.active{--translated-glow:{{selectedGlowColor}};box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 calc({{glowStrength}}px * 2) var(--translated-glow);}` : ""}\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}`;
+    if (properties.some((entry) => entry.key === "textSize"))
+      css +=
+        "\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}";
+    if (properties.some((entry) => entry.key === "textColor"))
+      css +=
+        "\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{color:{{textColor}};}";
+    const buttonAdapter = detected.buttonCount
+      ? `\nroot.querySelectorAll('[data-translated-button]').forEach((translatedTarget,index)=>{const suffix=${detected.buttonCount}===1?'':String(index+1),pressKey='press'+suffix,selectedKey='selected'+suffix,nameKey='name'+suffix,label=translatedTarget.querySelector('[data-translated-text], [data-custom-text],.label,span')||translatedTarget;const standardText=label.textContent;const down=e=>{signals.publish(pressKey,true);e.preventDefault()},up=()=>signals.publish(pressKey,false);translatedTarget.addEventListener('pointerdown',down);translatedTarget.addEventListener('pointerup',up);translatedTarget.addEventListener('pointercancel',up);translatedTarget.addEventListener('pointerleave',up);signals.subscribe(selectedKey,value=>{const active=value===true||value===1||value==='1';translatedTarget.classList.toggle('active',active);if(index===0&&active&&'{{selectedText}}')label.textContent='{{selectedText}}';else if(index===0&&!active)label.textContent=translatedTarget.dataset.standardText||standardText});signals.subscribe(nameKey,value=>{if(value!=null&&value!==''){translatedTarget.dataset.standardText=String(value);if(!translatedTarget.classList.contains('active'))label.textContent=String(value)}});});`
+      : "";
+    const textAdapter = detected.textKeys
+      .map(
+        (key, index) =>
+          `signals.subscribe('name${index ? index + 1 : ""}',value=>{const target=root.querySelector('[data-translated-text="${key}"]');if(target&&value!=null&&value!=='')target.textContent=String(value)});`,
+      )
+      .join("\n");
+    const numericAdapter = detected.numericCount
+      ? `\nconst translatedNumbers=[...root.querySelectorAll('[data-translated-numeric]')];let translatedFeedback=false;const normalize=value=>{const number=Number(value)||0;return number>100?number/65535*100:number};translatedNumbers.forEach(control=>{if(control.matches('input,[role="slider"],.slider'))control.addEventListener('input',()=>{if(!translatedFeedback)signals.publish('set',Math.round(((Number(control.value)||0)-(Number(control.min)||0))/Math.max(1,(Number(control.max)||100)-(Number(control.min)||0))*65535))})});signals.subscribe('feedback',value=>{translatedFeedback=true;const percent=normalize(value);root.documentElement.style.setProperty('--value',String(value));root.documentElement.style.setProperty('--value-percent',percent+'%');translatedNumbers.forEach(control=>{const min=Number(control.min)||0,max=Number(control.max)||100,mapped=min+(max-min)*percent/100;if('value' in control)control.value=String(mapped);control.setAttribute('aria-valuenow',String(mapped));const fill=control.querySelector?.('[data-value],.value');if(fill)fill.textContent=Math.round(percent)+'%'});translatedFeedback=false});`
+      : "";
+    const inputAdapter =
+      preset === "text"
+        ? `\nconst translatedInput=root.querySelector('input,textarea');if(translatedInput){translatedInput.addEventListener('input',()=>signals.publish('text',translatedInput.value));signals.subscribe('name',value=>{if(value!=null)translatedInput.value=String(value)})}`
+        : "";
     const adapter = `${buttonAdapter}\n${textAdapter}\n${numericAdapter}\n${inputAdapter}`;
-    $("translate-snippet-dialog").close(); openCustomBuilder();
-    $("custom-component-name").value = $("translate-name").value; $("custom-component-category").value = $("translate-category").value; $("custom-source-html").value = html; $("custom-source-css").value = css; $("custom-source-javascript").value = `${translateSource.javascript}\n${adapter}`;
-    $("custom-property-list").innerHTML = ""; properties.forEach((entry) => addCustomPropertyRow({ key: entry.key, name: entry.label, type: entry.type, defaultValue: entry.type === "number" ? parseFloat(entry.value) || 0 : entry.value }));
-    $("custom-signal-list").innerHTML = ""; signals.forEach(addCustomSignalRow); refreshCustomPreview();
+    $("translate-snippet-dialog").close();
+    openCustomBuilder();
+    $("custom-component-name").value = $("translate-name").value;
+    $("custom-component-category").value = $("translate-category").value;
+    $("custom-source-html").value = html;
+    $("custom-source-css").value = css;
+    $("custom-source-javascript").value =
+      `${translateSource.javascript}\n${adapter}`;
+    $("custom-property-list").innerHTML = "";
+    properties.forEach((entry) =>
+      addCustomPropertyRow({
+        key: entry.key,
+        name: entry.label,
+        type: entry.type,
+        defaultValue:
+          entry.type === "number" ? parseFloat(entry.value) || 0 : entry.value,
+      }),
+    );
+    $("custom-signal-list").innerHTML = "";
+    signals.forEach(addCustomSignalRow);
+    refreshCustomPreview();
     if (translateSource.features.repeatedItems) {
-      const namespace = $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") || "CustomComponent";
-      setCustomRepeatedControls({ ...translateSource.features.repeatedItems, namespace });
+      const namespace =
+        $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") ||
+        "CustomComponent";
+      setCustomRepeatedControls({
+        ...translateSource.features.repeatedItems,
+        namespace,
+      });
       syncCustomRepeatedRows();
     }
   };
@@ -6416,11 +7798,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (!native) return $("asset-files").click();
     try {
       const files = await nativeRequest("importAssets");
-      state.assets.push(...files.map((file) => ({ ...file, id: uid("asset-") })));
+      state.assets.push(
+        ...files.map((file) => ({ ...file, id: uid("asset-") })),
+      );
       renderAssets();
       commitHistory();
-      setStatus(`Imported ${files.length} asset${files.length === 1 ? "" : "s"} from the asset library`);
-    } catch (error) { if (error.message !== "cancelled") setStatus(error.message); }
+      setStatus(
+        `Imported ${files.length} asset${files.length === 1 ? "" : "s"} from the asset library`,
+      );
+    } catch (error) {
+      if (error.message !== "cancelled") setStatus(error.message);
+    }
   };
   $("asset-replace-file").onchange = async (event) => {
     const file = event.target.files[0],
@@ -6472,7 +7860,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ]
         .filter(Boolean)
         .forEach((id) => {
-        if (!state.assets.some((asset) => asset.id === id)) missing.add(id);
+          if (!state.assets.some((asset) => asset.id === id)) missing.add(id);
         }),
     );
     alert(
@@ -6513,7 +7901,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         if (["x", "y", "w", "h"].includes(k)) {
           const key = panelLayoutKey();
           layoutDefaults(i);
-          i.deviceOverrides[key] = { x: i.x, y: i.y, w: i.w, h: i.h, panelWidth: state.width, panelHeight: state.height };
+          i.deviceOverrides[key] = {
+            x: i.x,
+            y: i.y,
+            w: i.w,
+            h: i.h,
+            panelWidth: state.width,
+            panelHeight: state.height,
+          };
           renderResponsiveEditor(i);
         }
       }),
@@ -6523,9 +7918,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (!item) return;
     item.graphicAsset = $("prop-asset").value;
     item.selectedGraphicAsset = $("prop-asset-selected").value;
-    item.graphicAssetMode = item.graphicAsset || item.selectedGraphicAsset
-      ? $("prop-asset-mode").value
-      : "none";
+    item.graphicAssetMode =
+      item.graphicAsset || item.selectedGraphicAsset
+        ? $("prop-asset-mode").value
+        : "none";
     item.graphicAssetPlacement = $("prop-asset-placement").value;
     item.graphicAssetFit = $("prop-asset-fit").value;
     item.graphicAssetWidth = Math.max(
@@ -6837,7 +8233,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("create-custom-component").disabled = selection.length !== 1;
     $("duplicate").disabled = !selection.length;
     $("create-custom-component").textContent =
-      selection.length === 1 && state.customComponents.some((entry) => entry.id === item?.componentId)
+      selection.length === 1 &&
+      state.customComponents.some((entry) => entry.id === item?.componentId)
         ? "Edit palette component"
         : "Create palette component";
     $("context-lock").disabled = !selection.length;
@@ -6851,21 +8248,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       selection.some((entry) => entry.locked);
     $("context-delete").disabled =
       !selection.length || selection.some((entry) => entry.locked);
-    const contextAlign = $("context-align"), contextLayer = $("context-layer");
+    const contextAlign = $("context-align"),
+      contextLayer = $("context-layer");
     contextAlign.value = "";
     contextLayer.value = "";
-    contextAlign.disabled = !selection.length || selection.some((entry) => entry.locked);
+    contextAlign.disabled =
+      !selection.length || selection.some((entry) => entry.locked);
     [...contextAlign.options].forEach((option) => {
-      if (option.value.startsWith("distribute")) option.disabled = selection.length < 3;
+      if (option.value.startsWith("distribute"))
+        option.disabled = selection.length < 3;
     });
-    contextLayer.disabled = selection.length !== 1 || selection.some((entry) => entry.locked);
+    contextLayer.disabled =
+      selection.length !== 1 || selection.some((entry) => entry.locked);
     $("context-save-reusable").disabled = !selection.length;
     $("context-update-reusable").disabled =
       !selection.length || !selection[0]?.reusableId;
     $("context-detach-reusable").disabled =
       !selection.length || !selection[0]?.linkedInstanceId;
     $("context-reusable-master").disabled =
-      !selection.length || !selection[0]?.linkedInstanceId || isReusableMaster(selection[0]);
+      !selection.length ||
+      !selection[0]?.linkedInstanceId ||
+      isReusableMaster(selection[0]);
     $("context-master").disabled = !selection.length;
     $("context-master").textContent =
       selection.length && selection.every((item) => item.master)
@@ -7055,10 +8458,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const html = $("custom-source-html").value,
       css = $("custom-source-css").value,
       javascript = $("custom-source-javascript").value;
-    return `${css ? `<style>${css}</style>` : ""}${html}${javascript ? runtime ? customJavascriptRuntime(javascript) : `<script>${javascript}<\/script>` : ""}`;
+    return `${css ? `<style>${css}</style>` : ""}${html}${javascript ? (runtime ? customJavascriptRuntime(javascript) : `<script>${javascript}<\/script>`) : ""}`;
   }
   function prepareCustomSource(source) {
-    if (String(source || "").includes("window.ComposerSignals=signals")) return source;
+    if (String(source || "").includes("window.ComposerSignals=signals"))
+      return source;
     const parts = splitCustomSource(source);
     return `${parts.css ? `<style>${parts.css}</style>` : ""}${parts.html}${parts.javascript ? customJavascriptRuntime(parts.javascript) : ""}`;
   }
@@ -7086,7 +8490,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     const row = document.createElement("div");
     row.className = "custom-property-row";
     row.innerHTML =
-      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option><option>checkbox</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
+      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option><option>checkbox</option><option>asset</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
     row.querySelector('[data-field="key"]').value = property.key || "";
     row.querySelector('[data-field="name"]').value = property.name || "";
     row.querySelector('[data-field="type"]').value = property.type || "text";
@@ -7094,13 +8498,29 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       property.type === "select"
         ? (property.options || []).map((option) => option.value).join(",")
         : (property.defaultValue ?? "");
+    const keyInput = row.querySelector('[data-field="key"]');
+    let previousKey = normalizeCustomKey(keyInput.value);
     row.querySelector("button").onclick = () => {
+      removeCustomBehaviorReferences("property", previousKey);
       row.remove();
       refreshCustomPreview();
     };
     row
       .querySelectorAll("input,select")
       .forEach((input) => (input.oninput = refreshCustomPreview));
+    keyInput.oninput = () => {
+      const nextKey = normalizeCustomKey(keyInput.value);
+      if (nextKey) {
+        updateCustomBehaviorReferences(
+          "property",
+          previousKey,
+          "property",
+          nextKey,
+        );
+        previousKey = nextKey;
+      }
+      refreshCustomPreview();
+    };
     $("custom-property-list").appendChild(row);
   }
   function addCustomSignalRow(signal = {}) {
@@ -7112,13 +8532,42 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     ["key", "name", "type", "direction", "defaultValue"].forEach((key) => {
       row.querySelector(`[data-field="${key}"]`).value = signal[key] || "";
     });
+    const keyInput = row.querySelector('[data-field="key"]'),
+      directionInput = row.querySelector('[data-field="direction"]');
+    let previousKey = normalizeCustomKey(keyInput.value),
+      previousSource = `signal-${directionInput.value}`;
     row.querySelector("button").onclick = () => {
+      removeCustomBehaviorReferences(previousSource, previousKey);
       row.remove();
       refreshCustomPreview();
     };
     row
       .querySelectorAll("input,select")
       .forEach((input) => (input.oninput = refreshCustomPreview));
+    keyInput.oninput = () => {
+      const nextKey = normalizeCustomKey(keyInput.value);
+      if (nextKey) {
+        updateCustomBehaviorReferences(
+          previousSource,
+          previousKey,
+          previousSource,
+          nextKey,
+        );
+        previousKey = nextKey;
+      }
+      refreshCustomPreview();
+    };
+    directionInput.onchange = () => {
+      const nextSource = `signal-${directionInput.value}`;
+      updateCustomBehaviorReferences(
+        previousSource,
+        previousKey,
+        nextSource,
+        previousKey,
+      );
+      previousSource = nextSource;
+      refreshCustomPreview();
+    };
     $("custom-signal-list").appendChild(row);
   }
   function collectCustomProperties() {
@@ -7138,9 +8587,9 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
               ? Number(rawDefault) || 0
               : type === "checkbox"
                 ? /^(true|1|yes|on)$/i.test(rawDefault)
-              : type === "select"
-                ? rawDefault.split(",")[0] || ""
-                : rawDefault,
+                : type === "select"
+                  ? rawDefault.split(",")[0] || ""
+                  : rawDefault,
           ...(type === "select"
             ? {
                 options: rawDefault
@@ -7174,45 +8623,632 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       })
       .filter(Boolean);
   }
+  function normalizeCustomKey(value) {
+    return String(value || "").replace(/[^A-Za-z0-9_$]/g, "_");
+  }
+  function updateCustomBehaviorReferences(
+    previousSource,
+    previousKey,
+    nextSource,
+    nextKey,
+  ) {
+    if (!previousKey || !nextKey) return;
+    [...$("custom-behavior-list").children].forEach((row) => {
+      const source = row.querySelector('[data-field="source"]'),
+        key = row.querySelector('[data-field="key"]');
+      if (source.value !== previousSource || key.value !== previousKey) return;
+      source.value = nextSource;
+      row.refreshBehaviorChoices?.(nextKey);
+    });
+  }
+  function removeCustomBehaviorReferences(sourceValue, keyValue) {
+    if (!keyValue) return;
+    [...$("custom-behavior-list").children].forEach((row) => {
+      if (
+        row.querySelector('[data-field="source"]').value === sourceValue &&
+        row.querySelector('[data-field="key"]').value === keyValue
+      )
+        row.remove();
+    });
+  }
+  const customBehaviorActions = {
+    value: [
+      ["text", "Text content"],
+      ["color", "Text / icon color"],
+      ["backgroundColor", "Background color"],
+      ["borderColor", "Border color"],
+      ["fontSize", "Font size (px)"],
+      ["opacity", "Opacity"],
+      ["width", "Width (%)"],
+      ["height", "Height (%)"],
+      ["visibility", "Visibility"],
+      ["selectedClass", "Selected class"],
+      ["disabledState", "Disabled state"],
+      ["value", "Form value"],
+      ["cssProperty", "Custom CSS property"],
+      ["cssVariable", "CSS variable"],
+      ["attribute", "HTML attribute"],
+      ["classToggle", "Custom class toggle"],
+      ["scale", "Scale (0–100%)"],
+      ["glowStrength", "Glow strength"],
+      ["borderRadius", "Corner radius"],
+      ["translateX", "Horizontal position"],
+      ["translateY", "Vertical position"],
+      ["rotate", "Rotation"],
+      ["imageSource", "Image / asset source"],
+      ["backgroundImage", "Background asset"],
+    ],
+    output: [
+      ["press", "Pointer press / release"],
+      ["click", "Click pulse"],
+      ["release", "Release pulse"],
+      ["hold", "Hold-complete pulse"],
+      ["input", "Input value"],
+      ["change", "Change value"],
+    ],
+  };
+  function customBehaviorKeys(source) {
+    return source === "property"
+      ? collectCustomProperties().map((entry) => [entry.key, entry.name])
+      : collectCustomSignals()
+          .filter((entry) =>
+            source === "signal-output"
+              ? entry.direction === "output"
+              : entry.direction === "input",
+          )
+          .map((entry) => [entry.key, entry.name]);
+  }
+  function behaviorOptions(entries, selected) {
+    return entries
+      .map(
+        ([value, label]) =>
+          `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`,
+      )
+      .join("");
+  }
+  function addCustomBehaviorRow(rule = {}) {
+    const row = document.createElement("div");
+    row.className = "custom-behavior-row";
+    row.innerHTML =
+      '<select data-field="source"><option value="property">Property</option><option value="signal-input">Input signal</option><option value="signal-output">Output signal</option></select><select data-field="key"></select><input data-field="selector" placeholder=".target"><select data-field="action"></select><input data-field="parameter" placeholder="Optional"><button type="button" class="custom-row-delete">×</button><div class="custom-behavior-mapping"><label><input data-field="mapEnabled" type="checkbox"> Map numeric range</label><label>Input min<input data-field="inputMin" type="number" value="0"></label><label>Input max<input data-field="inputMax" type="number" value="65535"></label><label>Output min<input data-field="outputMin" type="number" value="0"></label><label>Output max<input data-field="outputMax" type="number" value="30"></label><label>Unit<input data-field="unit" placeholder="px"></label><label><input data-field="booleanMapEnabled" type="checkbox"> Map digital states</label><label class="custom-map-wide">False / Standard value<input data-field="falseValue" placeholder="Standard value"></label><label class="custom-map-wide">True / Selected value<input data-field="trueValue" placeholder="Selected value"></label></div>';
+    const source = row.querySelector('[data-field="source"]'),
+      key = row.querySelector('[data-field="key"]'),
+      selector = row.querySelector('[data-field="selector"]'),
+      action = row.querySelector('[data-field="action"]'),
+      parameter = row.querySelector('[data-field="parameter"]'),
+      mapEnabled = row.querySelector('[data-field="mapEnabled"]'),
+      booleanMapEnabled = row.querySelector(
+        '[data-field="booleanMapEnabled"]',
+      );
+    const assetListId = `custom-behavior-assets-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      assetList = document.createElement("datalist");
+    assetList.id = assetListId;
+    state.assets
+      .filter((asset) => asset.type?.startsWith("image/"))
+      .forEach((asset) => {
+        const option = document.createElement("option");
+        option.value = asset.dataUrl;
+        option.label = asset.name;
+        assetList.appendChild(option);
+      });
+    row.appendChild(assetList);
+    row.querySelector('[data-field="falseValue"]').setAttribute("list", assetListId);
+    row.querySelector('[data-field="trueValue"]').setAttribute("list", assetListId);
+    source.value = rule.source || "property";
+    selector.value = rule.selector || $("custom-element-selector").value || "";
+    parameter.value = rule.parameter || "";
+    mapEnabled.checked = Boolean(rule.mapping?.enabled);
+    booleanMapEnabled.checked = Boolean(rule.booleanMapping?.enabled);
+    ["inputMin", "inputMax", "outputMin", "outputMax", "unit"].forEach(
+      (field) => {
+        const input = row.querySelector(`[data-field="${field}"]`);
+        if (rule.mapping?.[field] !== undefined)
+          input.value = rule.mapping[field];
+      },
+    );
+    row.querySelector('[data-field="falseValue"]').value =
+      rule.booleanMapping?.falseValue ?? "";
+    row.querySelector('[data-field="trueValue"]').value =
+      rule.booleanMapping?.trueValue ?? "";
+    const tools = document.createElement("div");
+    tools.className = "custom-behavior-tools";
+    tools.innerHTML =
+      '<label><input data-field="enabled" type="checkbox" checked> Enabled</label><input data-field="ruleName" placeholder="Optional rule name"><button type="button" data-action="up" title="Move up">↑</button><button type="button" data-action="down" title="Move down">↓</button><button type="button" data-action="duplicate">Duplicate</button>';
+    tools.querySelector('[data-field="enabled"]').checked =
+      rule.enabled !== false;
+    tools.querySelector('[data-field="ruleName"]').value = rule.name || "";
+    row.appendChild(tools);
+    function refreshMapping() {
+      row
+        .querySelectorAll(
+          '[data-field="inputMin"],[data-field="inputMax"],[data-field="outputMin"],[data-field="outputMax"],[data-field="unit"]',
+        )
+        .forEach((input) => (input.disabled = !mapEnabled.checked));
+      row
+        .querySelectorAll('[data-field="falseValue"],[data-field="trueValue"]')
+        .forEach((input) => (input.disabled = !booleanMapEnabled.checked));
+    }
+    function refreshChoices(preferredKey) {
+      const keys = customBehaviorKeys(source.value);
+      key.innerHTML = behaviorOptions(
+        keys,
+        preferredKey || key.value || rule.key,
+      );
+      const actions =
+        source.value === "signal-output"
+          ? customBehaviorActions.output
+          : customBehaviorActions.value;
+      action.innerHTML = behaviorOptions(actions, action.value || rule.action);
+      const parameterHints = {
+        cssProperty: "CSS property, e.g. box-shadow",
+        cssVariable: "CSS variable, e.g. --level",
+        attribute: "Attribute, e.g. aria-label",
+        classToggle: "Class name, e.g. active",
+        glowStrength: "Glow color or CSS variable",
+        hold: "Hold duration in ms, e.g. 1000",
+      };
+      parameter.placeholder = parameterHints[action.value] || "Not required";
+      parameter.disabled = !parameterHints[action.value];
+    }
+    row.refreshBehaviorChoices = refreshChoices;
+    refreshChoices();
+    refreshMapping();
+    row.querySelector("button").onclick = () => {
+      row.remove();
+      refreshCustomPreview();
+    };
+    tools.querySelector('[data-action="up"]').onclick = () => {
+      const previous = row.previousElementSibling;
+      if (previous) row.parentElement.insertBefore(row, previous);
+      refreshCustomPreview();
+    };
+    tools.querySelector('[data-action="down"]').onclick = () => {
+      const next = row.nextElementSibling;
+      if (next) row.parentElement.insertBefore(next, row);
+      refreshCustomPreview();
+    };
+    tools.querySelector('[data-action="duplicate"]').onclick = () => {
+      addCustomBehaviorRow(collectCustomBehaviorRow(row));
+      refreshCustomPreview();
+    };
+    source.onchange = () => {
+      rule.key = "";
+      rule.action = "";
+      refreshChoices();
+      refreshCustomPreview();
+    };
+    action.onchange = () => {
+      refreshChoices();
+      refreshCustomPreview();
+    };
+    mapEnabled.onchange = () => {
+      if (mapEnabled.checked) booleanMapEnabled.checked = false;
+      refreshMapping();
+      refreshCustomPreview();
+    };
+    booleanMapEnabled.onchange = () => {
+      if (booleanMapEnabled.checked) mapEnabled.checked = false;
+      refreshMapping();
+      refreshCustomPreview();
+    };
+    row.querySelectorAll("input,select").forEach((input) => {
+      if (input !== source) input.oninput = refreshCustomPreview;
+    });
+    $("custom-behavior-list").appendChild(row);
+  }
+  function customContractBase() {
+    return (
+      $("custom-name")
+        .value.trim()
+        .replace(/[^A-Za-z0-9_]/g, "") || "CustomComponent"
+    );
+  }
+  function ensureCustomProperty(property) {
+    const existing = collectCustomProperties().find(
+      (entry) => entry.key === property.key,
+    );
+    if (!existing) addCustomPropertyRow(property);
+  }
+  function ensureCustomSignal(signal) {
+    const existing = collectCustomSignals().find(
+      (entry) => entry.key === signal.key,
+    );
+    if (!existing) addCustomSignalRow(signal);
+  }
+  function uniqueCustomBehaviorKey(baseKey, source, selector, action) {
+    const behaviors = collectCustomBehaviors(),
+      sameRule = behaviors.find(
+        (rule) =>
+          rule.source === source &&
+          rule.action === action &&
+          rule.selector === selector,
+      );
+    if (sameRule) return { key: baseKey, duplicate: true };
+    const keys = new Set(
+      source === "property"
+        ? collectCustomProperties().map((entry) => entry.key)
+        : collectCustomSignals().map((entry) => entry.key),
+    );
+    if (!keys.has(baseKey)) return { key: baseKey, duplicate: false };
+    let index = 2;
+    while (keys.has(`${baseKey}${index}`)) index += 1;
+    return { key: `${baseKey}${index}`, duplicate: false };
+  }
+  function addCustomBehaviorPreset() {
+    const selector = $("custom-element-selector").value.trim();
+    if (!selector) {
+      alert("Pick a preview element or enter its CSS selector first.");
+      return;
+    }
+    const base = customContractBase(),
+      preset = $("custom-behavior-preset").value,
+      definitions = {
+        propertyText: {
+          property: { key: "text", name: "Text", type: "text", defaultValue: "Text" },
+          behavior: { source: "property", key: "text", action: "text" },
+        },
+        propertyTextColor: {
+          property: { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" },
+          behavior: { source: "property", key: "textColor", action: "color" },
+        },
+        propertyBackground: {
+          property: { key: "backgroundColor", name: "Background color", type: "color", defaultValue: "#26383a" },
+          behavior: { source: "property", key: "backgroundColor", action: "backgroundColor" },
+        },
+        propertyFontSize: {
+          property: { key: "textSize", name: "Text size", type: "number", defaultValue: 18 },
+          behavior: { source: "property", key: "textSize", action: "fontSize" },
+        },
+        propertyGlow: {
+          property: { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 12 },
+          behavior: { source: "property", key: "glowStrength", action: "glowStrength", parameter: "#00e5c3" },
+        },
+        propertyAsset: {
+          property: { key: "asset", name: "Image / asset", type: "asset", defaultValue: state.assets.find((asset) => asset.type?.startsWith("image/"))?.id || "" },
+          behavior: { source: "property", key: "asset", action: "imageSource" },
+        },
+        serialText: {
+          signal: { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: `${base}.Name` },
+          behavior: { source: "signal-input", key: "name", action: "text" },
+        },
+        analogGlow: {
+          signal: { key: "glowFeedback", name: "Glow Feedback", type: "analog", direction: "input", defaultValue: `${base}.GlowFeedback` },
+          behavior: { source: "signal-input", key: "glowFeedback", action: "glowStrength", parameter: "#00e5c3", mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 30, unit: "px" } },
+        },
+        digitalVisibility: {
+          signal: { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: `${base}.Visibility` },
+          behavior: { source: "signal-input", key: "visibility", action: "visibility" },
+        },
+        digitalSelected: {
+          signal: { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: `${base}.Selected` },
+          behavior: { source: "signal-input", key: "selected", action: "selectedClass" },
+        },
+        pressOutput: {
+          signal: { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: `${base}.Press` },
+          behavior: { source: "signal-output", key: "press", action: "press" },
+        },
+      },
+      definition = structuredClone(definitions[preset]);
+    if (!definition) return;
+    const entry = definition.property || definition.signal,
+      keyResult = uniqueCustomBehaviorKey(
+        entry.key,
+        definition.behavior.source,
+        selector,
+        definition.behavior.action,
+      );
+    if (keyResult.duplicate) {
+      alert("That preset is already connected to the selected element.");
+      return;
+    }
+    if (keyResult.key !== entry.key) {
+      const suffix = keyResult.key.slice(entry.key.length);
+      entry.key = keyResult.key;
+      entry.name = `${entry.name} ${suffix}`;
+      definition.behavior.key = keyResult.key;
+      if (definition.signal)
+        definition.signal.defaultValue = `${base}.${definition.signal.name.replace(/\s+/g, "")}`;
+    }
+    if (definition.property) ensureCustomProperty(definition.property);
+    if (definition.signal) ensureCustomSignal(definition.signal);
+    addCustomBehaviorRow({ ...definition.behavior, selector });
+    refreshCustomPreview();
+  }
+  function collectCustomBehaviorRow(row) {
+        const value = (key) =>
+            row.querySelector(`[data-field="${key}"]`)?.value.trim() || "",
+          source = value("source"),
+          key = value("key"),
+          selector = value("selector"),
+          action = value("action"),
+          parameter = value("parameter"),
+          mapEnabled = row.querySelector('[data-field="mapEnabled"]')?.checked,
+          mapping = mapEnabled
+            ? {
+                enabled: true,
+                inputMin: Number(value("inputMin")),
+                inputMax: Number(value("inputMax")),
+                outputMin: Number(value("outputMin")),
+                outputMax: Number(value("outputMax")),
+                unit: value("unit"),
+              }
+            : null,
+          booleanMapEnabled = row.querySelector(
+            '[data-field="booleanMapEnabled"]',
+          )?.checked,
+          booleanMapping = booleanMapEnabled
+            ? {
+                enabled: true,
+                falseValue: value("falseValue"),
+                trueValue: value("trueValue"),
+              }
+            : null,
+          enabled = row.querySelector('[data-field="enabled"]')?.checked !== false,
+          name = value("ruleName");
+        return source && key && selector && action
+          ? {
+              source,
+              key,
+              selector,
+              action,
+              ...(parameter ? { parameter } : {}),
+              ...(mapping ? { mapping } : {}),
+              ...(booleanMapping ? { booleanMapping } : {}),
+              enabled,
+              ...(name ? { name } : {}),
+            }
+          : null;
+  }
+  function collectCustomBehaviors() {
+    return [...$("custom-behavior-list").children]
+      .map(collectCustomBehaviorRow)
+      .filter(Boolean);
+  }
+  function customBehaviorRuntime(rules, properties = {}) {
+    if (!rules?.length) return "";
+    return `<script>(function(){
+var rules=${JSON.stringify(rules)},properties=${JSON.stringify(properties)};
+function truthy(value){return value===true||value===1||value==='1'||String(value).toLowerCase()==='true'}
+function mapped(rule,value){if(rule.booleanMapping&&rule.booleanMapping.enabled)return truthy(value)?rule.booleanMapping.trueValue:rule.booleanMapping.falseValue;if(!rule.mapping||!rule.mapping.enabled)return value;var m=rule.mapping,n=Number(value),span=Number(m.inputMax)-Number(m.inputMin);if(!Number.isFinite(n)||!span)return Number(m.outputMin)||0;var ratio=Math.max(0,Math.min(1,(n-Number(m.inputMin))/span));return Number(m.outputMin)+ratio*(Number(m.outputMax)-Number(m.outputMin))}
+function transforms(target){target.style.transform='translateX(var(--composer-translate-x,0px)) translateY(var(--composer-translate-y,0px)) rotate(var(--composer-rotate,0deg)) scale(var(--composer-scale,1))'}
+function apply(rule,value){var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter)target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':var strength=Math.max(0,Number(mappedValue)||0),color=rule.parameter||'var(--glow-color,#00e5c3)';target.style.boxShadow='0 0 '+strength+(unit||'px')+' '+color+',0 0 '+strength*2+(unit||'px')+' '+color;break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':if(target.tagName==='IMG')target.src=String(mappedValue||'');else target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
+function pulse(key){window.ComposerSignals.publish(key,true);setTimeout(function(){window.ComposerSignals.publish(key,false)},50)}
+rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){window.ComposerSignals.publish(rule.key,target.type==='range'?Number(target.value):target.type==='checkbox'?target.checked:target.value)})})});
+})();<\/script>`;
+  }
+  function customBehaviorCss(rules) {
+    const declarations = {
+      color: "color",
+      backgroundColor: "background-color",
+      borderColor: "border-color",
+      fontSize: "font-size",
+      opacity: "opacity",
+      width: "width",
+      height: "height",
+    };
+    return (rules || [])
+      .filter((rule) => rule.enabled !== false && rule.source === "property" && declarations[rule.action])
+      .map((rule) => {
+        const suffix = ["fontSize"].includes(rule.action)
+          ? "px"
+          : ["width", "height"].includes(rule.action)
+            ? "%"
+            : "";
+        return `${rule.selector} { ${declarations[rule.action]}: {{${rule.key}}}${suffix}; }`;
+      })
+      .join("\n");
+  }
+  function collectCustomStateStyles() {
+    const selector = $("custom-state-selector").value.trim();
+    if (!selector) return null;
+    const states = {};
+    $("custom-state-grid")
+      .querySelectorAll(".custom-state-row")
+      .forEach((row) => {
+        const values = {};
+        row.querySelectorAll("[data-style]").forEach((input) => {
+          values[input.dataset.style] = input.value.trim();
+        });
+        const asset = state.assets.find(
+          (entry) => entry.id === values.asset,
+        );
+        values.assetData = asset?.dataUrl || "";
+        states[row.dataset.state] = values;
+      });
+    return { selector, states };
+  }
+  function setCustomStateStyles(config) {
+    const defaults = {
+      standard: { text: "", asset: "", background: "#263b3c", color: "#ffffff", border: "#7ba7a3", glow: "#00e5c3", opacity: "100", scale: "100" },
+      pressed: { text: "", asset: "", background: "#1b2b2c", color: "#ffffff", border: "#04dcb9", glow: "#00e5c3", opacity: "100", scale: "96" },
+      selected: { text: "", asset: "", background: "#078f7d", color: "#ffffff", border: "#04dcb9", glow: "#00e5c3", opacity: "100", scale: "100" },
+      disabled: { text: "", asset: "", background: "#303838", color: "#888888", border: "#555555", glow: "#000000", opacity: "55", scale: "100" },
+    };
+    $("custom-state-selector").value = config?.selector || "";
+    $("custom-state-grid")
+      .querySelectorAll(".custom-state-row")
+      .forEach((row) => {
+        const values = config?.states?.[row.dataset.state] || defaults[row.dataset.state];
+        const assetSelect = row.querySelector('[data-style="asset"]'),
+          emptyLabel = row.dataset.state === "standard"
+            ? "No state asset"
+            : "Use Standard asset";
+        assetSelect.innerHTML = `<option value="">${emptyLabel}</option>`;
+        state.assets
+          .filter((asset) => asset.type?.startsWith("image/"))
+          .forEach((asset) => {
+            const option = document.createElement("option");
+            option.value = asset.id;
+            option.textContent = asset.name;
+            assetSelect.appendChild(option);
+          });
+        if (
+          values.asset &&
+          ![...assetSelect.options].some((option) => option.value === values.asset)
+        ) {
+          const embedded = document.createElement("option");
+          embedded.value = values.asset;
+          embedded.textContent = "Embedded component asset";
+          assetSelect.appendChild(embedded);
+        }
+        row.querySelectorAll("[data-style]").forEach((input) => {
+          if (values[input.dataset.style] != null)
+            input.value = values[input.dataset.style];
+        });
+      });
+  }
+  function customStateCss(config) {
+    if (!config?.selector || !config.states) return "";
+    const suffixes = {
+        standard: "",
+        pressed: ":active",
+        selected: ".selected",
+        disabled: ".disabled",
+      },
+      aliases = {
+        pressed: `${config.selector}.composer-pressed`,
+        selected: `${config.selector}.active`,
+        disabled: `${config.selector}[disabled]`,
+      };
+    return Object.entries(config.states)
+      .map(([stateName, values]) => {
+        const selector = `${config.selector}${suffixes[stateName] || ""}`,
+          selectors = aliases[stateName]
+            ? `${selector},${aliases[stateName]}`
+            : selector,
+          opacity = Math.max(0, Math.min(100, Number(values.opacity) || 0)) / 100,
+          scale = Math.max(0, Number(values.scale) || 0) / 100;
+        return `${selectors}{background-color:${values.background}!important;color:${values.color}!important;border-color:${values.border}!important;box-shadow:0 0 12px ${values.glow}!important;opacity:${opacity}!important;transform:scale(${scale})!important;transition:background-color .16s,color .16s,border-color .16s,box-shadow .16s,opacity .16s,transform .12s!important;${stateName === "disabled" ? "pointer-events:none!important;" : ""}}`;
+      })
+      .join("\n");
+  }
+  function customStateRuntime(config) {
+    if (!config?.selector || !config.states) return "";
+    return `<script>(function(){var config=${JSON.stringify(config)};function setup(target){var textTarget=target.querySelector('[data-state-text],[data-custom-text],.button-label,.label')||target,originalText=textTarget.textContent,pressed=false;function current(){if(target.classList.contains('disabled')||target.hasAttribute('disabled'))return'disabled';if(target.classList.contains('selected')||target.classList.contains('active'))return'selected';if(pressed)return'pressed';return'standard'}function apply(){var name=current(),state=config.states[name]||{},standard=config.states.standard||{},text=state.text||standard.text,asset=state.assetData||standard.assetData;if(text)textTarget.textContent=text;else if(standard.text)textTarget.textContent=standard.text;else textTarget.textContent=originalText;if(target.tagName==='IMG'){if(asset)target.src=asset}else target.style.backgroundImage=asset?'url("'+String(asset).replace(/"/g,'\\"')+'")':''}target.addEventListener('pointerdown',function(){pressed=true;target.classList.add('composer-pressed');apply()});['pointerup','pointercancel','pointerleave'].forEach(function(eventName){target.addEventListener(eventName,function(){pressed=false;target.classList.remove('composer-pressed');apply()})});new MutationObserver(apply).observe(target,{attributes:true,attributeFilter:['class','disabled']});apply()}document.querySelectorAll(config.selector).forEach(setup)})();<\/script>`;
+  }
+  function refreshCustomGeneratedCode() {
+    const rules = collectCustomBehaviors(),
+      properties = Object.fromEntries(
+        collectCustomProperties().map((property) => [
+          property.key,
+          `{{${property.key}}}`,
+        ]),
+      );
+    $("custom-generated-css").value =
+      [customStateCss(collectCustomStateStyles()), customBehaviorCss(rules)]
+        .filter(Boolean)
+        .join("\n") || "/* No generated CSS rules yet. */";
+    $("custom-generated-javascript").value =
+      customBehaviorRuntime(rules, properties) ||
+      "// No generated JavaScript behaviors yet.";
+  }
   function collectCustomRepeatedItems() {
-    if (!$('custom-repeat-enabled').checked) return null;
-    const namespace = $('custom-repeat-namespace').value.trim().replace(/[^A-Za-z0-9_]/g, '') || 'CustomComponent';
+    if (!$("custom-repeat-enabled").checked) return null;
+    const namespace =
+      $("custom-repeat-namespace")
+        .value.trim()
+        .replace(/[^A-Za-z0-9_]/g, "") || "CustomComponent";
     return {
-      containerSelector: $('custom-repeat-container').value.trim() || '.split-menu',
-      itemSelector: $('custom-repeat-item').value.trim() || 'button',
-      labelSelector: $('custom-repeat-label').value.trim(),
-      defaultCount: Math.max(0, Math.min(100, Math.round(Number($('custom-repeat-default').value) || 0))),
-      maxCount: Math.max(1, Math.min(100, Math.round(Number($('custom-repeat-max').value) || 20))),
+      containerSelector:
+        $("custom-repeat-container").value.trim() || ".split-menu",
+      itemSelector: $("custom-repeat-item").value.trim() || "button",
+      labelSelector: $("custom-repeat-label").value.trim(),
+      defaultCount: Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(Number($("custom-repeat-default").value) || 0),
+        ),
+      ),
+      maxCount: Math.max(
+        1,
+        Math.min(100, Math.round(Number($("custom-repeat-max").value) || 20)),
+      ),
       namespace,
     };
   }
   function repeatedItemProperties(config) {
     if (!config) return [];
     return [
-      { key: 'defaultCount', name: 'Default sub-items', type: 'number', defaultValue: config.defaultCount },
-      { key: 'signalIncrement', name: 'Join increment', type: 'number', defaultValue: 1 },
-      { key: 'pressBase', name: 'Digital item press base / pattern', type: 'text', defaultValue: `${config.namespace}.Items[{index}].Press` },
-      { key: 'feedbackBase', name: 'Digital item selected base / pattern', type: 'text', defaultValue: `${config.namespace}.Items[{index}].Selected` },
-      { key: 'labelBase', name: 'Serial item name base / pattern', type: 'text', defaultValue: `${config.namespace}.Items[{index}].Name` },
+      {
+        key: "defaultCount",
+        name: "Default sub-items",
+        type: "number",
+        defaultValue: config.defaultCount,
+      },
+      {
+        key: "signalIncrement",
+        name: "Join increment",
+        type: "number",
+        defaultValue: 1,
+      },
+      {
+        key: "pressBase",
+        name: "Digital item press base / pattern",
+        type: "text",
+        defaultValue: `${config.namespace}.Items[{index}].Press`,
+      },
+      {
+        key: "feedbackBase",
+        name: "Digital item selected base / pattern",
+        type: "text",
+        defaultValue: `${config.namespace}.Items[{index}].Selected`,
+      },
+      {
+        key: "labelBase",
+        name: "Serial item name base / pattern",
+        type: "text",
+        defaultValue: `${config.namespace}.Items[{index}].Name`,
+      },
     ];
   }
   function repeatedItemSignals(config) {
-    return config ? [{ key: 'itemCount', name: 'Number of sub-items', type: 'analog', direction: 'input', defaultValue: `${config.namespace}.ItemCount` }] : [];
+    return config
+      ? [
+          {
+            key: "itemCount",
+            name: "Number of sub-items",
+            type: "analog",
+            direction: "input",
+            defaultValue: `${config.namespace}.ItemCount`,
+          },
+        ]
+      : [];
   }
   function repeatedItemRanges(config) {
     if (!config) return [];
     return [
-      { name: 'Digital sub-item press range', type: 'digital', direction: 'output', baseKey: 'pressBase', incrementKey: 'signalIncrement' },
-      { name: 'Digital sub-item selected range', type: 'digital', direction: 'input', baseKey: 'feedbackBase', incrementKey: 'signalIncrement' },
-      { name: 'Serial sub-item name range', type: 'serial', direction: 'input', baseKey: 'labelBase', incrementKey: 'signalIncrement' },
+      {
+        name: "Digital sub-item press range",
+        type: "digital",
+        direction: "output",
+        baseKey: "pressBase",
+        incrementKey: "signalIncrement",
+      },
+      {
+        name: "Digital sub-item selected range",
+        type: "digital",
+        direction: "input",
+        baseKey: "feedbackBase",
+        incrementKey: "signalIncrement",
+      },
+      {
+        name: "Serial sub-item name range",
+        type: "serial",
+        direction: "input",
+        baseKey: "labelBase",
+        incrementKey: "signalIncrement",
+      },
     ];
   }
   function mergeCustomRows(base, generated) {
-    const result = base.filter((entry) => !generated.some((item) => item.key === entry.key));
+    const result = base.filter(
+      (entry) => !generated.some((item) => item.key === entry.key),
+    );
     return [...result, ...generated];
   }
   function customRepeatedFrameRuntime(config) {
-    if (!config) return '';
+    if (!config) return "";
     return `<script>(function(){
 var config=${JSON.stringify(config)},container=document.querySelector(config.containerSelector);if(!container)return;
 var originals=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector)),template=originals[0]?originals[0].cloneNode(true):document.createElement('button'),labels=originals.map(function(item){var label=config.labelSelector?item.querySelector(config.labelSelector):item.querySelector('[data-repeat-label],.label,.text,span');return (label||item).textContent.trim()});
@@ -7223,6 +9259,50 @@ function render(value){var count=Math.max(0,Math.min(config.maxCount,Math.round(
 window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount);
 })();<\/script>`;
   }
+  function customBehaviorTypeWarnings(rule, properties, signals) {
+    const warnings = [],
+      label = rule.name ? `Behavior “${rule.name}”` : `Behavior “${rule.action}”`,
+      property = properties.find((entry) => entry.key === rule.key),
+      signal = signals.find((entry) => entry.key === rule.key),
+      numericActions = new Set([
+        "fontSize", "opacity", "width", "height", "scale", "glowStrength",
+        "borderRadius", "translateX", "translateY", "rotate",
+      ]),
+      digitalActions = new Set([
+        "visibility", "selectedClass", "disabledState", "classToggle",
+      ]),
+      assetActions = new Set(["imageSource", "backgroundImage"]),
+      pulseActions = new Set(["press", "click", "release", "hold"]);
+    if (rule.source === "property" && property) {
+      if (numericActions.has(rule.action) && property.type !== "number")
+        warnings.push(`${label} expects a number property, but “${property.key}” is ${property.type}.`);
+      if (digitalActions.has(rule.action) && property.type !== "checkbox")
+        warnings.push(`${label} expects a checkbox property, but “${property.key}” is ${property.type}.`);
+      if (assetActions.has(rule.action) && !["asset", "text"].includes(property.type))
+        warnings.push(`${label} expects an asset property, but “${property.key}” is ${property.type}.`);
+      if (rule.mapping?.enabled && property.type !== "number")
+        warnings.push(`${label} uses numeric mapping with a ${property.type} property.`);
+      if (rule.booleanMapping?.enabled && property.type !== "checkbox")
+        warnings.push(`${label} uses digital-state mapping with a ${property.type} property.`);
+    }
+    if (rule.source === "signal-input" && signal) {
+      if (numericActions.has(rule.action) && signal.type !== "analog")
+        warnings.push(`${label} expects analog feedback, but “${signal.key}” is ${signal.type}.`);
+      if (digitalActions.has(rule.action) && signal.type !== "digital")
+        warnings.push(`${label} expects digital feedback, but “${signal.key}” is ${signal.type}.`);
+      if (assetActions.has(rule.action) && signal.type !== "serial")
+        warnings.push(`${label} expects a serial asset value, but “${signal.key}” is ${signal.type}.`);
+      if (rule.mapping?.enabled && signal.type !== "analog")
+        warnings.push(`${label} uses numeric mapping with a ${signal.type} signal.`);
+      if (rule.booleanMapping?.enabled && signal.type !== "digital")
+        warnings.push(`${label} uses digital-state mapping with a ${signal.type} signal.`);
+    }
+    if (rule.source === "signal-output" && signal) {
+      if (pulseActions.has(rule.action) && signal.type !== "digital")
+        warnings.push(`${label} publishes a digital pulse to a ${signal.type} output.`);
+    }
+    return warnings;
+  }
   function validateCustomComponent() {
     const name = $("custom-component-name").value.trim(),
       version = $("custom-component-version").value.trim(),
@@ -7232,6 +9312,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       completeSource = `${html}\n${css}\n${javascript}`,
       properties = collectCustomProperties(),
       signals = collectCustomSignals(),
+      behaviors = collectCustomBehaviors(),
       errors = [],
       warnings = [],
       duplicateKeys = (values) => [
@@ -7249,15 +9330,71 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     duplicateKeys(signals.map((entry) => entry.key)).forEach((key) =>
       errors.push(`Duplicate signal key: ${key}.`),
     );
+    const propertyKeys = new Set(properties.map((entry) => entry.key)),
+      signalKeys = new Set(signals.map((entry) => entry.key));
+    behaviors.forEach((rule) => {
+      if (rule.enabled === false) return;
+      if (rule.source === "property" && !propertyKeys.has(rule.key))
+        errors.push(`Behavior references missing property: ${rule.key}.`);
+      if (rule.source !== "property" && !signalKeys.has(rule.key))
+        errors.push(`Behavior references missing signal: ${rule.key}.`);
+      try {
+        document.querySelector(rule.selector);
+      } catch (_) {
+        errors.push(`Behavior uses invalid selector: ${rule.selector}.`);
+      }
+      if (
+        ["cssProperty", "cssVariable", "attribute", "classToggle"].includes(
+          rule.action,
+        ) &&
+        !rule.parameter
+      )
+        errors.push(`Behavior “${rule.action}” requires a parameter.`);
+      warnings.push(...customBehaviorTypeWarnings(rule, properties, signals));
+    });
+    const stateStyles = collectCustomStateStyles();
+    if (stateStyles)
+      try {
+        document.querySelector(stateStyles.selector);
+      } catch (_) {
+        errors.push(`Visual state builder uses invalid selector: ${stateStyles.selector}.`);
+      }
+    const dependencyReport = customComponentDependencyReport({
+      html: composeCustomSource(),
+      properties,
+      behaviors,
+      stateStyles,
+    });
+    errors.push(...dependencyReport.errors);
+    warnings.push(...dependencyReport.warnings);
     const knownProperties = new Set(properties.map((entry) => entry.key));
     [...completeSource.matchAll(/\{\{([^}]+)\}\}/g)].forEach((match) => {
       if (!knownProperties.has(match[1]))
         errors.push(`HTML uses undefined property token {{${match[1]}}}.`);
     });
-    const runtimeProperties = new Set(["bindingMode", "visibilityEnabled", "defaultCount", "signalIncrement", "pressBase", "feedbackBase", "labelBase"]);
+    const behaviorPropertyKeys = new Set(
+        behaviors
+          .filter((rule) => rule.enabled !== false && rule.source === "property")
+          .map((rule) => rule.key),
+      ),
+      runtimeProperties = new Set([
+      "bindingMode",
+      "visibilityEnabled",
+      "defaultCount",
+      "signalIncrement",
+      "pressBase",
+      "feedbackBase",
+      "labelBase",
+    ]);
     properties.forEach((property) => {
-      if (!runtimeProperties.has(property.key) && !completeSource.includes(`{{${property.key}}}`))
-        warnings.push(`Property “${property.key}” is not used in the component source.`);
+      if (
+        !runtimeProperties.has(property.key) &&
+        !behaviorPropertyKeys.has(property.key) &&
+        !completeSource.includes(`{{${property.key}}}`)
+      )
+        warnings.push(
+          `Property “${property.key}” is not used in the component source.`,
+        );
     });
     try {
       new Function("root", "signals", javascript);
@@ -7295,94 +9432,437 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-preview-send").disabled = !signals.length;
   }
   function refreshCustomPreview() {
-    let source = composeCustomSource(true) + customRepeatedFrameRuntime(collectCustomRepeatedItems());
+    const previewProperties = Object.fromEntries(
+      collectCustomProperties().map((property) => [
+        property.key,
+        property.type === "asset"
+          ? state.assets.find((asset) => asset.id === property.defaultValue)
+              ?.dataUrl || property.defaultValue
+          : property.defaultValue,
+      ]),
+    );
+    let source =
+      composeCustomSource(true) +
+      customRepeatedFrameRuntime(collectCustomRepeatedItems()) +
+      `<style data-composer-states>${customStateCss(collectCustomStateStyles())}</style>` +
+      customStateRuntime(collectCustomStateStyles()) +
+      `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
+      customBehaviorRuntime(collectCustomBehaviors(), previewProperties);
     collectCustomProperties().forEach((property) => {
       source = source.replaceAll(
         `{{${property.key}}}`,
         String(property.defaultValue ?? ""),
       );
     });
-    const previewBridge = `<script>window.ComposerComponent={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')}};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});<\/script>`;
+    const previewBridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-self-test')return;var missing=[],pending=[];(event.data.rules||[]).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}var fire=function(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))};if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='hold'){fire('pointerdown');pending.push(new Promise(function(resolve){setTimeout(function(){fire('pointerup');resolve()},Math.min(3000,Math.max(1,Number(rule.parameter)||1000)+25))}))}else{fire('pointerdown');fire('pointerup')}});Promise.all(pending).then(function(){parent.postMessage({type:'composer-self-test-complete',missing:missing},'*')})});${customElementPickerActive ? `var pickedStyle=document.createElement('style');pickedStyle.textContent='.composer-picked{outline:2px solid #ffd84d!important;outline-offset:2px!important;cursor:crosshair!important}';document.head.appendChild(pickedStyle);document.addEventListener('pointerover',function(event){document.querySelectorAll('.composer-picked').forEach(function(node){node.classList.remove('composer-picked')});event.target.classList.add('composer-picked')},true);document.addEventListener('pointerdown',function(event){event.preventDefault();event.stopImmediatePropagation();var element=event.target,selector;if(element.id)selector='#'+CSS.escape(element.id);else{var parts=[];while(element&&element!==document.body){var part=element.tagName.toLowerCase(),classes=Array.from(element.classList||[]).filter(function(name){return name!=='composer-picked'});if(classes.length)part+='.'+classes.map(CSS.escape).join('.');else if(element.parentElement){var siblings=Array.from(element.parentElement.children).filter(function(node){return node.tagName===element.tagName});if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(element)+1)+')'}parts.unshift(part);element=element.parentElement}selector=parts.join(' > ')}parent.postMessage({type:'composer-element-picked',selector:selector},'*')},true);` : ""}})();<\/script>`;
     $("custom-component-preview").srcdoc = safeDoc(
-      '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>' +
+      "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
         previewBridge +
         source,
       "",
     );
+    refreshCustomGeneratedCode();
     refreshCustomSignalTester();
     validateCustomComponent();
   }
   const customButtonProperties = [
-      { key: "text", name: "Standard state — text", type: "text", defaultValue: "Button" },
-      { key: "selectedText", name: "Selected state — text", type: "text", defaultValue: "Button" },
-      { key: "icon", name: "Standard state — icon / symbol", type: "text", defaultValue: "" },
-      { key: "selectedIcon", name: "Selected state — icon / symbol", type: "text", defaultValue: "" },
+      {
+        key: "text",
+        name: "Standard state — text",
+        type: "text",
+        defaultValue: "Button",
+      },
+      {
+        key: "selectedText",
+        name: "Selected state — text",
+        type: "text",
+        defaultValue: "Button",
+      },
+      {
+        key: "icon",
+        name: "Standard state — icon / symbol",
+        type: "text",
+        defaultValue: "",
+      },
+      {
+        key: "selectedIcon",
+        name: "Selected state — icon / symbol",
+        type: "text",
+        defaultValue: "",
+      },
       { key: "textSize", name: "Text size", type: "number", defaultValue: 18 },
       { key: "iconSize", name: "Icon size", type: "number", defaultValue: 24 },
-      { key: "faceColor", name: "Standard state — background color", type: "color", defaultValue: "#263b3c" },
-      { key: "selectedFaceColor", name: "Selected state — background color", type: "color", defaultValue: "#078f7d" },
-      { key: "textColor", name: "Standard state — text / icon color", type: "color", defaultValue: "#ffffff" },
-      { key: "selectedTextColor", name: "Selected state — text / icon color", type: "color", defaultValue: "#ffffff" },
-      { key: "borderColor", name: "Standard state — border color", type: "color", defaultValue: "#7ba7a3" },
-      { key: "selectedBorderColor", name: "Selected state — border color", type: "color", defaultValue: "#04dcb9" },
-      { key: "glowColor", name: "Standard state — glow color", type: "color", defaultValue: "#04dcb9" },
-      { key: "selectedGlowColor", name: "Selected state — glow color", type: "color", defaultValue: "#04dcb9" },
-      { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 8 },
-      { key: "shadowSize", name: "Shadow size", type: "number", defaultValue: 6 },
-      { key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: 18 },
+      {
+        key: "faceColor",
+        name: "Standard state — background color",
+        type: "color",
+        defaultValue: "#263b3c",
+      },
+      {
+        key: "selectedFaceColor",
+        name: "Selected state — background color",
+        type: "color",
+        defaultValue: "#078f7d",
+      },
+      {
+        key: "textColor",
+        name: "Standard state — text / icon color",
+        type: "color",
+        defaultValue: "#ffffff",
+      },
+      {
+        key: "selectedTextColor",
+        name: "Selected state — text / icon color",
+        type: "color",
+        defaultValue: "#ffffff",
+      },
+      {
+        key: "borderColor",
+        name: "Standard state — border color",
+        type: "color",
+        defaultValue: "#7ba7a3",
+      },
+      {
+        key: "selectedBorderColor",
+        name: "Selected state — border color",
+        type: "color",
+        defaultValue: "#04dcb9",
+      },
+      {
+        key: "glowColor",
+        name: "Standard state — glow color",
+        type: "color",
+        defaultValue: "#04dcb9",
+      },
+      {
+        key: "selectedGlowColor",
+        name: "Selected state — glow color",
+        type: "color",
+        defaultValue: "#04dcb9",
+      },
+      {
+        key: "glowStrength",
+        name: "Glow strength",
+        type: "number",
+        defaultValue: 8,
+      },
+      {
+        key: "shadowSize",
+        name: "Shadow size",
+        type: "number",
+        defaultValue: 6,
+      },
+      {
+        key: "cornerRadius",
+        name: "Corner radius",
+        type: "number",
+        defaultValue: 18,
+      },
     ],
     customStandardSignals = [
-      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "CustomButton.Press" },
-      { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "CustomButton.Selected" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomButton.Name" },
-      { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: "CustomButton.Visibility", optionalProperty: "visibilityEnabled" },
+      {
+        key: "press",
+        name: "Press",
+        type: "digital",
+        direction: "output",
+        defaultValue: "CustomButton.Press",
+      },
+      {
+        key: "selected",
+        name: "Selected",
+        type: "digital",
+        direction: "input",
+        defaultValue: "CustomButton.Selected",
+      },
+      {
+        key: "name",
+        name: "Name",
+        type: "serial",
+        direction: "input",
+        defaultValue: "CustomButton.Name",
+      },
+      {
+        key: "visibility",
+        name: "Visibility",
+        type: "digital",
+        direction: "input",
+        defaultValue: "CustomButton.Visibility",
+        optionalProperty: "visibilityEnabled",
+      },
     ],
     customButtonCss = `html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-button{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:{{cornerRadius}}px;box-shadow:0 0 {{glowStrength}}px {{glowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819;transition:background .18s,color .18s,border-color .18s,box-shadow .18s;touch-action:none}.custom-button.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};box-shadow:0 0 calc({{glowStrength}}px * 2) {{selectedGlowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819}.custom-icon{font-size:{{iconSize}}px;line-height:1}.custom-label{font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}`,
     customButtonJavascript = `const button=root.querySelector('.custom-button'),label=root.querySelector('.custom-label'),icon=root.querySelector('.custom-icon');let selected=false,localName='{{text}}';const truthy=value=>value===true||value===1||value==='1'||String(value).toLowerCase()==='true';const render=()=>{button.classList.toggle('active',selected);label.textContent=selected?'{{selectedText}}':localName;icon.textContent=selected?'{{selectedIcon}}':'{{icon}}'};const release=()=>signals.publish('press',false);button.addEventListener('pointerdown',event=>{event.preventDefault();signals.publish('press',true)});button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('pointerleave',release);signals.subscribe('selected',value=>{selected=truthy(value);render()});signals.subscribe('name',value=>{if(value!=null&&value!==''){localName=String(value);if(!selected)render()}});render();`;
   const customStarterTemplates = {
-    button: { name: "Custom Button", category: "Standard Buttons", icon: "🔘", properties: customButtonProperties, signals: customStandardSignals, html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>', css: customButtonCss, javascript: customButtonJavascript },
-    toggle: { name: "Custom Toggle", category: "Toggle Buttons", icon: "🔘", properties: customButtonProperties, signals: customStandardSignals, html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>', css: customButtonCss, javascript: customButtonJavascript },
-    slider: { name: "Custom Slider", category: "Sliders & Levels", icon: "🎚️", properties: [
-      { key: "text", name: "Label", type: "text", defaultValue: "Level" }, { key: "textSize", name: "Text size", type: "number", defaultValue: 18 }, { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" }, { key: "trackColor", name: "Track color", type: "color", defaultValue: "#263b3c" }, { key: "fillColor", name: "Fill / glow color", type: "color", defaultValue: "#04dcb9" }, { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 8 },
-    ], signals: [
-      { key: "set", name: "Value Set", type: "analog", direction: "output", defaultValue: "CustomSlider.ValueSet" }, { key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "CustomSlider.Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomSlider.Name" },
-    ], html: '<div class="custom-slider"><label>{{text}}</label><input type="range" min="0" max="65535" value="0"><output>0%</output></div>', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-slider{width:100%;height:100%;display:grid;grid-template-rows:auto 1fr auto;align-items:center;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}.custom-slider input{width:100%;accent-color:{{fillColor}};filter:drop-shadow(0 0 {{glowStrength}}px {{fillColor}})}.custom-slider input::-webkit-slider-runnable-track{background:{{trackColor}}}', javascript: `const control=root.querySelector('input'),label=root.querySelector('label'),output=root.querySelector('output');let feedback=false;control.addEventListener('input',()=>{output.textContent=Math.round(Number(control.value)/65535*100)+'%';if(!feedback)signals.publish('set',Number(control.value))});signals.subscribe('feedback',value=>{feedback=true;control.value=String(Math.max(0,Math.min(65535,Number(value)||0)));control.dispatchEvent(new Event('input'));feedback=false});signals.subscribe('name',value=>{if(value!=null&&value!=='')label.textContent=String(value)});` },
-    gauge: { name: "Custom Gauge", category: "Status & Information", icon: "🎚️", properties: [
-      { key: "text", name: "Label", type: "text", defaultValue: "Level" }, { key: "textSize", name: "Text size", type: "number", defaultValue: 18 }, { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" }, { key: "fillColor", name: "Fill / glow color", type: "color", defaultValue: "#04dcb9" }, { key: "backgroundColor", name: "Unfilled color", type: "color", defaultValue: "#263b3c" },
-    ], signals: [{ key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "CustomGauge.Feedback" }, { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomGauge.Name" }], html: '<div class="custom-gauge"><label>{{text}}</label><div class="gauge-track"><div class="gauge-fill"></div></div><output>0%</output></div>', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-gauge{width:100%;height:100%;display:grid;grid-template-rows:auto 1fr auto;align-items:center;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}.gauge-track{height:18px;background:{{backgroundColor}};border-radius:20px;overflow:hidden}.gauge-fill{width:0;height:100%;background:{{fillColor}};box-shadow:0 0 10px {{fillColor}}}', javascript: `const fill=root.querySelector('.gauge-fill'),label=root.querySelector('label'),output=root.querySelector('output');signals.subscribe('feedback',value=>{const percent=Math.max(0,Math.min(100,(Number(value)||0)/65535*100));fill.style.width=percent+'%';output.textContent=Math.round(percent)+'%'});signals.subscribe('name',value=>{if(value!=null&&value!=='')label.textContent=String(value)});` },
-    text: { name: "Custom Text Input", category: "Text & Input", icon: "📝", properties: [{ key: "placeholder", name: "Placeholder", type: "text", defaultValue: "Enter text" }, { key: "textSize", name: "Text size", type: "number", defaultValue: 18 }, { key: "textColor", name: "Text color", type: "color", defaultValue: "#ffffff" }, { key: "faceColor", name: "Background color", type: "color", defaultValue: "#263b3c" }, { key: "borderColor", name: "Border / glow color", type: "color", defaultValue: "#04dcb9" }], signals: [{ key: "text", name: "Text", type: "serial", direction: "output", defaultValue: "CustomText.Text" }, { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "CustomText.Name" }], html: '<input class="custom-text" placeholder="{{placeholder}}">', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-text{box-sizing:border-box;width:100%;height:100%;padding:12px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:12px;box-shadow:0 0 8px {{borderColor}};font:{{textSize}}px "Segoe UI",sans-serif}', javascript: `const input=root.querySelector('input');input.addEventListener('input',()=>signals.publish('text',input.value));signals.subscribe('name',value=>{if(value!=null)input.value=String(value)});` },
-    blank: { name: "Custom Component", category: "Custom", icon: "🧩", properties: [{ key: "backgroundColor", name: "Background color", type: "color", defaultValue: "transparent" }], signals: [], html: '<div class="custom-component"></div>', css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-component{width:100%;height:100%;background:{{backgroundColor}}}', javascript: "" },
+    button: {
+      name: "Custom Button",
+      category: "Standard Buttons",
+      icon: "🔘",
+      properties: customButtonProperties,
+      signals: customStandardSignals,
+      html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>',
+      css: customButtonCss,
+      javascript: customButtonJavascript,
+    },
+    toggle: {
+      name: "Custom Toggle",
+      category: "Toggle Buttons",
+      icon: "🔘",
+      properties: customButtonProperties,
+      signals: customStandardSignals,
+      html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>',
+      css: customButtonCss,
+      javascript: customButtonJavascript,
+    },
+    slider: {
+      name: "Custom Slider",
+      category: "Sliders & Levels",
+      icon: "🎚️",
+      properties: [
+        { key: "text", name: "Label", type: "text", defaultValue: "Level" },
+        {
+          key: "textSize",
+          name: "Text size",
+          type: "number",
+          defaultValue: 18,
+        },
+        {
+          key: "textColor",
+          name: "Text color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "trackColor",
+          name: "Track color",
+          type: "color",
+          defaultValue: "#263b3c",
+        },
+        {
+          key: "fillColor",
+          name: "Fill / glow color",
+          type: "color",
+          defaultValue: "#04dcb9",
+        },
+        {
+          key: "glowStrength",
+          name: "Glow strength",
+          type: "number",
+          defaultValue: 8,
+        },
+      ],
+      signals: [
+        {
+          key: "set",
+          name: "Value Set",
+          type: "analog",
+          direction: "output",
+          defaultValue: "CustomSlider.ValueSet",
+        },
+        {
+          key: "feedback",
+          name: "Feedback",
+          type: "analog",
+          direction: "input",
+          defaultValue: "CustomSlider.Feedback",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          defaultValue: "CustomSlider.Name",
+        },
+      ],
+      html: '<div class="custom-slider"><label>{{text}}</label><input type="range" min="0" max="65535" value="0"><output>0%</output></div>',
+      css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-slider{width:100%;height:100%;display:grid;grid-template-rows:auto 1fr auto;align-items:center;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}.custom-slider input{width:100%;accent-color:{{fillColor}};filter:drop-shadow(0 0 {{glowStrength}}px {{fillColor}})}.custom-slider input::-webkit-slider-runnable-track{background:{{trackColor}}}',
+      javascript: `const control=root.querySelector('input'),label=root.querySelector('label'),output=root.querySelector('output');let feedback=false;control.addEventListener('input',()=>{output.textContent=Math.round(Number(control.value)/65535*100)+'%';if(!feedback)signals.publish('set',Number(control.value))});signals.subscribe('feedback',value=>{feedback=true;control.value=String(Math.max(0,Math.min(65535,Number(value)||0)));control.dispatchEvent(new Event('input'));feedback=false});signals.subscribe('name',value=>{if(value!=null&&value!=='')label.textContent=String(value)});`,
+    },
+    gauge: {
+      name: "Custom Gauge",
+      category: "Status & Information",
+      icon: "🎚️",
+      properties: [
+        { key: "text", name: "Label", type: "text", defaultValue: "Level" },
+        {
+          key: "textSize",
+          name: "Text size",
+          type: "number",
+          defaultValue: 18,
+        },
+        {
+          key: "textColor",
+          name: "Text color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "fillColor",
+          name: "Fill / glow color",
+          type: "color",
+          defaultValue: "#04dcb9",
+        },
+        {
+          key: "backgroundColor",
+          name: "Unfilled color",
+          type: "color",
+          defaultValue: "#263b3c",
+        },
+      ],
+      signals: [
+        {
+          key: "feedback",
+          name: "Feedback",
+          type: "analog",
+          direction: "input",
+          defaultValue: "CustomGauge.Feedback",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          defaultValue: "CustomGauge.Name",
+        },
+      ],
+      html: '<div class="custom-gauge"><label>{{text}}</label><div class="gauge-track"><div class="gauge-fill"></div></div><output>0%</output></div>',
+      css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-gauge{width:100%;height:100%;display:grid;grid-template-rows:auto 1fr auto;align-items:center;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}.gauge-track{height:18px;background:{{backgroundColor}};border-radius:20px;overflow:hidden}.gauge-fill{width:0;height:100%;background:{{fillColor}};box-shadow:0 0 10px {{fillColor}}}',
+      javascript: `const fill=root.querySelector('.gauge-fill'),label=root.querySelector('label'),output=root.querySelector('output');signals.subscribe('feedback',value=>{const percent=Math.max(0,Math.min(100,(Number(value)||0)/65535*100));fill.style.width=percent+'%';output.textContent=Math.round(percent)+'%'});signals.subscribe('name',value=>{if(value!=null&&value!=='')label.textContent=String(value)});`,
+    },
+    text: {
+      name: "Custom Text Input",
+      category: "Text & Input",
+      icon: "📝",
+      properties: [
+        {
+          key: "placeholder",
+          name: "Placeholder",
+          type: "text",
+          defaultValue: "Enter text",
+        },
+        {
+          key: "textSize",
+          name: "Text size",
+          type: "number",
+          defaultValue: 18,
+        },
+        {
+          key: "textColor",
+          name: "Text color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "faceColor",
+          name: "Background color",
+          type: "color",
+          defaultValue: "#263b3c",
+        },
+        {
+          key: "borderColor",
+          name: "Border / glow color",
+          type: "color",
+          defaultValue: "#04dcb9",
+        },
+      ],
+      signals: [
+        {
+          key: "text",
+          name: "Text",
+          type: "serial",
+          direction: "output",
+          defaultValue: "CustomText.Text",
+        },
+        {
+          key: "name",
+          name: "Name",
+          type: "serial",
+          direction: "input",
+          defaultValue: "CustomText.Name",
+        },
+      ],
+      html: '<input class="custom-text" placeholder="{{placeholder}}">',
+      css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-text{box-sizing:border-box;width:100%;height:100%;padding:12px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:12px;box-shadow:0 0 8px {{borderColor}};font:{{textSize}}px "Segoe UI",sans-serif}',
+      javascript: `const input=root.querySelector('input');input.addEventListener('input',()=>signals.publish('text',input.value));signals.subscribe('name',value=>{if(value!=null)input.value=String(value)});`,
+    },
+    blank: {
+      name: "Custom Component",
+      category: "Custom",
+      icon: "🧩",
+      properties: [
+        {
+          key: "backgroundColor",
+          name: "Background color",
+          type: "color",
+          defaultValue: "transparent",
+        },
+      ],
+      signals: [],
+      html: '<div class="custom-component"></div>',
+      css: "html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-component{width:100%;height:100%;background:{{backgroundColor}}}",
+      javascript: "",
+    },
   };
-  function applyCustomStarterTemplate(key, refresh = true, preserveIdentity = false) {
-    const template = customStarterTemplates[key] || customStarterTemplates.button;
+  function applyCustomStarterTemplate(
+    key,
+    refresh = true,
+    preserveIdentity = false,
+  ) {
+    const template =
+      customStarterTemplates[key] || customStarterTemplates.button;
     const currentName = $("custom-component-name").value,
       currentCategory = $("custom-component-category").value;
-    $("custom-component-name").value = preserveIdentity ? currentName : template.name;
-    $("custom-component-category").value = preserveIdentity ? currentCategory : template.category;
+    $("custom-component-name").value = preserveIdentity
+      ? currentName
+      : template.name;
+    $("custom-component-category").value = preserveIdentity
+      ? currentCategory
+      : template.category;
     if (!preserveIdentity) $("custom-component-icon").value = template.icon;
     $("custom-source-html").value = template.html;
     $("custom-source-css").value = template.css;
     $("custom-source-javascript").value = template.javascript;
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
-    $('custom-repeat-enabled').checked = false;
-    template.properties.forEach((property) => addCustomPropertyRow(structuredClone(property)));
-    template.signals.forEach((signal) => addCustomSignalRow(structuredClone(signal)));
+    $("custom-behavior-list").innerHTML = "";
+    customBehaviorRules = [];
+    $("custom-repeat-enabled").checked = false;
+    template.properties.forEach((property) =>
+      addCustomPropertyRow(structuredClone(property)),
+    );
+    template.signals.forEach((signal) =>
+      addCustomSignalRow(structuredClone(signal)),
+    );
     if (refresh) refreshCustomPreview();
   }
   function setCustomRepeatedControls(config) {
-    $('custom-repeat-enabled').checked = !!config;
-    $('custom-repeat-container').value = config?.containerSelector || '.split-menu';
-    $('custom-repeat-item').value = config?.itemSelector || 'button';
-    $('custom-repeat-label').value = config?.labelSelector || '';
-    $('custom-repeat-default').value = config?.defaultCount ?? 3;
-    $('custom-repeat-max').value = config?.maxCount ?? 20;
-    $('custom-repeat-namespace').value = config?.namespace || 'CustomComponent';
+    $("custom-repeat-enabled").checked = !!config;
+    $("custom-repeat-container").value =
+      config?.containerSelector || ".split-menu";
+    $("custom-repeat-item").value = config?.itemSelector || "button";
+    $("custom-repeat-label").value = config?.labelSelector || "";
+    $("custom-repeat-default").value = config?.defaultCount ?? 3;
+    $("custom-repeat-max").value = config?.maxCount ?? 20;
+    $("custom-repeat-namespace").value = config?.namespace || "CustomComponent";
   }
   function syncCustomRepeatedRows() {
-    const config = collectCustomRepeatedItems(), propertyKeys = new Set(['defaultCount', 'signalIncrement', 'pressBase', 'feedbackBase', 'labelBase']);
-    [...$('custom-property-list').children].filter(row => propertyKeys.has(row.querySelector('[data-field="key"]')?.value)).forEach(row => row.remove());
-    [...$('custom-signal-list').children].filter(row => row.querySelector('[data-field="key"]')?.value === 'itemCount').forEach(row => row.remove());
+    const config = collectCustomRepeatedItems(),
+      propertyKeys = new Set([
+        "defaultCount",
+        "signalIncrement",
+        "pressBase",
+        "feedbackBase",
+        "labelBase",
+      ]);
+    [...$("custom-property-list").children]
+      .filter((row) =>
+        propertyKeys.has(row.querySelector('[data-field="key"]')?.value),
+      )
+      .forEach((row) => row.remove());
+    [...$("custom-signal-list").children]
+      .filter(
+        (row) => row.querySelector('[data-field="key"]')?.value === "itemCount",
+      )
+      .forEach((row) => row.remove());
     repeatedItemProperties(config).forEach(addCustomPropertyRow);
     repeatedItemSignals(config).forEach(addCustomSignalRow);
     refreshCustomPreview();
@@ -7390,6 +9870,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   function openCustomBuilder(item = null, entry = null) {
     customEditingId = entry?.id || "";
     customBuilderSourceItemId = item?.id || "";
+    customElementPickerActive = false;
+    $("custom-element-selector").value = "";
+    $("custom-element-picker").classList.remove("active");
+    $("custom-element-picker").textContent = "Pick preview element";
     const definition = item?.componentId
         ? window.ComposerRuntime.get(item.componentId)
         : null,
@@ -7397,7 +9881,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         ? entry.html
         : definition
           ? `<style>${item.componentStyles || definition.styles || ""}</style>${item.componentTemplate || definition.template || ""}`
-          : item?.source || `<div class="custom-component">Custom component</div>
+          : item?.source ||
+            `<div class="custom-component">Custom component</div>
 <style>
 .custom-component {
   display: grid;
@@ -7434,11 +9919,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-source-javascript").value = source.javascript;
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
+    $("custom-behavior-list").innerHTML = "";
+    customBehaviorRules = structuredClone(entry?.behaviors || []);
+    setCustomStateStyles(entry?.stateStyles || null);
     setCustomRepeatedControls(entry?.repeatedItems || null);
     $("custom-preview-log").textContent =
       "Preview signal activity appears here.";
+    $("custom-self-test-report").hidden = true;
+    $("custom-self-test-report").textContent = "";
     properties.forEach(addCustomPropertyRow);
     signals.forEach(addCustomSignalRow);
+    customBehaviorRules.forEach(addCustomBehaviorRow);
     $("custom-component-template").disabled = !!entry;
     $("custom-component-apply-template").disabled = !!entry;
     if (!item && !entry) {
@@ -7460,16 +9951,84 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("custom-component-template").onchange = () => {
     if (customEditingId) return;
     applyCustomStarterTemplate($("custom-component-template").value);
-    setStatus(`Applied the ${$("custom-component-template").selectedOptions[0]?.textContent || "selected"} starting template`);
+    setStatus(
+      `Applied the ${$("custom-component-template").selectedOptions[0]?.textContent || "selected"} starting template`,
+    );
   };
   $("custom-component-apply-template").onclick = () => {
-    if (customEditingId || !confirm("Replace the current starter markup, properties, and signals with this template?")) return;
+    if (
+      customEditingId ||
+      !confirm(
+        "Replace the current starter markup, properties, and signals with this template?",
+      )
+    )
+      return;
     applyCustomStarterTemplate($("custom-component-template").value);
   };
   $("custom-property-add").onclick = () => addCustomPropertyRow();
   $("custom-signal-add").onclick = () => addCustomSignalRow();
-  $('custom-repeat-enabled').onchange = syncCustomRepeatedRows;
-  ['custom-repeat-container', 'custom-repeat-item', 'custom-repeat-label', 'custom-repeat-default', 'custom-repeat-max', 'custom-repeat-namespace'].forEach(id => {
+  $("custom-behavior-add").onclick = () => addCustomBehaviorRow();
+  $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
+  $("custom-state-signals").onclick = () => {
+    const selector = $("custom-state-selector").value.trim();
+    if (!selector) {
+      alert("Pick an element or enter the state target selector first.");
+      return;
+    }
+    const base = customContractBase(),
+      definitions = [
+        {
+          signal: { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: `${base}.Selected` },
+          action: "selectedClass",
+        },
+        {
+          signal: { key: "disabled", name: "Disabled", type: "digital", direction: "input", defaultValue: `${base}.Disabled` },
+          action: "disabledState",
+        },
+      ];
+    definitions.forEach(({ signal, action }) => {
+      ensureCustomSignal(signal);
+      const exists = collectCustomBehaviors().some(
+        (rule) =>
+          rule.source === "signal-input" &&
+          rule.key === signal.key &&
+          rule.selector === selector &&
+          rule.action === action,
+      );
+      if (!exists)
+        addCustomBehaviorRow({
+          source: "signal-input",
+          key: signal.key,
+          selector,
+          action,
+        });
+    });
+    refreshCustomPreview();
+  };
+  $("custom-state-selector").oninput = refreshCustomPreview;
+  $("custom-state-grid")
+    .querySelectorAll("input,select")
+    .forEach((input) => (input.oninput = refreshCustomPreview));
+  $("custom-element-picker").onclick = () => {
+    customElementPickerActive = !customElementPickerActive;
+    $("custom-element-picker").classList.toggle(
+      "active",
+      customElementPickerActive,
+    );
+    $("custom-element-picker").textContent = customElementPickerActive
+      ? "Click an element…"
+      : "Pick preview element";
+    refreshCustomPreview();
+  };
+  $("custom-repeat-enabled").onchange = syncCustomRepeatedRows;
+  [
+    "custom-repeat-container",
+    "custom-repeat-item",
+    "custom-repeat-label",
+    "custom-repeat-default",
+    "custom-repeat-max",
+    "custom-repeat-namespace",
+  ].forEach((id) => {
     $(id).onchange = syncCustomRepeatedRows;
   });
   $("custom-preview-refresh").onclick = refreshCustomPreview;
@@ -7491,13 +10050,137 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-preview-log").textContent +=
       `\nFeedback ${key} = ${JSON.stringify(value)}`;
   };
+  async function runCustomComponentSelfTest() {
+    const button = $("custom-self-test"),
+      report = $("custom-self-test-report"),
+      validation = validateCustomComponent(),
+      dependencyReport = customComponentDependencyReport({
+        html: composeCustomSource(),
+        properties: collectCustomProperties(),
+        behaviors: collectCustomBehaviors(),
+        stateStyles: collectCustomStateStyles(),
+      });
+    button.disabled = true;
+    report.hidden = false;
+    report.classList.remove("failed");
+    report.textContent = "Running component self-test…";
+    customPreviewEvents = [];
+    refreshCustomPreview();
+    await new Promise((resolve) => {
+      const frame = $("custom-component-preview"),
+        timer = setTimeout(resolve, 600);
+      frame.addEventListener(
+        "load",
+        () => {
+          clearTimeout(timer);
+          setTimeout(resolve, 50);
+        },
+        { once: true },
+      );
+    });
+    const frame = $("custom-component-preview"),
+      signals = collectCustomSignals(),
+      inputs = signals.filter((signal) => signal.direction === "input"),
+      outputRules = collectCustomBehaviors().filter(
+        (rule) => rule.enabled !== false && rule.source === "signal-output",
+      ),
+      testableOutputRules = outputRules.filter(
+        (rule) => rule.action !== "hold" || (Number(rule.parameter) || 1000) <= 2900,
+      );
+    inputs.forEach((signal) => {
+      const values =
+        signal.type === "digital"
+          ? [false, true, false]
+          : signal.type === "analog"
+            ? [0, 32768, 65535]
+            : ["SELF_TEST", ""];
+      values.forEach((value) =>
+        frame.contentWindow?.postMessage(
+          { type: "composer-signal", key: signal.key, value },
+          "*",
+        ),
+      );
+    });
+    const selfTestResult = await new Promise((resolve) => {
+      customSelfTestResolve = resolve;
+      frame.contentWindow?.postMessage(
+        { type: "composer-self-test", rules: testableOutputRules },
+        "*",
+      );
+      setTimeout(() => {
+        if (customSelfTestResolve === resolve) {
+          customSelfTestResolve = null;
+          resolve({ missing: [], timedOut: true });
+        }
+      }, 3600);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const runtimeErrors = customPreviewEvents.filter(
+        (event) => event.type === "composer-preview-error",
+      ),
+      publishedKeys = new Set(
+        customPreviewEvents
+          .filter((event) => event.type === "composer-custom-publish")
+          .map((event) => event.key),
+      ),
+      missingOutputs = testableOutputRules
+        .map((rule) => rule.key)
+        .filter((key) => !publishedKeys.has(key)),
+      failures = [
+        ...validation.errors,
+        ...runtimeErrors.map((event) => `Runtime error: ${event.message}`),
+        ...(selfTestResult.missing || []).map(
+          (selector) => `Output target not found: ${selector}`,
+        ),
+        ...missingOutputs.map((key) => `No output was published for: ${key}`),
+        ...(selfTestResult.timedOut ? ["Output interaction test timed out."] : []),
+      ],
+      lines = [
+        `CUSTOM COMPONENT SELF-TEST — ${failures.length ? "FAILED" : "PASSED"}`,
+        `Input signals exercised: ${inputs.length}`,
+        `Output behaviors exercised: ${testableOutputRules.length}`,
+        `Long hold behaviors skipped: ${outputRules.length - testableOutputRules.length}`,
+        `Published output keys: ${publishedKeys.size}`,
+        `Embedded package assets: ${dependencyReport.assets.length}`,
+        `Validation warnings: ${validation.warnings.length}`,
+      ];
+    if (failures.length) lines.push("", ...failures.map((value) => `ERROR: ${value}`));
+    else if (validation.warnings.length)
+      lines.push("", ...validation.warnings.map((value) => `WARNING: ${value}`));
+    report.textContent = lines.join("\n");
+    report.classList.toggle("failed", !!failures.length);
+    button.disabled = false;
+  }
+  $("custom-self-test").onclick = runCustomComponentSelfTest;
   window.addEventListener("message", (event) => {
     if (event.source !== $("custom-component-preview").contentWindow) return;
+    if (
+      ["composer-custom-publish", "composer-preview-error"].includes(
+        event.data?.type,
+      )
+    )
+      customPreviewEvents.push(event.data);
     if (event.data?.type === "composer-custom-publish")
       $("custom-preview-log").textContent +=
         `\nPublish ${event.data.key} = ${JSON.stringify(event.data.value)}`;
     if (event.data?.type === "composer-preview-error")
       $("custom-preview-log").textContent += `\nERROR: ${event.data.message}`;
+    if (event.data?.type === "composer-self-test-complete") {
+      const resolve = customSelfTestResolve;
+      customSelfTestResolve = null;
+      resolve?.(event.data);
+    }
+    if (event.data?.type === "composer-element-picked") {
+      $("custom-element-selector").value = event.data.selector || "";
+      if (!$("custom-state-selector").value)
+        $("custom-state-selector").value = event.data.selector || "";
+      customElementPickerActive = false;
+      $("custom-element-picker").classList.remove("active");
+      $("custom-element-picker").textContent = "Pick preview element";
+      $("custom-preview-log").textContent +=
+        `\nPicked ${event.data.selector || "element"}`;
+      refreshCustomPreview();
+    }
     $("custom-preview-log").scrollTop = $("custom-preview-log").scrollHeight;
   });
   $("custom-component-export").onclick = () => {
@@ -7505,11 +10188,27 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       (candidate) => candidate.id === customEditingId,
     );
     if (!entry) return;
+    const dependencyReport = customComponentDependencyReport(entry);
+    if (dependencyReport.errors.length) {
+      alert(
+        `Component package is not ready.\n\n${dependencyReport.errors.join("\n")}`,
+      );
+      return;
+    }
     const packageValue = {
       format: "crestron-ui-composer-component",
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       component: structuredClone(entry),
+      dependencies: {
+        assets: customComponentDependencies(entry),
+        manifest: {
+          assetCount: dependencyReport.assets.length,
+          generatedBehaviorCount: (entry.behaviors || []).length,
+          hasVisualStates: !!entry.stateStyles,
+          hasRepeatedItems: !!entry.repeatedItems,
+        },
+      },
     };
     download(
       `${entry.name.replace(/[^A-Za-z0-9_-]+/g, "-") || "component"}.cuicomponent`,
@@ -7518,6 +10217,85 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     setStatus(`Exported component package “${entry.name}”`);
   };
+  function customComponentAssetReferences(entry) {
+    const references = new Set();
+    (entry.properties || []).forEach((property) => {
+      if (property.type === "asset" && property.defaultValue)
+        references.add(property.defaultValue);
+    });
+    Object.values(entry.stateStyles?.states || {}).forEach((stateStyle) => {
+      if (stateStyle.asset) references.add(stateStyle.asset);
+    });
+    state.assets.forEach((asset) => {
+      if (
+        entry.html?.includes(asset.dataUrl) ||
+        (entry.behaviors || []).some(
+          (rule) =>
+            rule.booleanMapping?.falseValue === asset.dataUrl ||
+            rule.booleanMapping?.trueValue === asset.dataUrl,
+        )
+      )
+        references.add(asset.id);
+    });
+    return [...references];
+  }
+  function customComponentDependencies(entry) {
+    const references = new Set(customComponentAssetReferences(entry));
+    return state.assets
+      .filter((asset) => references.has(asset.id))
+      .map((asset) => structuredClone(asset));
+  }
+  function customComponentDependencyReport(entry) {
+    const references = customComponentAssetReferences(entry),
+      assets = customComponentDependencies(entry),
+      found = new Set(assets.map((asset) => asset.id)),
+      errors = [],
+      warnings = [];
+    references.forEach((id) => {
+      const stateFallback = Object.values(entry.stateStyles?.states || {}).some(
+        (style) => style.asset === id && /^data:/i.test(style.assetData || ""),
+      );
+      if (!found.has(id) && !stateFallback)
+        errors.push(`Missing referenced asset: ${id}`);
+    });
+    assets.forEach((asset) => {
+      if (!asset.dataUrl || !/^data:/i.test(asset.dataUrl))
+        errors.push(`Asset “${asset.name || asset.id}” is not embedded.`);
+      if (!asset.type)
+        warnings.push(`Asset “${asset.name || asset.id}” has no MIME type.`);
+    });
+    const duplicateIds = assets
+      .map((asset) => asset.id)
+      .filter((id, index, values) => values.indexOf(id) !== index);
+    duplicateIds.forEach((id) => errors.push(`Duplicate dependency asset ID: ${id}`));
+    return { references, assets, errors, warnings };
+  }
+  function restoreCustomComponentDependencies(packageValue, entry) {
+    const assets = packageValue.dependencies?.assets || [],
+      idMap = new Map();
+    assets.forEach((assetValue) => {
+      const asset = structuredClone(assetValue),
+        sameData = state.assets.find(
+          (candidate) => candidate.dataUrl === asset.dataUrl,
+        ),
+        sameId = state.assets.find((candidate) => candidate.id === asset.id);
+      if (sameData) {
+        idMap.set(asset.id, sameData.id);
+        return;
+      }
+      if (sameId) asset.id = uid("asset-");
+      idMap.set(assetValue.id, asset.id);
+      state.assets.push(asset);
+    });
+    (entry.properties || []).forEach((property) => {
+      if (property.type === "asset" && idMap.has(property.defaultValue))
+        property.defaultValue = idMap.get(property.defaultValue);
+    });
+    Object.values(entry.stateStyles?.states || {}).forEach((stateStyle) => {
+      if (idMap.has(stateStyle.asset)) stateStyle.asset = idMap.get(stateStyle.asset);
+    });
+    return assets.length;
+  }
   function deleteCustomComponent(entry) {
     if (!entry) return;
     const instances = state.items.filter(
@@ -7536,8 +10314,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       (component) => component.componentId !== entry.id,
     );
     state.items = state.items.filter((item) => item.componentId !== entry.id);
-    if ($("custom-component-dialog").open)
-      $("custom-component-dialog").close();
+    if ($("custom-component-dialog").open) $("custom-component-dialog").close();
     customEditingId = "";
     renderComponentLibrary();
     renderPage();
@@ -7575,7 +10352,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     };
   });
   $("custom-component-save").onclick = () => {
-    const item = state.items.find((candidate) => candidate.id === customBuilderSourceItemId) || null,
+    const item =
+        state.items.find(
+          (candidate) => candidate.id === customBuilderSourceItemId,
+        ) || null,
       name = $("custom-component-name").value.trim();
     if (!name) return;
     const validation = validateCustomComponent();
@@ -7595,8 +10375,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       state.customComponents.push(entry);
     }
     const repeatedItems = collectCustomRepeatedItems(),
-      customProperties = mergeCustomRows(collectCustomProperties(), repeatedItemProperties(repeatedItems)),
-      customSignals = mergeCustomRows(collectCustomSignals(), repeatedItemSignals(repeatedItems));
+      customProperties = mergeCustomRows(
+        collectCustomProperties(),
+        repeatedItemProperties(repeatedItems),
+      ),
+      customSignals = mergeCustomRows(
+        collectCustomSignals(),
+        repeatedItemSignals(repeatedItems),
+      );
     Object.assign(entry, {
       name,
       category: $("custom-component-category").value.trim() || "Custom",
@@ -7613,6 +10399,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       signals: customSignals,
       repeatedItems,
       rangeBindings: repeatedItemRanges(repeatedItems),
+      behaviors: collectCustomBehaviors(),
+      stateStyles: collectCustomStateStyles(),
     });
     const libraryEntry = state.components.find(
       (component) => component.componentId === entry.id,
@@ -7641,7 +10429,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         imported = packageValue.component;
       if (
         packageValue.format !== "crestron-ui-composer-component" ||
-        ![1, 2].includes(packageValue.version) ||
+        ![1, 2, 3].includes(packageValue.version) ||
         !imported?.id ||
         !imported?.name ||
         typeof imported.html !== "string" ||
@@ -7662,6 +10450,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       )
         return;
       const entry = structuredClone(imported);
+      const restoredDependencies = restoreCustomComponentDependencies(
+        packageValue,
+        entry,
+      );
       if (existingIndex >= 0) state.customComponents[existingIndex] = entry;
       else state.customComponents.push(entry);
       const libraryEntry = state.components.find(
@@ -7673,12 +10465,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         libraryEntry.icon = entry.icon || "🧩";
       }
       registerCustomComponent(entry);
+      if (restoredDependencies) renderAssets();
       state.items
         .filter((item) => item.componentId === entry.id)
         .forEach(renderItem);
       renderComponentLibrary();
       commitHistory();
-      setStatus(`Imported component package “${entry.name}”`);
+      setStatus(
+        `Imported component package “${entry.name}” with ${restoredDependencies} embedded asset${restoredDependencies === 1 ? "" : "s"}`,
+      );
     } catch (error) {
       alert(`Component package import failed.\n\n${error.message}`);
     }
@@ -7713,13 +10508,25 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     setStatus(`Saved theme “${name.trim()}”`);
   };
   [
-    "page", "surface", "accent", "text", "glow", "border", "font-size",
-    "corner-radius", "glow-strength", "animation-duration", "animation-easing",
+    "page",
+    "surface",
+    "accent",
+    "text",
+    "glow",
+    "border",
+    "font-size",
+    "corner-radius",
+    "glow-strength",
+    "animation-duration",
+    "animation-easing",
   ].forEach((key) => {
-    const checkbox = $("theme-" + key + "-enabled"), control = $("theme-" + key);
+    const checkbox = $("theme-" + key + "-enabled"),
+      control = $("theme-" + key);
     const sync = () => {
       control.disabled = !checkbox.checked;
-      control.closest("label")?.classList.toggle("theme-token-disabled", !checkbox.checked);
+      control
+        .closest("label")
+        ?.classList.toggle("theme-token-disabled", !checkbox.checked);
     };
     checkbox.onchange = sync;
     sync();
@@ -7792,7 +10599,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         const width = k === "width" ? +e.target.value : state.width,
           height = k === "height" ? +e.target.value : state.height;
         savePanelLayouts(state.targetDevice, state.width, state.height);
-        applyResponsiveSize(width, height, panelLayoutKey(state.targetDevice, width, height));
+        applyResponsiveSize(
+          width,
+          height,
+          panelLayoutKey(state.targetDevice, width, height),
+        );
       }),
   );
   async function loadProjectText(text, markClean = true, sourcePath = "") {
@@ -7803,16 +10614,27 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       let backupName = "";
       if (native && sourcePath) {
         try {
-          backupName = await nativeRequest("backupProject", { path: sourcePath });
+          backupName = await nativeRequest("backupProject", {
+            path: sourcePath,
+          });
         } catch (error) {
-          throw new Error(`The project needs migration, but its backup could not be created: ${error.message}`);
+          throw new Error(
+            `The project needs migration, but its backup could not be created: ${error.message}`,
+          );
         }
       } else {
-        const baseName = sourcePath ? sourcePath.split(/[\\/]/).pop() : "crestron-ui-project.cuiproj";
-        backupName = baseName.replace(/(\.[^.]+)?$/, `.pre-migration-v${migration.fromVersion}$1`);
+        const baseName = sourcePath
+          ? sourcePath.split(/[\\/]/).pop()
+          : "crestron-ui-project.cuiproj";
+        backupName = baseName.replace(
+          /(\.[^.]+)?$/,
+          `.pre-migration-v${migration.fromVersion}$1`,
+        );
         download(backupName, text, "application/json");
       }
-      setStatus(`Migrated project v${migration.fromVersion} → v${migration.toVersion}; backup: ${backupName}`);
+      setStatus(
+        `Migrated project v${migration.fromVersion} → v${migration.toVersion}; backup: ${backupName}`,
+      );
     }
     state.items = normalizeItemStates(p.items);
     state.assets = p.assets || [];
@@ -7852,7 +10674,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     historyIndex = -1;
     commitHistory(false);
     if (markClean) markProjectSaved();
-    if (!migration.migrated) setStatus("Project opened for " + selectedDevice().name);
+    if (!migration.migrated)
+      setStatus("Project opened for " + selectedDevice().name);
   }
   $("save-project").onclick = async () => {
     const text = JSON.stringify(project(), null, 2);
@@ -7872,11 +10695,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("save-project-package").onclick = async () => {
     if (!native) {
-      alert("Portable project packages are available in the Windows application.");
+      alert(
+        "Portable project packages are available in the Windows application.",
+      );
       return;
     }
     try {
-      const result = await nativeRequest("saveProjectPackage", JSON.stringify(project()));
+      const result = await nativeRequest(
+        "saveProjectPackage",
+        JSON.stringify(project()),
+      );
       await createProjectBackup("portable-save");
       markProjectSaved();
       setStatus(`Saved portable package to ${result.path}`);
@@ -7886,7 +10714,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("open-project-package").onclick = async () => {
     if (!native) {
-      alert("Portable project packages are available in the Windows application.");
+      alert(
+        "Portable project packages are available in the Windows application.",
+      );
       return;
     }
     try {
@@ -7900,12 +10730,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("validate-project").onclick = () => runValidation(true);
   $("build-self-test").onclick = runBuildSelfTest;
   $("project-backups").onclick = async () => {
-    if (!native) return alert("Project backups are available in the Windows application.");
+    if (!native)
+      return alert("Project backups are available in the Windows application.");
     if (!$("backup-dialog").open) $("backup-dialog").showModal();
     await renderProjectBackups();
   };
   $("storage-settings").onclick = async () => {
-    if (!native) return alert("Storage settings are available in the Windows application.");
+    if (!native)
+      return alert(
+        "Storage settings are available in the Windows application.",
+      );
     if (!$("storage-dialog").open) $("storage-dialog").showModal();
     await renderStorageSettings();
   };
@@ -7924,7 +10758,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("compatibility-preview").onclick = previewCompatibilityDevice;
   $("compatibility-autofit").onclick = autoFitCompatibilityPage;
   $("health-export").onclick = () =>
-    download("crestron-ui-project-health.txt", lastHealthReport || "No report has been generated.", "text/plain");
+    download(
+      "crestron-ui-project-health.txt",
+      lastHealthReport || "No report has been generated.",
+      "text/plain",
+    );
   $("signal-manager").onclick = () => {
     $("signal-search").value = "";
     renderSignalManager();
@@ -8005,15 +10843,29 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     scheduleHistory();
   };
   $("build-project-multi").onclick = async () => {
-    if (!native) { alert("CH5 packaging is available in the Windows application."); return; }
+    if (!native) {
+      alert("CH5 packaging is available in the Windows application.");
+      return;
+    }
     if (!approveExport()) return;
     syncContractMetadata();
     const projectName = state.contract.name.trim(),
-      selectedIds = [...document.querySelectorAll("#build-panel-list input:checked")].map((input) => input.value),
-      devices = selectedIds.map((id) => deviceProfiles.find((device) => device.id === id)).filter(Boolean);
-    if (!projectName) { alert("Enter a project / contract name."); return; }
-    if (!devices.length) { alert("Select at least one panel package."); return; }
-    const packages = [], buildProblems = [];
+      selectedIds = [
+        ...document.querySelectorAll("#build-panel-list input:checked"),
+      ].map((input) => input.value),
+      devices = selectedIds
+        .map((id) => deviceProfiles.find((device) => device.id === id))
+        .filter(Boolean);
+    if (!projectName) {
+      alert("Enter a project / contract name.");
+      return;
+    }
+    if (!devices.length) {
+      alert("Select at least one panel package.");
+      return;
+    }
+    const packages = [],
+      buildProblems = [];
     devices.forEach((device) => {
       if (device.supportsCh5 === false) {
         buildProblems.push(`${device.name} does not support CH5 projects.`);
@@ -8023,40 +10875,87 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         html = window.ComposerExporter.exportProject(targetProject);
       targetProject.items.forEach((item) => {
         const margin = Math.max(0, Number(item.layout?.safeMargin) || 0);
-        if (!window.ComposerResponsiveLayout.fitsSafeArea(
-          item, { width: device.width, height: device.height }, margin,
-        )) buildProblems.push(`${device.name}: “${item.name}” does not fit${margin ? ` its ${margin}px safe margin` : " the panel"}.`);
+        if (
+          !window.ComposerResponsiveLayout.fitsSafeArea(
+            item,
+            { width: device.width, height: device.height },
+            margin,
+          )
+        )
+          buildProblems.push(
+            `${device.name}: “${item.name}” does not fit${margin ? ` its ${margin}px safe margin` : " the panel"}.`,
+          );
       });
-      if (device.maximumProjectSizeMb && new TextEncoder().encode(html).length > device.maximumProjectSizeMb * 1024 * 1024)
-        buildProblems.push(`${device.name}: generated project exceeds the ${device.maximumProjectSizeMb} MB limit.`);
-      packages.push({ projectName: `${projectName}-${device.model}`, device, html });
+      if (
+        device.maximumProjectSizeMb &&
+        new TextEncoder().encode(html).length >
+          device.maximumProjectSizeMb * 1024 * 1024
+      )
+        buildProblems.push(
+          `${device.name}: generated project exceeds the ${device.maximumProjectSizeMb} MB limit.`,
+        );
+      packages.push({
+        projectName: `${projectName}-${device.model}`,
+        device,
+        html,
+      });
     });
     if (buildProblems.length) {
-      alert(`Multi-panel build cannot continue:\n\n${buildProblems.join("\n")}`);
+      alert(
+        `Multi-panel build cannot continue:\n\n${buildProblems.join("\n")}`,
+      );
       return;
     }
-    const usesContracts = state.pages.some((page) => page.bindingMode === "contract") ||
-      state.items.some((item) => Object.values(item.signalBindings || {}).some((binding) => binding.mode === "contract") ||
-        Object.entries(item.properties || {}).some(([key, value]) => /bindingmode$/i.test(key) && value === "contract"));
-    $("contract-status").textContent = `Building ${packages.length} panel packages…`;
+    const usesContracts =
+      state.pages.some((page) => page.bindingMode === "contract") ||
+      state.items.some(
+        (item) =>
+          Object.values(item.signalBindings || {}).some(
+            (binding) => binding.mode === "contract",
+          ) ||
+          Object.entries(item.properties || {}).some(
+            ([key, value]) => /bindingmode$/i.test(key) && value === "contract",
+          ),
+      );
+    $("contract-status").textContent =
+      `Building ${packages.length} panel packages…`;
     setStatus(`Building ${packages.length} panel packages…`);
     try {
-      const result = await nativeRequest("buildCh5Packages", { packages, usesContracts });
-      const builtByDevice = new Map(packages.map((entry, index) => [entry.device.id, result.paths?.[index] || ""]));
-      if (result.paths?.length) saveDeploymentSettings({
-        profiles: deploymentProfiles().map((profile) => builtByDevice.get(profile.deviceId)
-          ? { ...profile, packagePath: builtByDevice.get(profile.deviceId), updatedAt: new Date().toISOString() }
-          : profile),
+      const result = await nativeRequest("buildCh5Packages", {
+        packages,
+        usesContracts,
       });
+      const builtByDevice = new Map(
+        packages.map((entry, index) => [
+          entry.device.id,
+          result.paths?.[index] || "",
+        ]),
+      );
+      if (result.paths?.length)
+        saveDeploymentSettings({
+          profiles: deploymentProfiles().map((profile) =>
+            builtByDevice.get(profile.deviceId)
+              ? {
+                  ...profile,
+                  packagePath: builtByDevice.get(profile.deviceId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : profile,
+          ),
+        });
       if (result.paths?.length) {
         $("deploy-package").value = result.paths[0];
         saveDeploymentSettings({ packagePath: result.paths[0] });
         updateActiveDeploymentProfile({ packagePath: result.paths[0] });
       }
-      $("contract-status").textContent = `Built ${result.paths.length} packages in ${result.folder}`;
+      $("contract-status").textContent =
+        `Built ${result.paths.length} packages in ${result.folder}`;
       setStatus(`Built ${result.paths.length} panel packages`);
     } catch (error) {
-      if (error.message !== "cancelled") { setStatus("Multi-panel build failed"); alert(error.message); }
+      if (error.message !== "cancelled") {
+        setStatus("Multi-panel build failed");
+        alert(error.message);
+      }
     }
   };
   $("build-project-deploy").onclick = () => {
@@ -8137,7 +11036,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     renderDeploymentHistory();
     $("deployment-dialog").showModal();
   };
-  $("deploy-profile").onchange = (event) => loadDeploymentProfile(event.target.value);
+  $("deploy-profile").onchange = (event) =>
+    loadDeploymentProfile(event.target.value);
   $("deploy-profile-device").onchange = (event) => {
     $("deploy-target-type").value = defaultDeploymentType(event.target.value);
   };
@@ -8156,13 +11056,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("deploy-profile-save").onclick = saveCurrentDeploymentProfile;
   $("deploy-profile-delete").onclick = () => {
     const selected = activeDeploymentProfile();
-    if (!selected || !confirm(`Delete deployment profile “${selected.name}”?`)) return;
+    if (!selected || !confirm(`Delete deployment profile “${selected.name}”?`))
+      return;
     saveDeploymentSettings({
-      profiles: deploymentProfiles().filter((profile) => profile.id !== selected.id),
+      profiles: deploymentProfiles().filter(
+        (profile) => profile.id !== selected.id,
+      ),
       activeProfileId: "",
     });
     renderDeploymentProfiles("");
-    $("deploy-status").textContent = `Deleted deployment profile “${selected.name}”.`;
+    $("deploy-status").textContent =
+      `Deleted deployment profile “${selected.name}”.`;
   };
   $("deploy-host").onchange = () =>
     saveDeploymentSettings({ host: $("deploy-host").value.trim() });
@@ -8177,7 +11081,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       saveDeploymentSettings({ host });
       updateActiveDeploymentProfile({
         host,
-        lastCheck: { time: new Date().toISOString(), reachable: result.reachable, roundtripMs: result.roundtripMs, status: result.status },
+        lastCheck: {
+          time: new Date().toISOString(),
+          reachable: result.reachable,
+          roundtripMs: result.roundtripMs,
+          status: result.status,
+        },
       });
     } catch (error) {
       $("deploy-status").textContent =
@@ -8220,7 +11129,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         host,
         packagePath,
         slowMode,
-        deploymentType: activeDeploymentProfile()?.deploymentType || defaultDeploymentType(activeDeploymentProfile()?.deviceId || state.targetDevice),
+        deploymentType:
+          activeDeploymentProfile()?.deploymentType ||
+          defaultDeploymentType(
+            activeDeploymentProfile()?.deviceId || state.targetDevice,
+          ),
       });
       const settings = deploymentSettings(),
         profile = activeDeploymentProfile(),
@@ -8233,14 +11146,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             slowMode,
             profileId: profile?.id || "",
             profileName: profile?.name || "",
-            deploymentType: result.deploymentType || profile?.deploymentType || "touchscreen",
-            device: deviceProfiles.find((device) => device.id === profile?.deviceId)?.name || selectedDevice().name,
+            deploymentType:
+              result.deploymentType || profile?.deploymentType || "touchscreen",
+            device:
+              deviceProfiles.find((device) => device.id === profile?.deviceId)
+                ?.name || selectedDevice().name,
             resolution: `${state.width} × ${state.height}`,
           },
           ...(settings.history || []),
         ].slice(0, 20);
       saveDeploymentSettings({ host, packagePath, slowMode, history });
-      updateActiveDeploymentProfile({ host, packagePath, slowMode, deploymentType: result.deploymentType });
+      updateActiveDeploymentProfile({
+        host,
+        packagePath,
+        slowMode,
+        deploymentType: result.deploymentType,
+      });
       renderDeploymentHistory();
       $("deploy-status").textContent =
         `Deployment terminal opened. It will remain open after completion. Detailed output will be saved to ${result.logPath || "the deployment log folder"}.`;
@@ -8249,22 +11170,35 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         `Deployment failed to start: ${error.message}`;
     }
   };
-  async function checkDeploymentQueue(profiles = selectedDeploymentQueueProfiles()) {
-    if (!profiles.length) { $("deploy-status").textContent = "Select at least one deployment profile."; return []; }
+  async function checkDeploymentQueue(
+    profiles = selectedDeploymentQueueProfiles(),
+  ) {
+    if (!profiles.length) {
+      $("deploy-status").textContent =
+        "Select at least one deployment profile.";
+      return [];
+    }
     const ready = [];
     for (const profile of profiles) {
       setDeploymentQueueState(profile.id, "running", "Checking…");
       try {
         const result = await nativeRequest("checkDeploymentProfile", {
-          host: profile.host, packagePath: profile.packagePath, deviceId: profile.deviceId,
+          host: profile.host,
+          packagePath: profile.packagePath,
+          deviceId: profile.deviceId,
         });
-        const mismatch = result.targetDeviceId && result.targetDeviceId !== profile.deviceId;
+        const mismatch =
+          result.targetDeviceId && result.targetDeviceId !== profile.deviceId;
         if (result.reachable && result.packageValid && !mismatch) {
           const message = `Ready · ${result.roundtripMs} ms · ${(result.size / 1024 / 1024).toFixed(2)} MB${result.targetDeviceId ? "" : " · target untagged"}`;
           setDeploymentQueueState(profile.id, "ready", message, result);
           ready.push(profile);
         } else {
-          const message = mismatch ? `Package targets ${result.targetDeviceId}` : !result.packageValid ? result.packageStatus : `Unreachable · ${result.status}`;
+          const message = mismatch
+            ? `Package targets ${result.targetDeviceId}`
+            : !result.packageValid
+              ? result.packageStatus
+              : `Unreachable · ${result.status}`;
           setDeploymentQueueState(profile.id, "failed", message, result);
         }
       } catch (error) {
@@ -8272,61 +11206,131 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       }
     }
     const checkedAt = new Date().toISOString();
-    saveDeploymentSettings({ profiles: deploymentProfiles().map((profile) => {
-      const status = deploymentQueueStatus.get(profile.id);
-      return profiles.some((entry) => entry.id === profile.id)
-        ? { ...profile, lastCheck: { time: checkedAt, state: status?.state, message: status?.message } }
-        : profile;
-    }) });
-    $("deploy-status").textContent = `${ready.length} of ${profiles.length} selected profiles are ready.`;
+    saveDeploymentSettings({
+      profiles: deploymentProfiles().map((profile) => {
+        const status = deploymentQueueStatus.get(profile.id);
+        return profiles.some((entry) => entry.id === profile.id)
+          ? {
+              ...profile,
+              lastCheck: {
+                time: checkedAt,
+                state: status?.state,
+                message: status?.message,
+              },
+            }
+          : profile;
+      }),
+    });
+    $("deploy-status").textContent =
+      `${ready.length} of ${profiles.length} selected profiles are ready.`;
     return ready;
   }
   function appendDeploymentHistory(profile, result, success, message) {
-    const settings = deploymentSettings(), device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
-      history = [{
-        time: new Date().toISOString(), host: profile.host, packagePath: profile.packagePath,
-        backupPath: result?.backupPath || "", slowMode: true,
-        profileId: profile.id, profileName: profile.name, device: device?.name || profile.deviceId,
-        deploymentType: profile.deploymentType || defaultDeploymentType(profile.deviceId),
-        resolution: device ? `${device.width} × ${device.height}` : "", success, message,
-      }, ...(settings.history || [])].slice(0, 50);
+    const settings = deploymentSettings(),
+      device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
+      history = [
+        {
+          time: new Date().toISOString(),
+          host: profile.host,
+          packagePath: profile.packagePath,
+          backupPath: result?.backupPath || "",
+          slowMode: true,
+          profileId: profile.id,
+          profileName: profile.name,
+          device: device?.name || profile.deviceId,
+          deploymentType:
+            profile.deploymentType || defaultDeploymentType(profile.deviceId),
+          resolution: device ? `${device.width} × ${device.height}` : "",
+          success,
+          message,
+        },
+        ...(settings.history || []),
+      ].slice(0, 50);
     saveDeploymentSettings({ history });
     renderDeploymentHistory();
   }
   async function deployProfileQueue(profiles) {
     const ready = await checkDeploymentQueue(profiles);
     if (!ready.length) return;
-    if (!confirm(`Deploy ${ready.length} ready profile${ready.length === 1 ? "" : "s"} sequentially?\n\nEach panel opens a Crestron terminal for its credential prompt.`)) return;
+    if (
+      !confirm(
+        `Deploy ${ready.length} ready profile${ready.length === 1 ? "" : "s"} sequentially?\n\nEach panel opens a Crestron terminal for its credential prompt.`,
+      )
+    )
+      return;
     let successes = 0;
     for (const profile of ready) {
-      setDeploymentQueueState(profile.id, "running", "Deploying — complete the terminal prompt…");
+      setDeploymentQueueState(
+        profile.id,
+        "running",
+        "Deploying — complete the terminal prompt…",
+      );
       try {
         const result = await nativeRequest("deployCh5PackageWait", {
-          host: profile.host, packagePath: profile.packagePath, slowMode: true,
-          deploymentType: profile.deploymentType || defaultDeploymentType(profile.deviceId),
+          host: profile.host,
+          packagePath: profile.packagePath,
+          slowMode: true,
+          deploymentType:
+            profile.deploymentType || defaultDeploymentType(profile.deviceId),
         });
         if (result.success) {
           successes++;
-          setDeploymentQueueState(profile.id, "ready", "Deployment succeeded", result);
-          appendDeploymentHistory(profile, result, true, "Deployment succeeded");
+          setDeploymentQueueState(
+            profile.id,
+            "ready",
+            "Deployment succeeded",
+            result,
+          );
+          appendDeploymentHistory(
+            profile,
+            result,
+            true,
+            "Deployment succeeded",
+          );
         } else {
-          setDeploymentQueueState(profile.id, "failed", `Deployment failed · exit ${result.exitCode} · ${result.logPath || "see terminal"}`, result);
-          appendDeploymentHistory(profile, result, false, `CLI exit code ${result.exitCode}${result.logPath ? ` · ${result.logPath}` : ""}`);
+          setDeploymentQueueState(
+            profile.id,
+            "failed",
+            `Deployment failed · exit ${result.exitCode} · ${result.logPath || "see terminal"}`,
+            result,
+          );
+          appendDeploymentHistory(
+            profile,
+            result,
+            false,
+            `CLI exit code ${result.exitCode}${result.logPath ? ` · ${result.logPath}` : ""}`,
+          );
         }
       } catch (error) {
         setDeploymentQueueState(profile.id, "failed", error.message);
         appendDeploymentHistory(profile, null, false, error.message);
       }
     }
-    $("deploy-status").textContent = `${successes} of ${ready.length} deployments succeeded.`;
+    $("deploy-status").textContent =
+      `${successes} of ${ready.length} deployments succeeded.`;
   }
   $("deploy-check-all").onclick = () => checkDeploymentQueue();
-  $("deploy-start-selected").onclick = () => deployProfileQueue(selectedDeploymentQueueProfiles());
+  $("deploy-start-selected").onclick = () =>
+    deployProfileQueue(selectedDeploymentQueueProfiles());
   $("deploy-retry-failed").onclick = () => {
-    const failedIds = new Set([...deploymentQueueStatus].filter(([, status]) => status.state === "failed").map(([id]) => id));
-    document.querySelectorAll("#deployment-profile-list input").forEach((input) => { input.checked = failedIds.has(input.value); });
-    const failed = deploymentProfiles().filter((profile) => failedIds.has(profile.id));
-    if (!failed.length) { $("deploy-status").textContent = "There are no failed deployments to retry."; return; }
+    const failedIds = new Set(
+      [...deploymentQueueStatus]
+        .filter(([, status]) => status.state === "failed")
+        .map(([id]) => id),
+    );
+    document
+      .querySelectorAll("#deployment-profile-list input")
+      .forEach((input) => {
+        input.checked = failedIds.has(input.value);
+      });
+    const failed = deploymentProfiles().filter((profile) =>
+      failedIds.has(profile.id),
+    );
+    if (!failed.length) {
+      $("deploy-status").textContent =
+        "There are no failed deployments to retry.";
+      return;
+    }
     deployProfileQueue(failed);
   };
   $("system-diagnostics").onclick = () => {
@@ -8376,7 +11380,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     w.document.close();
   };
   $("open-project").onchange = async (e) =>
-    loadProjectText(await e.target.files[0].text(), true, e.target.files[0].name);
+    loadProjectText(
+      await e.target.files[0].text(),
+      true,
+      e.target.files[0].name,
+    );
   $("open-project-label").onclick = async (e) => {
     if (!native) return;
     e.preventDefault();
@@ -8546,7 +11554,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     handle.classList.add("dialog-drag-handle");
     handle.title = "Drag to move";
     handle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || event.target.closest("button,input,select,textarea,a")) return;
+      if (
+        event.button !== 0 ||
+        event.target.closest("button,input,select,textarea,a")
+      )
+        return;
       const rect = dialog.getBoundingClientRect(),
         startX = event.clientX,
         startY = event.clientY;
@@ -8560,8 +11572,20 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       function move(moveEvent) {
         const width = dialog.offsetWidth,
           height = dialog.offsetHeight,
-          left = Math.max(0, Math.min(window.innerWidth - Math.min(80, width), rect.left + moveEvent.clientX - startX)),
-          top = Math.max(0, Math.min(window.innerHeight - Math.min(48, height), rect.top + moveEvent.clientY - startY));
+          left = Math.max(
+            0,
+            Math.min(
+              window.innerWidth - Math.min(80, width),
+              rect.left + moveEvent.clientX - startX,
+            ),
+          ),
+          top = Math.max(
+            0,
+            Math.min(
+              window.innerHeight - Math.min(48, height),
+              rect.top + moveEvent.clientY - startY,
+            ),
+          );
         dialog.style.left = `${left}px`;
         dialog.style.top = `${top}px`;
       }

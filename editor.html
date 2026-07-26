@@ -178,7 +178,10 @@
           <div class="app-menu-popup">
             <button id="new-project">New project</button>
             <label id="open-project-label" class="menu-file-button"
-              >Open project<input id="open-project" type="file" accept="application/json,.json,.cuiproj"
+              >Open project<input
+                id="open-project"
+                type="file"
+                accept="application/json,.json,.cuiproj"
             /></label>
             <button id="save-project">Save project</button>
             <button id="open-project-package">Open portable package</button>
@@ -190,14 +193,20 @@
         <details class="app-menu">
           <summary>Edit</summary>
           <div class="app-menu-popup">
-            <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo <kbd>Ctrl+Z</kbd></button>
-            <button id="redo" title="Redo (Ctrl+Y)" disabled>Redo <kbd>Ctrl+Y</kbd></button>
+            <button id="undo" title="Undo (Ctrl+Z)" disabled>
+              Undo <kbd>Ctrl+Z</kbd>
+            </button>
+            <button id="redo" title="Redo (Ctrl+Y)" disabled>
+              Redo <kbd>Ctrl+Y</kbd>
+            </button>
           </div>
         </details>
         <details class="app-menu">
           <summary>View</summary>
           <div class="app-menu-popup">
-            <button id="project-search">Project search <kbd>Ctrl+F</kbd></button>
+            <button id="project-search">
+              Project search <kbd>Ctrl+F</kbd>
+            </button>
             <button id="preview">Preview</button>
             <button id="panel-compatibility">Panel fit</button>
             <button id="signal-manager">Signals</button>
@@ -231,7 +240,9 @@
       <label class="target-selector"
         >Target panel
         <select id="target-device">
-          <option value="tsw-1070">Crestron TSW-1070 — 1280 × 800 viewport (1920 × 1080 display)</option>
+          <option value="tsw-1070">
+            Crestron TSW-1070 — 1280 × 800 viewport (1920 × 1080 display)
+          </option>
           <option value="custom">Custom resolution</option>
         </select></label
       >
@@ -253,8 +264,15 @@
         <h2>Components</h2>
         <p class="hint">Drag a component onto the panel.</p>
         <div class="component-import-actions">
-          <button id="translate-snippet" type="button">Import &amp; translate</button>
-          <input id="translate-snippet-file" type="file" accept="text/html,.html" hidden />
+          <button id="translate-snippet" type="button">
+            Import &amp; translate
+          </button>
+          <input
+            id="translate-snippet-file"
+            type="file"
+            accept="text/html,.html"
+            hidden
+          />
           <label class="button custom-package-import"
             >Import component package<input
               id="custom-package-file"
@@ -276,7 +294,9 @@
         <div id="page-list" class="page-list"></div>
         <button id="add-page" type="button">+ Add page</button>
         <h2 style="margin-top: 24px">Assets</h2>
-        <button id="asset-library-import" type="button" class="primary">Import assets</button>
+        <button id="asset-library-import" type="button" class="primary">
+          Import assets
+        </button>
         <input
           id="asset-files"
           type="file"
@@ -309,32 +329,80 @@
         <h2 style="margin-top: 24px">Themes</h2>
         <div class="theme-grid">
           <label
-            ><input id="theme-page-enabled" type="checkbox" checked /> Page<input id="theme-page" type="color" value="#182126"
+            ><input id="theme-page-enabled" type="checkbox" checked />
+            Page<input id="theme-page" type="color" value="#182126"
           /></label>
           <label
-            ><input id="theme-surface-enabled" type="checkbox" checked /> Surface<input id="theme-surface" type="color" value="#253436"
+            ><input id="theme-surface-enabled" type="checkbox" checked />
+            Surface<input id="theme-surface" type="color" value="#253436"
           /></label>
           <label
-            ><input id="theme-accent-enabled" type="checkbox" checked /> Accent<input id="theme-accent" type="color" value="#04aa8e"
+            ><input id="theme-accent-enabled" type="checkbox" checked />
+            Accent<input id="theme-accent" type="color" value="#04aa8e"
           /></label>
           <label
-            ><input id="theme-text-enabled" type="checkbox" checked /> Text<input id="theme-text" type="color" value="#ffffff"
+            ><input id="theme-text-enabled" type="checkbox" checked />
+            Text<input id="theme-text" type="color" value="#ffffff"
           /></label>
           <label
-            ><input id="theme-glow-enabled" type="checkbox" checked /> Glow<input id="theme-glow" type="color" value="#04dcb9"
+            ><input id="theme-glow-enabled" type="checkbox" checked />
+            Glow<input id="theme-glow" type="color" value="#04dcb9"
           /></label>
           <label
-            ><input id="theme-border-enabled" type="checkbox" checked /> Border<input id="theme-border" type="color" value="#ffffff"
+            ><input id="theme-border-enabled" type="checkbox" checked />
+            Border<input id="theme-border" type="color" value="#ffffff"
           /></label>
-          <label><input id="theme-font-size-enabled" type="checkbox" /> Text size<input id="theme-font-size" type="number" min="1" max="200" value="18" /></label>
-          <label><input id="theme-corner-radius-enabled" type="checkbox" /> Corners<input id="theme-corner-radius" type="number" min="0" max="200" value="8" /></label>
-          <label><input id="theme-glow-strength-enabled" type="checkbox" /> Glow size<input id="theme-glow-strength" type="number" min="0" max="100" value="12" /></label>
-          <label><input id="theme-animation-duration-enabled" type="checkbox" /> Motion ms<input id="theme-animation-duration" type="number" min="50" max="10000" value="300" /></label>
-          <label class="theme-wide"><input id="theme-animation-easing-enabled" type="checkbox" /> Motion easing<select id="theme-animation-easing"><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in/out</option><option value="linear">Linear</option><option value="cubic-bezier(.2,.8,.2,1)">Smooth</option></select></label>
+          <label
+            ><input id="theme-font-size-enabled" type="checkbox" /> Text
+            size<input
+              id="theme-font-size"
+              type="number"
+              min="1"
+              max="200"
+              value="18"
+          /></label>
+          <label
+            ><input id="theme-corner-radius-enabled" type="checkbox" />
+            Corners<input
+              id="theme-corner-radius"
+              type="number"
+              min="0"
+              max="200"
+              value="8"
+          /></label>
+          <label
+            ><input id="theme-glow-strength-enabled" type="checkbox" /> Glow
+            size<input
+              id="theme-glow-strength"
+              type="number"
+              min="0"
+              max="100"
+              value="12"
+          /></label>
+          <label
+            ><input id="theme-animation-duration-enabled" type="checkbox" />
+            Motion ms<input
+              id="theme-animation-duration"
+              type="number"
+              min="50"
+              max="10000"
+              value="300"
+          /></label>
+          <label class="theme-wide"
+            ><input id="theme-animation-easing-enabled" type="checkbox" />
+            Motion easing<select id="theme-animation-easing">
+              <option value="ease-out">Ease out</option>
+              <option value="ease-in-out">Ease in/out</option>
+              <option value="linear">Linear</option>
+              <option value="cubic-bezier(.2,.8,.2,1)">Smooth</option>
+            </select></label
+          >
         </div>
         <div class="theme-actions">
           <button id="theme-selection" type="button">Selection</button>
-          <button id="theme-component-type" type="button">Component type</button>
+          <button id="theme-component-type" type="button">
+            Component type
+          </button>
           <button id="theme-page-apply" type="button">Page</button>
           <button id="theme-project" type="button">Project</button>
           <button id="theme-save" type="button">Save theme</button>
@@ -402,15 +470,60 @@
           <label>Z-index<input id="prop-z" type="number" min="1" /></label>
           <section class="signal-section">
             <h2>Responsive layout</h2>
-            <button id="responsive-help-open" class="section-help-button" type="button" title="Responsive layout help" aria-label="Responsive layout help">?</button>
+            <button
+              id="responsive-help-open"
+              class="section-help-button"
+              type="button"
+              title="Responsive layout help"
+              aria-label="Responsive layout help"
+            >
+              ?
+            </button>
             <div class="grid2">
-              <label>Horizontal anchor<select id="layout-anchor-x"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="stretch">Stretch</option></select></label>
-              <label>Vertical anchor<select id="layout-anchor-y"><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option><option value="stretch">Stretch</option></select></label>
+              <label
+                >Horizontal anchor<select id="layout-anchor-x">
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                  <option value="stretch">Stretch</option>
+                </select></label
+              >
+              <label
+                >Vertical anchor<select id="layout-anchor-y">
+                  <option value="top">Top</option>
+                  <option value="center">Center</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="stretch">Stretch</option>
+                </select></label
+              >
             </div>
-            <label>Panel scaling<select id="layout-scale-mode"><option value="fixed">Fixed size</option><option value="proportional">Proportional</option></select></label>
-            <label>Safe margin<input id="layout-safe-margin" type="number" min="0" value="0" /></label>
-            <div class="grid2"><button id="layout-save-override" type="button">Save panel layout</button><button id="layout-reset-override" type="button">Reset panel layout</button></div>
-            <div class="grid2"><button id="layout-apply-page" type="button">Apply rules to page</button><button id="layout-apply-project" type="button">Apply rules to project</button></div>
+            <label
+              >Panel scaling<select id="layout-scale-mode">
+                <option value="fixed">Fixed size</option>
+                <option value="proportional">Proportional</option>
+              </select></label
+            >
+            <label
+              >Safe margin<input
+                id="layout-safe-margin"
+                type="number"
+                min="0"
+                value="0"
+            /></label>
+            <div class="grid2">
+              <button id="layout-save-override" type="button">
+                Save panel layout</button
+              ><button id="layout-reset-override" type="button">
+                Reset panel layout
+              </button>
+            </div>
+            <div class="grid2">
+              <button id="layout-apply-page" type="button">
+                Apply rules to page</button
+              ><button id="layout-apply-project" type="button">
+                Apply rules to project
+              </button>
+            </div>
             <p id="layout-override-status" class="hint"></p>
           </section>
           <label
@@ -428,20 +541,89 @@
           </section>
           <section id="asset-inspector-section" class="signal-section">
             <h2>Asset / graphic</h2>
-            <label>Standard state image<select id="prop-asset"><option value="">None</option></select></label>
-            <label>Selected state image<select id="prop-asset-selected"><option value="">None</option></select></label>
-            <label>Use as<select id="prop-asset-mode"><option value="none">None</option><option value="background">Background</option><option value="overlay">Graphic above widget</option></select></label>
-            <label>Graphic placement<select id="prop-asset-placement"><option value="widget">Once over entire widget</option><option value="items">Repeat on every item</option></select></label>
-            <label>Image fit<select id="prop-asset-fit"><option value="contain">Contain</option><option value="cover">Cover</option><option value="fill">Stretch</option></select></label>
-            <div class="grid2"><label>Graphic width %<input id="prop-asset-width" type="number" min="1" max="200" /></label><label>Graphic height %<input id="prop-asset-height" type="number" min="1" max="200" /></label></div>
-            <label><input id="prop-asset-aspect-lock" type="checkbox" /> Lock graphic aspect ratio</label>
-            <div class="grid2"><label>Horizontal Shift %<input id="prop-asset-x" type="number" min="0" max="100" /></label><label>Vertical Shift %<input id="prop-asset-y" type="number" min="0" max="100" /></label></div>
-            <label>Graphic opacity %<input id="prop-asset-opacity" type="number" min="0" max="100" /></label>
+            <label
+              >Standard state image<select id="prop-asset">
+                <option value="">None</option>
+              </select></label
+            >
+            <label
+              >Selected state image<select id="prop-asset-selected">
+                <option value="">None</option>
+              </select></label
+            >
+            <label
+              >Use as<select id="prop-asset-mode">
+                <option value="none">None</option>
+                <option value="background">Background</option>
+                <option value="overlay">Graphic above widget</option>
+              </select></label
+            >
+            <label
+              >Graphic placement<select id="prop-asset-placement">
+                <option value="widget">Once over entire widget</option>
+                <option value="items">Repeat on every item</option>
+              </select></label
+            >
+            <label
+              >Image fit<select id="prop-asset-fit">
+                <option value="contain">Contain</option>
+                <option value="cover">Cover</option>
+                <option value="fill">Stretch</option>
+              </select></label
+            >
+            <div class="grid2">
+              <label
+                >Graphic width %<input
+                  id="prop-asset-width"
+                  type="number"
+                  min="1"
+                  max="200" /></label
+              ><label
+                >Graphic height %<input
+                  id="prop-asset-height"
+                  type="number"
+                  min="1"
+                  max="200"
+              /></label>
+            </div>
+            <label
+              ><input id="prop-asset-aspect-lock" type="checkbox" /> Lock
+              graphic aspect ratio</label
+            >
+            <div class="grid2">
+              <label
+                >Horizontal Shift %<input
+                  id="prop-asset-x"
+                  type="number"
+                  min="0"
+                  max="100" /></label
+              ><label
+                >Vertical Shift %<input
+                  id="prop-asset-y"
+                  type="number"
+                  min="0"
+                  max="100"
+              /></label>
+            </div>
+            <label
+              >Graphic opacity %<input
+                id="prop-asset-opacity"
+                type="number"
+                min="0"
+                max="100"
+            /></label>
             <button id="prop-asset-clear" type="button">Clear asset</button>
           </section>
           <section class="signal-section interaction-section">
             <h2>Interaction & animation</h2>
-            <button class="section-help-button timeline-action-help-open" type="button" title="Timeline and action editor help" aria-label="Timeline and action editor help">?</button>
+            <button
+              class="section-help-button timeline-action-help-open"
+              type="button"
+              title="Timeline and action editor help"
+              aria-label="Timeline and action editor help"
+            >
+              ?
+            </button>
             <label
               >Trigger<select id="interaction-trigger">
                 <option value="none">None</option>
@@ -549,10 +731,39 @@
         <label
           >Background<input id="page-background" type="color" value="#182126"
         /></label>
-        <label>Background image<select id="page-background-asset"><option value="">None</option></select></label>
-        <label>Background image fit<select id="page-background-fit"><option value="cover">Cover page</option><option value="contain">Contain image</option><option value="fill">Stretch to page</option></select></label>
-        <div class="grid2"><label>Horizontal Shift %<input id="page-background-x" type="number" min="0" max="100" value="50" /></label><label>Vertical Shift %<span aria-hidden="true">&nbsp;</span><input id="page-background-y" type="number" min="0" max="100" value="50" /></label></div>
-        <button id="page-background-clear" type="button">Clear page background image</button>
+        <label
+          >Background image<select id="page-background-asset">
+            <option value="">None</option>
+          </select></label
+        >
+        <label
+          >Background image fit<select id="page-background-fit">
+            <option value="cover">Cover page</option>
+            <option value="contain">Contain image</option>
+            <option value="fill">Stretch to page</option>
+          </select></label
+        >
+        <div class="grid2">
+          <label
+            >Horizontal Shift %<input
+              id="page-background-x"
+              type="number"
+              min="0"
+              max="100"
+              value="50" /></label
+          ><label
+            >Vertical Shift %<span aria-hidden="true">&nbsp;</span
+            ><input
+              id="page-background-y"
+              type="number"
+              min="0"
+              max="100"
+              value="50"
+          /></label>
+        </div>
+        <button id="page-background-clear" type="button">
+          Clear page background image
+        </button>
         <label
           >External selection<select id="page-binding-mode">
             <option value="none">None — local only</option>
@@ -711,20 +922,37 @@
           official terminal prompt and are never stored by this editor.
         </p>
         <div class="deployment-profile-toolbar">
-          <label>Deployment profile<select id="deploy-profile"><option value="">Unsaved profile</option></select></label>
+          <label
+            >Deployment profile<select id="deploy-profile">
+              <option value="">Unsaved profile</option>
+            </select></label
+          >
           <button id="deploy-profile-new" type="button">New</button>
           <button id="deploy-profile-save" type="button">Save</button>
           <button id="deploy-profile-delete" type="button">Delete</button>
         </div>
         <div class="deployment-grid">
-          <label>Profile name<input id="deploy-profile-name" placeholder="Conference Room" /></label>
+          <label
+            >Profile name<input
+              id="deploy-profile-name"
+              placeholder="Conference Room"
+          /></label>
           <label>Panel model<select id="deploy-profile-device"></select></label>
-          <label>Deployment destination<select id="deploy-target-type"><option value="touchscreen">Touchscreen</option><option value="mobile">CH5 Mobile / Crestron ONE</option><option value="web">CH5 Web XPanel</option></select></label>
+          <label
+            >Deployment destination<select id="deploy-target-type">
+              <option value="touchscreen">Touchscreen</option>
+              <option value="mobile">CH5 Mobile / Crestron ONE</option>
+              <option value="web">CH5 Web XPanel</option>
+            </select></label
+          >
           <label
             >Panel IP or host<input
               id="deploy-host"
               placeholder="192.168.1.100" /></label
-          ><label>Username <span class="hint">(reference only)</span><input id="deploy-username" autocomplete="off" /></label>
+          ><label
+            >Username <span class="hint">(reference only)</span
+            ><input id="deploy-username" autocomplete="off"
+          /></label>
         </div>
         <label
           >CH5 package<input
@@ -744,7 +972,9 @@
         <h2>Deployment queue</h2>
         <div class="deployment-actions">
           <button id="deploy-check-all" type="button">Check selected</button>
-          <button id="deploy-start-selected" type="button" class="primary">Deploy selected</button>
+          <button id="deploy-start-selected" type="button" class="primary">
+            Deploy selected
+          </button>
           <button id="deploy-retry-failed" type="button">Retry failed</button>
         </div>
         <div id="deployment-profile-list" class="deployment-profile-list"></div>
@@ -777,12 +1007,18 @@
           <label>Author<input id="contract-author" /></label>
         </div>
         <h2>Panel packages</h2>
-        <p class="hint">Select one or more targets. Each package uses that panel's saved responsive layout.</p>
+        <p class="hint">
+          Select one or more targets. Each package uses that panel's saved
+          responsive layout.
+        </p>
         <label class="checkbox-label">
           <input id="build-signal-diagnostics" type="checkbox" />
           Include CH5 signal diagnostics overlay
         </label>
-        <p class="hint">Enable this troubleshooting overlay to see the exact contract addresses published and subscribed on the touch panel.</p>
+        <p class="hint">
+          Enable this troubleshooting overlay to see the exact contract
+          addresses published and subscribed on the touch panel.
+        </p>
         <div id="build-panel-list" class="build-panel-list"></div>
         <div id="contract-summary" class="contract-summary"></div>
         <div class="build-project-actions">
@@ -791,8 +1027,12 @@
             Import into Contract Editor
           </button>
           <button id="build-project-ch5" type="button">Build .ch5z</button>
-          <button id="build-project-multi" type="button" class="primary">Build selected panels</button>
-          <button id="build-project-deploy" type="button" class="primary">Deploy to panel</button>
+          <button id="build-project-multi" type="button" class="primary">
+            Build selected panels
+          </button>
+          <button id="build-project-deploy" type="button" class="primary">
+            Deploy to panel
+          </button>
         </div>
         <p id="contract-status" class="deployment-status">Ready.</p>
         <div class="dialog-actions"><button value="default">Close</button></div>
@@ -966,19 +1206,157 @@
               ><span>Direction</span><span>Default</span><span></span>
             </div>
             <div id="custom-signal-list" class="custom-builder-list"></div>
+            <details class="custom-behavior-builder" open>
+              <summary>Visual property &amp; signal behavior builder</summary>
+              <p class="hint">
+                Pick an element in Live Preview, then connect a property or
+                signal without editing the component’s handwritten CSS or
+                JavaScript.
+              </p>
+              <div class="custom-behavior-picker">
+                <button id="custom-element-picker" type="button">
+                  Pick preview element
+                </button>
+                <input
+                  id="custom-element-selector"
+                  placeholder="CSS selector, e.g. .button-label"
+                />
+              </div>
+              <div class="custom-behavior-presets">
+                <select id="custom-behavior-preset">
+                  <optgroup label="Editable properties">
+                    <option value="propertyText">Editable text</option>
+                    <option value="propertyTextColor">Editable text color</option>
+                    <option value="propertyBackground">Editable background color</option>
+                    <option value="propertyFontSize">Editable text size</option>
+                    <option value="propertyGlow">Editable glow strength</option>
+                    <option value="propertyAsset">Editable image / asset</option>
+                  </optgroup>
+                  <optgroup label="Signal behaviors">
+                    <option value="serialText">Serial text feedback</option>
+                    <option value="analogGlow">Analog glow feedback</option>
+                    <option value="digitalVisibility">Digital visibility feedback</option>
+                    <option value="digitalSelected">Digital Selected feedback</option>
+                    <option value="pressOutput">Digital Press output</option>
+                  </optgroup>
+                </select>
+                <button id="custom-behavior-preset-add" type="button">
+                  + Add preset
+                </button>
+              </div>
+              <div class="custom-builder-heading">
+                <h2>Generated behaviors</h2>
+                <button id="custom-behavior-add" type="button">
+                  + Behavior
+                </button>
+              </div>
+              <div class="custom-behavior-columns">
+                <span>Source</span><span>Property / signal</span
+                ><span>Target</span><span>Behavior</span><span>Parameter</span
+                ><span></span>
+              </div>
+              <div id="custom-behavior-list" class="custom-builder-list"></div>
+              <small
+                >Generated rules are stored separately and run after handwritten
+                component code. Enable numeric mapping to convert a Crestron
+                analog range such as 0–65535 into CSS values such as 0–30px.
+                Digital-state mapping can assign separate Standard and Selected
+                values from false/true feedback.</small
+              >
+              <details class="custom-generated-code">
+                <summary>Generated CSS / JavaScript</summary>
+                <label
+                  >Generated CSS<textarea
+                    id="custom-generated-css"
+                    readonly
+                  ></textarea></label
+                ><label
+                  >Generated JavaScript<textarea
+                    id="custom-generated-javascript"
+                    readonly
+                  ></textarea>
+                </label>
+              </details>
+            </details>
+            <details class="custom-state-builder" open>
+              <summary>Visual state builder</summary>
+              <p class="hint">
+                Generate consistent Standard, Pressed, Selected, and Disabled
+                styles for one picked element without changing handwritten CSS.
+              </p>
+              <label
+                >Target selector<input
+                  id="custom-state-selector"
+                  placeholder="Pick an element or enter .button"
+              /></label>
+              <div id="custom-state-grid" class="custom-state-grid">
+                <div class="custom-state-row" data-state="standard">
+                  <strong>Standard</strong><label>Label<input data-style="text" placeholder="Keep component text"></label><label>Asset<select data-style="asset"><option value="">No state asset</option></select></label><label>Background<input data-style="background" value="#263b3c"></label><label>Text color<input data-style="color" value="#ffffff"></label><label>Border<input data-style="border" value="#7ba7a3"></label><label>Glow<input data-style="glow" value="#00e5c3"></label><label>Opacity %<input data-style="opacity" type="number" min="0" max="100" value="100"></label><label>Scale %<input data-style="scale" type="number" min="0" max="200" value="100"></label>
+                </div>
+                <div class="custom-state-row" data-state="pressed">
+                  <strong>Pressed</strong><label>Label<input data-style="text" placeholder="Use Standard label"></label><label>Asset<select data-style="asset"><option value="">Use Standard asset</option></select></label><label>Background<input data-style="background" value="#1b2b2c"></label><label>Text color<input data-style="color" value="#ffffff"></label><label>Border<input data-style="border" value="#04dcb9"></label><label>Glow<input data-style="glow" value="#00e5c3"></label><label>Opacity %<input data-style="opacity" type="number" min="0" max="100" value="100"></label><label>Scale %<input data-style="scale" type="number" min="0" max="200" value="96"></label>
+                </div>
+                <div class="custom-state-row" data-state="selected">
+                  <strong>Selected</strong><label>Label<input data-style="text" placeholder="Use Standard label"></label><label>Asset<select data-style="asset"><option value="">Use Standard asset</option></select></label><label>Background<input data-style="background" value="#078f7d"></label><label>Text color<input data-style="color" value="#ffffff"></label><label>Border<input data-style="border" value="#04dcb9"></label><label>Glow<input data-style="glow" value="#00e5c3"></label><label>Opacity %<input data-style="opacity" type="number" min="0" max="100" value="100"></label><label>Scale %<input data-style="scale" type="number" min="0" max="200" value="100"></label>
+                </div>
+                <div class="custom-state-row" data-state="disabled">
+                  <strong>Disabled</strong><label>Label<input data-style="text" placeholder="Use Standard label"></label><label>Asset<select data-style="asset"><option value="">Use Standard asset</option></select></label><label>Background<input data-style="background" value="#303838"></label><label>Text color<input data-style="color" value="#888888"></label><label>Border<input data-style="border" value="#555555"></label><label>Glow<input data-style="glow" value="#000000"></label><label>Opacity %<input data-style="opacity" type="number" min="0" max="100" value="55"></label><label>Scale %<input data-style="scale" type="number" min="0" max="200" value="100"></label>
+                </div>
+              </div>
+              <button id="custom-state-signals" type="button">
+                Add Selected &amp; Disabled signals
+              </button>
+            </details>
             <details class="custom-repeated-items">
               <summary>Repeated sub-items</summary>
-              <p class="hint">Generate a local default count, analog count override, and zero-based Press, Selected, and Name ranges.</p>
-              <label><input id="custom-repeat-enabled" type="checkbox" /> Enable repeated sub-items</label>
+              <p class="hint">
+                Generate a local default count, analog count override, and
+                zero-based Press, Selected, and Name ranges.
+              </p>
+              <label
+                ><input id="custom-repeat-enabled" type="checkbox" /> Enable
+                repeated sub-items</label
+              >
               <div class="grid2">
-                <label>Container selector<input id="custom-repeat-container" value=".split-menu" /></label>
-                <label>Item selector<input id="custom-repeat-item" value="button" /></label>
-                <label>Label selector<input id="custom-repeat-label" placeholder="Optional; e.g. .label" /></label>
-                <label>Default sub-items<input id="custom-repeat-default" type="number" min="0" max="100" value="3" /></label>
-                <label>Maximum sub-items<input id="custom-repeat-max" type="number" min="1" max="100" value="20" /></label>
-                <label>Contract namespace<input id="custom-repeat-namespace" value="CustomComponent" /></label>
+                <label
+                  >Container selector<input
+                    id="custom-repeat-container"
+                    value=".split-menu"
+                /></label>
+                <label
+                  >Item selector<input id="custom-repeat-item" value="button"
+                /></label>
+                <label
+                  >Label selector<input
+                    id="custom-repeat-label"
+                    placeholder="Optional; e.g. .label"
+                /></label>
+                <label
+                  >Default sub-items<input
+                    id="custom-repeat-default"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value="3"
+                /></label>
+                <label
+                  >Maximum sub-items<input
+                    id="custom-repeat-max"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value="20"
+                /></label>
+                <label
+                  >Contract namespace<input
+                    id="custom-repeat-namespace"
+                    value="CustomComponent"
+                /></label>
               </div>
-              <small>Generated contracts: Namespace.ItemCount and Namespace.Items[{index}].Press / Selected / Name.</small>
+              <small
+                >Generated contracts: Namespace.ItemCount and
+                Namespace.Items[{index}].Press / Selected / Name.</small
+              >
             </details>
           </section>
           <section class="custom-source-panel">
@@ -1030,7 +1408,9 @@ Preview signal activity appears here.</pre
           class="custom-validation"
           aria-live="polite"
         ></div>
+        <pre id="custom-self-test-report" class="custom-self-test-report" hidden></pre>
         <div class="dialog-actions">
+          <button id="custom-self-test" type="button">Run self-test</button>
           <button id="custom-component-export" type="button" hidden>
             Export package
           </button>
@@ -1052,26 +1432,50 @@ Preview signal activity appears here.</pre
     <dialog id="translate-snippet-dialog" class="custom-component-dialog">
       <form method="dialog">
         <h2>Import &amp; Translate Snippet</h2>
-        <p class="hint">Choose a component type, then approve the detected editable items and Crestron signals. Continue opens the full component editor before anything is added to the palette.</p>
+        <p class="hint">
+          Choose a component type, then approve the detected editable items and
+          Crestron signals. Continue opens the full component editor before
+          anything is added to the palette.
+        </p>
         <div class="grid2">
           <label>Component name<input id="translate-name" /></label>
-          <label>Component type<select id="translate-preset">
-            <option value="button">Standard button</option>
-            <option value="toggle">Toggle button</option>
-            <option value="slider">Slider / knob</option>
-            <option value="gauge">Gauge / status</option>
-            <option value="text">Text / input</option>
-            <option value="navigation">Navigation</option>
-            <option value="custom">Custom</option>
-          </select></label>
-          <label>Palette category<select id="translate-category">
-            <option>Standard Buttons</option><option>Toggle Buttons</option><option>Advanced Buttons</option><option>Sliders &amp; Levels</option><option>Navigation &amp; Menus</option><option>Lists &amp; Selectors</option><option>Status &amp; Information</option><option>Multi-Devices</option><option>Text &amp; Input</option><option>Custom</option>
-          </select></label>
-          <label>Source file<input id="translate-source-name" disabled /></label>
+          <label
+            >Component type<select id="translate-preset">
+              <option value="button">Standard button</option>
+              <option value="toggle">Toggle button</option>
+              <option value="slider">Slider / knob</option>
+              <option value="gauge">Gauge / status</option>
+              <option value="text">Text / input</option>
+              <option value="navigation">Navigation</option>
+              <option value="custom">Custom</option>
+            </select></label
+          >
+          <label
+            >Palette category<select id="translate-category">
+              <option>Standard Buttons</option>
+              <option>Toggle Buttons</option>
+              <option>Advanced Buttons</option>
+              <option>Sliders &amp; Levels</option>
+              <option>Navigation &amp; Menus</option>
+              <option>Lists &amp; Selectors</option>
+              <option>Status &amp; Information</option>
+              <option>Multi-Devices</option>
+              <option>Text &amp; Input</option>
+              <option>Custom</option>
+            </select></label
+          >
+          <label
+            >Source file<input id="translate-source-name" disabled
+          /></label>
         </div>
         <div class="custom-builder-layout translate-builder-layout">
           <section>
-            <div class="custom-builder-heading"><h2>Editable items</h2><button id="translate-select-all" type="button">Select all</button></div>
+            <div class="custom-builder-heading">
+              <h2>Editable items</h2>
+              <button id="translate-select-all" type="button">
+                Select all
+              </button>
+            </div>
             <div id="translate-editables" class="translate-choice-list"></div>
           </section>
           <section>
@@ -1079,8 +1483,20 @@ Preview signal activity appears here.</pre
             <div id="translate-signals" class="translate-choice-list"></div>
           </section>
         </div>
-        <details><summary>Detected source</summary><textarea id="translate-source-preview" class="custom-source-editor" readonly></textarea></details>
-        <div class="dialog-actions"><button value="cancel">Cancel</button><button id="translate-continue" type="button" class="primary">Continue to component editor</button></div>
+        <details>
+          <summary>Detected source</summary>
+          <textarea
+            id="translate-source-preview"
+            class="custom-source-editor"
+            readonly
+          ></textarea>
+        </details>
+        <div class="dialog-actions">
+          <button value="cancel">Cancel</button
+          ><button id="translate-continue" type="button" class="primary">
+            Continue to component editor
+          </button>
+        </div>
       </form>
     </dialog>
     <dialog id="timeline-dialog" class="timeline-dialog">
@@ -1091,7 +1507,9 @@ Preview signal activity appears here.</pre
             <p id="timeline-widget-name" class="hint"></p>
           </div>
           <div class="timeline-toolbar">
-            <button class="timeline-action-help-open" type="button">Help</button>
+            <button class="timeline-action-help-open" type="button">
+              Help
+            </button>
             <button id="timeline-add" type="button">+ Add track</button>
             <button id="timeline-play" type="button" class="primary">
               Play all
@@ -1115,8 +1533,12 @@ Preview signal activity appears here.</pre
             <p id="action-widget-name" class="hint"></p>
           </div>
           <div class="timeline-toolbar">
-            <button class="timeline-action-help-open" type="button">Help</button>
-            <button id="action-add" type="button" class="primary">+ Add action</button>
+            <button class="timeline-action-help-open" type="button">
+              Help
+            </button>
+            <button id="action-add" type="button" class="primary">
+              + Add action
+            </button>
           </div>
         </div>
         <p class="hint">
@@ -1150,32 +1572,83 @@ Preview signal activity appears here.</pre
       <form method="dialog">
         <h2 id="feature-help-title">Help</h2>
         <div id="responsive-help-content" class="feature-help-content" hidden>
-          <p>Responsive Layout controls how each widget changes position and size when the project is built for panels with different viewport dimensions. The saved widget coordinates remain the base design; responsive settings describe how those coordinates adapt for each target panel.</p>
+          <p>
+            Responsive Layout controls how each widget changes position and size
+            when the project is built for panels with different viewport
+            dimensions. The saved widget coordinates remain the base design;
+            responsive settings describe how those coordinates adapt for each
+            target panel.
+          </p>
           <h3>Start with a base panel</h3>
-          <p>Choose the panel you want to design around—typically a TSW-1070 with its effective CH5 viewport of 1280 × 800. Place and resize widgets normally on this base layout, then choose how each widget behaves on wider or taller targets.</p>
+          <p>
+            Choose the panel you want to design around—typically a TSW-1070 with
+            its effective CH5 viewport of 1280 × 800. Place and resize widgets
+            normally on this base layout, then choose how each widget behaves on
+            wider or taller targets.
+          </p>
           <h3>Responsive modes</h3>
           <dl>
-            <dt>Fixed</dt><dd>Keeps the widget’s original size. Use it for logos, small indicators, and controls that must remain an exact size.</dd>
-            <dt>Anchors</dt><dd>Preserve the distance to the selected panel edge. Left/Top, Right/Top, Left/Bottom, and Right/Bottom anchors keep controls attached to the corresponding corner.</dd>
-            <dt>Center</dt><dd>Keeps the widget centered on the selected axis. This is useful for dialogs, loading indicators, central controls, and page titles.</dd>
-            <dt>Stretch</dt><dd>Anchoring to both opposing edges changes the widget size with the panel. Left + Right stretches its width; Top + Bottom stretches its height.</dd>
-            <dt>Proportional</dt><dd>Scales the widget’s position and dimensions according to the base and target viewport ratios. Use carefully because controls and text can become unnecessarily large.</dd>
+            <dt>Fixed</dt>
+            <dd>
+              Keeps the widget’s original size. Use it for logos, small
+              indicators, and controls that must remain an exact size.
+            </dd>
+            <dt>Anchors</dt>
+            <dd>
+              Preserve the distance to the selected panel edge. Left/Top,
+              Right/Top, Left/Bottom, and Right/Bottom anchors keep controls
+              attached to the corresponding corner.
+            </dd>
+            <dt>Center</dt>
+            <dd>
+              Keeps the widget centered on the selected axis. This is useful for
+              dialogs, loading indicators, central controls, and page titles.
+            </dd>
+            <dt>Stretch</dt>
+            <dd>
+              Anchoring to both opposing edges changes the widget size with the
+              panel. Left + Right stretches its width; Top + Bottom stretches
+              its height.
+            </dd>
+            <dt>Proportional</dt>
+            <dd>
+              Scales the widget’s position and dimensions according to the base
+              and target viewport ratios. Use carefully because controls and
+              text can become unnecessarily large.
+            </dd>
           </dl>
           <h3>Recommended pattern</h3>
           <ul>
             <li>Anchor navigation to the left.</li>
-            <li>Stretch headers and footers between the left and right edges.</li>
+            <li>
+              Stretch headers and footers between the left and right edges.
+            </li>
             <li>Anchor status information to the upper-right.</li>
             <li>Center dialogs and loading indicators.</li>
             <li>Stretch lists, camera feeds, and large content containers.</li>
-            <li>Keep frequently touched buttons at a consistent physical size.</li>
+            <li>
+              Keep frequently touched buttons at a consistent physical size.
+            </li>
           </ul>
           <h3>Testing and panel overrides</h3>
-          <p>Switch Target panel, use Fit panel, and inspect every intended target. Preview confirms the exported result. Save a panel-specific layout when anchors cannot adapt a design cleanly—for example, when navigation orientation, column count, spacing, or dialog size must differ on one panel.</p>
+          <p>
+            Switch Target panel, use Fit panel, and inspect every intended
+            target. Preview confirms the exported result. Save a panel-specific
+            layout when anchors cannot adapt a design cleanly—for example, when
+            navigation orientation, column count, spacing, or dialog size must
+            differ on one panel.
+          </p>
         </div>
-        <div id="timeline-action-help-content" class="feature-help-content" hidden>
+        <div
+          id="timeline-action-help-content"
+          class="feature-help-content"
+          hidden
+        >
           <h3>Timeline Editor</h3>
-          <p>The Timeline Editor controls how a widget visually animates. You can add multiple animation tracks to the same widget and configure:</p>
+          <p>
+            The Timeline Editor controls how a widget visually animates. You can
+            add multiple animation tracks to the same widget and configure:
+          </p>
           <ul>
             <li>Trigger: press, release, page entry, or delayed start</li>
             <li>Animation: fade, slide, scale, glow, press state, or shake</li>
@@ -1184,9 +1657,17 @@ Preview signal activity appears here.</pre
             <li>Easing, which controls how the animation accelerates</li>
             <li>Multiple overlapping or sequential animation tracks</li>
           </ul>
-          <p><strong>Example:</strong> when a page opens, a button can slide in from the left while simultaneously fading and glowing.</p>
+          <p>
+            <strong>Example:</strong> when a page opens, a button can slide in
+            from the left while simultaneously fading and glowing.
+          </p>
           <h3>Action Editor</h3>
-          <p>The Action Editor controls what the project does when an event occurs. It is for behavior and logic rather than appearance. Actions can be triggered by press, release, hold, page entry, timer, or digital, analog, and serial signal changes.</p>
+          <p>
+            The Action Editor controls what the project does when an event
+            occurs. It is for behavior and logic rather than appearance. Actions
+            can be triggered by press, release, hold, page entry, timer, or
+            digital, analog, and serial signal changes.
+          </p>
           <p>An action can:</p>
           <ul>
             <li>Navigate to another page</li>
@@ -1195,12 +1676,29 @@ Preview signal activity appears here.</pre
             <li>Change displayed text or a property</li>
             <li>Start another widget’s animation</li>
             <li>Publish a digital, analog, or serial signal</li>
-            <li>Run immediately, after a delay, or sequentially after earlier actions</li>
+            <li>
+              Run immediately, after a delay, or sequentially after earlier
+              actions
+            </li>
             <li>Run conditionally based on a signal’s value</li>
           </ul>
-          <p><strong>Example:</strong> pressing a Shutdown button could publish a digital signal, disable other controls, show a “Shutting Down…” message, animate a progress widget, and navigate to a standby page after five seconds.</p>
-          <p><strong>In short:</strong><br><strong>Timeline Editor:</strong> how a widget moves or visually changes.<br><strong>Action Editor:</strong> what happens when an event occurs.</p>
-          <p>Both are saved in the project and included in Preview, exported HTML, and CH5Z builds.</p>
+          <p>
+            <strong>Example:</strong> pressing a Shutdown button could publish a
+            digital signal, disable other controls, show a “Shutting Down…”
+            message, animate a progress widget, and navigate to a standby page
+            after five seconds.
+          </p>
+          <p>
+            <strong>In short:</strong><br /><strong>Timeline Editor:</strong>
+            how a widget moves or visually changes.<br /><strong
+              >Action Editor:</strong
+            >
+            what happens when an event occurs.
+          </p>
+          <p>
+            Both are saved in the project and included in Preview, exported
+            HTML, and CH5Z builds.
+          </p>
         </div>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
@@ -1211,9 +1709,17 @@ Preview signal activity appears here.</pre
         <p id="health-summary" class="hint"></p>
         <pre id="health-report" class="health-report"></pre>
         <div class="dialog-actions">
-          <select id="compatibility-device" hidden aria-label="Panel profile"></select>
-          <button id="compatibility-preview" type="button" hidden>Preview panel</button>
-          <button id="compatibility-autofit" type="button" hidden>Auto-fit current page</button>
+          <select
+            id="compatibility-device"
+            hidden
+            aria-label="Panel profile"
+          ></select>
+          <button id="compatibility-preview" type="button" hidden>
+            Preview panel
+          </button>
+          <button id="compatibility-autofit" type="button" hidden>
+            Auto-fit current page
+          </button>
           <button id="health-export" type="button">Export report</button>
           <button value="default">Done</button>
         </div>
@@ -1222,8 +1728,17 @@ Preview signal activity appears here.</pre
     <dialog id="project-search-dialog" class="project-search-dialog">
       <form method="dialog">
         <h2>Project-wide search</h2>
-        <p class="hint">Find pages, widgets, component types, local text, contract names, join numbers, or every use of a signal.</p>
-        <input id="project-search-query" class="project-search-query" type="search" placeholder="Component, page, contract, join, text, or signal…" autocomplete="off" />
+        <p class="hint">
+          Find pages, widgets, component types, local text, contract names, join
+          numbers, or every use of a signal.
+        </p>
+        <input
+          id="project-search-query"
+          class="project-search-query"
+          type="search"
+          placeholder="Component, page, contract, join, text, or signal…"
+          autocomplete="off"
+        />
         <p id="project-search-summary" class="hint"></p>
         <div id="project-search-results" class="project-search-results"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
@@ -1232,9 +1747,14 @@ Preview signal activity appears here.</pre
     <dialog id="backup-dialog" class="backup-dialog">
       <form method="dialog">
         <h2>Project backups</h2>
-        <p class="hint">Manual saves create timestamped snapshots. Restore any snapshot without overwriting its backup file.</p>
+        <p class="hint">
+          Manual saves create timestamped snapshots. Restore any snapshot
+          without overwriting its backup file.
+        </p>
         <div class="backup-toolbar">
-          <button id="backup-create" type="button" class="primary">Create backup now</button>
+          <button id="backup-create" type="button" class="primary">
+            Create backup now
+          </button>
           <button id="backup-refresh" type="button">Refresh</button>
         </div>
         <div id="backup-list" class="backup-list"></div>
@@ -1244,7 +1764,10 @@ Preview signal activity appears here.</pre
     <dialog id="storage-dialog" class="storage-dialog">
       <form method="dialog">
         <h2>Storage locations</h2>
-        <p class="hint">Choose the default folders used by Windows project, package, export, backup, asset, and reusable-design workflows.</p>
+        <p class="hint">
+          Choose the default folders used by Windows project, package, export,
+          backup, asset, and reusable-design workflows.
+        </p>
         <div id="storage-location-list" class="storage-location-list"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
@@ -1260,7 +1783,9 @@ Preview signal activity appears here.</pre
         <pre id="update-notes" class="update-notes"></pre>
         <div class="dialog-actions">
           <button value="default">Close</button>
-          <button id="update-download" type="button" class="primary" hidden>Download update</button>
+          <button id="update-download" type="button" class="primary" hidden>
+            Download update
+          </button>
         </div>
       </form>
     </dialog>
@@ -1318,18 +1843,20 @@ Preview signal activity appears here.</pre
     <script src="weather-card.component.js"></script>
     <script src="signal-gauge-components.js"></script>
     <script src="loading-spinner.component.js"></script>
-  <script src="power-rocker.component.js"></script>
-  <script src="illuminated-power-button.component.js"></script>
-  <script src="system-start-stop.component.js"></script>
-  <script src="search-input.component.js"></script>
-  <script src="single-device-controls.component.js"></script>
-  <script src="video-input.component.js"></script>
+    <script src="power-rocker.component.js"></script>
+    <script src="illuminated-power-button.component.js"></script>
+    <script src="system-start-stop.component.js"></script>
+    <script src="search-input.component.js"></script>
+    <script src="single-device-controls.component.js"></script>
+    <script src="video-input.component.js"></script>
     <div id="canvas-context-menu" class="context-menu" hidden>
       <button id="context-copy" type="button">Copy</button>
       <button id="context-paste" type="button">Paste</button>
       <button id="context-simulate" type="button">Simulate component</button>
       <button id="edit-source" type="button">Edit component HTML</button>
-      <button id="create-custom-component" type="button">Create palette component</button>
+      <button id="create-custom-component" type="button">
+        Create palette component
+      </button>
       <button id="duplicate" type="button">Duplicate</button>
       <div class="context-menu-separator"></div>
       <button id="context-lock" type="button">Lock</button>
@@ -1373,7 +1900,9 @@ Preview signal activity appears here.</pre
       <button id="layer-duplicate" type="button">Duplicate</button>
       <button id="layer-delete" type="button">Delete</button>
     </div>
-    <button id="delete" type="button" hidden aria-hidden="true">Delete selected component</button>
+    <button id="delete" type="button" hidden aria-hidden="true">
+      Delete selected component
+    </button>
     <script src="exporter.js"></script>
     <script src="editor.js"></script>
   </body>

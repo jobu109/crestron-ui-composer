@@ -20,8 +20,12 @@ function run(name, fn) {
 }
 
 global.window = global;
-vm.runInThisContext(read("project-migrations.js"), { filename: "project-migrations.js" });
-vm.runInThisContext(read("responsive-layout.js"), { filename: "responsive-layout.js" });
+vm.runInThisContext(read("project-migrations.js"), {
+  filename: "project-migrations.js",
+});
+vm.runInThisContext(read("responsive-layout.js"), {
+  filename: "responsive-layout.js",
+});
 
 run("legacy projects migrate without mutating the source", () => {
   const legacy = {
@@ -34,7 +38,10 @@ run("legacy projects migrate without mutating the source", () => {
     result = ComposerProjectMigrations.migrate(legacy);
   assert.equal(JSON.stringify(legacy), before);
   assert.equal(result.migrated, true);
-  assert.equal(result.project.version, ComposerProjectMigrations.CURRENT_VERSION);
+  assert.equal(
+    result.project.version,
+    ComposerProjectMigrations.CURRENT_VERSION,
+  );
   assert.equal(result.project.pages.length, 1);
   assert.equal(result.project.items[0].pageId, result.project.pages[0].id);
   assert.deepEqual(result.project.items[0].actions, []);
@@ -45,21 +52,37 @@ run("current projects survive a save/load round trip", () => {
     version: ComposerProjectMigrations.CURRENT_VERSION,
     width: 1920,
     height: 1200,
-    pages: [{ id: "home", name: "Home", background: "#000", bindingMode: "none" }],
+    pages: [
+      { id: "home", name: "Home", background: "#000", bindingMode: "none" },
+    ],
     activePage: "home",
-    items: [{ id: "one", pageId: "home", name: "Button", properties: {}, signalBindings: {}, actions: [] }],
+    items: [
+      {
+        id: "one",
+        pageId: "home",
+        name: "Button",
+        properties: {},
+        signalBindings: {},
+        actions: [],
+      },
+    ],
     themes: [],
     customComponents: [],
   }).project;
-  const roundTrip = ComposerProjectMigrations.migrate(JSON.parse(JSON.stringify(current)));
+  const roundTrip = ComposerProjectMigrations.migrate(
+    JSON.parse(JSON.stringify(current)),
+  );
   assert.equal(roundTrip.migrated, false);
   assert.deepEqual(roundTrip.project, current);
 });
 
 run("responsive anchors and panel overrides migrate safely", () => {
   const migrated = ComposerProjectMigrations.migrate({
-    version: 4, width: 1920, height: 1200,
-    pages: [{ id: "home", name: "Home" }], activePage: "home",
+    version: 4,
+    width: 1920,
+    height: 1200,
+    pages: [{ id: "home", name: "Home" }],
+    activePage: "home",
     items: [{ id: "one", pageId: "home", x: 100, y: 100, w: 200, h: 100 }],
   }).project;
   assert.equal(migrated.items[0].layout.anchorX, "left");
@@ -69,39 +92,59 @@ run("responsive anchors and panel overrides migrate safely", () => {
 run("removed TSW-570 targets retain their dimensions as custom layouts", () => {
   const migrated = ComposerProjectMigrations.migrate({
     version: ComposerProjectMigrations.CURRENT_VERSION,
-    targetDevice: "tsw-570", width: 1280, height: 720,
-    pages: [{ id: "home", name: "Home" }], activePage: "home", items: [],
+    targetDevice: "tsw-570",
+    width: 1280,
+    height: 720,
+    pages: [{ id: "home", name: "Home" }],
+    activePage: "home",
+    items: [],
   }).project;
   assert.equal(migrated.targetDevice, "custom");
   assert.equal(migrated.width, 1280);
   assert.equal(migrated.height, 720);
 });
 
-run("responsive layout honors right, center, stretch, and proportional rules", () => {
-  assert.deepEqual(
-    ComposerResponsiveLayout.adaptRect(
-      { x: 1620, y: 100, w: 200, h: 100 }, { width: 1920, height: 1200 },
-      { width: 1280, height: 800 }, { anchorX: "right", anchorY: "top", scaleMode: "fixed" },
-    ),
-    { x: 980, y: 100, w: 200, h: 100 },
-  );
-  assert.deepEqual(
-    ComposerResponsiveLayout.adaptRect(
-      { x: 100, y: 100, w: 200, h: 100 }, { width: 1000, height: 500 },
-      { width: 2000, height: 1000 }, { anchorX: "left", anchorY: "top", scaleMode: "proportional" },
-    ),
-    { x: 200, y: 200, w: 400, h: 200 },
-  );
-  assert.equal(ComposerResponsiveLayout.fitsSafeArea(
-    { x: 20, y: 20, w: 100, h: 100 }, { width: 200, height: 200 }, 20,
-  ), true);
-});
+run(
+  "responsive layout honors right, center, stretch, and proportional rules",
+  () => {
+    assert.deepEqual(
+      ComposerResponsiveLayout.adaptRect(
+        { x: 1620, y: 100, w: 200, h: 100 },
+        { width: 1920, height: 1200 },
+        { width: 1280, height: 800 },
+        { anchorX: "right", anchorY: "top", scaleMode: "fixed" },
+      ),
+      { x: 980, y: 100, w: 200, h: 100 },
+    );
+    assert.deepEqual(
+      ComposerResponsiveLayout.adaptRect(
+        { x: 100, y: 100, w: 200, h: 100 },
+        { width: 1000, height: 500 },
+        { width: 2000, height: 1000 },
+        { anchorX: "left", anchorY: "top", scaleMode: "proportional" },
+      ),
+      { x: 200, y: 200, w: 400, h: 200 },
+    );
+    assert.equal(
+      ComposerResponsiveLayout.fitsSafeArea(
+        { x: 20, y: 20, w: 100, h: 100 },
+        { width: 200, height: 200 },
+        20,
+      ),
+      true,
+    );
+  },
+);
 
 run("all shipped JavaScript files pass syntax validation", () => {
   const files = fs.readdirSync(root).filter((name) => name.endsWith(".js"));
   assert.ok(files.length > 10);
   files.forEach((file) =>
-    childProcess.execFileSync(process.execPath, ["--check", path.join(root, file)], { stdio: "pipe" }),
+    childProcess.execFileSync(
+      process.execPath,
+      ["--check", path.join(root, file)],
+      { stdio: "pipe" },
+    ),
   );
 });
 
@@ -110,9 +153,18 @@ run("component manifest references existing unique components", () => {
     ids = new Set();
   assert.ok(manifest.components.length > 0);
   manifest.components.forEach((component) => {
-    assert.ok(fs.existsSync(path.join(root, component.file)), `Missing ${component.file}`);
-    assert.ok(component.componentId, `Missing component ID for ${component.file}`);
-    assert.ok(!ids.has(component.componentId), `Duplicate component ID ${component.componentId}`);
+    assert.ok(
+      fs.existsSync(path.join(root, component.file)),
+      `Missing ${component.file}`,
+    );
+    assert.ok(
+      component.componentId,
+      `Missing component ID for ${component.file}`,
+    );
+    assert.ok(
+      !ids.has(component.componentId),
+      `Duplicate component ID ${component.componentId}`,
+    );
     ids.add(component.componentId);
   });
 });
@@ -124,15 +176,26 @@ run("device presets use their effective Construct viewports", () => {
       device,
     ]),
   );
-  ["tsw-770", "tsw-880", "tsw-1070", "tsw-1080", "tst-1080"].forEach(
-    (id) => assert.deepEqual([devices.get(id)?.width, devices.get(id)?.height], [1280, 800]),
+  ["tsw-770", "tsw-880", "tsw-1070", "tsw-1080", "tst-1080"].forEach((id) =>
+    assert.deepEqual(
+      [devices.get(id)?.width, devices.get(id)?.height],
+      [1280, 800],
+    ),
   );
-  assert.deepEqual([devices.get("monitor-4k")?.width, devices.get("monitor-4k")?.height], [2560, 1440]);
-  assert.deepEqual([devices.get("dge-100")?.width, devices.get("dge-100")?.height], [3840, 2160]);
+  assert.deepEqual(
+    [devices.get("monitor-4k")?.width, devices.get("monitor-4k")?.height],
+    [2560, 1440],
+  );
+  assert.deepEqual(
+    [devices.get("dge-100")?.width, devices.get("dge-100")?.height],
+    [3840, 2160],
+  );
 });
 
 run("exported action runtime is valid JavaScript", () => {
-  vm.runInThisContext(read("component-runtime.js"), { filename: "component-runtime.js" });
+  vm.runInThisContext(read("component-runtime.js"), {
+    filename: "component-runtime.js",
+  });
   ComposerRuntime.register({
     id: "regression-button",
     name: "Regression Button",
@@ -141,7 +204,7 @@ run("exported action runtime is valid JavaScript", () => {
     properties: [],
     signals: [],
     data: {
-      html: '<button>Custom</button><script>window.customReady=true;</script>',
+      html: "<button>Custom</button><script>window.customReady=true;</script>",
     },
     mount() {},
   });
@@ -150,13 +213,43 @@ run("exported action runtime is valid JavaScript", () => {
       version: 4,
       width: 1920,
       height: 1200,
-      pages: [{ id: "home", name: "Home", background: "#000", bindingMode: "none" }],
-      items: [{
-        id: "one", pageId: "home", name: "Regression Button", componentId: "regression-button",
-        x: 0, y: 0, w: 100, h: 50, z: 1, properties: {}, signalBindings: {},
-        interaction: { trigger: "none", pressEffect: "particle-burst", effectDuration: 650, effectSize: 125 },
-        actions: [{ event: "signal-change", triggerType: "analog", triggerSignal: "Room.Level", condition: "greater", compareValue: "100", type: "navigate", target: "home", delay: 0, timing: "parallel" }],
-      }],
+      pages: [
+        { id: "home", name: "Home", background: "#000", bindingMode: "none" },
+      ],
+      items: [
+        {
+          id: "one",
+          pageId: "home",
+          name: "Regression Button",
+          componentId: "regression-button",
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 50,
+          z: 1,
+          properties: {},
+          signalBindings: {},
+          interaction: {
+            trigger: "none",
+            pressEffect: "particle-burst",
+            effectDuration: 650,
+            effectSize: 125,
+          },
+          actions: [
+            {
+              event: "signal-change",
+              triggerType: "analog",
+              triggerSignal: "Room.Level",
+              condition: "greater",
+              compareValue: "100",
+              type: "navigate",
+              target: "home",
+              delay: 0,
+              timing: "parallel",
+            },
+          ],
+        },
+      ],
     }),
     start = html.indexOf("<script>", html.indexOf("<body")) + 8,
     end = html.indexOf("</script>", start);
@@ -185,8 +278,14 @@ run("exported action runtime is valid JavaScript", () => {
     html.includes('data-asset-selected="false"'),
     "Exported widgets must include two-state asset state",
   );
-  assert.ok(!html.includes("Number(index)-1"), "Exported runtime must preserve zero-based item indexes");
-  assert.ok(html.includes("legacyCollection"), "Exported runtime must repair legacy collection addresses");
+  assert.ok(
+    !html.includes("Number(index)-1"),
+    "Exported runtime must preserve zero-based item indexes",
+  );
+  assert.ok(
+    html.includes("legacyCollection"),
+    "Exported runtime must repair legacy collection addresses",
+  );
   assert.ok(
     html.includes("particleBurst(root,c,e)"),
     "Exported runtime must include Particle Burst press effects",
@@ -241,11 +340,21 @@ run("widget styles cannot enlarge sidebar action buttons", () => {
 
 run("simulator and mounted widgets share resolved contract addresses", () => {
   assert.equal(
-    ComposerRuntime.resolveAddress("RollingToggle.Selected", "digital", "input", "Home.RollingToggle"),
+    ComposerRuntime.resolveAddress(
+      "RollingToggle.Selected",
+      "digital",
+      "input",
+      "Home.RollingToggle",
+    ),
     "Home.RollingToggle.Selected",
   );
   assert.equal(
-    ComposerRuntime.resolveAddress("1", "digital", "input", "Home.RollingToggle"),
+    ComposerRuntime.resolveAddress(
+      "1",
+      "digital",
+      "input",
+      "Home.RollingToggle",
+    ),
     "1",
   );
   assert.equal(
@@ -291,37 +400,83 @@ run("migration repairs legacy Rolling Menu collection paths", () => {
     version: 4,
     pages: [{ id: "home", name: "Home" }],
     activePage: "home",
-    items: [{
-      id: "rolling",
-      pageId: "home",
-      componentId: "rolling-menu",
-      properties: {
-        pressBase: "RollingMenu_Items[{index}].Press",
-        feedbackBase: "RollingMenu_Items[{index}].Selected",
-        labelBase: "RollingMenu_Items[{index}].Name",
+    items: [
+      {
+        id: "rolling",
+        pageId: "home",
+        componentId: "rolling-menu",
+        properties: {
+          pressBase: "RollingMenu_Items[{index}].Press",
+          feedbackBase: "RollingMenu_Items[{index}].Selected",
+          labelBase: "RollingMenu_Items[{index}].Name",
+        },
       },
-    }],
+    ],
   });
-  assert.equal(result.project.items[0].properties.feedbackBase, "RollingMenu.Items[{index}].Selected");
-});
-
-run("Import & Translate infers standard text, button, and analog capabilities", () => {
-  const source = read("editor.js");
-  assert.ok(source.includes("features: { buttonCount:"), "translator must record detected buttons");
-  assert.ok(source.includes("interactiveNumericCount"), "translator must distinguish interactive numeric controls");
-  assert.ok(source.includes('name: "Value Set", type: "analog", direction: "output"'), "interactive numeric controls need Value Set");
-  assert.ok(source.includes('name: "Feedback", type: "analog", direction: "input"'), "numeric displays need Feedback");
-  assert.ok(source.includes("data-translated-text"), "detected text must be addressable by serial feedback");
-  assert.ok(source.includes("data-translated-button"), "every detected button must receive an adapter");
-  ["faceColor", "selectedFaceColor", "textColor", "selectedTextColor", "borderColor", "selectedBorderColor", "glowColor", "selectedGlowColor", "cornerRadius", "iconSize", "textSize"].forEach((key) =>
-    assert.ok(source.includes(`key: "${key}"`), `translated buttons need ${key}`),
+  assert.equal(
+    result.project.items[0].properties.feedbackBase,
+    "RollingMenu.Items[{index}].Selected",
   );
 });
 
+run(
+  "Import & Translate infers standard text, button, and analog capabilities",
+  () => {
+    const source = read("editor.js");
+    assert.match(
+      source,
+      /features\s*:\s*\{[\s\S]*?buttonCount\s*:/,
+      "translator must record detected buttons",
+    );
+    assert.ok(
+      source.includes("interactiveNumericCount"),
+      "translator must distinguish interactive numeric controls",
+    );
+    assert.ok(
+      /name:\s*"Value Set"[\s\S]*?type:\s*"analog"[\s\S]*?direction:\s*"output"/.test(source),
+      "interactive numeric controls need Value Set",
+    );
+    assert.ok(
+      /name:\s*"Feedback"[\s\S]*?type:\s*"analog"[\s\S]*?direction:\s*"input"/.test(source),
+      "numeric displays need Feedback",
+    );
+    assert.ok(
+      source.includes("data-translated-text"),
+      "detected text must be addressable by serial feedback",
+    );
+    assert.ok(
+      source.includes("data-translated-button"),
+      "every detected button must receive an adapter",
+    );
+    [
+      "faceColor",
+      "selectedFaceColor",
+      "textColor",
+      "selectedTextColor",
+      "borderColor",
+      "selectedBorderColor",
+      "glowColor",
+      "selectedGlowColor",
+      "cornerRadius",
+      "iconSize",
+      "textSize",
+    ].forEach((key) =>
+      assert.ok(
+        source.includes(`key: "${key}"`),
+        `translated buttons need ${key}`,
+      ),
+    );
+  },
+);
+
 run("custom component creator provides functional starter templates", () => {
-  const editor = read("editor.js"), markup = read("editor.html");
+  const editor = read("editor.js"),
+    markup = read("editor.html");
   ["button", "toggle", "slider", "gauge", "text", "blank"].forEach((key) =>
-    assert.ok(editor.includes(`${key}: { name:`), `creator needs a ${key} starter`),
+    assert.ok(
+      new RegExp(`${key}\\s*:\\s*\\{[\\s\\S]*?name\\s*:`).test(editor),
+      `creator needs a ${key} starter`,
+    ),
   );
   assert.ok(markup.includes('id="custom-component-template"'));
   assert.ok(markup.includes('id="custom-component-apply-template"'));
@@ -331,7 +486,8 @@ run("custom component creator provides functional starter templates", () => {
 });
 
 run("custom components support generated repeated-item contract ranges", () => {
-  const editor = read("editor.js"), markup = read("editor.html");
+  const editor = read("editor.js"),
+    markup = read("editor.html");
   assert.ok(markup.includes('id="custom-repeat-enabled"'));
   assert.ok(markup.includes('id="custom-repeat-container"'));
   assert.ok(editor.includes("repeatedItemRanges"));
@@ -341,8 +497,63 @@ run("custom components support generated repeated-item contract ranges", () => {
   assert.ok(editor.includes("__repeatPress:"));
   assert.ok(editor.includes("__repeatSelected:"));
   assert.ok(editor.includes("__repeatName:"));
-  assert.ok(editor.includes("data-translated-repeat-container"), "Import & Translate must detect repeated sibling buttons");
+  assert.ok(
+    editor.includes("data-translated-repeat-container"),
+    "Import & Translate must detect repeated sibling buttons",
+  );
 });
+
+run(
+  "visual behavior builder remains separate from handwritten component code",
+  () => {
+    const editor = read("editor.js"),
+      markup = read("editor.html");
+    assert.ok(markup.includes('id="custom-element-picker"'));
+  assert.ok(markup.includes('id="custom-behavior-list"'));
+  assert.ok(markup.includes('id="custom-generated-css"'));
+  assert.ok(markup.includes('id="custom-generated-javascript"'));
+  assert.ok(markup.includes('id="custom-behavior-preset-add"'));
+  assert.ok(markup.includes('id="custom-state-grid"'));
+  assert.ok(markup.includes('id="custom-state-signals"'));
+  assert.ok(markup.includes('id="custom-self-test"'));
+  assert.ok(editor.includes("function customBehaviorRuntime"));
+  assert.ok(editor.includes("function customBehaviorCss"));
+  assert.ok(editor.includes("function customStateCss"));
+  assert.ok(editor.includes("function customStateRuntime"));
+  assert.ok(editor.includes("function runCustomComponentSelfTest"));
+  assert.ok(editor.includes("function customComponentDependencyReport"));
+  assert.ok(editor.includes("function restoreCustomComponentDependencies"));
+  assert.ok(editor.includes("version: 3"));
+  assert.ok(editor.includes("stateStyles: collectCustomStateStyles()"));
+  assert.ok(editor.includes("function addCustomBehaviorPreset"));
+  assert.ok(editor.includes("function uniqueCustomBehaviorKey"));
+  assert.ok(editor.includes("function updateCustomBehaviorReferences"));
+  assert.ok(editor.includes("function removeCustomBehaviorReferences"));
+  assert.ok(editor.includes("function collectCustomBehaviorRow"));
+  assert.ok(editor.includes("rule.enabled===false"));
+  assert.ok(editor.includes("function customBehaviorTypeWarnings"));
+  assert.ok(editor.includes("behaviorPropertyKeys"));
+  assert.ok(markup.includes('value="propertyAsset"'));
+  assert.ok(editor.includes("function mapped(rule,value)"));
+  assert.ok(editor.includes("case'glowStrength'"));
+  assert.ok(editor.includes("function transforms(target)"));
+  assert.ok(editor.includes('data-field="mapEnabled"'));
+  assert.ok(editor.includes('data-field="booleanMapEnabled"'));
+  assert.ok(editor.includes("rule.booleanMapping.trueValue"));
+  assert.ok(editor.includes('["imageSource", "Image / asset source"]'));
+  assert.ok(editor.includes("case'imageSource'"));
+  assert.ok(editor.includes("<option>asset</option>"));
+  assert.ok(editor.includes('["hold", "Hold-complete pulse"]'));
+  assert.ok(editor.includes("function pulse(key)"));
+    assert.ok(editor.includes("composer-element-picked"));
+    assert.ok(editor.includes("behaviors: collectCustomBehaviors()"));
+    assert.ok(editor.includes("behaviorRuntime: customBehaviorRuntime("));
+    assert.ok(
+      editor.includes("Generated rules are stored separately") ||
+        markup.includes("Generated rules are stored separately"),
+    );
+  },
+);
 
 if (process.exitCode) process.exit(process.exitCode);
 console.log("All regression checks passed.");
