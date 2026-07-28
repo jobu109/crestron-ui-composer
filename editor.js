@@ -24,6 +24,7 @@
     assets: [],
     reusables: [],
     pageTemplates: [],
+    subpages: [],
     themes: [],
     customComponents: [],
     acceptance: { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} },
@@ -76,6 +77,11 @@
   let panelZoom = 1;
   let lastRenderedPageId = "";
   let customEditingId = "";
+  let editingSubpagePagesId = "";
+  let editingSubpagePropertiesId = "";
+  let contextSubpageId = "", contextSubpagePageId = "";
+  let simulatorSubpageKey = "";
+  const hiddenSubpageInstances = new Set(), highlightedSubpageInstances = new Set();
   let customBehaviorRules = [];
   let customElementPickerActive = false;
   let customBuilderSourceItemId = "";
@@ -330,6 +336,7 @@
       assets: state.assets,
       reusables: state.reusables,
       pageTemplates: state.pageTemplates,
+      subpages: state.subpages,
       themes: state.themes,
       customComponents: state.customComponents,
       acceptance: state.acceptance,
@@ -708,6 +715,7 @@
     state.assets = saved.assets || [];
     state.reusables = saved.reusables || [];
     state.pageTemplates = saved.pageTemplates || [];
+    state.subpages = saved.subpages || [];
     state.themes = saved.themes || [];
     state.customComponents = saved.customComponents || [];
     state.acceptance = saved.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
@@ -751,6 +759,7 @@
     state.assets = p.assets || [];
     state.reusables = p.reusables || [];
     state.pageTemplates = p.pageTemplates || [];
+    state.subpages = p.subpages || [];
     state.themes = p.themes || [];
     state.customComponents = p.customComponents || [];
     state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
@@ -1417,6 +1426,29 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         panelWidth: width,
         panelHeight: height,
       };
+    });
+    state.subpages.forEach((entry) => {
+      entry.deviceOverrides ||= {};
+      const baseWidth = Math.max(1, Number(entry.basePanelWidth) || width),
+        baseHeight = Math.max(1, Number(entry.basePanelHeight) || height);
+      entry.deviceOverrides[key] = {
+        placement: entry.placement,
+        width: Math.max(1, Math.round((Number(entry.width) || width) * width / baseWidth)),
+        height: Math.max(1, Math.round((Number(entry.height) || 100) * height / baseHeight)),
+        z: Number(entry.z) || 9000,
+        panelWidth: width,
+        panelHeight: height,
+      };
+      state.pages.filter((page) => subpageApplies(entry, page.id)).forEach((page) => {
+        const override = (entry.instanceOverrides ||= {})[page.id];
+        if (!override) return;
+        const resolved = subpageResolved(entry, page.id), offset = subpageOffset(entry, page.id);
+        (override.deviceOverrides ||= {})[key] = {
+          x: offset.x, y: offset.y, width: resolved.width, height: resolved.height,
+          placement: resolved.placement, z: Number(resolved.z) || 9000,
+          panelWidth: width, panelHeight: height,
+        };
+      });
     });
   }
   function applyResponsiveSize(width, height, destinationKey) {
@@ -2185,6 +2217,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     state.items
       .filter((i) => i.pageId === state.activePage || i.master)
       .forEach(renderItem);
+    renderSubpageInstances();
     if (lastRenderedPageId && lastRenderedPageId !== page.id)
       playPageTransition(page);
     lastRenderedPageId = page.id;
@@ -2204,7 +2237,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         open = document.createElement("button"),
         remove = document.createElement("button");
       row.className = "page-row";
-      open.textContent = p.name;
+      open.textContent = p.subpageMasterId ? `${p.name} [Subpage]` : p.name;
       open.classList.toggle("active", p.id === state.activePage);
       open.onclick = () => {
         state.activePage = p.id;
@@ -2825,12 +2858,371 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     commitHistory();
     setStatus(`Created page from “${template.name}”`);
   }
+  function subpageInstanceOverride(entry, pageId) {
+    return entry?.instanceOverrides?.[pageId] || {};
+  }
+  function subpageResolved(entry, pageId) {
+    const override = subpageInstanceOverride(entry, pageId), key = panelLayoutKey(),
+      targetOverride = override.deviceOverrides?.[key] || entry.deviceOverrides?.[key] || {},
+      baseWidth = Math.max(1, Number(entry.basePanelWidth) || state.width),
+      baseHeight = Math.max(1, Number(entry.basePanelHeight) || state.height),
+      scaleX = state.width / baseWidth, scaleY = state.height / baseHeight,
+      responsiveFallback = key === (entry.basePanelKey || key) ? {} : {
+        width: Math.round((Number(override.width ?? entry.width) || baseWidth) * scaleX),
+        height: Math.round((Number(override.height ?? entry.height) || 100) * scaleY),
+      };
+    return {
+      ...entry,
+      ...override,
+      ...responsiveFallback,
+      ...targetOverride,
+      width: Math.max(1, Number(targetOverride.width ?? responsiveFallback.width ?? override.width ?? entry.width) || state.width),
+      height: Math.max(1, Number(targetOverride.height ?? responsiveFallback.height ?? override.height ?? entry.height) || 100),
+      itemOverrides: override.itemOverrides || {},
+    };
+  }
+  function subpageOffset(entry, pageId) {
+    const resolved = subpageResolved(entry, pageId), width = resolved.width,
+      height = resolved.height;
+    if (Number.isFinite(Number(resolved.x)) && Number.isFinite(Number(resolved.y)))
+      return { x: Number(resolved.x), y: Number(resolved.y) };
+    if (resolved.placement === "bottom") return { x: 0, y: Math.max(0, state.height - height) };
+    if (resolved.placement === "right") return { x: Math.max(0, state.width - width), y: 0 };
+    if (resolved.placement === "overlay") return { x: Math.round((state.width - width) / 2), y: Math.round((state.height - height) / 2) };
+    return { x: 0, y: 0 };
+  }
+  function subpageApplies(entry, pageId) {
+    if (!entry || entry.sourcePageId === pageId) return false;
+    const targetPage = state.pages.find((page) => page.id === pageId);
+    // Subpage masters are intentionally isolated. Allowing another subpage to
+    // render on a master creates an implicit nested/circular dependency that is
+    // difficult to see in the editor and cannot be represented reliably in CCE.
+    if (!targetPage || targetPage.subpageMasterId) return false;
+    if ((entry.excludedPages || []).includes(pageId)) return false;
+    return entry.includedPages?.length ? entry.includedPages.includes(pageId) : true;
+  }
+
+  function duplicateSubpage(entry) {
+    const sourcePage = state.pages.find((page) => page.id === entry.sourcePageId);
+    if (!sourcePage) return setStatus(`Cannot duplicate “${entry.name}”: its master page is missing.`);
+    const id = uid("subpage-"), pageId = uid("page-"), name = `${entry.name} Copy`,
+      page = structuredClone(sourcePage), itemIds = new Map();
+    page.id = pageId; page.name = `${name} Master`; page.subpageMasterId = id;
+    state.pages.push(page);
+    const sources = state.items.filter((item) => item.pageId === sourcePage.id && !item.master);
+    sources.forEach((source) => itemIds.set(source.id, uid("item-")));
+    sources.forEach((source) => {
+      const item = remapLibraryReferences(structuredClone(source), itemIds);
+      item.id = itemIds.get(source.id); item.pageId = pageId; state.items.push(item);
+    });
+    state.subpages.push({ ...structuredClone(entry), id, name, sourcePageId: pageId,
+      includedPages: [], excludedPages: [pageId], z: Math.max(1, ...state.subpages.map((item) => Number(item.z) || 9000)) + 1 });
+    state.activePage = pageId; renderPage(); commitHistory(); setStatus(`Duplicated subpage “${entry.name}”`);
+  }
+
+  function materializeSubpageInstance(entry, pageId) {
+    const resolved = subpageResolved(entry, pageId), offset = subpageOffset(entry, pageId),
+      sources = state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master), idMap = new Map(), created = [];
+    sources.forEach((source) => idMap.set(source.id, uid("item-")));
+    sources.forEach((source) => {
+      if (source.x >= resolved.width || source.y >= resolved.height) return;
+      const item = remapLibraryReferences(structuredClone(source), idMap), itemOverride = resolved.itemOverrides?.[source.id] || {};
+      item.id = idMap.get(source.id); item.pageId = pageId; item.master = false;
+      item.x = source.x + offset.x; item.y = source.y + offset.y; item.z = (Number(resolved.z) || 9000) + (Number(source.z) || 0);
+      item.properties = { ...(item.properties || {}), ...(itemOverride.properties || {}) };
+      item.signalBindings = { ...(item.signalBindings || {}), ...(itemOverride.signalBindings || {}) };
+      if (resolved.visibilityEnabled && item.componentId) {
+        item.properties.visibilityEnabled = true;
+        item.signalBindings.visibility = { mode: resolved.bindingMode || "contract", value: resolved.visibility || "" };
+      }
+      delete item.contractSourcePageId; delete item.subpageId; delete item.subpageBounds; delete item.subpagePageId;
+      item.contractNamespace = resolved.contractNamespace || entry.contractNamespace || "";
+      state.items.push(item); created.push(item);
+    });
+    entry.excludedPages = [...new Set([...(entry.excludedPages || []), pageId])];
+    entry.includedPages = (entry.includedPages || []).filter((id) => id !== pageId);
+    if (entry.instanceOverrides) delete entry.instanceOverrides[pageId];
+    return created;
+  }
+  function detachSubpageInstance(entry, pageId) {
+    if (!entry || !subpageApplies(entry, pageId)) return;
+    const page = state.pages.find((candidate) => candidate.id === pageId), created = materializeSubpageInstance(entry, pageId);
+    renderPage(); renderReusableLibrary(); commitHistory();
+    setStatus(`Detached “${entry.name}” on ${page?.name || "page"} into ${created.length} independent widgets`);
+  }
+  function convertSubpageToNormalContent(entry) {
+    if (!entry) return;
+    const assignedPages = state.pages.filter((page) => subpageApplies(entry, page.id));
+    if (!confirm(`Convert “${entry.name}” into independent normal widgets on all ${assignedPages.length} assigned page(s)? The linked master will be removed.`)) return;
+    let count = 0; assignedPages.forEach((page) => { count += materializeSubpageInstance(entry, page.id).length; });
+    state.items = state.items.filter((item) => item.pageId !== entry.sourcePageId);
+    state.pages = state.pages.filter((page) => page.id !== entry.sourcePageId);
+    state.subpages = state.subpages.filter((subpage) => subpage.id !== entry.id);
+    if (!state.pages.some((page) => page.id === state.activePage)) state.activePage = state.pages.find((page) => !page.subpageMasterId)?.id || state.pages[0]?.id;
+    renderPages(); renderPage(); renderReusableLibrary(); commitHistory(); setStatus(`Converted “${entry.name}” into ${count} normal widgets`);
+  }
+  function refactorSubpageNamespace(entry) {
+    if (!entry) return;
+    const oldNamespace = prompt("Existing contract namespace", entry.contractNamespace || contractPageInstance(entry.sourcePageId));
+    if (!oldNamespace?.trim()) return;
+    const nextNamespace = prompt("New contract namespace", oldNamespace.trim());
+    if (!nextNamespace?.trim() || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(nextNamespace.trim())) return alert("Use a SIMPL-safe namespace beginning with a letter or underscore and containing only letters, numbers, and underscores.");
+    const oldValue = oldNamespace.trim(), nextValue = nextNamespace.trim(), rewrite = (value) => {
+      if (Array.isArray(value)) return value.map(rewrite);
+      if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, rewrite(child)]));
+      if (typeof value !== "string") return value;
+      return value === oldValue ? nextValue : value.startsWith(`${oldValue}.`) || value.startsWith(`${oldValue}[`) ? nextValue + value.slice(oldValue.length) : value;
+    };
+    entry.visibility = rewrite(entry.visibility);
+    entry.contractNamespace = nextValue;
+    entry.instanceOverrides = rewrite(entry.instanceOverrides || {});
+    state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master).forEach((item) => {
+      item.properties = rewrite(item.properties || {}); item.signalBindings = rewrite(item.signalBindings || {}); item.actions = rewrite(item.actions || []);
+    });
+    renderPage(); renderReusableLibrary(); commitHistory(); setStatus(`Refactored “${entry.name}” contract namespace from ${oldValue} to ${nextValue}`);
+  }
+
+  function moveSubpageLayer(entry, direction) {
+    const ordered = [...state.subpages].sort((a, b) => (Number(a.z) || 9000) - (Number(b.z) || 9000)),
+      index = ordered.indexOf(entry), other = ordered[index + direction];
+    if (!other) return setStatus(direction < 0 ? "Subpage is already at the back." : "Subpage is already at the front.");
+    const currentZ = Number(entry.z) || 9000; entry.z = Number(other.z) || 9000; other.z = currentZ;
+    renderPage(); renderReusableLibrary(); commitHistory();
+    setStatus(`Moved “${entry.name}” ${direction < 0 ? "back" : "forward"}`);
+  }
+  function createSubpageFromCurrentPage() {
+    const page = currentPage(),
+      name = prompt("Subpage name", page.name === "Home" ? "Header" : page.name);
+    if (!name?.trim()) return;
+    const placement = String(prompt("Placement: top, bottom, left, right, or overlay", /footer/i.test(name) ? "bottom" : "top") || "top").trim().toLowerCase(),
+      horizontal = placement === "top" || placement === "bottom",
+      size = Math.max(1, Math.round(Number(prompt(horizontal ? "Subpage height" : "Subpage width", "100")) || 100));
+    const subpageId = uid("subpage-");
+    page.subpageMasterId = subpageId;
+    state.subpages.push({
+      id: subpageId, name: name.trim(), sourcePageId: page.id,
+      placement: ["top", "bottom", "left", "right", "overlay"].includes(placement) ? placement : "top",
+      width: horizontal ? state.width : size, height: horizontal ? size : state.height,
+      includedPages: [], excludedPages: [page.id], visibilityEnabled: false,
+      bindingMode: "contract", bindingScope: "shared", visibility: `${String(name).replace(/[^A-Za-z0-9_]/g, "_")}.Visibility`, z: 9000, instanceOverrides: {}, deviceOverrides: {},
+      basePanelKey: panelLayoutKey(), basePanelWidth: state.width, basePanelHeight: state.height,
+    });
+    renderPage(); commitHistory(); setStatus(`Created linked subpage “${name.trim()}”`);
+  }
+  function createBlankSubpage() {
+    const name = prompt("Blank subpage name", "Header");
+    if (!name?.trim()) return;
+    const placement = String(prompt("Placement: top, bottom, left, right, or overlay", /footer/i.test(name) ? "bottom" : "top") || "top").trim().toLowerCase(),
+      normalizedPlacement = ["top", "bottom", "left", "right", "overlay"].includes(placement) ? placement : "top",
+      horizontal = normalizedPlacement === "top" || normalizedPlacement === "bottom",
+      width = horizontal ? state.width : Math.max(1, Math.round(Number(prompt("Subpage width", "100")) || 100)),
+      height = horizontal ? Math.max(1, Math.round(Number(prompt("Subpage height", "100")) || 100)) : state.height,
+      id = uid("subpage-"),
+      page = {
+        id: uid("page-"), name: `${name.trim()} Master`, background: currentPage()?.background || "#182126",
+        bindingMode: "none", binding: "", transition: "none", transitionDuration: 350,
+        subpageMasterId: id,
+      };
+    state.pages.push(page);
+    state.subpages.push({
+      id, name: name.trim(), sourcePageId: page.id, placement: normalizedPlacement,
+      width, height, includedPages: [], excludedPages: [page.id], visibilityEnabled: false,
+      bindingMode: "contract", bindingScope: "shared", visibility: `${String(name).replace(/[^A-Za-z0-9_]/g, "_")}.Visibility`, z: 9000, instanceOverrides: {}, deviceOverrides: {},
+      basePanelKey: panelLayoutKey(), basePanelWidth: state.width, basePanelHeight: state.height,
+    });
+    state.activePage = page.id;
+    renderPage(); commitHistory(); setStatus(`Created blank subpage “${name.trim()}”`);
+  }
+  function activeSubpagePropertyLayer(entry, create = false) {
+    const pageId = $("subpage-property-page").value, targetKey = $("subpage-property-target").value;
+    let container = entry;
+    if (pageId) {
+      entry.instanceOverrides ||= {};
+      container = entry.instanceOverrides[pageId];
+      if (!container && create) container = entry.instanceOverrides[pageId] = {};
+      if (!container) container = {};
+    }
+    if (!targetKey) return { layer: container, container, pageId, targetKey };
+    if (create) container.deviceOverrides ||= {};
+    return { layer: container.deviceOverrides?.[targetKey] || (create ? container.deviceOverrides[targetKey] = {} : {}), container, pageId, targetKey };
+  }
+  function refreshSubpagePropertyFields() {
+    const entry = state.subpages.find((subpage) => subpage.id === editingSubpagePropertiesId);
+    if (!entry) return;
+    const { layer, pageId, targetKey } = activeSubpagePropertyLayer(entry),
+      base = pageId ? { ...entry, ...(entry.instanceOverrides?.[pageId] || {}) } : entry,
+      effective = { ...base, ...layer };
+    $("subpage-property-name").value = entry.name || "";
+    $("subpage-property-name").disabled = !!pageId || !!targetKey;
+    $("subpage-property-placement").value = effective.placement || "top";
+    $("subpage-property-x").value = Number.isFinite(Number(layer.x ?? base.x)) ? Number(layer.x ?? base.x) : "";
+    $("subpage-property-y").value = Number.isFinite(Number(layer.y ?? base.y)) ? Number(layer.y ?? base.y) : "";
+    $("subpage-property-width").value = Math.max(1, Number(effective.width) || state.width);
+    $("subpage-property-height").value = Math.max(1, Number(effective.height) || 100);
+    $("subpage-property-z").value = Number(effective.z) || 9000;
+    $("subpage-property-scope").value = effective.bindingScope === "per-page" ? "per-page" : "shared";
+    $("subpage-property-visibility-enabled").checked = !!effective.visibilityEnabled;
+    $("subpage-property-binding-mode").value = effective.bindingMode === "join" ? "join" : "contract";
+    $("subpage-property-visibility").value = effective.visibility || "";
+    const widgetHost = $("subpage-property-widget"), sources = state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master), previous = widgetHost.value;
+    widgetHost.innerHTML = '<option value="">No widget override</option>';
+    sources.forEach((item) => widgetHost.add(new Option(item.name, item.id)));
+    widgetHost.value = sources.some((item) => item.id === previous) ? previous : "";
+    $("subpage-widget-overrides").hidden = !pageId;
+    refreshSubpageWidgetOverride();
+  }
+  function refreshSubpageWidgetOverride() {
+    const entry = state.subpages.find((subpage) => subpage.id === editingSubpagePropertiesId), pageId = $("subpage-property-page").value,
+      sourceId = $("subpage-property-widget").value, override = entry?.instanceOverrides?.[pageId]?.itemOverrides?.[sourceId] || {};
+    $("subpage-property-widget-properties").value = JSON.stringify(override.properties || {}, null, 2);
+    $("subpage-property-widget-signals").value = JSON.stringify(override.signalBindings || {}, null, 2);
+    $("subpage-property-widget-properties").disabled = !sourceId;
+    $("subpage-property-widget-signals").disabled = !sourceId;
+  }
+  function openSubpageProperties(entry) {
+    editingSubpagePropertiesId = entry.id;
+    const pageSelect = $("subpage-property-page"), targetSelect = $("subpage-property-target");
+    pageSelect.innerHTML = '<option value="">Master defaults</option>';
+    state.pages.filter((page) => subpageApplies(entry, page.id)).forEach((page) => pageSelect.add(new Option(`Instance: ${page.name}`, page.id)));
+    targetSelect.innerHTML = '<option value="">Base layout</option>';
+    deviceProfiles.filter((device) => device.id !== "custom").forEach((device) => targetSelect.add(new Option(`${device.name} — ${device.width}×${device.height}`, panelLayoutKey(device.id, device.width, device.height))));
+    pageSelect.value = subpageApplies(entry, state.activePage) ? state.activePage : "";
+    targetSelect.value = "";
+    refreshSubpagePropertyFields(); $("subpage-properties-dialog").showModal();
+  }
+  function saveSubpageProperties(event) {
+    const entry = state.subpages.find((subpage) => subpage.id === editingSubpagePropertiesId);
+    if (!entry) return;
+    try {
+      const selection = activeSubpagePropertyLayer(entry, true), layer = selection.layer,
+        optionalNumber = (id) => $(id).value.trim() === "" ? undefined : Number($(id).value);
+      if (!selection.pageId && !selection.targetKey) entry.name = $("subpage-property-name").value.trim() || entry.name;
+      Object.assign(layer, {
+        placement: $("subpage-property-placement").value,
+        width: Math.max(1, Number($("subpage-property-width").value) || 1),
+        height: Math.max(1, Number($("subpage-property-height").value) || 1),
+        z: Number($("subpage-property-z").value) || 9000,
+        bindingScope: $("subpage-property-scope").value,
+        visibilityEnabled: $("subpage-property-visibility-enabled").checked,
+        bindingMode: $("subpage-property-binding-mode").value,
+        visibility: $("subpage-property-visibility").value.trim(),
+      });
+      const x = optionalNumber("subpage-property-x"), y = optionalNumber("subpage-property-y");
+      if (x == null) delete layer.x; else layer.x = x;
+      if (y == null) delete layer.y; else layer.y = y;
+      if (selection.targetKey) {
+        const profile = deviceProfiles.find((device) => panelLayoutKey(device.id, device.width, device.height) === selection.targetKey);
+        layer.panelWidth = profile?.width || state.width; layer.panelHeight = profile?.height || state.height;
+      }
+      const sourceId = $("subpage-property-widget").value;
+      if (selection.pageId && sourceId) {
+        const properties = JSON.parse($("subpage-property-widget-properties").value || "{}"),
+          signalBindings = JSON.parse($("subpage-property-widget-signals").value || "{}");
+        selection.container.itemOverrides ||= {};
+        if (Object.keys(properties).length || Object.keys(signalBindings).length) selection.container.itemOverrides[sourceId] = { properties, signalBindings };
+        else delete selection.container.itemOverrides[sourceId];
+      }
+      renderPage(); renderReusableLibrary(); commitHistory(); setStatus(`Updated subpage “${entry.name}” properties`);
+    } catch (error) {
+      event?.preventDefault(); alert(`Subpage properties were not saved.\n\n${error.message}`);
+    }
+  }
+  function resetSubpagePropertyOverride() {
+    const entry = state.subpages.find((subpage) => subpage.id === editingSubpagePropertiesId), pageId = $("subpage-property-page").value,
+      targetKey = $("subpage-property-target").value;
+    if (!entry || (!pageId && !targetKey)) return setStatus("Master defaults cannot be reset; edit their values instead.");
+    const container = pageId ? entry.instanceOverrides?.[pageId] : entry;
+    if (targetKey) { if (container?.deviceOverrides) delete container.deviceOverrides[targetKey]; }
+    else if (pageId) delete entry.instanceOverrides[pageId];
+    refreshSubpagePropertyFields(); renderPage(); renderReusableLibrary(); commitHistory(); setStatus("Reset subpage override to inherited master values");
+  }
+  function openSubpagePages(entry) {
+    if (!entry) return;
+    editingSubpagePagesId = entry.id;
+    $("subpage-pages-title").textContent = `Pages showing “${entry.name}”`;
+    const host = $("subpage-pages-list"),
+      selected = new Set(entry.includedPages?.length
+        ? entry.includedPages
+        : state.pages.filter((page) => page.id !== entry.sourcePageId && !(entry.excludedPages || []).includes(page.id)).map((page) => page.id));
+    host.innerHTML = "";
+    state.pages.filter((page) => page.id !== entry.sourcePageId && !page.subpageMasterId).forEach((page) => {
+      const label = document.createElement("label"), checkbox = document.createElement("input"), text = document.createElement("span");
+      checkbox.type = "checkbox"; checkbox.value = page.id; checkbox.checked = selected.has(page.id);
+      text.textContent = page.name; label.append(checkbox, text); host.appendChild(label);
+    });
+    if (!host.children.length) host.innerHTML = '<p class="hint">Create at least one normal page before assigning this subpage.</p>';
+    $("subpage-pages-dialog").showModal();
+  }
+  function setSubpagePageChecks(mode) {
+    $("subpage-pages-list").querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.checked = mode === "all" ? true : mode === "none" ? false : !checkbox.checked;
+    });
+  }
+  function saveSubpagePages() {
+    const entry = state.subpages.find((subpage) => subpage.id === editingSubpagePagesId);
+    if (!entry) return;
+    const normalPages = state.pages.filter((page) => page.id !== entry.sourcePageId && !page.subpageMasterId),
+      included = new Set([...$("subpage-pages-list").querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value));
+    entry.includedPages = normalPages.filter((page) => included.has(page.id)).map((page) => page.id);
+    entry.excludedPages = [entry.sourcePageId, ...normalPages.filter((page) => !included.has(page.id)).map((page) => page.id)];
+    renderPage(); renderReusableLibrary(); commitHistory(); setStatus(`Updated pages for “${entry.name}”`);
+  }
+  function renderSubpageInstances() {
+    const pageId = state.activePage;
+    state.subpages.filter((entry) => subpageApplies(entry, pageId)).forEach((entry) => {
+      const resolved = subpageResolved(entry, pageId), offset = subpageOffset(entry, pageId), sourcePage = state.pages.find((page) => page.id === entry.sourcePageId),
+        backgroundAsset = state.assets.find((asset) => asset.id === sourcePage?.backgroundAsset),
+        surface = document.createElement("div");
+      surface.className = "subpage-instance-surface";
+      surface.dataset.subpage = entry.id;
+      const editorKey = `${entry.id}:${pageId}`, editorHidden = hiddenSubpageInstances.has(editorKey);
+      if (highlightedSubpageInstances.has(editorKey)) surface.classList.add("subpage-editor-highlight");
+      if (editorHidden) surface.classList.add("subpage-editor-hidden");
+      surface.dataset.subpagePage = pageId;
+      surface.style.cssText = `position:absolute;left:${offset.x}px;top:${offset.y}px;width:${resolved.width}px;height:${resolved.height}px;overflow:hidden;pointer-events:auto;z-index:${(Number(resolved.z) || 9000) - 1};${editorHidden ? "background:rgba(241,189,55,.035);outline:1px dashed rgba(241,189,55,.5);" : `background-color:${sourcePage?.background || "transparent"};${backgroundAsset ? `background-image:url("${backgroundAsset.dataUrl}");background-size:${sourcePage?.backgroundAssetFit || "cover"};background-position:${Number(sourcePage?.backgroundAssetX ?? 50)}% ${Number(sourcePage?.backgroundAssetY ?? 50)}%;background-repeat:no-repeat;` : ""}`}`;
+      surface.title = editorHidden ? `${entry.name} (hidden in editor — right-click to show)` : `${entry.name} linked subpage — right-click for options`;
+      surface.oncontextmenu = (event) => showSubpageContextMenu(event, entry.id, pageId);
+      stage.appendChild(surface);
+      if (editorHidden) return;
+      state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master).forEach((source) => {
+        if (source.x >= resolved.width || source.y >= resolved.height) return;
+        const item = structuredClone(source);
+        const itemOverride = resolved.itemOverrides?.[source.id] || {};
+        item.properties = { ...(item.properties || {}), ...(itemOverride.properties || {}) };
+        item.signalBindings = { ...(item.signalBindings || {}), ...(itemOverride.signalBindings || {}) };
+        item.id = `subpage-instance-${entry.id}-${pageId}-${source.id}`;
+        item.pageId = pageId; item.x = source.x + offset.x; item.y = source.y + offset.y;
+        item.z = (Number(resolved.z) || 9000) + (Number(source.z) || 0);
+        item.contractSourcePageId = resolved.bindingScope === "per-page" ? "" : entry.sourcePageId;
+        item.contractNamespace = resolved.contractNamespace || entry.contractNamespace || "";
+        if (resolved.visibilityEnabled && item.componentId) {
+          item.properties = { ...(item.properties || {}), visibilityEnabled: true };
+          item.signalBindings = { ...(item.signalBindings || {}), visibility: { mode: resolved.bindingMode || "contract", value: resolved.visibility || "" } };
+        }
+        renderItem(item);
+        const element = stage.querySelector(`[data-id="${item.id}"]`);
+        if (element) {
+          const top = Math.max(0, offset.y - item.y), left = Math.max(0, offset.x - item.x),
+            right = Math.max(0, item.x + item.w - (offset.x + resolved.width)), bottom = Math.max(0, item.y + item.h - (offset.y + resolved.height));
+          element.classList.add("subpage-instance"); element.style.pointerEvents = "none";
+          element.style.clipPath = `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+        }
+      });
+    });
+    state.subpages.filter((entry) => entry.sourcePageId === pageId).forEach((entry) => {
+      const guide = document.createElement("div");
+      guide.className = "subpage-master-guide";
+      guide.style.cssText = `position:absolute;left:0;top:0;width:${entry.width}px;height:${entry.height}px;border:2px dashed #f1bd37;pointer-events:none;z-index:999999;color:#f1bd37;font:700 14px Segoe UI;padding:4px`;
+      guide.textContent = `SUBPAGE MASTER: ${entry.name}`; stage.appendChild(guide);
+    });
+  }
   function renderReusableLibrary() {
     const reusableHost = $("reusable-list"),
-      templateHost = $("page-template-list");
-    if (!reusableHost || !templateHost) return;
+      templateHost = $("page-template-list"), subpageHost = $("subpage-list");
+    if (!reusableHost || !templateHost || !subpageHost) return;
     reusableHost.innerHTML = "";
     templateHost.innerHTML = "";
+    subpageHost.innerHTML = "";
     function card(entry, meta, insert, remove) {
       const element = document.createElement("div"),
         name = document.createElement("div"),
@@ -2891,10 +3283,35 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         ),
       ),
     );
+    state.subpages.forEach((entry) => {
+      const element = card(
+        entry,
+        `${entry.width}×${entry.height} · ${entry.placement} · ${entry.bindingScope || "shared"} bindings · ${entry.visibilityEnabled ? "visibility bound" : "local visibility"}`,
+        () => { state.activePage = entry.sourcePageId; renderPage(); },
+        () => { if (!confirm(`Delete subpage “${entry.name}”? The source page and its widgets will remain.`)) return; const sourcePage = state.pages.find((page) => page.id === entry.sourcePageId); if (sourcePage) delete sourcePage.subpageMasterId; state.subpages = state.subpages.filter((item) => item.id !== entry.id); renderPage(); commitHistory(); },
+      );
+      element.classList.add("subpage-design-card"); subpageHost.appendChild(element);
+    });
+    [...subpageHost.querySelectorAll(".design-card")].forEach((element, index) => {
+      const entry = state.subpages[index], buttons = element.querySelector(".design-buttons"),
+        pages = document.createElement("button"), configure = document.createElement("button"),
+        duplicate = document.createElement("button"), exportButton = document.createElement("button"),
+        back = document.createElement("button"), forward = document.createElement("button");
+      pages.textContent = "Pages"; pages.onclick = () => openSubpagePages(entry);
+      configure.textContent = "Properties"; configure.onclick = () => openSubpageProperties(entry);
+      duplicate.textContent = "Duplicate"; duplicate.onclick = () => duplicateSubpage(entry);
+      exportButton.textContent = "Export package"; exportButton.onclick = () => exportSubpagePackage(entry);
+      back.textContent = "Send back"; back.onclick = () => moveSubpageLayer(entry, -1);
+      forward.textContent = "Bring forward"; forward.onclick = () => moveSubpageLayer(entry, 1);
+      buttons.append(pages, configure, duplicate, exportButton, back, forward);
+      element.querySelector(".design-buttons button").textContent = "Edit master";
+    });
     if (!state.reusables.length)
       reusableHost.innerHTML = '<p class="hint">No reusable designs.</p>';
     if (!state.pageTemplates.length)
       templateHost.innerHTML = '<p class="hint">No page templates.</p>';
+    if (!state.subpages.length)
+      subpageHost.innerHTML = '<p class="hint">No linked subpages.</p>';
   }
   function designLibraryPackage(name, version) {
     return {
@@ -2906,11 +3323,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       content: {
         reusables: structuredClone(state.reusables),
         pageTemplates: structuredClone(state.pageTemplates),
+        subpages: state.subpages.map((entry) => ({
+          ...structuredClone(entry),
+          masterPage: structuredClone(state.pages.find((page) => page.id === entry.sourcePageId) || null),
+          masterItems: structuredClone(state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master)),
+        })),
         customComponents: structuredClone(state.customComponents),
         themes: structuredClone(state.themes),
         assets: structuredClone(state.assets),
       },
     };
+  }
+  function exportSubpagePackage(entry) {
+    const version = prompt("Subpage package version", "1.0.0");
+    if (!version?.trim()) return;
+    const packageValue = designLibraryPackage(`${entry.name} Subpage`, version.trim());
+    packageValue.content.reusables = [];
+    packageValue.content.pageTemplates = [];
+    packageValue.content.subpages = packageValue.content.subpages.filter((subpage) => subpage.id === entry.id);
+    const fileName = `${entry.name.replace(/[^A-Za-z0-9_-]+/g, "-") || "subpage"}-${version.trim().replace(/[^A-Za-z0-9_.-]+/g, "-")}.cuilibrary`;
+    download(fileName, JSON.stringify(packageValue, null, 2), "application/json");
+    setStatus(`Exported reusable subpage “${entry.name}” v${version.trim()}`);
   }
   function remapLibraryReferences(value, idMap) {
     if (Array.isArray(value))
@@ -2999,6 +3432,25 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     });
     state.reusables.push(...imported.reusables);
     state.pageTemplates.push(...imported.pageTemplates);
+    (imported.subpages || []).forEach((entry) => {
+      if (!entry.masterPage) return;
+      const oldPageId = entry.sourcePageId,
+        page = { ...entry.masterPage, id: uid("page-"), name: uniqueLibraryName(entry.masterPage.name || entry.name, state.pages) },
+        itemIdMap = new Map();
+      state.pages.push(page);
+      (entry.masterItems || []).forEach((source) => {
+        itemIdMap.set(source.id, uid("item-"));
+      });
+      (entry.masterItems || []).forEach((source) => {
+        const item = remapLibraryReferences(structuredClone(source), itemIdMap);
+        item.id = itemIdMap.get(source.id); item.pageId = page.id; state.items.push(item);
+      });
+      delete entry.masterPage; delete entry.masterItems;
+      entry.id = state.subpages.some((existing) => existing.id === entry.id) ? uid("subpage-") : entry.id;
+      page.subpageMasterId = entry.id;
+      entry.sourcePageId = page.id; entry.excludedPages = [page.id]; entry.includedPages = [];
+      state.subpages.push(entry);
+    });
     (imported.themes || []).forEach((theme) => {
       if (state.themes.some((entry) => entry.id === theme.id))
         theme.id = uid("theme-");
@@ -3015,6 +3467,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       templates: imported.pageTemplates.length,
       components: imported.customComponents.length,
       assets: imported.assets.length,
+      subpages: (imported.subpages || []).length,
     };
   }
   function currentTheme() {
@@ -3248,6 +3701,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       !confirm("Delete this page and all of its components?")
     )
       return;
+    state.subpages = state.subpages.filter((entry) => entry.sourcePageId !== id);
+    state.subpages.forEach((entry) => {
+      entry.includedPages = (entry.includedPages || []).filter((pageId) => pageId !== id);
+      entry.excludedPages = (entry.excludedPages || []).filter((pageId) => pageId !== id);
+    });
     state.pages = state.pages.filter((p) => p.id !== id);
     const fallbackPage = state.pages[0].id;
     state.items.forEach((item) => {
@@ -3296,7 +3754,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const target = $("prop-target"),
       value = current()?.targetPage || "";
     target.innerHTML = '<option value="">No page change</option>';
-    state.pages.forEach((p) => {
+    state.pages.filter((p) => !p.subpageMasterId).forEach((p) => {
       const o = document.createElement("option");
       o.value = p.id;
       o.textContent = p.name;
@@ -4849,7 +5307,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     });
   }
   function contractWidgetPrefix(item) {
-    return `${contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
+    return `${item?.contractNamespace ? simplIdentifier(item.contractNamespace) : contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
   }
   function parseCipTextSignals(text) {
     const signals = [],
@@ -4870,7 +5328,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function collectProjectSignals() {
     const rows = [];
+    (state.subpages || []).filter((entry) => entry.visibilityEnabled && entry.visibility).forEach((entry) => rows.push({
+      page: "Global", widget: `Subpage: ${entry.name}`, name: "Visibility",
+      type: "digital", direction: "input", mode: entry.bindingMode || "contract", value: entry.visibility,
+      setMode(mode) { entry.bindingMode = mode; }, setValue(value) { entry.visibility = value; },
+    }));
+    (state.subpages || []).forEach((entry) => Object.entries(entry.instanceOverrides || {}).forEach(([pageId, override]) => {
+      if (!override.visibilityEnabled || !override.visibility) return;
+      const page = state.pages.find((candidate) => candidate.id === pageId);
+      rows.push({
+        page: page?.name || "Missing page", widget: `Subpage: ${entry.name}`, name: "Visibility override",
+        type: "digital", direction: "input", mode: override.bindingMode || entry.bindingMode || "contract", value: override.visibility,
+        setMode(mode) { override.bindingMode = mode; }, setValue(value) { override.visibility = value; },
+      });
+    }));
     state.pages.forEach((page) => {
+      if (page.subpageMasterId) return;
       if (page.bindingMode === "none") return;
       rows.push({
         page: page.name,
@@ -4889,7 +5362,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
       });
     });
-    state.items.forEach((item) => {
+    const virtualEntries = (state.subpages || []).filter((entry) => entry.bindingScope === "per-page" || Object.values(entry.instanceOverrides || {}).some((override) => override.bindingScope === "per-page" || Object.keys(override.itemOverrides || {}).length)),
+      virtualSourceIds = new Set(virtualEntries.map((entry) => entry.sourcePageId)),
+      signalItems = state.items.filter((item) => !virtualSourceIds.has(item.pageId));
+    virtualEntries.forEach((entry) => {
+      const sources = state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master);
+      state.pages.filter((page) => subpageApplies(entry, page.id)).forEach((page) => sources.forEach((source) => {
+        const clone = structuredClone(source), override = entry.instanceOverrides?.[page.id] || {}, itemOverride = override.itemOverrides?.[source.id] || {};
+        clone.id = `subpage-signal-${entry.id}-${page.id}-${source.id}`; clone.pageId = page.id;
+        clone.properties = { ...(clone.properties || {}), ...(itemOverride.properties || {}) };
+        clone.signalBindings = { ...(clone.signalBindings || {}), ...(itemOverride.signalBindings || {}) };
+        if ((override.bindingScope || entry.bindingScope) !== "per-page") clone.contractSourcePageId = entry.sourcePageId;
+        clone.contractNamespace = override.contractNamespace || entry.contractNamespace || "";
+        signalItems.push(clone);
+      }));
+    });
+    signalItems.forEach((item) => {
       const page = item.master
         ? "Global"
         : state.pages.find((entry) => entry.id === item.pageId)?.name ||
@@ -4946,7 +5434,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             },
           }),
         );
-        (definition.rangeBindings || []).forEach((range) =>
+        (definition.rangeBindings || []).forEach((range) => {
+          if (range.optionalProperty && !item.properties?.[range.optionalProperty]) return;
           rows.push({
             page,
             widget: item.name,
@@ -4968,8 +5457,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             setValue(value) {
               item.properties[range.baseKey] = value;
             },
-          }),
-        );
+          });
+        });
         Object.entries(item.properties || {})
           .filter(
             ([, value]) =>
@@ -6958,7 +7447,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .toLowerCase(),
       rows = simulatorSignalRows().filter(
         (row) =>
-          (!simulatorItemFilter || row.itemId === simulatorItemFilter) &&
+          (!simulatorItemFilter || (simulatorItemFilter instanceof Set ? simulatorItemFilter.has(row.itemId) : row.itemId === simulatorItemFilter)) &&
           (!query ||
             `${row.page} ${row.widget} ${row.name} ${row.type} ${row.value}`
               .toLowerCase()
@@ -7079,16 +7568,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       .querySelectorAll(".widget.simulator-focus")
       .forEach((element) => element.classList.remove("simulator-focus"));
   }
-  function openSignalSimulator(itemId = null) {
-    simulatorItemFilter = itemId;
+  function openSignalSimulator(itemId = null, groupTitle = "") {
+    simulatorItemFilter = Array.isArray(itemId) ? new Set(itemId) : itemId;
     clearSimulatorFocus();
-    const item = itemId
+    const item = typeof itemId === "string"
         ? state.items.find((candidate) => candidate.id === itemId)
         : null,
       title = $("simulator-title"),
       hint = $("simulator-hint");
-    title.textContent = item ? `Simulate: ${item.name}` : "Signal Simulator";
-    hint.textContent = item
+    title.textContent = groupTitle ? `Simulate: ${groupTitle}` : item ? `Simulate: ${item.name}` : "Signal Simulator";
+    hint.textContent = item || groupTitle
       ? "Showing only this component’s inputs and outputs. The component is highlighted on the panel."
       : "Drive feedback inputs and observe widget output events without SIMPL.";
     $("simulator-search").value = "";
@@ -7120,6 +7609,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
     clearInterval(simulatorTimer);
     simulatorTimer = setInterval(refreshSimulatorEvents, 250);
+  }
+  function simulateSubpage(entry, pageId) {
+    const sourceIds = state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master).flatMap((item) => [item.id, `subpage-signal-${entry.id}-${pageId}-${item.id}`]);
+    openSignalSimulator(sourceIds, `${entry.name} subpage`);
+    simulatorSubpageKey = `${entry.id}:${pageId}`; highlightedSubpageInstances.add(simulatorSubpageKey); renderPage();
   }
   function renderBindings(item) {
     if (item.componentId) {
@@ -7471,6 +7965,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       host.appendChild(row);
     });
     (definition.rangeBindings || []).forEach((range) => {
+      if (range.optionalProperty && !item.properties?.[range.optionalProperty]) return;
       const row = document.createElement("div"),
         title = document.createElement("strong"),
         controls = document.createElement("div"),
@@ -8096,6 +8591,61 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     });
     validationContext = {};
 
+    const masterPageIds = new Set(state.pages.filter((page) => page.subpageMasterId).map((page) => page.id)),
+      validateSubpageVisibility = (entry, resolved, page) => {
+        if (!resolved.visibilityEnabled) return;
+        const value = String(resolved.visibility || "").trim(), owner = page ? `Subpage “${entry.name}” on “${page.name}”` : `Subpage “${entry.name}”`;
+        if (!value) add("error", `${owner} enables visibility but has no visibility binding.`, { category: "Subpages", pageId: page?.id || entry.sourcePageId, pageName: page?.name || state.pages.find((candidate) => candidate.id === entry.sourcePageId)?.name || "" });
+        else if (resolved.bindingMode === "join" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535))
+          add("error", `${owner} has invalid visibility join “${value}”.`, { category: "Subpages", pageId: page?.id || entry.sourcePageId, pageName: page?.name || "" });
+        else if (resolved.bindingMode !== "join" && !/^[A-Za-z_][A-Za-z0-9_.{}\[\]-]*$/.test(value))
+          add("error", `${owner} has invalid visibility contract “${value}”.`, { category: "Subpages", pageId: page?.id || entry.sourcePageId, pageName: page?.name || "" });
+      };
+    state.subpages.forEach((entry) => {
+      const masterPage = state.pages.find((page) => page.id === entry.sourcePageId),
+        assignedPages = state.pages.filter((page) => subpageApplies(entry, page.id));
+      if (!masterPage) {
+        add("error", `Subpage “${entry.name}” references a missing master page.`, { category: "Subpages" });
+        return;
+      }
+      if (masterPage.subpageMasterId !== entry.id)
+        add("error", `Subpage “${entry.name}” and its master page are no longer linked correctly.`, { category: "Subpages", pageId: masterPage.id, pageName: masterPage.name });
+      const width = Math.max(1, Number(entry.width) || 1), height = Math.max(1, Number(entry.height) || 1);
+      if (Number(entry.width) <= 0 || Number(entry.height) <= 0)
+        add("error", `Subpage “${entry.name}” has invalid dimensions.`, { category: "Subpages", pageId: masterPage.id, pageName: masterPage.name });
+      if (width > state.width || height > state.height)
+        add("warning", `Subpage “${entry.name}” is ${width} × ${height}, larger than the ${state.width} × ${state.height} target panel.`, { category: "Subpages", pageId: masterPage.id, pageName: masterPage.name });
+      state.items.filter((item) => item.pageId === masterPage.id && !item.master).forEach((item) => {
+        if (item.x < 0 || item.y < 0 || item.x + item.w > width || item.y + item.h > height)
+          add("warning", `“${item.name}” extends outside subpage “${entry.name}” and will be clipped.`, { category: "Subpages", pageId: masterPage.id, pageName: masterPage.name, itemId: item.id, itemName: item.name });
+      });
+      if (!assignedPages.length)
+        add("warning", `Subpage “${entry.name}” is assigned to no normal pages.`, { category: "Subpages", pageId: masterPage.id, pageName: masterPage.name });
+      validateSubpageVisibility(entry, entry, null);
+      assignedPages.forEach((page) => {
+        const resolved = subpageResolved(entry, page.id), offset = subpageOffset(entry, page.id);
+        if (resolved.width > state.width || resolved.height > state.height || offset.x < 0 || offset.y < 0 || offset.x + resolved.width > state.width || offset.y + resolved.height > state.height)
+          add("warning", `Subpage “${entry.name}” exceeds the panel bounds on “${page.name}”.`, { category: "Subpages", pageId: page.id, pageName: page.name });
+        if (entry.instanceOverrides?.[page.id]?.visibilityEnabled || entry.instanceOverrides?.[page.id]?.visibility)
+          validateSubpageVisibility(entry, resolved, page);
+      });
+      Object.entries(entry.deviceOverrides || {}).forEach(([target, override]) => {
+        if (Number(override.width) > Number(override.panelWidth) || Number(override.height) > Number(override.panelHeight))
+          add("warning", `Subpage “${entry.name}” exceeds its saved ${target} responsive panel dimensions.`, { category: "Subpages", pageId: masterPage.id, pageName: masterPage.name });
+      });
+    });
+    state.pages.filter((page) => !page.subpageMasterId).forEach((page) => {
+      const placements = state.subpages.filter((entry) => subpageApplies(entry, page.id)).map((entry) => {
+        const resolved = subpageResolved(entry, page.id), offset = subpageOffset(entry, page.id);
+        return { entry, resolved, x: offset.x, y: offset.y };
+      });
+      for (let index = 0; index < placements.length; index++) for (let otherIndex = index + 1; otherIndex < placements.length; otherIndex++) {
+        const a = placements[index], b = placements[otherIndex], overlap = a.x < b.x + b.resolved.width && a.x + a.resolved.width > b.x && a.y < b.y + b.resolved.height && a.y + a.resolved.height > b.y;
+        if (overlap && Math.abs((Number(a.resolved.z) || 9000) - (Number(b.resolved.z) || 9000)) < 2)
+          add("warning", `Subpages “${a.entry.name}” and “${b.entry.name}” overlap at similar z-index values on “${page.name}”.`, { category: "Subpages", pageId: page.id, pageName: page.name });
+      }
+    });
+
     const assetIds = new Set();
     state.assets.forEach((asset) => {
       if (!asset.id)
@@ -8188,6 +8738,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         !state.pages.some((page) => page.id === item.targetPage)
       )
         add("error", `“${item.name}” targets a page that no longer exists.`);
+      else if (item.targetPage && masterPageIds.has(item.targetPage))
+        add("error", `“${item.name}” navigation targets a subpage master, which is not a deployable page.`);
       (item.actions || []).forEach((action, actionIndex) => {
         const owner = `“${item.name}” action ${actionIndex + 1}`,
           widgetActions = new Set([
@@ -8235,6 +8787,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
         if (action.type === "navigate" && !pageIds.has(action.target))
           add("error", `${owner} targets a missing page.`);
+        else if (action.type === "navigate" && masterPageIds.has(action.target))
+          add("error", `${owner} targets a subpage master, which is not a deployable page.`);
         if (
           widgetActions.has(action.type) &&
           !state.items.some((candidate) => candidate.id === action.target)
@@ -11889,9 +12443,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   const contextMenu = $("canvas-context-menu");
   const layerContextMenu = $("layer-context-menu");
+  const subpageContextMenu = $("subpage-context-menu");
   function hideContextMenu() {
     contextMenu.hidden = true;
     layerContextMenu.hidden = true;
+    subpageContextMenu.hidden = true;
   }
   function positionContextMenu(menu, event) {
     menu.hidden = false;
@@ -11911,6 +12467,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       !selection.length || selection.some((item) => item.locked);
     contextMenu.hidden = true;
     positionContextMenu(layerContextMenu, event);
+  }
+  function showSubpageContextMenu(event, subpageId, pageId) {
+    event.preventDefault(); event.stopPropagation();
+    const entry = state.subpages.find((subpage) => subpage.id === subpageId), key = `${subpageId}:${pageId}`;
+    if (!entry) return;
+    contextSubpageId = subpageId; contextSubpagePageId = pageId;
+    $("subpage-context-title").textContent = entry.name;
+    $("subpage-context-highlight").textContent = highlightedSubpageInstances.has(key) ? "Remove boundary highlight" : "Highlight boundary";
+    $("subpage-context-visibility").textContent = hiddenSubpageInstances.has(key) ? "Show in editor" : "Hide in editor";
+    contextMenu.hidden = true; layerContextMenu.hidden = true; positionContextMenu(subpageContextMenu, event);
   }
   stage.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -12086,10 +12652,49 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("delete").click();
     hideContextMenu();
   };
+  $("subpage-context-edit").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId);
+    hideContextMenu(); if (!entry) return; state.activePage = entry.sourcePageId; renderPage(); setStatus(`Editing “${entry.name}” master`);
+  };
+  $("subpage-context-simulate").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId), pageId = contextSubpagePageId;
+    hideContextMenu(); if (entry) simulateSubpage(entry, pageId);
+  };
+  $("subpage-context-highlight").onclick = () => {
+    const key = `${contextSubpageId}:${contextSubpagePageId}`;
+    if (highlightedSubpageInstances.has(key)) highlightedSubpageInstances.delete(key); else highlightedSubpageInstances.add(key);
+    hideContextMenu(); renderPage();
+  };
+  $("subpage-context-visibility").onclick = () => {
+    const key = `${contextSubpageId}:${contextSubpagePageId}`;
+    if (hiddenSubpageInstances.has(key)) hiddenSubpageInstances.delete(key); else hiddenSubpageInstances.add(key);
+    hideContextMenu(); renderPage();
+  };
+  $("subpage-context-properties").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId), pageId = contextSubpagePageId;
+    hideContextMenu(); if (!entry) return; openSubpageProperties(entry); $("subpage-property-page").value = pageId; refreshSubpagePropertyFields();
+  };
+  $("subpage-context-detach").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId), pageId = contextSubpagePageId;
+    hideContextMenu(); if (entry && confirm(`Detach “${entry.name}” on this page into independent normal widgets?`)) detachSubpageInstance(entry, pageId);
+  };
+  $("subpage-context-convert").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId);
+    hideContextMenu(); if (entry) convertSubpageToNormalContent(entry);
+  };
+  $("subpage-context-duplicate").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId);
+    hideContextMenu(); if (entry) duplicateSubpage(entry);
+  };
+  $("subpage-context-refactor").onclick = () => {
+    const entry = state.subpages.find((subpage) => subpage.id === contextSubpageId);
+    hideContextMenu(); if (entry) refactorSubpageNamespace(entry);
+  };
   document.addEventListener("pointerdown", (e) => {
     if (
       (!contextMenu.hidden && !contextMenu.contains(e.target)) ||
-      (!layerContextMenu.hidden && !layerContextMenu.contains(e.target))
+      (!layerContextMenu.hidden && !layerContextMenu.contains(e.target)) ||
+      (!subpageContextMenu.hidden && !subpageContextMenu.contains(e.target))
     )
       hideContextMenu();
   });
@@ -14207,11 +14812,23 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("add-page").onclick = addPage;
   $("save-page-template").onclick = savePageTemplate;
+  $("create-subpage").onclick = createSubpageFromCurrentPage;
+  $("new-blank-subpage").onclick = createBlankSubpage;
+  $("subpage-pages-all").onclick = () => setSubpagePageChecks("all");
+  $("subpage-pages-none").onclick = () => setSubpagePageChecks("none");
+  $("subpage-pages-invert").onclick = () => setSubpagePageChecks("invert");
+  $("subpage-pages-save").onclick = saveSubpagePages;
+  $("subpage-property-page").onchange = refreshSubpagePropertyFields;
+  $("subpage-property-target").onchange = refreshSubpagePropertyFields;
+  $("subpage-property-widget").onchange = refreshSubpageWidgetOverride;
+  $("subpage-properties-save").onclick = saveSubpageProperties;
+  $("subpage-properties-reset").onclick = resetSubpagePropertyOverride;
   $("design-library-export").onclick = () => {
     const itemCount =
       state.reusables.length +
       state.pageTemplates.length +
-      state.customComponents.length;
+      state.customComponents.length +
+      state.subpages.length;
     if (!itemCount) {
       alert(
         "Create a reusable design, page template, or custom component before exporting a library.",
@@ -14238,7 +14855,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const packageValue = JSON.parse(await file.text()),
         result = importDesignLibrary(packageValue);
       setStatus(
-        `Imported “${packageValue.name}” v${packageValue.version}: ${result.components} components, ${result.reusables} reusable designs, ${result.templates} page templates`,
+        `Imported “${packageValue.name}” v${packageValue.version}: ${result.components} components, ${result.reusables} reusable designs, ${result.templates} page templates, ${result.subpages} subpages`,
       );
     } catch (error) {
       alert(`Library import failed.\n\n${error.message}`);
@@ -14398,6 +15015,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     state.assets = p.assets || [];
     state.reusables = p.reusables || [];
     state.pageTemplates = p.pageTemplates || [];
+    state.subpages = p.subpages || [];
     state.themes = p.themes || [];
     state.customComponents = p.customComponents || [];
     state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
@@ -14646,6 +15264,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     simulatorTimer = 0;
     simulatorItemFilter = null;
     clearSimulatorFocus();
+    if (simulatorSubpageKey) {
+      highlightedSubpageInstances.delete(simulatorSubpageKey);
+      simulatorSubpageKey = "";
+      renderPage();
+    }
   });
   $("simulator-drag-handle").addEventListener("pointerdown", (event) => {
     if (event.target.closest("input,button,select")) return;
@@ -15353,6 +15976,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     state.assets = [];
     state.reusables = [];
     state.pageTemplates = [];
+    state.subpages = [];
     state.themes = [];
     state.customComponents = [];
     state.acceptance = { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };

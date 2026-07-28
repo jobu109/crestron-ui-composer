@@ -451,6 +451,27 @@
     "shade-control": ".shade-card",
     "vertical-carousel": ".glass-slide",
   };
+  const perItemVisibilityConfigs = {
+    "display-control": [{ selector: ".dc-card", countKey: "defaultCount" }],
+    "lighting-control": [{ selector: ".load", countKey: "defaultCount" }],
+    "microphone-control": [{ selector: ".mic-card", countKey: "defaultCount" }],
+    "shade-control": [{ selector: ".shade-card", countKey: "defaultCount" }],
+    "directional-pad": [{ selector: ".dpad-button", countKey: "buttonCount" }],
+    "hamburger-popup": [{ selector: ".hp-item", countKey: "defaultCount" }],
+    "menu-item": [{ selector: ".mi-button", countKey: "defaultCount" }],
+    "neumorphic-glass-nav": [{ selector: ".ngn-icon", countKey: "buttonCount" }],
+    "neumorphic-glass-nav-vertical": [{ selector: ".ngn-icon", countKey: "buttonCount" }],
+    "neumorphic-icon-nav": [{ selector: ".nnb-icon", countKey: "buttonCount" }],
+    "neumorphic-icon-nav-vertical": [{ selector: ".nnb-icon", countKey: "buttonCount" }],
+    "neumorphic-dpad-square": [{ selector: ".nd-button", countKey: "buttonCount" }],
+    "neumorphic-dpad-circular": [{ selector: ".nd-sector,.nd-center", countKey: "buttonCount" }],
+    "split-button": [{ selector: ".split-item", countKey: "defaultCount" }],
+    "wizard-steps": [{ selector: ".wiz-step", countKey: "defaultCount" }],
+    "folding-menu": [
+      { keyPrefix: "primary", label: "Primary item", selector: ".pbtn", countKey: "primaryCount" },
+      { keyPrefix: "submenu", label: "Submenu item", selector: ".sbtn", countKey: "submenuCount", activeGroupSelector: ".pbtn.active", groupSelector: ".pbtn", groupSize: 3 },
+    ],
+  };
   const optionalContent = {
     "battery-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
     "card-flip": { showLabel: ".text" },
@@ -581,6 +602,21 @@
         defaultValue: `${namespace}.Visibility`,
         optionalProperty: "visibilityEnabled",
       });
+    const itemVisibilityConfigs = perItemVisibilityConfigs[definition.id] || [];
+    if (itemVisibilityConfigs.length) {
+      if (!definition.properties.some((property) => property.key === "itemVisibilityEnabled"))
+        definition.properties.push({ key: "itemVisibilityEnabled", name: "Enable per-item visibility signals", type: "checkbox", defaultValue: false, signalSetting: true });
+      itemVisibilityConfigs.forEach((config) => {
+        const prefix = config.keyPrefix || "",
+          baseKey = prefix ? `${prefix}VisibilityBase` : "visibilityBase",
+          incrementKey = prefix ? `${prefix}VisibilityIncrement` : "visibilityIncrement",
+          collection = prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : "Items";
+        if (!definition.properties.some((property) => property.key === baseKey))
+          definition.properties.push({ key: baseKey, name: `${config.label || "Per-item"} Visibility`, type: "text", defaultValue: `${namespace}.${collection}[{index}].Visibility`, signalSetting: true });
+        if (!definition.properties.some((property) => property.key === incrementKey))
+          definition.properties.push({ key: incrementKey, name: `${config.label || "Per-item"} visibility join increment`, type: "number", defaultValue: 1, signalSetting: true });
+      });
+    }
     let mode = definition.properties.find((p) => p.key === "bindingMode");
     if (!mode) {
       mode = {
@@ -642,6 +678,13 @@
       directionFor = (key) =>
         /feedback|label|name/i.test(key) ? "input" : "output";
     definition.rangeBindings = definition.rangeBindings || [];
+    itemVisibilityConfigs.forEach((config) => {
+      const prefix = config.keyPrefix || "",
+        baseKey = prefix ? `${prefix}VisibilityBase` : "visibilityBase",
+        incrementKey = prefix ? `${prefix}VisibilityIncrement` : "visibilityIncrement";
+      if (!definition.rangeBindings.some((range) => range.baseKey === baseKey))
+        definition.rangeBindings.push({ name: `${config.label || "Per-item"} Visibility range`, type: "digital", direction: "input", baseKey, incrementKey, countKey: config.countKey, visibilitySelector: config.selector, activeGroupSelector: config.activeGroupSelector, groupSelector: config.groupSelector, groupSize: config.groupSize, optionalProperty: "itemVisibilityEnabled" });
+    });
     Object.keys(suffixes).forEach((key) => {
       const prop = definition.properties.find((p) => p.key === key);
       if (!prop) return;
@@ -1092,6 +1135,34 @@
         navigate: options.navigate || function () {},
         options,
       });
+      if (options.properties?.itemVisibilityEnabled) {
+        (definition.rangeBindings || []).filter((range) => range.visibilitySelector).forEach((range) => {
+          const base = String(options.properties[range.baseKey] || "").trim(),
+            increment = Math.max(1, Math.round(Number(options.properties[range.incrementKey]) || 1)),
+            configuredCount = Number(options.properties[range.countKey]),
+            initialCount = root.querySelectorAll(range.visibilitySelector).length,
+            count = Math.max(1, Math.min(100, Math.round(configuredCount || initialCount || 1))),
+            states = new Map(),
+            apply = () => root.querySelectorAll(range.visibilitySelector).forEach((item, domIndex) => {
+              const activeGroup = range.activeGroupSelector ? root.querySelector(range.activeGroupSelector) : null,
+                groupIndex = activeGroup && range.groupSelector ? [...root.querySelectorAll(range.groupSelector)].indexOf(activeGroup) : 0,
+                index = Number(item.dataset.visibilityIndex ?? (domIndex + Math.max(0, groupIndex) * (Number(range.groupSize) || 0)));
+              if (states.has(index)) item.style.visibility = states.get(index) ? "visible" : "hidden";
+            }),
+            observer = new MutationObserver(apply);
+          observer.observe(root, { childList: true, subtree: true });
+          cleanups.push(() => observer.disconnect());
+          for (let index = 0; index < count; index += 1) {
+            const address = options.properties.bindingMode === "join" || /^\d+$/.test(base)
+              ? String(Math.max(1, Math.round(Number(base) || 1)) + index * increment)
+              : base.replaceAll("{index}", String(index)).replaceAll("{n}", String(index + 1));
+            signals.subscribeAddress("digital", address, (value) => {
+              states.set(index, value === true || value === 1 || value === "1");
+              apply();
+            });
+          }
+        });
+      }
       cleanups.push(wireScrollReturn(root, root.closest(".widget,.scoped-widget") || root, definition, options.properties || {}));
       const disposeCip = wireCipText(root, signals);
       cleanups.push(disposeCip);

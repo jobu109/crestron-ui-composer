@@ -301,9 +301,16 @@
           placeholder="Search components"
         />
         <div id="component-list" class="component-list"></div>
-        <h2 style="margin-top: 24px">Page</h2>
+        <h2 style="margin-top: 24px">Pages</h2>
         <div id="page-list" class="page-list"></div>
         <button id="add-page" type="button">+ Add page</button>
+        <h2 style="margin-top: 24px">Subpages</h2>
+        <p class="hint">Linked header, footer, sidebar, or overlay masters shared by selected pages.</p>
+        <div class="grid2">
+          <button id="new-blank-subpage" type="button">+ Blank subpage</button>
+          <button id="create-subpage" type="button">From current page</button>
+        </div>
+        <div id="subpage-list" class="design-list"></div>
         <h2 style="margin-top: 24px">Assets</h2>
         <button id="asset-library-import" type="button" class="primary">
           Import assets
@@ -2013,6 +2020,7 @@ Preview signal activity appears here.</pre
               <li><strong>Create custom component:</strong> starts from Button, Slider/Gauge, Text/Input, Repeated List, or Blank templates.</li>
               <li><strong>Visual behavior builder:</strong> connects properties/signals to selected HTML elements while preserving handwritten code.</li>
               <li><strong>Reusable designs:</strong> create a master whose instances update together while allowing selected property and signal overrides.</li>
+              <li><strong>Subpages:</strong> turn a source page into a linked header, footer, sidebar, or overlay master. Configure its cropped size, placement, excluded pages, and optional Visibility signal; editing the source master updates every deployed instance.</li>
               <li><strong>Design libraries:</strong> export/import versioned `.cuilibrary` packages without replacing built-in widgets.</li>
             </ul>
           </section>
@@ -2173,6 +2181,48 @@ Preview signal activity appears here.</pre
         </div>
       </form>
     </dialog>
+    <dialog id="subpage-pages-dialog" class="feature-help-dialog">
+      <form method="dialog">
+        <header class="dialog-title"><h2 id="subpage-pages-title">Subpage pages</h2><button value="cancel" aria-label="Close">×</button></header>
+        <p class="hint">Choose every normal page where this linked subpage should appear. Its master page is never selectable.</p>
+        <div class="asset-actions">
+          <button id="subpage-pages-all" type="button">Select all</button>
+          <button id="subpage-pages-none" type="button">Clear all</button>
+          <button id="subpage-pages-invert" type="button">Invert selection</button>
+        </div>
+        <div id="subpage-pages-list" class="subpage-page-list"></div>
+        <div class="dialog-actions"><button value="cancel">Cancel</button><button id="subpage-pages-save" value="default" class="primary">Save pages</button></div>
+      </form>
+    </dialog>
+    <dialog id="subpage-properties-dialog" class="feature-help-dialog subpage-properties-dialog">
+      <form method="dialog">
+        <header class="dialog-title"><h2>Subpage Properties</h2><button value="cancel" aria-label="Close">×</button></header>
+        <p class="hint">Edit master defaults or sparse overrides for one page and target panel. Unchanged fields continue following the linked master.</p>
+        <div class="subpage-properties-grid">
+          <label>Placement instance<select id="subpage-property-page"></select></label>
+          <label>Responsive target<select id="subpage-property-target"></select></label>
+          <label>Name<input id="subpage-property-name" type="text"></label>
+          <label>Placement<select id="subpage-property-placement"><option>top</option><option>bottom</option><option>left</option><option>right</option><option>overlay</option><option value="custom">custom x/y</option></select></label>
+          <label>X<input id="subpage-property-x" type="number" placeholder="Automatic"></label>
+          <label>Y<input id="subpage-property-y" type="number" placeholder="Automatic"></label>
+          <label>Width<input id="subpage-property-width" type="number" min="1"></label>
+          <label>Height<input id="subpage-property-height" type="number" min="1"></label>
+          <label>z-index<input id="subpage-property-z" type="number"></label>
+          <label>Contract/join scope<select id="subpage-property-scope"><option value="shared">Shared master</option><option value="per-page">Per page</option></select></label>
+          <label class="check-row"><input id="subpage-property-visibility-enabled" type="checkbox"> Enable visibility signal</label>
+          <label>Visibility mode<select id="subpage-property-binding-mode"><option value="contract">Contract</option><option value="join">Join</option></select></label>
+          <label class="subpage-wide">Visibility contract/join<input id="subpage-property-visibility" type="text"></label>
+        </div>
+        <fieldset id="subpage-widget-overrides">
+          <legend>Selected widget override</legend>
+          <label>Master widget<select id="subpage-property-widget"></select></label>
+          <label>Properties JSON<textarea id="subpage-property-widget-properties" rows="5" placeholder="{}"></textarea></label>
+          <label>Signal bindings JSON<textarea id="subpage-property-widget-signals" rows="5" placeholder="{}"></textarea></label>
+          <p class="hint">Only entered keys override the master. Use an empty object to inherit everything.</p>
+        </fieldset>
+        <div class="dialog-actions"><button id="subpage-properties-reset" type="button">Reset selected override</button><button value="cancel">Cancel</button><button id="subpage-properties-save" value="default" class="primary">Save properties</button></div>
+      </form>
+    </dialog>
     <script src="project-migrations.js"></script>
     <script src="responsive-layout.js"></script>
     <script src="component-runtime.js"></script>
@@ -2291,6 +2341,20 @@ Preview signal activity appears here.</pre
       <button id="layer-rename" type="button">Rename</button>
       <button id="layer-duplicate" type="button">Duplicate</button>
       <button id="layer-delete" type="button">Delete</button>
+    </div>
+    <div id="subpage-context-menu" class="context-menu" hidden>
+      <strong id="subpage-context-title">Linked subpage</strong>
+      <button id="subpage-context-edit" type="button">Edit subpage master</button>
+      <button id="subpage-context-simulate" type="button">Simulate subpage</button>
+      <div class="context-menu-separator"></div>
+      <button id="subpage-context-highlight" type="button">Highlight boundary</button>
+      <button id="subpage-context-visibility" type="button">Hide in editor</button>
+      <button id="subpage-context-properties" type="button">Subpage properties</button>
+      <div class="context-menu-separator"></div>
+      <button id="subpage-context-detach" type="button">Detach this instance</button>
+      <button id="subpage-context-convert" type="button">Convert all to normal content</button>
+      <button id="subpage-context-duplicate" type="button">Duplicate subpage master</button>
+      <button id="subpage-context-refactor" type="button">Refactor contract namespace</button>
     </div>
     <button id="delete" type="button" hidden aria-hidden="true">
       Delete selected component

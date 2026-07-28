@@ -2359,6 +2359,9 @@ textarea {
   gap: 5px;
   margin-top: 7px;
 }
+.subpage-page-list{display:grid;gap:8px;max-height:52vh;margin:14px 0;padding:10px;overflow:auto;border:1px solid #355458;border-radius:6px;background:#0d1719}.subpage-page-list label{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #294347;border-radius:5px;background:#142326}.subpage-page-list input{width:18px;height:18px}
+.subpage-properties-dialog form{width:min(820px,92vw);max-height:88vh;overflow:auto}.subpage-properties-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}.subpage-properties-grid label,#subpage-widget-overrides label{display:grid;gap:4px;color:#a9c3c1}.subpage-properties-grid input,.subpage-properties-grid select,#subpage-widget-overrides select,#subpage-widget-overrides textarea{width:100%}.subpage-properties-grid .subpage-wide{grid-column:1/-1}.subpage-properties-grid .check-row{display:flex;align-items:center;gap:8px}.subpage-properties-grid .check-row input{width:auto}#subpage-widget-overrides{margin-top:14px;border:1px solid #355458;border-radius:6px}#subpage-widget-overrides textarea{resize:vertical;font:12px/1.4 Consolas,monospace}@media(max-width:650px){.subpage-properties-grid{grid-template-columns:1fr}.subpage-properties-grid .subpage-wide{grid-column:auto}}
+.subpage-instance-surface.subpage-editor-highlight{outline:3px dashed #f1bd37;outline-offset:-3px;box-shadow:inset 0 0 0 1px #111,0 0 12px rgba(241,189,55,.55)}#subpage-context-menu strong{display:block;padding:7px 10px;color:#f1bd37;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .design-card {
   padding: 7px;
   border: 1px solid #304446;
@@ -2381,6 +2384,17 @@ textarea {
   display: flex;
   gap: 4px;
   margin-top: 5px;
+}
+.subpage-design-card .design-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+.subpage-design-card .design-buttons button {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .design-buttons button,
 #save-page-template {

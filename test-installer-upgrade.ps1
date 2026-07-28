@@ -49,8 +49,11 @@ try {
   Set-Content (Join-Path $oldPublish "CrestronUiComposer.exe") "test executable $OldVersion"
   Set-Content (Join-Path $newPublish "CrestronUiComposer.exe") "test executable $NewVersion"
   New-Item -ItemType Directory -Force -Path (Join-Path $oldPublish "Web"), (Join-Path $newPublish "Web") | Out-Null
-  Copy-Item (Join-Path $sourcePublish "Web\editor.html") (Join-Path $oldPublish "Web\editor.html") -Force
-  Copy-Item (Join-Path $sourcePublish "Web\editor.html") (Join-Path $newPublish "Web\editor.html") -Force
+  # Web assets are embedded into the single-file executable in production.
+  # Copy a representative source asset into the isolated MSI payloads so the
+  # upgrade test still verifies nested application content replacement.
+  Copy-Item (Join-Path $root "editor.html") (Join-Path $oldPublish "Web\editor.html") -Force
+  Copy-Item (Join-Path $root "editor.html") (Join-Path $newPublish "Web\editor.html") -Force
   Set-Content (Join-Path $oldPublish "upgrade-test-version.txt") "old-$OldVersion"
   Set-Content (Join-Path $newPublish "upgrade-test-version.txt") "new-$NewVersion"
   Build-TestMsi $oldPublish $OldVersion $oldMsi

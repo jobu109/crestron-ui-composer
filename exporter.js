@@ -39,6 +39,34 @@
       tokens.forEach((token, index) => signals.subscribeExact(token.kind === "s" ? "serial" : token.kind === "d" ? "digital" : "analog", token.address, (value) => { values[index] = token.kind === "s" ? String(value == null || value === "" ? token.fallback : value) : token.kind === "d" ? (value === true || value === 1 || value === "1" ? token.trueText : token.falseText) : analogText(value, token.format); render(); })); render();
     });
   }
+  function wireItemVisibility(root, definition, properties, signals) {
+    if (!properties?.itemVisibilityEnabled) return;
+    (definition.rangeBindings || []).filter((range) => range.visibilitySelector).forEach((range) => {
+      const base = String(properties[range.baseKey] || "").trim(),
+        increment = Math.max(1, Math.round(Number(properties[range.incrementKey]) || 1)),
+        configuredCount = Number(properties[range.countKey]),
+        initialCount = root.querySelectorAll(range.visibilitySelector).length,
+        count = Math.max(1, Math.min(100, Math.round(configuredCount || initialCount || 1))),
+        states = new Map(),
+        apply = () => root.querySelectorAll(range.visibilitySelector).forEach((item, domIndex) => {
+          const activeGroup = range.activeGroupSelector ? root.querySelector(range.activeGroupSelector) : null,
+            groupIndex = activeGroup && range.groupSelector ? [...root.querySelectorAll(range.groupSelector)].indexOf(activeGroup) : 0,
+            index = Number(item.dataset.visibilityIndex ?? (domIndex + Math.max(0, groupIndex) * (Number(range.groupSize) || 0)));
+          if (states.has(index)) item.style.visibility = states.get(index) ? "visible" : "hidden";
+        }),
+        observer = new MutationObserver(apply);
+      observer.observe(root, { childList: true, subtree: true });
+      for (let index = 0; index < count; index += 1) {
+        const address = properties.bindingMode === "join" || /^\d+$/.test(base)
+          ? String(Math.max(1, Math.round(Number(base) || 1)) + index * increment)
+          : base.replaceAll("{index}", String(index)).replaceAll("{n}", String(index + 1));
+        signals.subscribeAddress("digital", address, (value) => {
+          states.set(index, value === true || value === 1 || value === "1");
+          apply();
+        });
+      }
+    });
+  }
   function propertyStyle(properties) {
     return Object.entries(properties || {})
       .flatMap(([key, value]) => {
@@ -87,8 +115,8 @@
     return /^[A-Za-z_]/.test(clean) ? clean : `_${clean}`;
   }
   function contractPrefix(project, item) {
-    const page = project.pages.find((entry) => entry.id === item.pageId),
-      pageName = item.master
+    const page = project.pages.find((entry) => entry.id === (item.contractSourcePageId || item.pageId)),
+      pageName = item.contractNamespace ? contractIdentifier(item.contractNamespace) : item.master
         ? "Global"
         : contractIdentifier(page?.name || "Main") || "Main",
       base = contractIdentifier(item.name || "Widget"),
@@ -106,6 +134,54 @@
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${html}${bridge}</body></html>`;
   }
   function exportProject(project) {
+    project = structuredClone(project);
+    const subpageTargetKey = project.targetDevice === "custom" ? `custom:${project.width}x${project.height}` : project.targetDevice,
+      resolveSubpage = (entry, pageId) => {
+        const pageOverride = entry.instanceOverrides?.[pageId] || {},
+          targetOverride = pageOverride.deviceOverrides?.[subpageTargetKey] || entry.deviceOverrides?.[subpageTargetKey] || {},
+          baseWidth = Math.max(1, Number(entry.basePanelWidth) || project.width), baseHeight = Math.max(1, Number(entry.basePanelHeight) || project.height),
+          fallback = subpageTargetKey === (entry.basePanelKey || subpageTargetKey) ? {} : {
+            width: Math.round((Number(pageOverride.width ?? entry.width) || baseWidth) * project.width / baseWidth),
+            height: Math.round((Number(pageOverride.height ?? entry.height) || 100) * project.height / baseHeight),
+          };
+        return { ...entry, ...pageOverride, ...fallback, ...targetOverride,
+          width: Math.max(1, Number(targetOverride.width ?? fallback.width ?? pageOverride.width ?? entry.width) || project.width),
+          height: Math.max(1, Number(targetOverride.height ?? fallback.height ?? pageOverride.height ?? entry.height) || 100) };
+      };
+    (project.subpages || []).forEach((entry) => {
+      const sourceItems = project.items.filter((item) => item.pageId === entry.sourcePageId && !item.master);
+      project.pages.forEach((page) => {
+        if (page.id === entry.sourcePageId || (entry.excludedPages || []).includes(page.id) || (entry.includedPages?.length && !entry.includedPages.includes(page.id))) return;
+        const override = entry.instanceOverrides?.[page.id] || {}, resolved = resolveSubpage(entry, page.id),
+          width = Math.max(1, Number(resolved.width) || project.width), height = Math.max(1, Number(resolved.height) || 100),
+          offset = Number.isFinite(Number(resolved.x)) && Number.isFinite(Number(resolved.y)) ? { x: Number(resolved.x), y: Number(resolved.y) }
+            : resolved.placement === "bottom" ? { x: 0, y: Math.max(0, project.height - height) }
+            : resolved.placement === "right" ? { x: Math.max(0, project.width - width), y: 0 }
+            : resolved.placement === "overlay" ? { x: Math.round((project.width - width) / 2), y: Math.round((project.height - height) / 2) }
+            : { x: 0, y: 0 };
+        sourceItems.forEach((source) => {
+          if (source.x >= width || source.y >= height) return;
+          const item = structuredClone(source), itemOverride = override.itemOverrides?.[source.id] || {};
+          item.properties = { ...(item.properties || {}), ...(itemOverride.properties || {}) };
+          item.signalBindings = { ...(item.signalBindings || {}), ...(itemOverride.signalBindings || {}) };
+          item.id = `subpage-${entry.id}-${page.id}-${source.id}`;
+          item.pageId = page.id; item.x = source.x + offset.x; item.y = source.y + offset.y;
+          item.z = (Number(resolved.z) || 9000) + (Number(source.z) || 0);
+          item.subpageId = entry.id;
+          item.subpagePageId = page.id;
+          item.contractSourcePageId = resolved.bindingScope === "per-page" ? "" : entry.sourcePageId;
+          item.contractNamespace = resolved.contractNamespace || entry.contractNamespace || "";
+          item.subpageBounds = { x: offset.x, y: offset.y, width, height };
+          if (resolved.visibilityEnabled && item.componentId) {
+            item.properties = { ...(item.properties || {}), visibilityEnabled: true };
+            item.signalBindings = { ...(item.signalBindings || {}), visibility: { mode: resolved.bindingMode || "contract", value: resolved.visibility || "" } };
+          }
+          project.items.push(item);
+        });
+      });
+    });
+    const deployablePages = project.pages.filter((page) => !page.subpageMasterId),
+      outputPages = deployablePages.length ? deployablePages : project.pages;
     const assetUrl = (id) =>
         ((project.assets || []).find((asset) => asset.id === id) || {})
           .dataUrl || "",
@@ -126,6 +202,24 @@
         return url
           ? `background-image:url(&quot;${url}&quot;);background-size:${page.backgroundAssetFit || "cover"};background-position:${Number(page.backgroundAssetX ?? 50)}% ${Number(page.backgroundAssetY ?? 50)}%;background-repeat:no-repeat;`
           : "";
+      },
+      subpageSurface = (entry, page) => {
+        const resolved = resolveSubpage(entry, page.id),
+          width = Math.max(1, Number(resolved.width) || project.width), height = Math.max(1, Number(resolved.height) || 100),
+          offset = Number.isFinite(Number(resolved.x)) && Number.isFinite(Number(resolved.y)) ? { x: Number(resolved.x), y: Number(resolved.y) }
+            : resolved.placement === "bottom" ? { x: 0, y: Math.max(0, project.height - height) }
+            : resolved.placement === "right" ? { x: Math.max(0, project.width - width), y: 0 }
+            : resolved.placement === "overlay" ? { x: Math.round((project.width - width) / 2), y: Math.round((project.height - height) / 2) }
+            : { x: 0, y: 0 },
+          sourcePage = project.pages.find((candidate) => candidate.id === entry.sourcePageId);
+        return `<div class="subpage-surface" data-subpage="${escapeAttr(entry.id)}" data-subpage-page="${escapeAttr(page.id)}" style="position:absolute;left:${offset.x}px;top:${offset.y}px;width:${width}px;height:${height}px;overflow:hidden;pointer-events:none;z-index:${(Number(resolved.z) || 9000) - 1};background-color:${sourcePage?.background || "transparent"};${pageBackgroundStyle(sourcePage || {})}"></div>`;
+      },
+      subpageClipStyle = (item) => {
+        const bounds = item.subpageBounds;
+        if (!bounds) return "";
+        const top = Math.max(0, bounds.y - item.y), left = Math.max(0, bounds.x - item.x),
+          right = Math.max(0, item.x + item.w - (bounds.x + bounds.width)), bottom = Math.max(0, item.y + item.h - (bounds.y + bounds.height));
+        return `clip-path:inset(${top}px ${right}px ${bottom}px ${left}px);`;
       },
       graphicBackgroundStyle = (item) => {
         const definition = item.componentId
@@ -210,23 +304,24 @@
       item.master
         ? !(item.excludedPages || []).includes(pageId)
         : item.pageId === pageId;
-    const pages = project.pages
+    const pages = outputPages
       .map((page) => {
+        const surfaces = (project.subpages || []).filter((entry) => page.id !== entry.sourcePageId && !(entry.excludedPages || []).includes(page.id) && (!entry.includedPages?.length || entry.includedPages.includes(page.id))).map((entry) => subpageSurface(entry, page)).join("\n");
         const widgets = project.items
           .filter((item) => itemVisibleOnPage(item, page.id))
           .map((item) => {
             const instance = item.master ? `${item.id}--${page.id}` : item.id;
             const hiddenStyle = `display:${item.hidden || item.systemManaged ? "none" : "block"};${item.systemManaged ? "pointer-events:none;" : ""}`;
             return item.componentId
-              ? `<div class="scoped-widget" data-instance="${instance}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};${hiddenStyle}${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}${perButtonAssetStyle(item, instance)}</div>`
-              : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};${hiddenStyle}${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`;
+              ? `<div class="scoped-widget" data-instance="${instance}" data-subpage="${escapeAttr(item.subpageId || "")}" data-subpage-page="${escapeAttr(item.subpagePageId || "")}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};${subpageClipStyle(item)}${hiddenStyle}${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}${perButtonAssetStyle(item, instance)}</div>`
+              : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" data-subpage="${escapeAttr(item.subpageId || "")}" data-subpage-page="${escapeAttr(item.subpagePageId || "")}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};${subpageClipStyle(item)}${hiddenStyle}${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`;
           })
           .join("\n");
-        return `<section class="page" id="${page.id}" style="background-color:${page.background};${pageBackgroundStyle(page)}">${widgets}</section>`;
+        return `<section class="page" id="${page.id}" style="background-color:${page.background};${pageBackgroundStyle(page)}">${surfaces}${widgets}</section>`;
       })
       .join("\n");
     const config = JSON.stringify(
-      project.pages.map((page) => ({
+      outputPages.map((page) => ({
         id: page.id,
         mode: page.bindingMode,
         signal:
@@ -237,12 +332,12 @@
         transitionDuration: Number(page.transitionDuration) || 350,
       })),
     );
-    const firstPage = JSON.stringify(project.pages[0].id);
+    const firstPage = JSON.stringify(outputPages[0].id);
     const diagnostics = !!project.diagnostics;
     const diagnosticMarkup = diagnostics
       ? '<aside id="ch5-diagnostics"><strong onclick="var p=this.parentElement;if(p.style.left){p.style.left=\'\';p.style.bottom=\'\';p.style.right=\'30px\';p.style.top=\'30px\'}else{p.style.right=\'\';p.style.top=\'\';p.style.left=\'30px\';p.style.bottom=\'30px\'}">CH5 Signal Diagnostics — tap here to move</strong><pre id="ch5-communication-status"></pre><pre id="ch5-diagnostic-log"></pre></aside>'
       : "";
-    const scopedItems = project.pages.flatMap((page) =>
+    const scopedItems = outputPages.flatMap((page) =>
       project.items
         .filter(
           (item) => item.componentId && itemVisibleOnPage(item, page.id),
@@ -260,7 +355,7 @@
           stylesOverride: item.componentStyles || "",
         })),
     );
-    const interactionItems = project.pages.flatMap((page) =>
+    const interactionItems = outputPages.flatMap((page) =>
       project.items
         .filter((item) => itemVisibleOnPage(item, page.id))
         .map((item) => ({
@@ -306,7 +401,7 @@
           );
         if (keys.length)
           mount = `(function(${keys.join(",")}){return (${mount})})(${keys.map((key) => JSON.stringify(data[key])).join(",")})`;
-        return `${JSON.stringify(id)}:{template:${JSON.stringify(d.template)},styles:${JSON.stringify(d.styles)},signals:${JSON.stringify(d.signals)},data:${JSON.stringify(data)},scrollAxes:${JSON.stringify(d.scrollReturnAxes || [])},mount:${mount}}`;
+        return `${JSON.stringify(id)}:{template:${JSON.stringify(d.template)},styles:${JSON.stringify(d.styles)},signals:${JSON.stringify(d.signals)},data:${JSON.stringify(data)},scrollAxes:${JSON.stringify(d.scrollReturnAxes || [])},itemSelector:${JSON.stringify(d.itemSelector || "")},rangeBindings:${JSON.stringify(d.rangeBindings || [])},mount:${mount}}`;
       })
       .join(",");
     const controller = `(function(){var pages=${config},items=${JSON.stringify(scopedItems)},definitions={${usedDefinitions}},optional=${JSON.stringify(optionalContent)},debug=${JSON.stringify(diagnostics)},debugLog=document.getElementById('ch5-diagnostic-log'),communicationStatus=document.getElementById('ch5-communication-status');function diag(message){if(!debug)return;var line=new Date().toLocaleTimeString()+' '+message;if(debugLog){debugLog.textContent+=line+'\\n';debugLog.scrollTop=debugLog.scrollHeight}console.log('[CH5 Diagnostic]',message)}function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});diag('Page: '+id)}function code(type){return type==='digital'?'b':type==='analog'?'n':'s'}function appearance(root,p){var glow=Math.max(0,Number(p.glowStrength)||0),radius=Math.max(0,Number(p.cornerRadius)||0),font=Math.max(0,Number(p.fontSize)||0),style=document.createElement('style');style.textContent='[data-component] .panel,[data-component] .card,[data-component] .mic-card,[data-component] .shade-card{background-color:'+p.backgroundColor+'!important;border-color:'+p.borderColor+'!important;border-radius:'+radius+'px!important;box-shadow:0 0 '+glow+'px '+p.glowColor+'!important}[data-component] button,[data-component] .load,[data-component] .shade{background-color:'+p.buttonColor+'!important;border-color:'+p.borderColor+'!important;border-radius:'+radius+'px!important}[data-component] button.active,[data-component] button.selected,[data-component] .selected,[data-component] .pressed{border-color:'+p.accentColor+'!important;box-shadow:0 0 '+glow+'px '+p.glowColor+'!important}[data-component] button,[data-component] .label,[data-component] .name,[data-component] .note,[data-component] .big,[data-component] .value,[data-component] .position,[data-component] .status,[data-component] .btn-txt,[data-component] .mic-text,[data-component] .mic-label,[data-component] .shade-name{color:'+p.textColor+'!important;'+(font?'font-size:'+font+'px!important;':'')+'}';root.appendChild(style);if(p.localText){var values=String(p.localText).split('|'),targets=root.querySelectorAll('[data-local-text],.label,.name,.note,.big,.btn-txt,.mic-label,.shade-name,button');values.forEach(function(v,i){if(targets[i]&&v.trim())targets[i].textContent=v.trim()})}}var lib=null;try{lib=window.CrComLib||(window.parent&&window.parent.CrComLib)}catch(e){diag('CrComLib lookup error: '+e.message)}if(communicationStatus){var nativeBridge=window.CommunicationInterface,bridgeMethods=nativeBridge&&['bridgeSendBooleanToNative','bridgeSendIntegerToNative','bridgeSendStringToNative'].every(function(key){return typeof nativeBridge[key]==='function'});communicationStatus.textContent=['Mode: '+(window.__composerCommunicationMode||'UNKNOWN'),'Container: '+String(window.__composerRunsInContainer),'WebXPanel active: '+String(window.__composerWebXPanelActive),'Bootstrap ready: '+String(window.__composerCommunicationReady),'Native bridge: '+(bridgeMethods?'AVAILABLE':'MISSING'),'CrComLib: '+(lib?'AVAILABLE':'MISSING'),window.__composerWebXPanelError?'Error: '+window.__composerWebXPanelError:''].filter(Boolean).join('\\n')}diag('CrComLib: '+(lib?'AVAILABLE':'MISSING'));diag('User agent: '+navigator.userAgent);function mount(item){var root=document.querySelector('[data-instance="'+item.instance+'"]'),def=definitions[item.componentId];if(!root||!def)return;root.dataset.component=item.componentId;root.innerHTML='<style>'+def.styles+'</style>'+def.template;function publishAddress(type,signal,value){diag('Publish '+code(type)+' '+signal+' = '+value);if(lib&&signal)lib.publishEvent(code(type),String(signal),value)}function subscribeAddress(type,signal,callback){diag('Subscribe '+code(type)+' '+signal);if(lib&&signal)lib.subscribeState(code(type),String(signal),function(value){diag('Feedback '+code(type)+' '+signal+' = '+JSON.stringify(value));callback(value)})}var signals={publish:function(key,value){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key];if(!spec||!binding||!binding.value){diag('Publish skipped: '+key+' has no binding');return}publishAddress(spec.type,binding.value,value)},subscribe:function(key,callback){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key];if(!spec||!binding||!binding.value)return;subscribeAddress(spec.type,binding.value,callback)},publishAddress:publishAddress,subscribeAddress:subscribeAddress,subscribeExact:subscribeAddress};def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});wireScrollReturn(root,root.closest('.widget,.scoped-widget')||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{});var visibility=optional[item.componentId],visibilityStyle=document.createElement('style');if(visibility){visibilityStyle.textContent=Object.keys(visibility).filter(function(key){var value=item.properties&&item.properties[key];return value===false||value===0||value==='0'||String(value).toLowerCase()==='false'}).map(function(key){return '[data-instance="'+item.instance+'"] '+visibility[key]+'{display:none!important}'}).join('');if(visibilityStyle.textContent)root.appendChild(visibilityStyle)}}window.addEventListener('message',function(e){if(e.data&&e.data.type==='crestron-local-page')show(e.data.page)});if(lib)pages.forEach(function(p){if(p.mode!=='none'&&p.signal)lib.subscribeState('b',String(p.signal),function(v){diag('Page feedback '+p.signal+' = '+v);if(v===true||v===1||v==='1')show(p.id)})});items.forEach(mount);show(${firstPage});})();`;
@@ -321,7 +416,7 @@
       animatedShow =
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id){tracks(entry).filter(function(c){return c.trigger==='page-enter'}).forEach(function(c){play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c)});runActions(entry,'page-enter')}});diag('Page: '+id)}",
       layeredController = controller
-        .replace("(function(){var pages=", `(function(){${wireCipText.toString()};${global.ComposerRuntime.wireScrollReturn.toString()};var pages=`)
+        .replace("(function(){var pages=", `(function(){${wireCipText.toString()};${wireItemVisibility.toString()};${global.ComposerRuntime.wireScrollReturn.toString()};var pages=`)
         .replace(
           "function mount(item){var root=document.querySelector('[data-instance=\"'+item.instance+'\"]'),def=definitions[item.componentId];",
           "function mount(item){var holder=document.querySelector('[data-instance=\"'+item.instance+'\"]'),root=holder&&holder.querySelector('.scoped-preview'),def=definitions[item.componentId];",
@@ -395,7 +490,7 @@
         )
         .replace(
           "def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});wireScrollReturn(root,root.closest('.widget,.scoped-widget')||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{})",
-          "try{def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}})}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}wireCipText(root,signals);wireScrollReturn(root,holder||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{})",
+          "try{def.mount(root,{signals:signals,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});wireItemVisibility(root,def,item.properties||{},signals)}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}wireCipText(root,signals);wireScrollReturn(root,holder||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{})",
         )
         .replace(
           "window.addEventListener('message',function(e){",
@@ -433,8 +528,14 @@
           "var legacyCollection=structured.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/);if(prefix&&legacyCollection){structured=prefix+'.'+legacyCollection[1]+legacyCollection[2]+'.'+legacyCollection[3];prefix=''}if(prefix&&structured.indexOf('.')>=0)",
         ),
       safeController = restoredController.replace(/<\/script/gi, "<\\/script");
+    const subpageVisibilityConfigs = (project.subpages || []).flatMap((entry) =>
+      outputPages.filter((page) => page.id !== entry.sourcePageId && !(entry.excludedPages || []).includes(page.id) && (!entry.includedPages?.length || entry.includedPages.includes(page.id))).map((page) => {
+        const resolved = resolveSubpage(entry, page.id);
+        return resolved.visibilityEnabled && resolved.visibility ? { id: entry.id, pageId: page.id, signal: resolved.visibility } : null;
+      }).filter(Boolean));
+    const subpageVisibilityRuntime = `(function(){var configs=${JSON.stringify(subpageVisibilityConfigs)};var lib=null;try{lib=window.CrComLib||(window.parent&&window.parent.CrComLib)}catch(e){};if(!lib)return;configs.forEach(function(config){lib.subscribeState('b',String(config.signal),function(value){var visible=value===true||value===1||value==='1';document.querySelectorAll('[data-subpage="'+config.id+'"][data-subpage-page="'+config.pageId+'"]').forEach(function(element){element.style.visibility=visible?'visible':'hidden'})})})})();`;
     const communicationBootstrap = `(async function startComposerCommunication(){try{var bundle=window.WebXPanel;if(!bundle||typeof bundle.getWebXPanel!=='function')throw new Error('WebXPanel runtime did not load');var inContainer=typeof bundle.runsInContainerApp==='function'&&bundle.runsInContainerApp();var api=bundle.getWebXPanel(!inContainer),panel=api.WebXPanel&&(api.WebXPanel.default||api.WebXPanel);window.__composerWebXPanel=api;window.__composerRunsInContainer=inContainer;window.__composerWebXPanelActive=!!api.isActive;window.__composerCommunicationMode=inContainer?'CH5 Desktop native container':(api.isActive?'Web XPanel':'touch panel');if(!inContainer&&api.isActive&&panel&&typeof panel.initialize==='function'){var params={},search=new URLSearchParams(window.location.search),saved={};search.forEach(function(value,key){params[String(key).toLowerCase()]=value});try{var response=await fetch('assets/data/project-config.json',{cache:'no-store'});if(response.ok){var projectConfig=await response.json();saved=projectConfig&&projectConfig.config&&projectConfig.config.controlSystem||{};}}catch(configError){console.warn('[Composer communication] Project configuration could not be read:',configError);}var configuration={ipId:params.ipid||saved.ipId||'0x03'},host=params.host||saved.host||'';if(host)configuration.host=host;if(params.port||saved.port)configuration.port=Number(params.port||saved.port);if(params.roomid||saved.roomId)configuration.roomId=params.roomid||saved.roomId;if(params.tokensource||saved.tokenSource)configuration.tokenSource=params.tokensource||saved.tokenSource;if(params.tokenurl||saved.tokenUrl)configuration.tokenUrl=params.tokenurl||saved.tokenUrl;if(params.authtoken||saved.authToken)configuration.authToken=params.authtoken||saved.authToken;window.__composerWebXPanelConfiguration=configuration;panel.initialize(configuration);}if(panel&&api.WebXPanelEvents&&typeof panel.addEventListener==='function'){Object.keys(api.WebXPanelEvents).forEach(function(key){var eventName=api.WebXPanelEvents[key];panel.addEventListener(eventName,function(event){var detail=event&&event.detail||null;window.__composerWebXPanelLastEvent={name:key,detail:detail,time:new Date().toISOString()};console.log('[WebXPanel]',key,detail||'');if(key==='NOT_AUTHORIZED'&&detail&&detail.redirectTo){window.__composerAuthenticationRedirect=detail.redirectTo;setTimeout(function(){window.location.replace(detail.redirectTo)},3000);}});});}window.__composerCommunicationReady=true;console.log('[Composer communication]',window.__composerCommunicationMode,window.__composerWebXPanelConfiguration||'');}catch(error){window.__composerCommunicationReady=false;window.__composerWebXPanelError=String(error&&error.message||error);console.error('CH5 communication initialization failed:',error);}})();`;
-    return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}.scoped-preview{display:block;width:100%;height:100%;min-width:0;min-height:0}.widget-asset-overlay-selected{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-normal{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-selected{display:block}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"][data-graphic-mode="background"]{background-image:var(--selected-graphic-url)!important}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:620px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{display:block;color:#55f2d7;pointer-events:auto;touch-action:manipulation}#ch5-communication-status{margin:10px 0;padding:10px;border:1px solid #55f2d7;color:#fff;white-space:pre-wrap}#ch5-diagnostic-log{height:360px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="ch5-webxpanel.js"><\/script><script>${communicationBootstrap}<\/script><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${safeController}<\/script></body></html>`;
+    return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}.scoped-preview{display:block;width:100%;height:100%;min-width:0;min-height:0}.widget-asset-overlay-selected{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-normal{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-selected{display:block}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"][data-graphic-mode="background"]{background-image:var(--selected-graphic-url)!important}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:620px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{display:block;color:#55f2d7;pointer-events:auto;touch-action:manipulation}#ch5-communication-status{margin:10px 0;padding:10px;border:1px solid #55f2d7;color:#fff;white-space:pre-wrap}#ch5-diagnostic-log{height:360px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="ch5-webxpanel.js"><\/script><script>${communicationBootstrap}<\/script><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${safeController};${subpageVisibilityRuntime}<\/script></body></html>`;
   }
   global.ComposerExporter = { exportProject };
 })(window);
