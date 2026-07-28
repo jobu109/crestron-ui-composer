@@ -1,6 +1,6 @@
 (function (global) {
   "use strict";
-  const CURRENT_VERSION = 5;
+  const CURRENT_VERSION = 7;
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -40,7 +40,26 @@
       ? project.activePage
       : project.pages[0].id;
     project.items = Array.isArray(project.items) ? project.items : [];
+    if (
+      !project.items.some(
+        (item) => item.componentId === "toast-queue" && item.systemManaged === true,
+      )
+    )
+      project.items.push({
+        id: "system-toast-queue",
+        componentId: "toast-queue",
+        name: "Toast Notifications",
+        master: true,
+        systemManaged: true,
+        pageId: project.pages[0].id,
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 140,
+        z: 0,
+      });
     project.items.forEach((item) => {
+      item.systemManaged = item.systemManaged === true || item.systemManaged === "true";
       item.pageId ||= project.pages[0].id;
       item.properties ||= {};
       item.signalBindings ||= {};
@@ -61,6 +80,9 @@
       };
       item.locked = item.locked === true || item.locked === "true";
       item.hidden = item.hidden === true || item.hidden === "true";
+      item.excludedPages = Array.isArray(item.excludedPages)
+        ? item.excludedPages.filter((id) => typeof id === "string")
+        : [];
       if (item.componentId === "rolling-menu") {
         ["pressBase", "feedbackBase", "labelBase"].forEach((key) => {
           const value = String(item.properties[key] || "");
@@ -103,6 +125,8 @@
     if (fromVersion < 3) notes.push("Normalized component state, assets, and contract metadata.");
     if (fromVersion < 4) notes.push("Added action workflows, extended themes, and custom-component metadata.");
     if (fromVersion < 5) notes.push("Added responsive anchors and per-panel layout overrides.");
+    if (fromVersion < 6) notes.push("Added per-page visibility overrides for global components.");
+    if (fromVersion < 7) notes.push("Added the project-wide Toast Notifications system component.");
     project.version = CURRENT_VERSION;
     return {
       project,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "categories": ["Standard Buttons", "Toggle Buttons", "Advanced Buttons", "Sliders & Levels", "Navigation & Menus", "Lists & Selectors", "Status & Information", "Multi-Devices", "Text & Input", "Other"],
+  "categories": ["Standard Buttons", "Toggle Buttons", "Advanced Buttons", "Sliders & Levels", "Navigation & Menus", "Lists & Selectors", "Status & Information", "Multi-Devices", "Text & Input", "Visual Only"],
   "components": [
     {"file":"blankButton.html","componentId":"blank-button","runtime":"scoped","name":"Blank Button","category":"Standard Buttons","width":120,"height":120},
     {"file":"ButtonStandard.html","componentId":"standard-button","runtime":"scoped","name":"Standard Button","category":"Standard Buttons","width":220,"height":100},
@@ -57,9 +57,12 @@
     {"file":"singleShadeControl.html","componentId":"single-shade-control","runtime":"scoped","name":"Single Shade Control","category":"Sliders & Levels","width":170,"height":360},
     {"file":"singleMicControl.html","componentId":"single-mic-control","runtime":"scoped","name":"Single Mic Control","category":"Sliders & Levels","width":220,"height":340},
     {"file":"textBlock.html","componentId":"text-block","runtime":"scoped","name":"Text Block","category":"Text & Input","width":280,"height":90},
+    {"file":"textBlockVertical.html","componentId":"vertical-text-block","runtime":"scoped","name":"Vertical Text Block","category":"Text & Input","width":90,"height":280},
     {"file":"textScramble.html","componentId":"text-scramble","runtime":"scoped","name":"Text Scramble","category":"Text & Input","width":420,"height":100},
     {"file":"ScrollingHorizontalText.html","componentId":"horizontal-scrolling-text","runtime":"scoped","name":"Horizontal Scrolling Text","category":"Text & Input","width":520,"height":90},
     {"file":"ScrollingVerticalText.html","componentId":"vertical-scrolling-text","runtime":"scoped","name":"Vertical Scrolling Text","category":"Text & Input","width":260,"height":240},
+    {"file":"TypewriterHorizontalText.html","componentId":"horizontal-typewriter-text","runtime":"scoped","name":"Horizontal Typewriter Text","category":"Text & Input","width":520,"height":90},
+    {"file":"TypewriterVerticalText.html","componentId":"vertical-typewriter-text","runtime":"scoped","name":"Vertical Typewriter Text","category":"Text & Input","width":260,"height":240},
     {"file":"carouselHorizontal.html","componentId":"horizontal-carousel","runtime":"scoped","name":"Horizontal Carousel","category":"Lists & Selectors","width":520,"height":220},
     {"file":"carouselVertical.html","componentId":"vertical-carousel","runtime":"scoped","name":"Vertical Carousel","category":"Lists & Selectors","width":280,"height":420},
     {"file":"swipingCards.html","componentId":"swiping-cards","runtime":"scoped","name":"Swiping Cards","category":"Lists & Selectors","width":360,"height":430},
@@ -76,6 +79,7 @@
     {"file":"splitButton.html","componentId":"split-button","runtime":"scoped","name":"Split Button","category":"Navigation & Menus","width":360,"height":220},
     {"file":"rollingMenu.html","componentId":"rolling-menu","runtime":"scoped","name":"Rolling Menu","category":"Lists & Selectors","width":340,"height":420},
     {"file":"buttonListCheckBox.html","componentId":"checkbox-button-list","runtime":"scoped","name":"Checkbox Button List","category":"Lists & Selectors","width":360,"height":420},
+    {"file":"selectAllChecklist.html","componentId":"select-all-checklist","runtime":"scoped","name":"Select-All Checklist","category":"Lists & Selectors","width":260,"height":340},
     {"file":"buttonListHorizontal.html","componentId":"horizontal-button-list","runtime":"scoped","name":"Horizontal Button List","category":"Lists & Selectors","width":520,"height":130},
     {"file":"buttonListVertical.html","componentId":"vertical-button-list","runtime":"scoped","name":"Vertical Button List","category":"Lists & Selectors","width":300,"height":420},
     {"file":"countdownSelector.html","componentId":"countdown-selector","runtime":"scoped","name":"Countdown Selector","category":"Lists & Selectors","width":360,"height":300},
@@ -96,5 +100,8 @@
     ,{"file":"batteryGauge.html","componentId":"battery-gauge","runtime":"scoped","name":"Battery Gauge","category":"Status & Information","width":250,"height":220}
     ,{"file":"musicCard.html","componentId":"music-card","runtime":"scoped","name":"Music Card","category":"Status & Information","width":220,"height":300}
     ,{"file":"capsuleIconDots.html","componentId":"capsule-icon-dots","runtime":"scoped","name":"Capsule Icon + Dots","category":"Status & Information","width":130,"height":220}
+    ,{"file":"horizontalSeparator.html","componentId":"horizontal-separator","runtime":"scoped","name":"Horizontal Separator","category":"Visual Only","width":300,"height":24}
+    ,{"file":"verticalSeparator.html","componentId":"vertical-separator","runtime":"scoped","name":"Vertical Separator","category":"Visual Only","width":24,"height":300}
+    ,{"file":"wizardSteps.html","componentId":"wizard-steps","runtime":"scoped","name":"Wizard Steps","category":"Navigation & Menus","width":480,"height":160}
   ]
 }

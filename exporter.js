@@ -200,15 +200,20 @@
             .join("");
         return rules ? `<style>${rules.replace(/<\/style/gi, "<\\/style")}</style>` : "";
       };
+    const itemVisibleOnPage = (item, pageId) =>
+      item.master
+        ? !(item.excludedPages || []).includes(pageId)
+        : item.pageId === pageId;
     const pages = project.pages
       .map((page) => {
         const widgets = project.items
-          .filter((item) => item.pageId === page.id || item.master)
+          .filter((item) => itemVisibleOnPage(item, page.id))
           .map((item) => {
             const instance = item.master ? `${item.id}--${page.id}` : item.id;
+            const hiddenStyle = `display:${item.hidden || item.systemManaged ? "none" : "block"};${item.systemManaged ? "pointer-events:none;" : ""}`;
             return item.componentId
-              ? `<div class="scoped-widget" data-instance="${instance}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}${perButtonAssetStyle(item, instance)}</div>`
-              : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};display:${item.hidden ? "none" : "block"};${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`;
+              ? `<div class="scoped-widget" data-instance="${instance}" data-graphic-mode="${item.graphicAssetMode || "none"}" data-asset-selected="false" data-has-selected-graphic="${assetUrl(item.selectedGraphicAsset) ? "true" : "false"}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};${hiddenStyle}${backgroundStyle(item.backgroundAsset)}${graphicBackgroundStyle(item)}${selectedGraphicStyle(item)}${propertyStyle(item.properties)}"><div class="scoped-preview"></div>${graphicOverlay(item)}${graphicOverlay(item, true)}${repeatedGraphicStyle(item, instance)}${perButtonAssetStyle(item, instance)}</div>`
+              : `<iframe data-instance="${item.master ? `${item.id}--${page.id}` : item.id}" title="${escapeAttr(item.name)}" style="position:absolute;left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;border:0;z-index:${item.z};${hiddenStyle}${backgroundStyle(item.backgroundAsset)}" srcdoc="${escapeAttr(widgetDocument(item.source, item.targetPage))}"></iframe>`;
           })
           .join("\n");
         return `<section class="page" id="${page.id}" style="background-color:${page.background};${pageBackgroundStyle(page)}">${widgets}</section>`;
@@ -234,8 +239,7 @@
     const scopedItems = project.pages.flatMap((page) =>
       project.items
         .filter(
-          (item) =>
-            item.componentId && (item.pageId === page.id || item.master),
+          (item) => item.componentId && itemVisibleOnPage(item, page.id),
         )
         .map((item) => ({
           instance: item.master ? `${item.id}--${page.id}` : item.id,
@@ -252,7 +256,7 @@
     );
     const interactionItems = project.pages.flatMap((page) =>
       project.items
-        .filter((item) => item.pageId === page.id || item.master)
+        .filter((item) => itemVisibleOnPage(item, page.id))
         .map((item) => ({
           instance: item.master ? `${item.id}--${page.id}` : item.id,
           pageId: page.id,

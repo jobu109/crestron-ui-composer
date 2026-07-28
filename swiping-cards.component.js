@@ -211,6 +211,40 @@
         max: 1500,
         defaultValue: 300,
       },
+      {
+        key: "showDots",
+        name: "Show page dots",
+        type: "checkbox",
+        defaultValue: true,
+      },
+      {
+        key: "dotsPosition",
+        name: "Dots position",
+        type: "select",
+        options: [
+          { value: "top", label: "Top" },
+          { value: "bottom", label: "Bottom" },
+        ],
+        defaultValue: "bottom",
+      },
+      {
+        key: "dotColor",
+        name: "Dot color",
+        type: "color",
+        defaultValue: "#ffffff",
+      },
+      {
+        key: "dotOpacity",
+        name: "Inactive dot opacity",
+        type: "number",
+        defaultValue: 35,
+      },
+      {
+        key: "activeDotColor",
+        name: "Active dot color",
+        type: "color",
+        defaultValue: "#04dcb9",
+      },
     ],
     signals: [
       {
@@ -266,18 +300,24 @@
         countKey: "defaultCardCount",
       },
     ],
-    template: '<div class="swipe-stage"><div class="swipe-deck"></div></div>',
+    template: '<div class="swipe-stage"><div class="swipe-deck"></div><div class="swipe-dots"></div></div>',
     styles:
       '[data-component="swiping-cards"]{display:block;width:100%;height:100%;overflow:visible;background:transparent;touch-action:none;box-sizing:border-box}' +
       '[data-component="swiping-cards"] *{box-sizing:border-box}' +
-      '[data-component="swiping-cards"] .swipe-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:visible}' +
-      '[data-component="swiping-cards"] .swipe-deck{position:relative;width:var(--card-width);height:var(--card-height);overflow:visible}' +
+      '[data-component="swiping-cards"] .swipe-stage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:visible}' +
+      '[data-component="swiping-cards"] .swipe-deck{position:relative;width:var(--card-width);height:var(--card-height);overflow:visible;flex:0 0 auto}' +
       '[data-component="swiping-cards"] .swipe-card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;border:1px solid var(--border-color);border-radius:var(--corner-radius);background:linear-gradient(160deg,var(--card-color),var(--card-bottom-color));box-shadow:0 10px 30px rgba(0,0,0,.42);color:var(--text-color);font:700 var(--font-size)/1.15 "Segoe UI",sans-serif;text-align:center;cursor:grab;user-select:none;will-change:transform;transform-origin:50% 80%;transition:transform var(--animation-duration) ease,box-shadow var(--animation-duration) ease}' +
       '[data-component="swiping-cards"] .swipe-card.active{background:linear-gradient(160deg,var(--selected-card-color),var(--card-bottom-color));color:var(--selected-text-color);box-shadow:0 10px 30px rgba(0,0,0,.42),0 0 var(--glow-strength) var(--glow-color)}' +
-      '[data-component="swiping-cards"] .swipe-card.dragging{cursor:grabbing;transition:none}',
+      '[data-component="swiping-cards"] .swipe-card.dragging{cursor:grabbing;transition:none}' +
+      '[data-component="swiping-cards"] .swipe-dots{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 0;z-index:5}' +
+      '[data-component="swiping-cards"] .swipe-dot{width:clamp(6px,1.6vmin,10px);height:clamp(6px,1.6vmin,10px);border-radius:50%;border:0;padding:0;background:var(--dot-color);cursor:pointer;transition:width .2s ease,border-radius .2s ease,background .2s ease}' +
+      '[data-component="swiping-cards"] .swipe-dot.active{width:clamp(18px,4.5vmin,28px);border-radius:5px;background:var(--active-dot-color)}' +
+      '[data-component="swiping-cards"][data-dots-pos="top"] .swipe-dots{order:-1}',
     mount(root, context) {
       const p = context.options.properties || {},
         deck = root.querySelector(".swipe-deck"),
+        dotsEl = root.querySelector(".swipe-dots"),
+        showDots = p.showDots !== false && p.showDots !== 0 && p.showDots !== "0" && String(p.showDots).toLowerCase() !== "false",
         clamp = (value, minimum, maximum) =>
           Math.max(minimum, Math.min(maximum, value)),
         truthy = (value) =>
@@ -294,6 +334,20 @@
         disposed = false,
         releaseTimer = 0;
       while (labels.length < 20) labels.push("");
+      function rgba(hex, opacity) {
+        const n = parseInt(String(hex || "#000000").replace("#", ""), 16);
+        return (
+          "rgba(" +
+          ((n >> 16) & 255) +
+          "," +
+          ((n >> 8) & 255) +
+          "," +
+          (n & 255) +
+          "," +
+          Math.max(0, Math.min(100, Number(opacity) || 0)) / 100 +
+          ")"
+        );
+      }
       root.style.position = "relative";
       root.style.setProperty(
         "--card-width",
@@ -335,6 +389,13 @@
         "--animation-duration",
         clamp(Number(p.animationDuration) || 300, 100, 1500) + "ms",
       );
+      root.style.setProperty(
+        "--dot-color",
+        rgba(p.dotColor || "#fff", p.dotOpacity ?? 35),
+      );
+      root.style.setProperty("--active-dot-color", p.activeDotColor || "#04dcb9");
+      root.dataset.dotsPos = p.dotsPosition === "top" ? "top" : "bottom";
+      dotsEl.style.display = showDots ? "" : "none";
 
       function publishPress(index, value) {
         context.signals.publishAddress(
@@ -432,6 +493,18 @@
             card.style.transform = `translate(${-depth * horizontalOffset}px,${depth * offset}px) scale(${Math.max(0.72, 1 - depth * 0.055)})`;
         });
       }
+      function renderDots() {
+        dotsEl.innerHTML = "";
+        if (!showDots) return;
+        for (let index = 0; index < count; index++) {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "swipe-dot" + (index === current ? " active" : "");
+          dot.setAttribute("aria-label", "Go to card " + (index + 1));
+          dot.onclick = () => select(index, true);
+          dotsEl.appendChild(dot);
+        }
+      }
       function render() {
         deck.innerHTML = "";
         for (let index = 0; index < count; index++) {
@@ -443,6 +516,7 @@
           deck.appendChild(card);
         }
         layoutStack(1, false);
+        renderDots();
       }
       context.signals.subscribe("feedback", (value) => select(value, false));
       root.addEventListener("composer-scroll-return", (event) => {

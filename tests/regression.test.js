@@ -89,6 +89,53 @@ run("responsive anchors and panel overrides migrate safely", () => {
   assert.deepEqual(migrated.items[0].deviceOverrides, {});
 });
 
+run("global components backfill per-page visibility overrides", () => {
+  const migrated = ComposerProjectMigrations.migrate({
+    version: 5,
+    width: 1920,
+    height: 1200,
+    pages: [
+      { id: "home", name: "Home" },
+      { id: "splash", name: "Splash" },
+    ],
+    activePage: "home",
+    items: [
+      { id: "toast", pageId: "home", master: true, x: 0, y: 0, w: 240, h: 140 },
+    ],
+  }).project;
+  assert.deepEqual(migrated.items[0].excludedPages, []);
+  assert.equal(migrated.version, ComposerProjectMigrations.CURRENT_VERSION);
+});
+
+run("legacy projects gain exactly one system Toast Notifications item", () => {
+  const legacy = ComposerProjectMigrations.migrate({
+    version: 5,
+    width: 1920,
+    height: 1200,
+    pages: [{ id: "home", name: "Home" }],
+    activePage: "home",
+    items: [{ id: "button", pageId: "home", name: "Button" }],
+  }).project;
+  const systemItems = legacy.items.filter(
+    (item) => item.componentId === "toast-queue" && item.systemManaged,
+  );
+  assert.equal(systemItems.length, 1);
+  assert.equal(systemItems[0].master, true);
+  assert.deepEqual(systemItems[0].excludedPages, []);
+  assert.equal(legacy.version, ComposerProjectMigrations.CURRENT_VERSION);
+
+  const roundTrip = ComposerProjectMigrations.migrate(
+    JSON.parse(JSON.stringify(legacy)),
+  ).project;
+  assert.equal(
+    roundTrip.items.filter(
+      (item) => item.componentId === "toast-queue" && item.systemManaged,
+    ).length,
+    1,
+    "migrating an already-migrated project must not create a duplicate system item",
+  );
+});
+
 run("removed TSW-570 targets retain their dimensions as custom layouts", () => {
   const migrated = ComposerProjectMigrations.migrate({
     version: ComposerProjectMigrations.CURRENT_VERSION,
@@ -448,6 +495,22 @@ run(
       source.includes("data-translated-button"),
       "every detected button must receive an adapter",
     );
+    assert.ok(source.includes("function renderTranslateReview"));
+    assert.ok(source.includes("function selectedTranslateSignals"));
+    assert.ok(source.includes("function inferSnippetBehaviors"));
+    assert.ok(source.includes("function inferSnippetSuggestions"));
+    assert.ok(source.includes("function selectedTranslateInferences"));
+    assert.ok(source.includes("Generate Crestron rule"));
+    assert.ok(source.includes("function applyTranslateSuggestion"));
+    assert.ok(source.includes("data-translate-apply"));
+    assert.ok(source.includes("function refreshTranslateSimulator"));
+    assert.ok(source.includes("composer-translate-test-input"));
+    assert.ok(read("editor.html").includes('id="translate-signal-simulator"'));
+    assert.ok(read("editor.html").includes('id="translate-signal-log"'));
+    assert.ok(
+      source.includes("Auto-test signals") ||
+        read("editor.html").includes("Auto-test signals"),
+    );
     [
       "faceColor",
       "selectedFaceColor",
@@ -501,6 +564,12 @@ run("custom components support generated repeated-item contract ranges", () => {
     editor.includes("data-translated-repeat-container"),
     "Import & Translate must detect repeated sibling buttons",
   );
+  assert.ok(editor.includes("function translatedBehaviorPlan"));
+  assert.ok(editor.includes("function runTranslatedComponentAcceptance"));
+  assert.ok(editor.includes("Import & Translate behaviors validated:"));
+  assert.ok(editor.includes("translator-acceptance.html"));
+  assert.ok(editor.includes("generatedPlan.behaviors.forEach(addCustomBehaviorRow)"));
+  assert.ok(editor.includes("setCustomStateStyles(generatedPlan.stateStyles)"));
 });
 
 run(
@@ -523,6 +592,9 @@ run(
   assert.ok(editor.includes("function runCustomComponentSelfTest"));
   assert.ok(editor.includes("function customComponentDependencyReport"));
   assert.ok(editor.includes("function restoreCustomComponentDependencies"));
+  assert.ok(editor.includes("function createCustomComponentPackage"));
+  assert.ok(editor.includes("function parseCustomComponentPackage"));
+  assert.ok(editor.includes("Custom package assets round-tripped:"));
   assert.ok(editor.includes("version: 3"));
   assert.ok(editor.includes("stateStyles: collectCustomStateStyles()"));
   assert.ok(editor.includes("function addCustomBehaviorPreset"));

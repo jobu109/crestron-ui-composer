@@ -206,17 +206,53 @@
         type: "number",
         defaultValue: 20,
       },
+      {
+        key: "showDots",
+        name: "Show page dots",
+        type: "checkbox",
+        defaultValue: true,
+      },
+      {
+        key: "dotsPosition",
+        name: "Dots position",
+        type: "select",
+        options: [
+          { value: "left", label: "Left" },
+          { value: "right", label: "Right" },
+        ],
+        defaultValue: "right",
+      },
+      {
+        key: "dotColor",
+        name: "Dot color",
+        type: "color",
+        defaultValue: "#ffffff",
+      },
+      {
+        key: "dotOpacity",
+        name: "Inactive dot opacity",
+        type: "number",
+        defaultValue: 35,
+      },
+      {
+        key: "activeDotColor",
+        name: "Active dot color",
+        type: "color",
+        defaultValue: "#04aa8e",
+      },
     ],
     template:
-      '<div class="glass-carousel-container"><div class="carousel-controls"><button class="glass-carousel-prev" type="button">&#9650;</button><button class="glass-carousel-next" type="button">&#9660;</button></div><div class="glass-track-wrapper"><div class="glass-track"></div></div></div>',
+      '<div class="glass-carousel-container"><div class="glass-track-wrapper"><div class="carousel-controls"><button class="glass-carousel-prev" type="button">&#9650;</button><button class="glass-carousel-next" type="button">&#9660;</button></div><div class="glass-track"></div></div><div class="carousel-dots"></div></div>',
     styles:
-      '[data-component="vertical-carousel"]{display:block;width:100%;height:100%;overflow:hidden;background:transparent;touch-action:none;box-sizing:border-box}[data-component="vertical-carousel"] *{box-sizing:border-box}[data-component="vertical-carousel"] .glass-carousel-container{position:absolute;inset:0;overflow:hidden;display:flex;align-items:center;justify-content:center}[data-component="vertical-carousel"] .carousel-controls{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:clamp(8px,4%,32px) 0;z-index:5;pointer-events:none}[data-component="vertical-carousel"] .carousel-controls button{width:clamp(36px,14vmin,60px);height:clamp(36px,14vmin,60px);border:0;border-radius:50%;background:var(--arrow-bg);color:var(--arrow-color);font-size:clamp(20px,8vmin,34px);cursor:pointer;backdrop-filter:blur(10px);box-shadow:0 0 12px rgba(4,170,142,.4);pointer-events:auto}[data-component="vertical-carousel"] .glass-track-wrapper{width:100%;height:100%;overflow:hidden;position:relative}[data-component="vertical-carousel"] .glass-track{display:flex;flex-direction:column;align-items:center;transition:transform .4s ease-in-out;will-change:transform}[data-component="vertical-carousel"] .glass-slide{width:min(70%,340px);height:min(32%,180px);min-width:120px;min-height:90px;margin:clamp(8px,2%,18px) 0;background:var(--slide-color);border:1px solid var(--border-color);backdrop-filter:blur(16px);border-radius:18px;box-shadow:inset 0 0 20px rgba(255,255,255,.15),0 4px 24px rgba(0,0,0,.4);flex-shrink:0;transition:box-shadow .3s ease,transform .3s ease;display:flex;align-items:center;justify-content:center}[data-component="vertical-carousel"] .glass-slide.active{box-shadow:0 0 20px var(--active-glow),0 0 40px var(--active-glow-light);transform:scale(1.08)}[data-component="vertical-carousel"] .glass-label{color:var(--inactive-label);font-family:Segoe UI,sans-serif;font-size:clamp(16px,8vmin,34px);font-weight:600;text-align:center}[data-component="vertical-carousel"] .glass-slide.active .glass-label{color:var(--active-label)}',
+      '[data-component="vertical-carousel"]{display:block;width:100%;height:100%;overflow:hidden;background:transparent;touch-action:none;box-sizing:border-box}[data-component="vertical-carousel"] *{box-sizing:border-box}[data-component="vertical-carousel"] .glass-carousel-container{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:row}[data-component="vertical-carousel"] .carousel-controls{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:clamp(8px,4%,32px) 0;z-index:5;pointer-events:none}[data-component="vertical-carousel"] .carousel-controls button{width:clamp(36px,14vmin,60px);height:clamp(36px,14vmin,60px);border:0;border-radius:50%;background:var(--arrow-bg);color:var(--arrow-color);font-size:clamp(20px,8vmin,34px);cursor:pointer;backdrop-filter:blur(10px);box-shadow:0 0 12px rgba(4,170,142,.4);pointer-events:auto}[data-component="vertical-carousel"] .glass-track-wrapper{height:100%;flex:1 1 auto;min-width:0;overflow:hidden;position:relative}[data-component="vertical-carousel"] .glass-track{display:flex;flex-direction:column;align-items:center;transition:transform .4s ease-in-out;will-change:transform}[data-component="vertical-carousel"] .glass-slide{width:min(70%,340px);height:min(32%,180px);min-width:120px;min-height:90px;margin:clamp(8px,2%,18px) 0;background:var(--slide-color);border:1px solid var(--border-color);backdrop-filter:blur(16px);border-radius:18px;box-shadow:inset 0 0 20px rgba(255,255,255,.15),0 4px 24px rgba(0,0,0,.4);flex-shrink:0;transition:box-shadow .3s ease,transform .3s ease;display:flex;align-items:center;justify-content:center}[data-component="vertical-carousel"] .glass-slide.active{box-shadow:0 0 20px var(--active-glow),0 0 40px var(--active-glow-light);transform:scale(1.08)}[data-component="vertical-carousel"] .glass-label{color:var(--inactive-label);font-family:Segoe UI,sans-serif;font-size:clamp(16px,8vmin,34px);font-weight:600;text-align:center}[data-component="vertical-carousel"] .glass-slide.active .glass-label{color:var(--active-label)}[data-component="vertical-carousel"] .carousel-dots{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:0 6px;z-index:5}[data-component="vertical-carousel"] .carousel-dot{width:clamp(6px,1.6vmin,10px);height:clamp(6px,1.6vmin,10px);border-radius:50%;border:0;padding:0;background:var(--dot-color);cursor:pointer;transition:height .2s ease,border-radius .2s ease,background .2s ease}[data-component="vertical-carousel"] .carousel-dot.active{height:clamp(18px,4.5vmin,28px);border-radius:5px;background:var(--active-dot-color)}[data-component="vertical-carousel"][data-dots-pos="left"] .carousel-dots{order:-1}',
     mount(root, context) {
       const p = context.options.properties || {},
         track = root.querySelector(".glass-track"),
         wrapper = root.querySelector(".glass-track-wrapper"),
         prev = root.querySelector(".glass-carousel-prev"),
-        next = root.querySelector(".glass-carousel-next");
+        next = root.querySelector(".glass-carousel-next"),
+        dotsEl = root.querySelector(".carousel-dots"),
+        showDots = p.showDots !== false && p.showDots !== 0 && p.showDots !== "0" && String(p.showDots).toLowerCase() !== "false";
       let labels = String(
           p.slideLabels ?? "Source 1|Source 2|Source 3|Source 4|Source 5",
         ).split("|"),
@@ -265,12 +301,36 @@
         "--arrow-bg",
         rgba(p.arrowBackground || "#fff", p.arrowOpacity ?? 20),
       );
+      root.style.setProperty(
+        "--dot-color",
+        rgba(p.dotColor || "#fff", p.dotOpacity ?? 35),
+      );
+      root.style.setProperty("--active-dot-color", p.activeDotColor || "#04aa8e");
+      root.dataset.dotsPos = p.dotsPosition === "left" ? "left" : "right";
+      dotsEl.style.display = showDots ? "" : "none";
       function address(base, increment, index) {
         if ((p.bindingMode || "contract") === "join")
           return String((Number(base) || 0) + index * (Number(increment) || 1));
         return String(base || "")
           .replace(/\{n\}/g, String(index + 1))
           .replace(/\{index\}/g, String(index));
+      }
+      function renderDots(count) {
+        dotsEl.innerHTML = "";
+        if (!showDots) return;
+        for (let index = 0; index < count; index++) {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "carousel-dot" + (index === current ? " active" : "");
+          dot.setAttribute("aria-label", "Go to slide " + (index + 1));
+          dot.onclick = () => select(index, true);
+          dotsEl.appendChild(dot);
+        }
+      }
+      function syncDotsActive() {
+        [...dotsEl.children].forEach((dot, index) =>
+          dot.classList.toggle("active", index === current),
+        );
       }
       function update() {
         if (!slides.length) return;
@@ -286,6 +346,7 @@
         slides.forEach((x) => x.classList.remove("active"));
         current = index;
         slides[current].classList.add("active");
+        syncDotsActive();
         update();
         root.dispatchEvent(
           new CustomEvent("composer-scroll-position", {
@@ -317,6 +378,7 @@
           track.appendChild(slide);
         }
         slides = [...track.children];
+        renderDots(count);
         requestAnimationFrame(update);
       }
       function move(amount) {

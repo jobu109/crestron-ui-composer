@@ -45,9 +45,25 @@ componentScripts.forEach((file) =>
 
 const manifest = JSON.parse(read("components.manifest.json")),
   manifestIds = new Set(manifest.components.map((entry) => entry.componentId)),
-  definitions = ComposerRuntime.definitions;
-assert.equal(definitions.size, manifestIds.size, "Manifest and runtime component counts differ");
+  definitions = ComposerRuntime.definitions,
+  // Registered components that are intentionally not palette-listed: they're only ever
+  // auto-created as a hidden system item (see ensureToastQueueItem() in editor.js), never
+  // dragged onto a page by hand.
+  internalOnlyComponents = new Set(["toast-queue"]);
+assert.equal(
+  definitions.size,
+  manifestIds.size + internalOnlyComponents.size,
+  "Manifest and runtime component counts differ",
+);
 manifestIds.forEach((id) => assert.ok(definitions.has(id), `Manifest component ${id} was not registered`));
+internalOnlyComponents.forEach((id) =>
+  assert.ok(definitions.has(id), `Internal-only component ${id} was not registered`),
+);
+for (const id of definitions.keys())
+  assert.ok(
+    manifestIds.has(id) || internalOnlyComponents.has(id),
+    `Registered component ${id} is neither palette-listed nor declared internal-only`,
+  );
 assert.equal(
   definitions.get("lighting-control").rangeBindings.find((binding) => binding.baseKey === "feedbackBase")?.type,
   "analog",

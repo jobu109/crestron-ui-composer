@@ -161,13 +161,49 @@
         type: "number",
         defaultValue: 28,
       },
+      {
+        key: "showDots",
+        name: "Show page dots",
+        type: "checkbox",
+        defaultValue: true,
+      },
+      {
+        key: "dotsPosition",
+        name: "Dots position",
+        type: "select",
+        options: [
+          { value: "left", label: "Left" },
+          { value: "right", label: "Right" },
+        ],
+        defaultValue: "right",
+      },
+      {
+        key: "dotColor",
+        name: "Dot color",
+        type: "color",
+        defaultValue: "#ffffff",
+      },
+      {
+        key: "dotOpacity",
+        name: "Inactive dot opacity",
+        type: "number",
+        defaultValue: 35,
+      },
+      {
+        key: "activeDotColor",
+        name: "Active dot color",
+        type: "color",
+        defaultValue: "#04aa8e",
+      },
     ],
-    template: '<div class="rm-root"><div class="rm-items"></div></div>',
+    template: '<div class="rm-root"><div class="rm-items"></div><div class="rm-dots"></div></div>',
     styles:
-      '[data-component="rolling-menu"],[data-component="rolling-menu"] *{box-sizing:border-box}[data-component="rolling-menu"]{display:block;width:100%;height:100%;background:transparent}[data-component="rolling-menu"] .rm-root{position:relative;width:100%;height:100%;overflow:hidden;perspective:1000px;touch-action:none}[data-component="rolling-menu"] .rm-items{width:100%;height:100%;position:relative;transform-style:preserve-3d}[data-component="rolling-menu"] .rm-item{position:absolute;top:50%;left:1%;width:98%;height:clamp(42px,14%,104px);padding:0 16px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--item-color) 65%,transparent);border:1px solid rgba(255,255,255,.24);border-radius:10px;font:700 var(--text-size-px)/1 "Segoe UI",sans-serif;color:var(--text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backface-visibility:hidden;transition:.2s;cursor:pointer}.rm-item.active{background:color-mix(in srgb,var(--active-color) 68%,transparent);border-color:var(--active-color);text-shadow:0 0 10px var(--text-color),0 0 20px var(--text-color);box-shadow:0 0 20px var(--glow-color);z-index:10}',
+      '[data-component="rolling-menu"],[data-component="rolling-menu"] *{box-sizing:border-box}[data-component="rolling-menu"]{display:block;width:100%;height:100%;background:transparent}[data-component="rolling-menu"] .rm-root{position:relative;width:100%;height:100%;overflow:hidden;perspective:1000px;touch-action:none;display:flex;flex-direction:row}[data-component="rolling-menu"] .rm-items{height:100%;flex:1 1 auto;min-width:0;position:relative;transform-style:preserve-3d}[data-component="rolling-menu"] .rm-item{position:absolute;top:50%;left:1%;width:98%;height:clamp(42px,14%,104px);padding:0 16px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--item-color) 65%,transparent);border:1px solid rgba(255,255,255,.24);border-radius:10px;font:700 var(--text-size-px)/1 "Segoe UI",sans-serif;color:var(--text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backface-visibility:hidden;transition:.2s;cursor:pointer}.rm-item.active{background:color-mix(in srgb,var(--active-color) 68%,transparent);border-color:var(--active-color);text-shadow:0 0 10px var(--text-color),0 0 20px var(--text-color);box-shadow:0 0 20px var(--glow-color);z-index:10}[data-component="rolling-menu"] .rm-dots{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:0 6px;z-index:5}[data-component="rolling-menu"] .rm-dot{width:clamp(6px,1.6vmin,10px);height:clamp(6px,1.6vmin,10px);border-radius:50%;border:0;padding:0;background:var(--dot-color);cursor:pointer;transition:height .2s ease,border-radius .2s ease,background .2s ease}[data-component="rolling-menu"] .rm-dot.active{height:clamp(18px,4.5vmin,28px);border-radius:5px;background:var(--active-dot-color)}[data-component="rolling-menu"][data-dots-pos="left"] .rm-dots{order:-1}',
     mount(root, context) {
       const p = context.options.properties || {},
         host = root.querySelector(".rm-items"),
+        dotsEl = root.querySelector(".rm-dots"),
+        showDots = p.showDots !== false && p.showDots !== 0 && p.showDots !== "0" && String(p.showDots).toLowerCase() !== "false",
         labels = String(p.itemLabels || defaults).split("|");
       let count = Math.max(1, Math.min(20, Number(p.defaultCount) || 10)),
         selected = 0,
@@ -178,6 +214,44 @@
           : String(base || "")
               .replace(/\{n\}/g, i + 1)
               .replace(/\{index\}/g, i);
+      function rgba(hex, opacity) {
+        const n = parseInt(String(hex || "#000000").replace("#", ""), 16);
+        return (
+          "rgba(" +
+          ((n >> 16) & 255) +
+          "," +
+          ((n >> 8) & 255) +
+          "," +
+          (n & 255) +
+          "," +
+          Math.max(0, Math.min(100, Number(opacity) || 0)) / 100 +
+          ")"
+        );
+      }
+      root.style.setProperty(
+        "--dot-color",
+        rgba(p.dotColor || "#fff", p.dotOpacity ?? 35),
+      );
+      root.style.setProperty("--active-dot-color", p.activeDotColor || "#04aa8e");
+      root.dataset.dotsPos = p.dotsPosition === "left" ? "left" : "right";
+      dotsEl.style.display = showDots ? "" : "none";
+      function renderDots() {
+        dotsEl.innerHTML = "";
+        if (!showDots) return;
+        for (let index = 0; index < count; index++) {
+          const dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "rm-dot" + (index === selected ? " active" : "");
+          dot.setAttribute("aria-label", "Go to item " + (index + 1));
+          dot.addEventListener("click", () => set(index, true));
+          dotsEl.appendChild(dot);
+        }
+      }
+      function syncDotsActive() {
+        [...dotsEl.children].forEach((dot, index) =>
+          dot.classList.toggle("active", index === selected),
+        );
+      }
       const rotate = () => {
         const step = 360 / count;
         buttons.forEach((b, i) => {
@@ -196,6 +270,7 @@
       const set = (value, publish) => {
         selected = ((Math.round(Number(value)) % count) + count) % count;
         rotate();
+        syncDotsActive();
         root.dispatchEvent(
           new CustomEvent("composer-scroll-position", {
             detail: { axis: "vertical", value: selected },
@@ -243,6 +318,7 @@
           buttons.push(b);
         }
         rotate();
+        renderDots();
       }
       let wheel = 0;
       root.addEventListener(

@@ -719,7 +719,7 @@
     "Lists & Selectors",
     "Input",
     "Status & Information",
-    "Other",
+    "Visual Only",
   ];
   const native = window.chrome && window.chrome.webview,
     nativePending = new Map();
@@ -968,12 +968,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           behaviorStyle = behaviorCss
             ? `<style data-composer-generated>${behaviorCss}</style>`
             : "",
-          stateCss = String(context.options.definitionData.stateCss || ""),
+          stateCss = String(context.options.definitionData.stateCss || "").replace(
+            /\{\{([A-Za-z_$][\w$]*)\}\}/g,
+            (_, key) => String(properties[key] ?? ""),
+          ),
           stateStyle = stateCss
             ? `<style data-composer-states>${stateCss}</style>`
             : "",
           stateRuntime = String(
             context.options.definitionData.stateRuntime || "",
+          ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
+            String(properties[key] ?? ""),
           ),
           documentText = /<\/body>/i.test(resolved)
             ? resolved.replace(
@@ -1811,9 +1816,41 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         setTimeout(() => executeItemAction(item, action), start);
       });
   }
+  function itemVisibleOnPage(item, pageId) {
+    if (!item.master) return item.pageId === pageId;
+    return !(item.excludedPages || []).includes(pageId);
+  }
+  function ensureToastQueueItem() {
+    let item = state.items.find(
+      (entry) => entry.componentId === "toast-queue" && entry.systemManaged,
+    );
+    if (!item) {
+      item = {
+        id: uid(),
+        componentId: "toast-queue",
+        name: "Toast Notifications",
+        master: true,
+        systemManaged: true,
+        pageId: state.pages[0].id,
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 140,
+        z: 0,
+        properties: {},
+        signalBindings: {},
+        excludedPages: [],
+        actions: [],
+        locked: false,
+        hidden: false,
+      };
+      state.items.push(item);
+    }
+    return item;
+  }
   function renderItem(item) {
     let el = stage.querySelector('.widget[data-id="' + item.id + '"]');
-    if (item.pageId !== state.activePage && !item.master) {
+    if (!itemVisibleOnPage(item, state.activePage)) {
       if (el) {
         if (el.runtimeDispose) el.runtimeDispose();
         el.remove();
@@ -1829,6 +1866,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
     el.classList.toggle("locked", !!item.locked);
     el.classList.toggle("grouped", !!item.groupId);
+    el.classList.toggle("system-managed", !!item.systemManaged);
     if (el.runtimeDispose) {
       el.runtimeDispose();
       el.runtimeDispose = null;
@@ -1836,9 +1874,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     el.innerHTML = item.componentId
       ? '<div class="scoped-preview"></div><i class="handle"></i>'
       : '<iframe sandbox="allow-scripts allow-same-origin"></iframe><i class="handle"></i>';
-    el.querySelector(".handle").addEventListener("pointerdown", startResize);
-    el.style.cssText = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden ? "none" : "block"}`;
-    el.style.pointerEvents = item.actionDisabled ? "none" : "";
+    el.querySelector(".handle")?.addEventListener("pointerdown", startResize);
+    el.style.cssText = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden || item.systemManaged ? "none" : "block"}`;
+    el.style.pointerEvents = item.actionDisabled || item.systemManaged ? "none" : "";
     el.style.opacity = item.actionDisabled ? ".45" : "";
     const backgroundAsset = state.assets.find(
       (asset) => asset.id === item.backgroundAsset,
@@ -1998,6 +2036,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     wireItemInteraction(el, item);
   }
   function renderPage() {
+    ensureToastQueueItem();
     stage.innerHTML = "";
     const page = currentPage(),
       backgroundAsset = state.assets.find(
@@ -2059,7 +2098,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .trim()
         .toLowerCase(),
       pageItems = state.items
-        .filter((item) => item.pageId === state.activePage || item.master)
+        .filter(
+          (item) =>
+            (item.pageId === state.activePage || item.master) &&
+            !item.systemManaged,
+        )
         .filter(
           (item) =>
             !query ||
@@ -2841,8 +2884,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       );
     }
     if (scope === "page") {
-      items = state.items.filter(
-        (item) => item.pageId === state.activePage || item.master,
+      items = state.items.filter((item) =>
+        itemVisibleOnPage(item, state.activePage),
       );
       if (theme.enabled.page) currentPage().background = theme.page;
     }
@@ -2927,6 +2970,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const fallbackPage = state.pages[0].id;
     state.items.forEach((item) => {
       if (item.pageId === id && item.master) item.pageId = fallbackPage;
+      if (item.excludedPages?.includes(id))
+        item.excludedPages = item.excludedPages.filter((pageId) => pageId !== id);
     });
     state.items = state.items
       .filter((i) => i.pageId !== id || i.master)
@@ -2960,6 +3005,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("page-transition").value = p.transition || "none";
     $("page-transition-duration").value = p.transitionDuration || 350;
     syncPageBinding();
+    const toastQueueItem = ensureToastQueueItem();
+    $("toast-queue-page-enabled").checked = !(
+      toastQueueItem.excludedPages || []
+    ).includes(state.activePage);
   }
   function refreshTargets() {
     const target = $("prop-target"),
@@ -3011,12 +3060,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ? `${selection.length} components selected. Use the canvas commands to move, align, group, copy, lock, or delete them.`
       : "Select an item on the panel.";
     if (item && !multiple) {
+      $("system-component-banner").hidden = !item.systemManaged;
+      $("prop-position-row").hidden = !!item.systemManaged;
+      $("prop-size-row").hidden = !!item.systemManaged;
+      $("prop-z-wrap").hidden = !!item.systemManaged;
       $("prop-name").value = item.name;
       $("prop-x").value = item.x;
       $("prop-y").value = item.y;
       $("prop-w").value = item.w;
       $("prop-h").value = item.h;
       $("prop-z").value = item.z;
+      $("prop-hide-on-page-wrap").hidden = !item.master || !!item.systemManaged;
+      if (item.master)
+        $("prop-hide-on-page").checked = (item.excludedPages || []).includes(
+          state.activePage,
+        );
       ["x", "y", "w", "h", "z"].forEach(
         (key) => ($("prop-" + key).disabled = locked),
       );
@@ -3035,6 +3093,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       renderInteractionEditor(item);
       renderResponsiveEditor(item);
     } else renderSafeMarginGuide(null);
+    $("toast-queue-editor-badge").hidden = !(
+      item &&
+      !multiple &&
+      item.systemManaged
+    );
     renderLayers();
   }
   function renderSafeMarginGuide(item) {
@@ -5435,7 +5498,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("simulator-search").value = "";
     renderSignalSimulator();
     if (item) {
-      if (!item.master && item.pageId !== state.activePage) {
+      if (!itemVisibleOnPage(item, state.activePage)) {
         state.activePage = item.pageId;
         renderPage();
       }
@@ -6223,7 +6286,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         )
         .forEach((action) => {
           const sources = item.master
-            ? state.pages.map((page) => page.id)
+            ? state.pages
+                .map((page) => page.id)
+                .filter((pageId) => itemVisibleOnPage(item, pageId))
             : [item.pageId];
           sources.forEach((source) =>
             pageEnterNavigation.set(source, [
@@ -6438,6 +6503,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ),
       validTypes = new Set(["digital", "analog", "serial"]),
       validDirections = new Set(["input", "output"]);
+    const translatedAcceptance = runTranslatedComponentAcceptance();
+    errors.push(...translatedAcceptance.errors);
     definitions.forEach((definition) => {
       const properties = new Map(
         (definition.properties || []).map((property) => [
@@ -6588,6 +6655,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         `Widgets exported: ${definitions.length}`,
         `Component scripts loaded: ${state.components.length}`,
         `Current project assets validated: ${state.assets.length}`,
+        `Import & Translate behaviors validated: ${translatedAcceptance.behaviorCount}`,
+        `Custom package assets round-tripped: ${translatedAcceptance.packageAssetCount}`,
         `Temporary CH5Z size: ${Math.ceil(result.size / 1024)} KB`,
         `Crestron CLI build time: ${result.elapsedMilliseconds} ms`,
         "",
@@ -6605,6 +6674,179 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     } catch (error) {
       throw error;
     }
+  }
+
+  function runTranslatedComponentAcceptance() {
+    const fixture = `<!doctype html><html><head><style>
+      :root{--accent:#04dcb9}.fixture-button{border:1px solid #7ba7a3}
+      .fixture-fill{width:35%;height:8px;background:var(--accent)}
+      @keyframes fixturePulse{from{opacity:.5}to{opacity:1}}
+    </style></head><body>
+      <p>System level</p>
+      <button class="fixture-button"><span>Apply</span></button>
+      <input type="text" value="Room name">
+      <input type="range" min="0" max="100" value="35">
+      <div class="fixture-fill" role="progressbar" aria-valuenow="35"></div>
+      <nav><button>One</button><button>Two</button><button>Three</button></nav>
+      <script>
+        const applyButton=document.querySelector('.fixture-button');
+        applyButton.addEventListener('click',()=>applyButton.classList.toggle('active'));
+        applyButton.style.setProperty('--level',50);
+        applyButton.textContent='Ready';
+        const fixtureItems=document.querySelectorAll('nav button');
+        fixtureItems.forEach(item=>item.addEventListener('click',()=>item.classList.toggle('selected')));
+        setTimeout(()=>applyButton.classList.add('ready'),250);
+      </script>
+    </body></html>`,
+      analyzed = analyzeSnippet("translator-acceptance.html", fixture),
+      detected = analyzed.features,
+      properties = [
+        { key: "textSize" },
+        { key: "textColor" },
+        { key: "faceColor" },
+        { key: "selectedFaceColor" },
+        { key: "borderColor" },
+        { key: "selectedBorderColor" },
+        { key: "glowColor" },
+        { key: "selectedGlowColor" },
+        { key: "glowStrength" },
+        { key: "cornerRadius" },
+        ...(detected.textKeys || []).map((key) => ({ key })),
+      ],
+      signals = [
+        { key: "press" },
+        { key: "selected" },
+        { key: "name" },
+        { key: "disabled" },
+        { key: "visibility" },
+        { key: "feedback1" },
+        { key: "set1" },
+        { key: "feedback2" },
+        { key: "text" },
+      ],
+      plan = translatedBehaviorPlan(properties, signals, detected, "text"),
+      errors = [],
+      has = (source, key, action) =>
+        plan.behaviors.some(
+          (rule) =>
+            rule.source === source &&
+            rule.key === key &&
+            (!action || rule.action === action),
+        ),
+      expect = (condition, message) => {
+        if (!condition) errors.push(`Import & Translate: ${message}`);
+      };
+    expect(detected.buttonCount === 1, "standalone button detection failed");
+    expect(
+      detected.repeatedItems?.defaultCount === 3,
+      "repeated-button detection failed",
+    );
+    expect(detected.numericCount === 2, "numeric control detection failed");
+    expect(
+      detected.interactiveNumericCount === 1,
+      "interactive analog detection failed",
+    );
+    expect(
+      detected.inferredBehaviors.some((entry) => entry.kind === "event") &&
+        detected.inferredBehaviors.some((entry) => entry.kind === "class") &&
+        detected.inferredBehaviors.some((entry) => entry.kind === "css-variable") &&
+        detected.inferredBehaviors.some((entry) => entry.kind === "collection-event") &&
+        detected.inferredBehaviors.some((entry) => entry.kind === "animation"),
+      "CSS/JavaScript behavior inference failed",
+    );
+    expect(
+      detected.inferenceSuggestions.some(
+        (entry) => entry.title === "Repeated interactive collection",
+      ) &&
+        detected.inferenceSuggestions.some(
+          (entry) => entry.title === "Timer-controlled behavior",
+        ),
+      "complex behavior suggestions failed",
+    );
+    expect(has("signal-output", "press", "press"), "Press output is missing");
+    expect(
+      has("signal-input", "selected", "selectedClass"),
+      "Selected feedback is missing",
+    );
+    expect(has("signal-input", "name", "text"), "serial Name feedback is missing");
+    expect(has("signal-output", "text", "input"), "serial text output is missing");
+    expect(has("signal-input", "feedback1", "value"), "slider Feedback is missing");
+    expect(has("signal-output", "set1", "input"), "slider Value Set is missing");
+    expect(has("signal-input", "feedback2", "width"), "fill Feedback is missing");
+    expect(has("signal-input", "visibility", "visibility"), "Visibility is missing");
+    expect(has("signal-input", "disabled", "disabledState"), "Disabled is missing");
+    expect(
+      plan.stateStyles?.states?.standard && plan.stateStyles?.states?.selected,
+      "Standard and Selected visual states are missing",
+    );
+    expect(
+      analyzed.html.includes("data-translated-repeat-container") &&
+        analyzed.html.includes('data-translated-numeric="0"'),
+      "translated selectors were not written to the component markup",
+    );
+    const packageAsset = {
+        id: "translator-acceptance-asset",
+        name: "acceptance.svg",
+        type: "image/svg+xml",
+        dataUrl:
+          "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+      },
+      packageEntry = {
+        id: "custom-translator-acceptance",
+        name: "Translator Acceptance",
+        category: "Custom",
+        icon: "🧪",
+        version: "1.0.0",
+        html: analyzed.html,
+        defaultSize: { width: 480, height: 280 },
+        properties: [
+          ...properties,
+          {
+            key: "standardAsset",
+            name: "Standard asset",
+            type: "asset",
+            defaultValue: packageAsset.id,
+          },
+        ],
+        signals,
+        behaviors: plan.behaviors,
+        stateStyles: {
+          ...plan.stateStyles,
+          states: {
+            ...plan.stateStyles.states,
+            standard: {
+              ...plan.stateStyles.states.standard,
+              asset: packageAsset.id,
+              assetData: packageAsset.dataUrl,
+            },
+          },
+        },
+        repeatedItems: detected.repeatedItems,
+        rangeBindings: [
+          { baseKey: "repeatPressBase", patternKey: "repeatPressPattern" },
+        ],
+      },
+      packageValue = createCustomComponentPackage(packageEntry, [packageAsset]),
+      serialized = JSON.stringify(packageValue),
+      imported = parseCustomComponentPackage(JSON.parse(serialized)),
+      restoredAssets = [],
+      restoredCount = restoreCustomComponentDependencies(
+        packageValue,
+        imported,
+        restoredAssets,
+      );
+    expect(packageValue.version === 3, "component package version is not current");
+    expect(restoredCount === 1, "embedded asset was not restored");
+    expect(restoredAssets[0]?.dataUrl === packageAsset.dataUrl, "embedded asset data changed");
+    expect(imported.behaviors.length === plan.behaviors.length, "generated behaviors changed during package round trip");
+    expect(!!imported.stateStyles?.states?.selected, "visual states changed during package round trip");
+    expect(imported.repeatedItems?.defaultCount === 3, "repeated-item settings changed during package round trip");
+    expect(imported.rangeBindings?.length === 1, "range bindings changed during package round trip");
+    return {
+      errors,
+      behaviorCount: plan.behaviors.length,
+      packageAssetCount: packageValue.dependencies.assets.length,
+    };
   }
   function runPanelCompatibility() {
     const profiles = deviceProfiles.filter((device) => device.id !== "custom"),
@@ -6859,8 +7101,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       applyDevice(device.id);
     }
     const key = panelLayoutKey(device.id, device.width, device.height),
-      items = state.items.filter(
-        (item) => item.master || item.pageId === state.activePage,
+      items = state.items.filter((item) =>
+        itemVisibleOnPage(item, state.activePage),
       );
     let changed = 0;
     items.forEach((item) => {
@@ -7016,7 +7258,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       const hit = state.items
         .filter(
           (item) =>
-            (item.pageId === state.activePage || item.master) &&
+            itemVisibleOnPage(item, state.activePage) &&
+            !item.systemManaged &&
             item.x < right &&
             item.x + item.w > left &&
             item.y < bottom &&
@@ -7208,6 +7451,136 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       .replace(/^[^A-Za-z_$]+/, "");
     return words || fallback;
   }
+  function inferSnippetBehaviors(javascript, styles) {
+    const candidates = [],
+      seen = new Set(),
+      variables = new Map(),
+      collections = new Map(),
+      add = (candidate) => {
+        const signature = `${candidate.kind}|${candidate.selector}|${candidate.action}|${candidate.event || ""}`;
+        if (!seen.has(signature)) {
+          seen.add(signature);
+          candidates.push({ id: `inferred-${candidates.length + 1}`, ...candidate });
+        }
+      };
+    for (const match of javascript.matchAll(
+      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?querySelector\(\s*(["'`])(.+?)\2\s*\)/g,
+    ))
+      variables.set(match[1], match[3]);
+    for (const match of javascript.matchAll(
+      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?querySelectorAll\(\s*(["'`])(.+?)\2\s*\)/g,
+    ))
+      collections.set(match[1], match[3]);
+    for (const match of javascript.matchAll(
+      /(?:document\.)?querySelector\(\s*(["'`])(.+?)\1\s*\)\.addEventListener\(\s*(["'])(click|pointerdown|pointerup|input|change)\3/g,
+    ))
+      add({
+        kind: "event",
+        label: `${match[4]} handler`,
+        selector: match[2],
+        event: match[4],
+        source: "signal-output",
+        type: match[4] === "input" || match[4] === "change" ? "analog" : "digital",
+        direction: "output",
+        action: match[4] === "input" || match[4] === "change" ? "input" : match[4] === "click" ? "click" : match[4] === "pointerup" ? "release" : "press",
+      });
+    variables.forEach((selector, variable) => {
+      const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      for (const match of javascript.matchAll(
+        new RegExp(`${escaped}\\.addEventListener\\(\\s*(["'])(click|pointerdown|pointerup|input|change)\\1`, "g"),
+      ))
+        add({
+          kind: "event",
+          label: `${match[2]} handler`,
+          selector,
+          event: match[2],
+          source: "signal-output",
+          type: match[2] === "input" || match[2] === "change" ? "analog" : "digital",
+          direction: "output",
+          action: match[2] === "input" || match[2] === "change" ? "input" : match[2] === "click" ? "click" : match[2] === "pointerup" ? "release" : "press",
+        });
+      for (const match of javascript.matchAll(
+        new RegExp(`${escaped}\\.classList\\.(?:toggle|add|remove)\\(\\s*(["'])([^"']+)\\1`, "g"),
+      ))
+        add({ kind: "class", label: `Class “${match[2]}” state`, selector, source: "signal-input", type: "digital", direction: "input", action: "classToggle", parameter: match[2] });
+      for (const match of javascript.matchAll(
+        new RegExp(`${escaped}\\.style\\.setProperty\\(\\s*(["'])(--[^"']+)\\1`, "g"),
+      ))
+        add({ kind: "css-variable", label: `${match[2]} value`, selector, source: "signal-input", type: "analog", direction: "input", action: "cssVariable", parameter: match[2] });
+      if (new RegExp(`${escaped}\\.textContent\\s*=`).test(javascript))
+        add({ kind: "text", label: "Dynamic text", selector, source: "signal-input", type: "serial", direction: "input", action: "text" });
+      const styleActions = [
+        ["width", "width", "%"],
+        ["height", "height", "%"],
+        ["opacity", "opacity", ""],
+      ];
+      styleActions.forEach(([property, action, unit]) => {
+        if (new RegExp(`${escaped}\\.style\\.${property}\\s*=`).test(javascript))
+          add({ kind: "numeric-style", label: `${property} value`, selector, source: "signal-input", type: "analog", direction: "input", action, parameter: unit });
+      });
+      const transformMatch = javascript.match(
+        new RegExp(`${escaped}\\.style\\.transform\\s*=\\s*[^;\\n]*(rotate|translateX|translateY|scale)`, "i"),
+      );
+      if (transformMatch) {
+        const transform = transformMatch[1].toLowerCase(),
+          action = transform === "rotate" ? "rotate" : transform === "translatex" ? "translateX" : transform === "translatey" ? "translateY" : "scale";
+        add({ kind: "numeric-transform", label: `${action} value`, selector, source: "signal-input", type: "analog", direction: "input", action, parameter: action === "rotate" ? "deg" : action === "scale" ? "" : "px" });
+      }
+    });
+    collections.forEach((selector, variable) => {
+      const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        block = new RegExp(`${escaped}\\.forEach\\([\\s\\S]{0,600}?addEventListener\\(\\s*(["'])(click|pointerdown|pointerup|input|change)\\1`, "g").exec(javascript);
+      if (block)
+        add({ kind: "collection-event", label: `Repeated ${block[2]} handlers`, selector, event: block[2], source: "signal-output", type: block[2] === "input" || block[2] === "change" ? "analog" : "digital", direction: "output", action: block[2] === "input" || block[2] === "change" ? "input" : block[2] === "click" ? "click" : block[2] === "pointerup" ? "release" : "press" });
+      if (new RegExp(`${escaped}\\.forEach\\([\\s\\S]{0,600}?classList\\.(?:toggle|add|remove)`).test(javascript))
+        add({ kind: "collection-state", label: "Repeated selected state", selector, source: "signal-input", type: "digital", direction: "input", action: "selectedClass" });
+    });
+    for (const match of javascript.matchAll(
+      /\.addEventListener\(\s*(["'])click\1\s*,[\s\S]{0,500}?\.closest\(\s*(["'`])(.+?)\2\s*\)/g,
+    ))
+      add({ kind: "delegated-event", label: "Delegated item press", selector: match[3], event: "click", source: "signal-output", type: "digital", direction: "output", action: "click" });
+    const animationNames = [
+      ...styles.matchAll(/@keyframes\s+([A-Za-z_][\w-]*)/g),
+    ].map((match) => match[1]);
+    animationNames.forEach((name) =>
+      add({ kind: "animation", label: `CSS animation “${name}”`, selector: "", source: "local", type: "digital", direction: "input", action: "animation", parameter: name }),
+    );
+    if (/\btransition\s*:/i.test(styles))
+      add({ kind: "animation", label: "CSS transition", selector: "", source: "local", type: "digital", direction: "input", action: "transition" });
+    const usedKeys = new Set();
+    return candidates.map((candidate, index) => {
+      const base = translatorKey(candidate.label, `inferred${index + 1}`);
+      let key = base,
+        suffix = 2;
+      while (usedKeys.has(key)) key = `${base}${suffix++}`;
+      usedKeys.add(key);
+      return { ...candidate, key, mode: "local" };
+    });
+  }
+  function inferSnippetSuggestions(javascript, styles, inferred) {
+    const suggestions = [],
+      add = (action, title, detail, confidence = "medium") => {
+        if (!suggestions.some((entry) => entry.title === title))
+          suggestions.push({ action, title, detail, confidence });
+      };
+    if (/querySelectorAll\s*\(/.test(javascript) && /\.forEach\s*\(/.test(javascript))
+      add("repeated", "Repeated interactive collection", "The script iterates a group of elements. Generate zero-based Press, Selected, and Name ranges.", "high");
+    if (/createElement\s*\(|insertAdjacentHTML\s*\(|\.appendChild\s*\(/.test(javascript))
+      add("dynamic-count", "Dynamic item creation", "The component creates elements at runtime. Add Default Count and analog item-count behavior.", "high");
+    if (/\b(next|previous|prev|increment|decrement)\b/i.test(javascript))
+      add("navigation", "Next / previous navigation", "Increment/decrement logic was found. Generate directional Press outputs.", "medium");
+    if (/classList\.(?:toggle|add|remove)\s*\(\s*["'](?:open|opened|expanded|show|visible)/i.test(javascript))
+      add("open-state", "Open / close state", "A class appears to control a menu or popup. Map it to digital Selected feedback.", "high");
+    if (/setInterval\s*\(|setTimeout\s*\(/.test(javascript))
+      add("timing", "Timer-controlled behavior", "Delays or intervals are present. Add an editable timing property for component setup.", "high");
+    if (/\.closest\s*\(|\.matches\s*\(/.test(javascript) && /addEventListener/.test(javascript))
+      add("delegated", "Delegated event handling", "A parent handles events for child items. Generate an item Press rule and ranges.", "medium");
+    if (inferred.filter((entry) => ["numeric-style", "numeric-transform", "css-variable"].includes(entry.kind)).length > 1)
+      add("shared-analog", "Shared numeric relationship", "Multiple visual targets can share one analog Feedback contract.", "medium");
+    if (/@keyframes\s+/i.test(styles) || /\banimation\s*:/i.test(styles))
+      add("animation", "Existing animation", "Add a digital animation trigger while retaining the original animation locally.", "high");
+    return suggestions;
+  }
   function analyzeSnippet(name, source) {
     const documentValue = new DOMParser().parseFromString(
         String(source || ""),
@@ -7363,6 +7736,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         textIndex++;
       }
     }
+    const inferredBehaviors = inferSnippetBehaviors(javascript, styles);
     return {
       fileName: name,
       source,
@@ -7374,6 +7748,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         buttonCount: buttonElements.length,
         numericCount: numericElements.length,
         interactiveNumericCount: interactiveNumeric.length,
+        numericTargets: numericElements.map((element, index) => ({
+          selector: `[data-translated-numeric="${index}"]`,
+          interactive: interactiveNumeric.includes(element),
+          visualFill: element.matches(".fill,.progress,.level,[role='progressbar']"),
+          min: Number(element.getAttribute("min")) || 0,
+          max: Number(element.getAttribute("max")) || 100,
+        })),
         textKeys: editables
           .filter((entry) => entry.kind === "text")
           .map((entry) => entry.key),
@@ -7386,6 +7767,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               maxCount: 20,
             }
           : null,
+        inferredBehaviors,
+        inferenceSuggestions: inferSnippetSuggestions(
+          javascript,
+          styles,
+          inferredBehaviors,
+        ),
       },
     };
   }
@@ -7393,7 +7780,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (!translateSource) return;
     const preset = $("translate-preset").value,
       buttonLike = ["button", "toggle", "navigation"].includes(preset),
-      editables = translateSource.editables.filter(
+      editables = [
+        ...translateSource.editables,
+        ...(translateSource.addedEditables || []),
+      ].filter(
         (entry) =>
           !(
             buttonLike &&
@@ -7488,18 +7878,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
       );
     if (
-      (buttonLike || translateSource.features.buttonCount) &&
-      translateSource.features.textKeys.length &&
-      !editables.some((entry) => entry.key === "selectedText")
-    )
-      editables.push({
-        key: "selectedText",
-        label: "Selected state — text",
-        type: "text",
-        value: editables.find((entry) => entry.kind === "text")?.value || "",
-        kind: "button-style",
-      });
-    if (
       !editables.some(
         (entry) => entry.key === "textSize" || /font.?size/i.test(entry.key),
       )
@@ -7531,9 +7909,389 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           )
           .join("")
       : '<p class="hint">No editable values were detected. You can add properties manually in the component editor.</p>';
+    renderTranslateReview();
   }
-  function renderTranslateSignals() {
-    const preset =
+  function translateEscape(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+  function selectedTranslateProperties() {
+    if (!translateSource) return [];
+    return [...$("translate-editables").querySelectorAll('input[type="checkbox"]:checked')]
+      .map((input) => translateSource.currentEditables[Number(input.dataset.index)])
+      .filter(Boolean);
+  }
+  function selectedTranslateSignals() {
+    return [...$("translate-signals").querySelectorAll(".translate-signal-row")]
+      .filter((row) => row.querySelector('input[type="checkbox"]')?.checked)
+      .map((row) => ({
+        key: row.dataset.key,
+        name: row.querySelector(".translate-signal-name").value.trim() || row.dataset.key,
+        type: row.querySelector(".translate-signal-type").value,
+        direction: row.querySelector(".translate-signal-direction").value,
+        defaultValue: row.querySelector(".translate-signal-address").value.trim(),
+        ...(row.dataset.optionalProperty
+          ? { optionalProperty: row.dataset.optionalProperty }
+          : {}),
+      }));
+  }
+  function selectedTranslateInferences() {
+    return [...$("translate-inferences").querySelectorAll(".translate-inference-row")]
+      .map((row) => ({
+        id: row.dataset.id,
+        label: row.dataset.label,
+        mode: row.querySelector(".translate-inference-mode").value,
+        key: translatorKey(row.querySelector(".translate-inference-key").value, "inferred"),
+        selector: row.querySelector(".translate-inference-selector").value.trim(),
+        source: row.dataset.source,
+        type: row.dataset.type,
+        direction: row.dataset.direction,
+        action: row.dataset.action,
+        parameter: row.dataset.parameter || "",
+        animationName: row.dataset.animationName || "",
+      }))
+      .filter((entry) => entry.mode !== "ignore");
+  }
+  function renderTranslateInferences() {
+    const candidates = translateSource?.features?.inferredBehaviors || [],
+      suggestions = translateSource?.features?.inferenceSuggestions || [];
+    $("translate-suggestions").innerHTML = suggestions.length
+      ? suggestions
+          .map(
+            (entry) =>
+              `<div><strong>${translateEscape(entry.title)}</strong><small>${translateEscape(entry.confidence)} confidence · ${translateEscape(entry.detail)}</small><button type="button" data-translate-apply="${translateEscape(entry.action)}">Apply</button></div>`,
+          )
+          .join("")
+      : "";
+    $("translate-inferences").innerHTML = candidates.length
+      ? candidates
+          .map(
+            (entry) =>
+              `<div class="translate-inference-row" data-id="${translateEscape(entry.id)}" data-label="${translateEscape(entry.label)}" data-source="${translateEscape(entry.source)}" data-type="${translateEscape(entry.type)}" data-direction="${translateEscape(entry.direction)}" data-action="${translateEscape(entry.action)}" data-parameter="${translateEscape(entry.parameter || "")}"><span>${translateEscape(entry.label)}<small>${translateEscape(entry.kind)} · ${translateEscape(entry.type)} ${translateEscape(entry.direction)}</small></span><select class="translate-inference-mode"><option value="local" selected>Keep local</option>${entry.source === "local" ? "" : '<option value="generated">Generate Crestron rule</option>'}<option value="ignore">Ignore</option></select><input class="translate-inference-key" value="${translateEscape(entry.key)}" aria-label="Generated signal key"><input class="translate-inference-selector" value="${translateEscape(entry.selector)}" placeholder="CSS selector" aria-label="Target selector"><small>${translateEscape(entry.action)}</small></div>`,
+          )
+          .join("")
+      : '<p class="hint">No existing scripted or animated behaviors were detected. Standard component behaviors will still be generated.</p>';
+  }
+  function addTranslateEditable(entry) {
+    translateSource.addedEditables ||= [];
+    if (
+      !translateSource.editables.some((candidate) => candidate.key === entry.key) &&
+      !translateSource.addedEditables.some((candidate) => candidate.key === entry.key)
+    )
+      translateSource.addedEditables.push(entry);
+  }
+  function setTranslateInferenceGenerated(row, key) {
+    if (!row) return false;
+    const mode = row.querySelector(".translate-inference-mode");
+    if (![...mode.options].some((option) => option.value === "generated"))
+      mode.add(new Option("Generate Crestron rule", "generated"));
+    mode.value = "generated";
+    if (key) row.querySelector(".translate-inference-key").value = key;
+    return true;
+  }
+  function configureTranslatedRepeatedItems() {
+    if (translateSource.features.repeatedItems) return true;
+    const collection = translateSource.features.inferredBehaviors.find(
+        (entry) => entry.kind === "collection-event",
+      ),
+      selector = collection?.selector;
+    if (!selector) return false;
+    const split = selector.trim().match(/^(.*?)([^\s>+~]+)$/),
+      documentValue = new DOMParser().parseFromString(
+        translateSource.html,
+        "text/html",
+      ),
+      count = documentValue.querySelectorAll(selector).length;
+    translateSource.features.repeatedItems = {
+      containerSelector: split?.[1]?.trim() || "body",
+      itemSelector: split?.[2] || selector,
+      labelSelector: "",
+      defaultCount: Math.max(1, count),
+      maxCount: Math.max(20, count),
+    };
+    return true;
+  }
+  function applyTranslateSuggestion(action, button) {
+    const rows = [...$("translate-inferences").querySelectorAll(".translate-inference-row")];
+    let applied = false;
+    if (action === "repeated" || action === "delegated") {
+      applied = configureTranslatedRepeatedItems();
+      rows
+        .filter((row) =>
+          ["collection-event", "delegated-event"].includes(
+            translateSource.features.inferredBehaviors.find(
+              (entry) => entry.id === row.dataset.id,
+            )?.kind,
+          ),
+        )
+        .forEach((row) => {
+          applied = setTranslateInferenceGenerated(row, "itemPress") || applied;
+        });
+    } else if (action === "dynamic-count") {
+      applied = configureTranslatedRepeatedItems();
+      addTranslateEditable({ key: "defaultCount", label: "Default item count", type: "number", value: translateSource.features.repeatedItems?.defaultCount || 3, kind: "generated-structure" });
+      applied = true;
+    } else if (action === "navigation") {
+      rows
+        .filter((row) => /next|previous|prev|increment|decrement/i.test(row.querySelector(".translate-inference-selector").value))
+        .forEach((row) => {
+          const selector = row.querySelector(".translate-inference-selector").value;
+          applied = setTranslateInferenceGenerated(
+            row,
+            /prev|decrement/i.test(selector) ? "previousPress" : "nextPress",
+          ) || applied;
+        });
+    } else if (action === "open-state") {
+      rows
+        .filter(
+          (row) =>
+            row.dataset.action === "classToggle" &&
+            /^(open|opened|expanded|show|visible)$/i.test(
+              row.dataset.parameter,
+            ),
+        )
+        .forEach((row) => {
+          applied = setTranslateInferenceGenerated(row, "selected") || applied;
+        });
+    } else if (action === "timing") {
+      addTranslateEditable({ key: "timingMs", label: "Animation / action timing (ms)", type: "number", value: 500, kind: "generated-timing" });
+      applied = true;
+    } else if (action === "shared-analog") {
+      rows
+        .filter((row) => ["width", "height", "opacity", "rotate", "translateX", "translateY", "scale", "cssVariable"].includes(row.dataset.action))
+        .forEach((row) => {
+          applied = setTranslateInferenceGenerated(row, "feedback") || applied;
+        });
+    } else if (action === "animation") {
+      const row = rows.find((candidate) => candidate.dataset.action === "animation");
+      if (row) {
+        row.dataset.animationName = row.dataset.parameter;
+        row.dataset.source = "signal-input";
+        row.dataset.type = "digital";
+        row.dataset.direction = "input";
+        row.dataset.action = "classToggle";
+        row.dataset.parameter = "composer-animation-active";
+        row.querySelector(".translate-inference-selector").value = "body";
+        addTranslateEditable({ key: "timingMs", label: "Animation / action timing (ms)", type: "number", value: 500, kind: "generated-timing" });
+        applied = setTranslateInferenceGenerated(row, "animationTrigger");
+      }
+    }
+    if (!applied) {
+      $("translate-test-result").textContent =
+        "This recommendation needs a selector adjustment before it can be applied automatically.";
+      return;
+    }
+    translateSource.appliedSuggestions ||= new Set();
+    translateSource.appliedSuggestions.add(action);
+    if (["dynamic-count", "timing", "animation"].includes(action))
+      renderTranslateEditables();
+    renderTranslateSignals();
+    renderTranslateReview();
+    button.disabled = true;
+    button.textContent = "Applied";
+  }
+  function renderTranslateReview() {
+    if (!translateSource || !$("translate-detection-summary")) return;
+    const detected = translateSource.features,
+      properties = selectedTranslateProperties(),
+      signals = selectedTranslateSignals(),
+      inferences = selectedTranslateInferences(),
+      plan = translatedBehaviorPlan(
+        properties,
+        signals,
+        detected,
+        $("translate-preset").value,
+        inferences,
+      ),
+      externalReferences = [
+        ...translateSource.source.matchAll(/(?:src|href)\s*=\s*["'](https?:\/\/[^"']+)/gi),
+      ].map((match) => match[1]),
+      warnings = [];
+    if (!detected.buttonCount && !detected.numericCount && !detected.textKeys.length)
+      warnings.push("No interactive or editable elements were confidently detected.");
+    if (externalReferences.length)
+      warnings.push(`${externalReferences.length} external file reference${externalReferences.length === 1 ? "" : "s"} may need to be imported as embedded assets.`);
+    if (detected.repeatedItems)
+      warnings.push(`A repeated group of ${detected.repeatedItems.defaultCount} items will use zero-based generated ranges.`);
+    const generatedInferences = inferences.filter((entry) => entry.mode === "generated"),
+      localInferences = inferences.filter((entry) => entry.mode === "local");
+    if (localInferences.length)
+      warnings.push(`${localInferences.length} inferred behavior${localInferences.length === 1 ? " remains" : "s remain"} controlled by the original JavaScript/CSS.`);
+    if (generatedInferences.some((entry) => !entry.selector && entry.action !== "animation" && entry.action !== "transition"))
+      warnings.push("An inferred Crestron behavior needs a target selector.");
+    const blankAddresses = signals.filter((signal) => !signal.defaultValue),
+      duplicateAddresses = signals
+        .map((signal) => signal.defaultValue)
+        .filter(
+          (address, index, values) =>
+            address && values.indexOf(address) !== index,
+        ),
+      mismatchedBehaviors = plan.behaviors.filter((rule) => {
+        const signal = signals.find((entry) => entry.key === rule.key);
+        return (
+          signal &&
+          ((rule.source === "signal-input" && signal.direction !== "input") ||
+            (rule.source === "signal-output" && signal.direction !== "output"))
+        );
+      });
+    if (blankAddresses.length)
+      warnings.push(`${blankAddresses.length} enabled signal${blankAddresses.length === 1 ? " has" : "s have"} no contract name or join.`);
+    if (duplicateAddresses.length)
+      warnings.push("Two or more enabled signals use the same contract name or join.");
+    if (mismatchedBehaviors.length)
+      warnings.push(`${mismatchedBehaviors.length} signal direction${mismatchedBehaviors.length === 1 ? " does" : "s do"} not match the generated behavior.`);
+    $("translate-detection-summary").innerHTML = [
+      [detected.buttonCount, "Standalone buttons"],
+      [detected.repeatedItems?.defaultCount || 0, "Repeated items"],
+      [detected.textKeys.length, "Text elements"],
+      [detected.numericCount, "Numeric controls"],
+      [plan.behaviors.length, "Generated behaviors"],
+    ].map(([count, label]) => `<div><strong>${count}</strong><small>${label}</small></div>`).join("");
+    const status = $("translate-review-status");
+    status.classList.toggle("warning", !!warnings.length);
+    status.textContent = warnings.length
+      ? `Review recommended: ${warnings.join(" ")}`
+      : "High-confidence translation. Review the generated bindings, then test the mappings or continue.";
+    $("translate-behaviors").innerHTML = plan.behaviors.length || localInferences.length
+      ? [
+          ...plan.behaviors.map((rule) => `<div>${translateEscape(rule.name)}<small>${translateEscape(rule.source)} · ${translateEscape(rule.key)} → ${translateEscape(rule.selector)} · ${translateEscape(rule.action)}</small></div>`),
+          ...localInferences.map((rule) => `<div>${translateEscape(rule.label)}<small>local · preserved in original CSS/JavaScript</small></div>`),
+        ].join("")
+      : '<p class="hint">No behaviors are generated by the current selections.</p>';
+  }
+  let translateSignalTestStats = null;
+  function translatePreviewConfiguration() {
+    const properties = selectedTranslateProperties(),
+      signals = selectedTranslateSignals(),
+      inferences = selectedTranslateInferences(),
+      plan = translatedBehaviorPlan(
+        properties,
+        signals,
+        translateSource.features,
+        $("translate-preset").value,
+        inferences,
+      );
+    return { properties, signals, inferences, plan };
+  }
+  function refreshTranslateSimulator() {
+    if (!translateSource) return;
+    const { properties, signals, plan } = translatePreviewConfiguration(),
+      propertyValues = Object.fromEntries(
+        properties.map((entry) => [
+          entry.key,
+          entry.type === "number" ? Number(entry.value) || 0 : entry.value,
+        ]),
+      );
+    let html = translateSource.html,
+      css = translateSource.css;
+    properties.forEach((entry) => {
+      if (entry.kind === "css-variable")
+        css = css.replace(
+          new RegExp(
+            `(${entry.source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*)${String(entry.value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          ),
+          `$1${entry.value}`,
+        );
+      else if (entry.kind === "literal")
+        css = css.replaceAll(entry.source, String(entry.value));
+      else if (entry.kind === "text")
+        html = html.replace(entry.source, String(entry.value));
+    });
+    const repeated = translateSource.features.repeatedItems,
+      repeatedConfig = repeated
+        ? {
+            ...repeated,
+            namespace:
+              $("translate-name").value.replace(/[^A-Za-z0-9_]/g, "") ||
+              "CustomComponent",
+          }
+        : null,
+      simulatorSignals = [
+        ...signals,
+        ...(repeated
+          ? [
+              { key: "itemCount", name: "Repeated item count", type: "analog", direction: "input", simulatorOnly: true },
+              { key: "__repeatSelected:0", name: "Item 0 Selected", type: "digital", direction: "input", simulatorOnly: true },
+              { key: "__repeatName:0", name: "Item 0 Name", type: "serial", direction: "input", simulatorOnly: true },
+              { key: "__repeatPress:0", name: "Item 0 Press", type: "digital", direction: "output", simulatorOnly: true },
+            ]
+          : []),
+      ],
+      rules = plan.behaviors,
+      bridge = `<script>(function(){var callbacks={},rules=${JSON.stringify(rules)};function signature(rule){var nodes;try{nodes=document.querySelectorAll(rule.selector)}catch(error){return 'missing'}return Array.from(nodes).map(function(node){return node.outerHTML+'|'+node.getAttribute('style')+'|'+node.className}).join('||')}function repeatSignature(key){var item=document.querySelector('[data-repeat-index="0"]');return key==='itemCount'?(item?.parentElement?.outerHTML||''):(item?.outerHTML||'')}window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-translate-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.ComposerComponent={publish:window.ComposerSignals.publish};function deliver(key,value){(callbacks[key]||[]).slice().forEach(function(callback){callback(value)})}window.addEventListener('message',function(event){var data=event.data||{};if(data.type==='composer-signal')deliver(data.key,data.value);if(data.type==='composer-translate-test-input'){var related=rules.filter(function(rule){return rule.source==='signal-input'&&rule.key===data.key}),before=related.map(signature),repeatBefore=repeatSignature(data.key);deliver(data.key,data.value);requestAnimationFrame(function(){var changed=related.filter(function(rule,index){return signature(rule)!==before[index]}).length,repeatAfter=repeatSignature(data.key);if(data.key.indexOf('__repeat')===0||data.key==='itemCount')changed+=repeatBefore!==repeatAfter?1:0;parent.postMessage({type:'composer-translate-input-result',key:data.key,value:data.value,targets:related.length+(data.key.indexOf('__repeat')===0||data.key==='itemCount'?1:0),changed:changed},'*')})}if(data.type==='composer-translate-test-outputs'){var missing=[];rules.filter(function(rule){return rule.source==='signal-output'}).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}function fire(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))}if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='input'||rule.action==='change'){if('value'in target)target.value=target.type==='range'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup')}});var repeated=document.querySelector('[data-repeat-index="0"]');if(repeated){repeated.dispatchEvent(new Event('pointerdown',{bubbles:true,cancelable:true}));repeated.dispatchEvent(new Event('pointerup',{bubbles:true,cancelable:true}))}parent.postMessage({type:'composer-translate-output-result',missing:missing},'*')}});window.addEventListener('error',function(event){parent.postMessage({type:'composer-translate-error',message:event.message},'*')})})();<\/script>`,
+      stateCss = customStateCss(plan.stateStyles);
+    let source =
+        `<style>${css}\n${stateCss}</style>` +
+        bridge +
+        html +
+        `<script>${translateSource.javascript}<\/script>` +
+        customRepeatedFrameRuntime(repeatedConfig) +
+        customStateRuntime(plan.stateStyles) +
+        customBehaviorRuntime(rules, propertyValues);
+    Object.entries(propertyValues).forEach(([key, value]) => {
+      source = source.replaceAll(`{{${key}}}`, String(value ?? ""));
+    });
+    $("translate-live-preview").srcdoc = safeDoc(
+      `<style>html,body{margin:0;width:100%;height:100%;box-sizing:border-box;background:#182126;color:#fff}body{padding:10px}body>*{box-sizing:border-box}</style>${source}`,
+      "",
+    );
+    $("translate-signal-simulator").innerHTML = simulatorSignals.length
+      ? simulatorSignals
+          .map((signal) => {
+            if (signal.direction === "output")
+              return `<div class="translate-simulator-control"><span>${translateEscape(signal.name)}<small>output · ${translateEscape(signal.type)}${signal.simulatorOnly ? " · generated range" : ""}</small></span><output data-output-key="${translateEscape(signal.key)}">waiting</output></div>`;
+            const control =
+              signal.type === "digital"
+                ? `<input type="checkbox" data-translate-signal="${translateEscape(signal.key)}" data-signal-type="digital">`
+                : signal.type === "analog"
+                  ? `<input type="range" min="0" max="65535" value="32768" data-translate-signal="${translateEscape(signal.key)}" data-signal-type="analog">`
+                  : `<input type="text" value="TEST" data-translate-signal="${translateEscape(signal.key)}" data-signal-type="serial">`;
+            return `<label class="translate-simulator-control"><span>${translateEscape(signal.name)}<small>input · ${translateEscape(signal.type)}${signal.simulatorOnly ? " · generated range" : ""}</small></span>${control}</label>`;
+          })
+          .join("")
+      : '<p class="hint">Enable signals to create simulator controls.</p>';
+    $("translate-signal-log").textContent = "Simulator loaded. Change an input or run Auto-test signals.";
+  }
+  function sendTranslateSimulatorSignal(input) {
+    const value =
+      input.dataset.signalType === "digital"
+        ? input.checked
+        : input.dataset.signalType === "analog"
+          ? Number(input.value)
+          : input.value;
+    $("translate-live-preview").contentWindow?.postMessage(
+      {
+        type: "composer-translate-test-input",
+        key: input.dataset.translateSignal,
+        value,
+      },
+      "*",
+    );
+  }
+  function appendTranslateSignalLog(line) {
+    const log = $("translate-signal-log");
+    log.textContent += `\n${line}`;
+    log.scrollTop = log.scrollHeight;
+  }
+  function renderTranslateSignals(preserveValues = true) {
+    const preserved = new Map(
+        preserveValues
+          ?
+        [...$("translate-signals").querySelectorAll(".translate-signal-row")].map(
+          (row) => [row.dataset.key, {
+            enabled: row.querySelector('input[type="checkbox"]')?.checked,
+            name: row.querySelector(".translate-signal-name")?.value,
+            address: row.querySelector(".translate-signal-address")?.value,
+            type: row.querySelector(".translate-signal-type")?.value,
+            direction: row.querySelector(".translate-signal-direction")?.value,
+          }],
+        )
+          : [],
+      ),
+      preset =
         translatePresets[$("translate-preset").value] ||
         translatePresets.custom,
       namespace =
@@ -7579,6 +8337,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name`,
         });
       }
+      addSignal({
+        key: "disabled",
+        name: "Disabled",
+        type: "digital",
+        direction: "input",
+        suffix: "Disabled",
+      });
     }
     (detected.textKeys || []).forEach((key, index) =>
       addSignal({
@@ -7589,22 +8354,30 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         suffix: index ? `Text${index + 1}.Name` : "Name",
       }),
     );
-    if (detected.numericCount)
+    if (detected.numericCount > 1)
+      ["feedback", "set"].forEach((key) => {
+        const existing = signals.find((entry) => entry.key === key);
+        if (existing) signals.splice(signals.indexOf(existing), 1);
+      });
+    (detected.numericTargets || []).forEach((target, index) => {
+      const suffix = detected.numericCount === 1 ? "" : String(index + 1),
+        title = detected.numericCount === 1 ? "" : ` ${index + 1}`;
       addSignal({
-        key: "feedback",
-        name: "Feedback",
+        key: `feedback${suffix}`,
+        name: `Feedback${title}`,
         type: "analog",
         direction: "input",
-        suffix: "Feedback",
+        suffix: detected.numericCount === 1 ? "Feedback" : `Value${index + 1}.Feedback`,
       });
-    if (detected.interactiveNumericCount)
-      addSignal({
-        key: "set",
-        name: "Value Set",
-        type: "analog",
-        direction: "output",
-        suffix: "ValueSet",
-      });
+      if (target.interactive)
+        addSignal({
+          key: `set${suffix}`,
+          name: `Value Set${title}`,
+          type: "analog",
+          direction: "output",
+          suffix: detected.numericCount === 1 ? "ValueSet" : `Value${index + 1}.ValueSet`,
+        });
+    });
     addSignal({
       key: "visibility",
       name: "Visibility",
@@ -7613,13 +8386,31 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       suffix: "Visibility",
       optionalProperty: "visibilityEnabled",
     });
+    selectedTranslateInferences()
+      .filter((entry) => entry.mode === "generated")
+      .forEach((entry) =>
+        addSignal({
+          key: entry.key,
+          name: entry.label,
+          type: entry.type,
+          direction: entry.direction,
+          suffix: translatorKey(entry.label, entry.key),
+        }),
+      );
     $("translate-category").value = preset.category;
     $("translate-signals").innerHTML = signals
       .map(
-        (signal) =>
-          `<label><input type="checkbox" checked data-key="${signal.key}" data-name="${signal.name}" data-type="${signal.type}" data-direction="${signal.direction}" data-default="${namespace}.${signal.suffix}" data-optional-property="${signal.optionalProperty || ""}"><span>${signal.name}<small>${signal.type} · ${signal.direction} · ${namespace}.${signal.suffix}${signal.optionalProperty ? " · optional" : ""}</small></span></label>`,
+        (signal) => {
+          const prior = preserved.get(signal.key),
+            name = prior?.name || signal.name,
+            address = prior?.address || `${namespace}.${signal.suffix}`,
+            type = prior?.type || signal.type,
+            direction = prior?.direction || signal.direction;
+          return `<label class="translate-signal-row" data-key="${translateEscape(signal.key)}" data-optional-property="${translateEscape(signal.optionalProperty || "")}"><input type="checkbox"${prior?.enabled === false ? "" : " checked"}><span><span class="translate-signal-key">${translateEscape(signal.key)}</span><input class="translate-signal-name" type="text" value="${translateEscape(name)}" aria-label="Signal label"></span><input class="translate-signal-address" type="text" value="${translateEscape(address)}" aria-label="Contract name or join"><select class="translate-signal-type" aria-label="Signal type">${["digital", "analog", "serial"].map((value) => `<option${value === type ? " selected" : ""}>${value}</option>`).join("")}</select><select class="translate-signal-direction" aria-label="Signal direction"><option${direction === "input" ? " selected" : ""}>input</option><option${direction === "output" ? " selected" : ""}>output</option></select></label>`;
+        },
       )
       .join("");
+    renderTranslateReview();
   }
   function openTranslateWizard(name, source) {
     translateSource = analyzeSnippet(name, source);
@@ -7643,19 +8434,138 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                 ? "navigation"
                 : "button";
     $("translate-preset").value = guessed;
+    renderTranslateInferences();
     renderTranslateEditables();
     renderTranslateSignals();
+    $("translate-test-result").textContent = "";
     $("translate-snippet-dialog").showModal();
+    refreshTranslateSimulator();
   }
   $("translate-preset").onchange = () => {
     renderTranslateEditables();
     renderTranslateSignals();
   };
-  $("translate-name").oninput = renderTranslateSignals;
-  $("translate-select-all").onclick = () =>
+  $("translate-name").oninput = () => renderTranslateSignals(false);
+  $("translate-editables").onchange = renderTranslateReview;
+  $("translate-signals").oninput = renderTranslateReview;
+  $("translate-signals").onchange = renderTranslateReview;
+  $("translate-inferences").onchange = () => {
+    renderTranslateSignals();
+    renderTranslateReview();
+  };
+  $("translate-inferences").oninput = renderTranslateReview;
+  $("translate-suggestions").onclick = (event) => {
+    const button = event.target.closest("[data-translate-apply]");
+    if (button)
+      applyTranslateSuggestion(button.dataset.translateApply, button);
+  };
+  $("translate-select-all").onclick = () => {
     $("translate-editables")
       .querySelectorAll('input[type="checkbox"]')
       .forEach((input) => (input.checked = true));
+    renderTranslateReview();
+  };
+  $("translate-preview-refresh").onclick = refreshTranslateSimulator;
+  $("translate-signal-simulator").oninput = (event) => {
+    const input = event.target.closest("[data-translate-signal]");
+    if (input) sendTranslateSimulatorSignal(input);
+  };
+  $("translate-test").onclick = async () => {
+    if (!translateSource) return;
+    refreshTranslateSimulator();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const { plan } = translatePreviewConfiguration(),
+      documentValue = new DOMParser().parseFromString(translateSource.html, "text/html"),
+      missing = [],
+      simulatorInputs = [
+        ...$("translate-signal-simulator").querySelectorAll(
+          "[data-translate-signal]",
+        ),
+      ];
+    plan.behaviors.forEach((rule) => {
+      try {
+        if (!documentValue.querySelector(rule.selector)) missing.push(rule.selector);
+      } catch {
+        missing.push(rule.selector);
+      }
+    });
+    const uniqueMissing = [...new Set(missing)];
+    translateSignalTestStats = {
+      expectedInputs: simulatorInputs.length,
+      results: 0,
+      changed: 0,
+      unchanged: 0,
+      missing: uniqueMissing.length,
+      outputs: 0,
+    };
+    $("translate-signal-log").textContent = "AUTO-TEST STARTED";
+    for (const input of simulatorInputs) {
+      const type = input.dataset.signalType,
+        value =
+        type === "digital"
+          ? true
+          : type === "analog"
+            ? 49151
+            : "TRANSLATOR_TEST";
+      $("translate-live-preview").contentWindow?.postMessage(
+        {
+          type: "composer-translate-test-input",
+          key: input.dataset.translateSignal,
+          value,
+        },
+        "*",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 35));
+    }
+    $("translate-live-preview").contentWindow?.postMessage(
+      { type: "composer-translate-test-outputs" },
+      "*",
+    );
+    setTimeout(() => {
+      if (!translateSignalTestStats) return;
+      const stats = translateSignalTestStats,
+        failures = stats.missing + stats.unchanged;
+      $("translate-test-result").textContent = failures
+        ? `Completed with review items — ${stats.changed} visible input change(s), ${stats.unchanged} unchanged input(s), ${stats.missing} missing target(s), ${stats.outputs} output event(s).`
+        : `PASS — ${stats.changed} input behavior(s) changed the preview and ${stats.outputs} output event(s) were captured.`;
+      $("translate-test-result").classList.toggle("failed", !!failures);
+    }, 500);
+  };
+  window.addEventListener("message", (event) => {
+    if (event.source !== $("translate-live-preview").contentWindow) return;
+    const data = event.data || {};
+    if (data.type === "composer-translate-publish") {
+      appendTranslateSignalLog(
+        `OUTPUT ${data.key} = ${JSON.stringify(data.value)}`,
+      );
+      const output = $("translate-signal-simulator").querySelector(
+        `[data-output-key="${CSS.escape(data.key)}"]`,
+      );
+      if (output) output.textContent = String(data.value);
+      if (translateSignalTestStats) translateSignalTestStats.outputs++;
+    } else if (data.type === "composer-translate-input-result") {
+      const changed = data.changed > 0;
+      appendTranslateSignalLog(
+        `INPUT ${data.key} = ${JSON.stringify(data.value)} · ${data.targets} target(s) · ${changed ? `${data.changed} changed` : "NO VISIBLE CHANGE"}`,
+      );
+      if (translateSignalTestStats) {
+        translateSignalTestStats.results++;
+        if (changed) translateSignalTestStats.changed++;
+        else translateSignalTestStats.unchanged++;
+      }
+    } else if (data.type === "composer-translate-output-result") {
+      if (data.missing?.length) {
+        translateSignalTestStats &&
+          (translateSignalTestStats.missing += data.missing.length);
+        appendTranslateSignalLog(
+          `OUTPUT TEST missing: ${data.missing.join(", ")}`,
+        );
+      }
+    } else if (data.type === "composer-translate-error") {
+      appendTranslateSignalLog(`RUNTIME ERROR: ${data.message}`);
+      if (translateSignalTestStats) translateSignalTestStats.unchanged++;
+    }
+  });
   $("translate-snippet").onclick = async () => {
     if (!native) {
       $("translate-snippet-file").click();
@@ -7675,17 +8585,164 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     event.target.value = "";
     if (file) openTranslateWizard(file.name, await file.text());
   };
+  function translatedBehaviorPlan(
+    properties,
+    signals,
+    detected,
+    preset,
+    inferredBehaviors = [],
+  ) {
+    const propertyKeys = new Set(properties.map((entry) => entry.key)),
+      signalKeys = new Set(signals.map((entry) => entry.key)),
+      behaviors = [],
+      add = (rule) => {
+        if (
+          signalKeys.has(rule.key) ||
+          (rule.source === "property" && propertyKeys.has(rule.key))
+        )
+          behaviors.push({ enabled: true, ...rule });
+      },
+      buttonSelector = "[data-translated-button]",
+      textSelector =
+        'button,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value',
+      propertyRules = [
+        ["textSize", textSelector, "fontSize"],
+        ["textColor", textSelector, "color"],
+        ["faceColor", buttonSelector, "backgroundColor"],
+        ["borderColor", buttonSelector, "borderColor"],
+        ["glowStrength", buttonSelector, "glowStrength", "{{glowColor}}"],
+        ["cornerRadius", buttonSelector, "borderRadius"],
+      ];
+    propertyRules.forEach(([key, selector, action, parameter]) =>
+      add({
+        name: `Editable ${key}`,
+        source: "property",
+        key,
+        selector,
+        action,
+        ...(parameter ? { parameter } : {}),
+      }),
+    );
+    (detected.textKeys || []).forEach((key, index) => {
+      add({
+        name: `Editable text ${index + 1}`,
+        source: "property",
+        key,
+        selector: `[data-translated-text="${key}"]`,
+        action: "text",
+      });
+      add({
+        name: `Serial text ${index + 1}`,
+        source: "signal-input",
+        key: `name${index ? index + 1 : ""}`,
+        selector: `[data-translated-text="${key}"]`,
+        action: "text",
+      });
+    });
+    for (let index = 0; index < (detected.buttonCount || 0); index++) {
+      const suffix = detected.buttonCount === 1 ? "" : String(index + 1),
+        target = `[data-translated-button="${index}"]`,
+        label = `${target} [data-translated-text],${target}[data-translated-text],${target} [data-custom-text],${target} .label,${target} span`;
+      add({ name: `Button ${index + 1} Press`, source: "signal-output", key: `press${suffix}`, selector: target, action: "press" });
+      add({ name: `Button ${index + 1} Selected`, source: "signal-input", key: `selected${suffix}`, selector: target, action: "selectedClass" });
+      add({ name: `Button ${index + 1} Name`, source: "signal-input", key: `name${suffix}`, selector: label, action: "text" });
+    }
+    add({ name: "Component Disabled", source: "signal-input", key: "disabled", selector: buttonSelector, action: "disabledState" });
+    add({ name: "Component Visibility", source: "signal-input", key: "visibility", selector: "body", action: "visibility" });
+    (detected.numericTargets || []).forEach((target, index) => {
+      const suffix = detected.numericCount === 1 ? "" : String(index + 1);
+      add({
+        name: `Numeric feedback ${index + 1}`,
+        source: "signal-input",
+        key: `feedback${suffix}`,
+        selector: target.selector,
+        action: target.visualFill ? "width" : "value",
+        mapping: {
+          enabled: true,
+          inputMin: 0,
+          inputMax: 65535,
+          outputMin: target.visualFill ? 0 : target.min,
+          outputMax: target.visualFill ? 100 : target.max,
+          unit: target.visualFill ? "%" : "",
+        },
+      });
+      if (target.interactive)
+        add({
+          name: `Numeric Value Set ${index + 1}`,
+          source: "signal-output",
+          key: `set${suffix}`,
+          selector: target.selector,
+          action: "input",
+          mapping: {
+            enabled: true,
+            inputMin: target.min,
+            inputMax: target.max,
+            outputMin: 0,
+            outputMax: 65535,
+            unit: "",
+          },
+        });
+    });
+    if (preset === "text") {
+      add({ name: "Text output", source: "signal-output", key: "text", selector: "input,textarea", action: "input" });
+      add({ name: "Text feedback", source: "signal-input", key: "name", selector: "input,textarea", action: "value" });
+    }
+    inferredBehaviors
+      .filter((entry) => entry.mode === "generated")
+      .forEach((entry) =>
+        add({
+          name: `Inferred: ${entry.label}`,
+          source: entry.source,
+          key: entry.key,
+          selector: entry.selector || "body",
+          action: entry.action,
+          ...(entry.parameter ? { parameter: entry.parameter } : {}),
+          ...(entry.type === "analog"
+            ? {
+                mapping: {
+                  enabled: true,
+                  inputMin: 0,
+                  inputMax: 65535,
+                  outputMin: 0,
+                  outputMax:
+                    entry.action === "rotate"
+                      ? 360
+                      : entry.action === "scale"
+                        ? 100
+                        : 100,
+                  unit: ["width", "height"].includes(entry.action)
+                    ? "%"
+                    : ["translateX", "translateY"].includes(entry.action)
+                      ? "px"
+                      : entry.action === "rotate"
+                        ? "deg"
+                        : "",
+                },
+              }
+            : {}),
+        }),
+      );
+    const token = (key, fallback) =>
+        propertyKeys.has(key) ? `{{${key}}}` : fallback,
+      stateStyles = (detected.buttonCount || 0)
+        ? {
+            selector: buttonSelector,
+            states: {
+              standard: { text: "", asset: "", assetData: "", background: token("faceColor", "#263b3c"), color: token("textColor", "#ffffff"), border: token("borderColor", "#7ba7a3"), glow: token("glowColor", "#04dcb9"), opacity: "100", scale: "100" },
+              pressed: { text: "", asset: "", assetData: "", background: token("faceColor", "#1b2b2c"), color: token("textColor", "#ffffff"), border: token("borderColor", "#04dcb9"), glow: token("glowColor", "#04dcb9"), opacity: "100", scale: "96" },
+              selected: { text: "", asset: "", assetData: "", background: token("selectedFaceColor", "#078f7d"), color: token("selectedTextColor", "#ffffff"), border: token("selectedBorderColor", "#04dcb9"), glow: token("selectedGlowColor", "#04dcb9"), opacity: "100", scale: "100" },
+              disabled: { text: "", asset: "", assetData: "", background: "#303838", color: "#888888", border: "#555555", glow: "#000000", opacity: "55", scale: "100" },
+            },
+          }
+        : null;
+    return { behaviors, stateStyles };
+  }
   $("translate-continue").onclick = () => {
     if (!translateSource) return;
     let html = translateSource.html,
-      css = translateSource.css;
-    const properties = [
-      ...$("translate-editables").querySelectorAll(
-        'input[type="checkbox"]:checked',
-      ),
-    ].map(
-      (input) => translateSource.currentEditables[Number(input.dataset.index)],
-    );
+      css = translateSource.css,
+      javascript = translateSource.javascript;
+    const properties = selectedTranslateProperties();
     properties.forEach((entry) => {
       if (entry.kind === "css-variable")
         css = css.replace(
@@ -7699,20 +8756,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       else if (entry.kind === "text")
         html = html.replace(entry.source, `{{${entry.key}}}`);
     });
-    const signals = [
-      ...$("translate-signals").querySelectorAll(
-        'input[type="checkbox"]:checked',
-      ),
-    ].map((input) => ({
-      key: input.dataset.key,
-      name: input.dataset.name,
-      type: input.dataset.type,
-      direction: input.dataset.direction,
-      defaultValue: input.dataset.default,
-      ...(input.dataset.optionalProperty
-        ? { optionalProperty: input.dataset.optionalProperty }
-        : {}),
-    }));
+    const signals = selectedTranslateSignals();
+    if (
+      signals.some((signal) => signal.key === "visibility") &&
+      !properties.some((property) => property.key === "visibilityEnabled")
+    )
+      properties.push({
+        key: "visibilityEnabled",
+        label: "Enable visibility signal",
+        type: "checkbox",
+        value: true,
+        kind: "generated-signal-option",
+      });
     const preset = $("translate-preset").value,
       detected = translateSource.features,
       buttonLike =
@@ -7730,31 +8785,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (properties.some((entry) => entry.key === "textColor"))
       css +=
         "\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{color:{{textColor}};}";
-    const buttonAdapter = detected.buttonCount
-      ? `\nroot.querySelectorAll('[data-translated-button]').forEach((translatedTarget,index)=>{const suffix=${detected.buttonCount}===1?'':String(index+1),pressKey='press'+suffix,selectedKey='selected'+suffix,nameKey='name'+suffix,label=translatedTarget.querySelector('[data-translated-text], [data-custom-text],.label,span')||translatedTarget;const standardText=label.textContent;const down=e=>{signals.publish(pressKey,true);e.preventDefault()},up=()=>signals.publish(pressKey,false);translatedTarget.addEventListener('pointerdown',down);translatedTarget.addEventListener('pointerup',up);translatedTarget.addEventListener('pointercancel',up);translatedTarget.addEventListener('pointerleave',up);signals.subscribe(selectedKey,value=>{const active=value===true||value===1||value==='1';translatedTarget.classList.toggle('active',active);if(index===0&&active&&'{{selectedText}}')label.textContent='{{selectedText}}';else if(index===0&&!active)label.textContent=translatedTarget.dataset.standardText||standardText});signals.subscribe(nameKey,value=>{if(value!=null&&value!==''){translatedTarget.dataset.standardText=String(value);if(!translatedTarget.classList.contains('active'))label.textContent=String(value)}});});`
-      : "";
-    const textAdapter = detected.textKeys
-      .map(
-        (key, index) =>
-          `signals.subscribe('name${index ? index + 1 : ""}',value=>{const target=root.querySelector('[data-translated-text="${key}"]');if(target&&value!=null&&value!=='')target.textContent=String(value)});`,
+    selectedTranslateInferences()
+      .filter(
+        (entry) => entry.mode === "generated" && entry.animationName,
       )
-      .join("\n");
-    const numericAdapter = detected.numericCount
-      ? `\nconst translatedNumbers=[...root.querySelectorAll('[data-translated-numeric]')];let translatedFeedback=false;const normalize=value=>{const number=Number(value)||0;return number>100?number/65535*100:number};translatedNumbers.forEach(control=>{if(control.matches('input,[role="slider"],.slider'))control.addEventListener('input',()=>{if(!translatedFeedback)signals.publish('set',Math.round(((Number(control.value)||0)-(Number(control.min)||0))/Math.max(1,(Number(control.max)||100)-(Number(control.min)||0))*65535))})});signals.subscribe('feedback',value=>{translatedFeedback=true;const percent=normalize(value);root.documentElement.style.setProperty('--value',String(value));root.documentElement.style.setProperty('--value-percent',percent+'%');translatedNumbers.forEach(control=>{const min=Number(control.min)||0,max=Number(control.max)||100,mapped=min+(max-min)*percent/100;if('value' in control)control.value=String(mapped);control.setAttribute('aria-valuenow',String(mapped));const fill=control.querySelector?.('[data-value],.value');if(fill)fill.textContent=Math.round(percent)+'%'});translatedFeedback=false});`
-      : "";
-    const inputAdapter =
-      preset === "text"
-        ? `\nconst translatedInput=root.querySelector('input,textarea');if(translatedInput){translatedInput.addEventListener('input',()=>signals.publish('text',translatedInput.value));signals.subscribe('name',value=>{if(value!=null)translatedInput.value=String(value)})}`
-        : "";
-    const adapter = `${buttonAdapter}\n${textAdapter}\n${numericAdapter}\n${inputAdapter}`;
+      .forEach((entry) => {
+        const duration = properties.some((property) => property.key === "timingMs")
+          ? "{{timingMs}}ms"
+          : "500ms";
+        css += `\nbody.composer-animation-active{animation:${entry.animationName} ${duration} both;}`;
+      });
+    if (translateSource.appliedSuggestions?.has("timing"))
+      javascript = javascript.replace(
+        /((?:setTimeout|setInterval)\s*\([\s\S]{0,300}?,\s*)\d+(\s*\))/g,
+        "$1{{timingMs}}$2",
+      );
     $("translate-snippet-dialog").close();
     openCustomBuilder();
     $("custom-component-name").value = $("translate-name").value;
     $("custom-component-category").value = $("translate-category").value;
     $("custom-source-html").value = html;
     $("custom-source-css").value = css;
-    $("custom-source-javascript").value =
-      `${translateSource.javascript}\n${adapter}`;
+    $("custom-source-javascript").value = javascript;
     $("custom-property-list").innerHTML = "";
     properties.forEach((entry) =>
       addCustomPropertyRow({
@@ -7767,6 +8819,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
     $("custom-signal-list").innerHTML = "";
     signals.forEach(addCustomSignalRow);
+    const generatedPlan = translatedBehaviorPlan(
+      properties,
+      signals,
+      detected,
+      preset,
+      selectedTranslateInferences(),
+    );
+    $("custom-behavior-list").innerHTML = "";
+    generatedPlan.behaviors.forEach(addCustomBehaviorRow);
+    setCustomStateStyles(generatedPlan.stateStyles);
     refreshCustomPreview();
     if (translateSource.features.repeatedItems) {
       const namespace =
@@ -7992,8 +9054,37 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   $("prop-target").onchange = (e) => {
     if (current()) current().targetPage = e.target.value;
   };
+  $("prop-hide-on-page").onchange = (e) => {
+    const item = current();
+    if (!item) return;
+    const excluded = new Set(item.excludedPages || []);
+    e.target.checked
+      ? excluded.add(state.activePage)
+      : excluded.delete(state.activePage);
+    item.excludedPages = [...excluded];
+    renderItem(item);
+    setStatus(
+      `${e.target.checked ? "Hid" : "Showed"} "${item.name}" on "${currentPage().name}"`,
+    );
+  };
+  $("toast-queue-page-enabled").onchange = (e) => {
+    const item = ensureToastQueueItem(),
+      excluded = new Set(item.excludedPages || []);
+    e.target.checked
+      ? excluded.delete(state.activePage)
+      : excluded.add(state.activePage);
+    item.excludedPages = [...excluded];
+    renderItem(item);
+    setStatus(
+      `${e.target.checked ? "Enabled" : "Disabled"} toast notifications on "${currentPage().name}"`,
+    );
+  };
+  $("toast-queue-configure").onclick = () => select(ensureToastQueueItem().id);
+  $("toast-queue-simulate").onclick = () =>
+    openSignalSimulator(ensureToastQueueItem().id);
+  $("toast-queue-editor-badge-close").onclick = () => select(null);
   function copySelected() {
-    const items = selectedItems();
+    const items = selectedItems().filter((item) => !item.systemManaged);
     if (!items.length) return;
     componentClipboard = JSON.stringify(items);
     setStatus(
@@ -8407,6 +9498,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       alert("Unlock the selected components before deleting them.");
       return;
     }
+    if (items.some((item) => item.systemManaged)) {
+      alert("Toast Notifications is a system component and can't be deleted.");
+      return;
+    }
     const ids = new Set(items.map((item) => item.id));
     items.forEach((item) =>
       stage.querySelector('.widget[data-id="' + item.id + '"]')?.remove(),
@@ -8421,7 +9516,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
   };
   $("duplicate").onclick = () => {
-    if (!current()) return;
+    if (!current() || current().systemManaged) return;
     copySelected();
     pasteComponent();
   };
@@ -9013,7 +10108,7 @@ function mapped(rule,value){if(rule.booleanMapping&&rule.booleanMapping.enabled)
 function transforms(target){target.style.transform='translateX(var(--composer-translate-x,0px)) translateY(var(--composer-translate-y,0px)) rotate(var(--composer-rotate,0deg)) scale(var(--composer-scale,1))'}
 function apply(rule,value){var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter)target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':var strength=Math.max(0,Number(mappedValue)||0),color=rule.parameter||'var(--glow-color,#00e5c3)';target.style.boxShadow='0 0 '+strength+(unit||'px')+' '+color+',0 0 '+strength*2+(unit||'px')+' '+color;break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':if(target.tagName==='IMG')target.src=String(mappedValue||'');else target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
 function pulse(key){window.ComposerSignals.publish(key,true);setTimeout(function(){window.ComposerSignals.publish(key,false)},50)}
-rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){window.ComposerSignals.publish(rule.key,target.type==='range'?Number(target.value):target.type==='checkbox'?target.checked:target.value)})})});
+rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){var raw=target.type==='range'||target.type==='number'?Number(target.value):target.type==='checkbox'?target.checked:target.value;window.ComposerSignals.publish(rule.key,mapped(rule,raw))})})});
 })();<\/script>`;
   }
   function customBehaviorCss(rules) {
@@ -9124,7 +10219,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
   }
   function customStateRuntime(config) {
     if (!config?.selector || !config.states) return "";
-    return `<script>(function(){var config=${JSON.stringify(config)};function setup(target){var textTarget=target.querySelector('[data-state-text],[data-custom-text],.button-label,.label')||target,originalText=textTarget.textContent,pressed=false;function current(){if(target.classList.contains('disabled')||target.hasAttribute('disabled'))return'disabled';if(target.classList.contains('selected')||target.classList.contains('active'))return'selected';if(pressed)return'pressed';return'standard'}function apply(){var name=current(),state=config.states[name]||{},standard=config.states.standard||{},text=state.text||standard.text,asset=state.assetData||standard.assetData;if(text)textTarget.textContent=text;else if(standard.text)textTarget.textContent=standard.text;else textTarget.textContent=originalText;if(target.tagName==='IMG'){if(asset)target.src=asset}else target.style.backgroundImage=asset?'url("'+String(asset).replace(/"/g,'\\"')+'")':''}target.addEventListener('pointerdown',function(){pressed=true;target.classList.add('composer-pressed');apply()});['pointerup','pointercancel','pointerleave'].forEach(function(eventName){target.addEventListener(eventName,function(){pressed=false;target.classList.remove('composer-pressed');apply()})});new MutationObserver(apply).observe(target,{attributes:true,attributeFilter:['class','disabled']});apply()}document.querySelectorAll(config.selector).forEach(setup)})();<\/script>`;
+    return `<script>(function(){var config=${JSON.stringify(config)},hasStateText=Object.keys(config.states).some(function(key){return!!config.states[key].text});function setup(target){var textTarget=target.querySelector('[data-state-text],[data-custom-text],.button-label,.label')||target,originalText=textTarget.textContent,pressed=false;function current(){if(target.classList.contains('disabled')||target.hasAttribute('disabled'))return'disabled';if(target.classList.contains('selected')||target.classList.contains('active'))return'selected';if(pressed)return'pressed';return'standard'}function apply(){var name=current(),state=config.states[name]||{},standard=config.states.standard||{},text=state.text||standard.text,asset=state.assetData||standard.assetData;if(text)textTarget.textContent=text;else if(hasStateText)textTarget.textContent=originalText;if(target.tagName==='IMG'){if(asset)target.src=asset}else target.style.backgroundImage=asset?'url("'+String(asset).replace(/"/g,'\\"')+'")':''}target.addEventListener('pointerdown',function(){pressed=true;target.classList.add('composer-pressed');apply()});['pointerup','pointercancel','pointerleave'].forEach(function(eventName){target.addEventListener(eventName,function(){pressed=false;target.classList.remove('composer-pressed');apply()})});new MutationObserver(apply).observe(target,{attributes:true,attributeFilter:['class','disabled']});apply()}document.querySelectorAll(config.selector).forEach(setup)})();<\/script>`;
   }
   function refreshCustomGeneratedCode() {
     const rules = collectCustomBehaviors(),
@@ -10195,13 +11290,28 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
       return;
     }
-    const packageValue = {
+    const packageValue = createCustomComponentPackage(entry);
+    download(
+      `${entry.name.replace(/[^A-Za-z0-9_-]+/g, "-") || "component"}.cuicomponent`,
+      JSON.stringify(packageValue, null, 2),
+      "application/json",
+    );
+    setStatus(`Exported component package “${entry.name}”`);
+  };
+  function createCustomComponentPackage(entry, assetCatalog = state.assets) {
+    const dependencyReport = customComponentDependencyReport(
+      entry,
+      assetCatalog,
+    );
+    if (dependencyReport.errors.length)
+      throw new Error(dependencyReport.errors.join("\n"));
+    return {
       format: "crestron-ui-composer-component",
       version: 3,
       exportedAt: new Date().toISOString(),
       component: structuredClone(entry),
       dependencies: {
-        assets: customComponentDependencies(entry),
+        assets: customComponentDependencies(entry, assetCatalog),
         manifest: {
           assetCount: dependencyReport.assets.length,
           generatedBehaviorCount: (entry.behaviors || []).length,
@@ -10210,13 +11320,23 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         },
       },
     };
-    download(
-      `${entry.name.replace(/[^A-Za-z0-9_-]+/g, "-") || "component"}.cuicomponent`,
-      JSON.stringify(packageValue, null, 2),
-      "application/json",
-    );
-    setStatus(`Exported component package “${entry.name}”`);
-  };
+  }
+  function parseCustomComponentPackage(packageValue) {
+    const imported = packageValue?.component;
+    if (
+      packageValue?.format !== "crestron-ui-composer-component" ||
+      ![1, 2, 3].includes(packageValue.version) ||
+      !imported?.id ||
+      !imported?.name ||
+      typeof imported.html !== "string" ||
+      !Array.isArray(imported.properties) ||
+      !Array.isArray(imported.signals)
+    )
+      throw new Error(
+        "This is not a valid Crestron UI Composer component package.",
+      );
+    return structuredClone(imported);
+  }
   function customComponentAssetReferences(entry) {
     const references = new Set();
     (entry.properties || []).forEach((property) => {
@@ -10239,15 +11359,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     });
     return [...references];
   }
-  function customComponentDependencies(entry) {
+  function customComponentDependencies(entry, assetCatalog = state.assets) {
     const references = new Set(customComponentAssetReferences(entry));
-    return state.assets
+    return assetCatalog
       .filter((asset) => references.has(asset.id))
       .map((asset) => structuredClone(asset));
   }
-  function customComponentDependencyReport(entry) {
+  function customComponentDependencyReport(entry, assetCatalog = state.assets) {
     const references = customComponentAssetReferences(entry),
-      assets = customComponentDependencies(entry),
+      assets = customComponentDependencies(entry, assetCatalog),
       found = new Set(assets.map((asset) => asset.id)),
       errors = [],
       warnings = [];
@@ -10270,22 +11390,26 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     duplicateIds.forEach((id) => errors.push(`Duplicate dependency asset ID: ${id}`));
     return { references, assets, errors, warnings };
   }
-  function restoreCustomComponentDependencies(packageValue, entry) {
+  function restoreCustomComponentDependencies(
+    packageValue,
+    entry,
+    assetCatalog = state.assets,
+  ) {
     const assets = packageValue.dependencies?.assets || [],
       idMap = new Map();
     assets.forEach((assetValue) => {
       const asset = structuredClone(assetValue),
-        sameData = state.assets.find(
+        sameData = assetCatalog.find(
           (candidate) => candidate.dataUrl === asset.dataUrl,
         ),
-        sameId = state.assets.find((candidate) => candidate.id === asset.id);
+        sameId = assetCatalog.find((candidate) => candidate.id === asset.id);
       if (sameData) {
         idMap.set(asset.id, sameData.id);
         return;
       }
       if (sameId) asset.id = uid("asset-");
       idMap.set(assetValue.id, asset.id);
-      state.assets.push(asset);
+      assetCatalog.push(asset);
     });
     (entry.properties || []).forEach((property) => {
       if (property.type === "asset" && idMap.has(property.defaultValue))
@@ -10426,19 +11550,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (!file) return;
     try {
       const packageValue = JSON.parse(await file.text()),
-        imported = packageValue.component;
-      if (
-        packageValue.format !== "crestron-ui-composer-component" ||
-        ![1, 2, 3].includes(packageValue.version) ||
-        !imported?.id ||
-        !imported?.name ||
-        typeof imported.html !== "string" ||
-        !Array.isArray(imported.properties) ||
-        !Array.isArray(imported.signals)
-      )
-        throw new Error(
-          "This is not a valid Crestron UI Composer component package.",
-        );
+        imported = parseCustomComponentPackage(packageValue);
       const existingIndex = state.customComponents.findIndex(
         (entry) => entry.id === imported.id,
       );
@@ -10449,7 +11561,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         )
       )
         return;
-      const entry = structuredClone(imported);
+      const entry = imported;
       const restoredDependencies = restoreCustomComponentDependencies(
         packageValue,
         entry,

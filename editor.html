@@ -167,6 +167,12 @@
     </style>
   </head>
   <body>
+    <div id="toast-queue-editor-badge" class="editor-fixed-badge" hidden>
+      <span>🔔 Editing Toast Notifications — settings apply project-wide</span>
+      <button type="button" id="toast-queue-editor-badge-close" aria-label="Dismiss">
+        ×
+      </button>
+    </div>
     <header class="toolbar">
       <div class="brand">
         Crestron UI Composer <small id="status">Ready</small>
@@ -458,27 +464,34 @@
           Select an item on the panel.
         </div>
         <form id="properties" hidden>
+          <div id="system-component-banner" class="reusable-inheritance-status" hidden>
+            ⚙ System Component — settings apply to the whole project. Use
+            the "Enabled on this page" checkbox at the bottom of the
+            sidebar to control where it's shown.
+          </div>
           <label>Name<input id="prop-name" /></label>
-          <div class="grid2">
+          <div id="prop-position-row" class="grid2">
             <label>X<input id="prop-x" type="number" /></label
             ><label>Y<input id="prop-y" type="number" /></label>
           </div>
-          <div class="grid2">
+          <div id="prop-size-row" class="grid2">
             <label>Width<input id="prop-w" type="number" min="20" /></label
             ><label>Height<input id="prop-h" type="number" min="20" /></label>
           </div>
-          <label>Z-index<input id="prop-z" type="number" min="1" /></label>
+          <label id="prop-z-wrap">Z-index<input id="prop-z" type="number" min="1" /></label>
           <section class="signal-section">
-            <h2>Responsive layout</h2>
-            <button
-              id="responsive-help-open"
-              class="section-help-button"
-              type="button"
-              title="Responsive layout help"
-              aria-label="Responsive layout help"
-            >
-              ?
-            </button>
+            <div class="section-header-row">
+              <h2>Responsive layout</h2>
+              <button
+                id="responsive-help-open"
+                class="section-help-button"
+                type="button"
+                title="Responsive layout help"
+                aria-label="Responsive layout help"
+              >
+                ?
+              </button>
+            </div>
             <div class="grid2">
               <label
                 >Horizontal anchor<select id="layout-anchor-x">
@@ -531,6 +544,10 @@
               <option value="">No page change</option>
             </select></label
           >
+          <label id="prop-hide-on-page-wrap" hidden>
+            <input type="checkbox" id="prop-hide-on-page" />
+            Hide on this page (global component)
+          </label>
           <section
             id="component-properties-section"
             class="signal-section"
@@ -615,15 +632,17 @@
             <button id="prop-asset-clear" type="button">Clear asset</button>
           </section>
           <section class="signal-section interaction-section">
-            <h2>Interaction & animation</h2>
-            <button
-              class="section-help-button timeline-action-help-open"
-              type="button"
-              title="Timeline and action editor help"
-              aria-label="Timeline and action editor help"
-            >
-              ?
-            </button>
+            <div class="section-header-row">
+              <h2>Interaction & animation</h2>
+              <button
+                class="section-help-button timeline-action-help-open"
+                type="button"
+                title="Timeline and action editor help"
+                aria-label="Timeline and action editor help"
+              >
+                ?
+              </button>
+            </div>
             <label
               >Trigger<select id="interaction-trigger">
                 <option value="none">None</option>
@@ -798,6 +817,17 @@
             >Height<input id="panel-height" type="number" value="800"
           /></label>
         </div>
+        <h2>Toast Notifications</h2>
+        <label
+          ><input type="checkbox" id="toast-queue-page-enabled" /> Enabled on
+          this page</label
+        >
+        <button type="button" id="toast-queue-configure">
+          Configure notifications…
+        </button>
+        <button type="button" id="toast-queue-simulate">
+          Simulate notifications…
+        </button>
       </aside>
     </main>
     <dialog id="source-dialog">
@@ -1468,6 +1498,8 @@ Preview signal activity appears here.</pre
             >Source file<input id="translate-source-name" disabled
           /></label>
         </div>
+        <div id="translate-detection-summary" class="translate-detection-summary"></div>
+        <div id="translate-review-status" class="translate-review-status"></div>
         <div class="custom-builder-layout translate-builder-layout">
           <section>
             <div class="custom-builder-heading">
@@ -1481,6 +1513,30 @@ Preview signal activity appears here.</pre
           <section>
             <div class="custom-builder-heading"><h2>Signal bindings</h2></div>
             <div id="translate-signals" class="translate-choice-list"></div>
+          </section>
+        </div>
+        <section class="translate-inference-section">
+          <div class="custom-builder-heading">
+            <h2>Inferred CSS / JavaScript behaviors</h2>
+            <small>Keep original behavior local, generate a Crestron rule, or ignore it.</small>
+          </div>
+          <div id="translate-suggestions" class="translate-suggestion-list"></div>
+          <div id="translate-inferences" class="translate-inference-list"></div>
+        </section>
+        <div class="custom-builder-layout translate-review-layout">
+          <section>
+            <div class="custom-builder-heading"><h2>Generated behaviors</h2></div>
+            <div id="translate-behaviors" class="translate-review-list"></div>
+          </section>
+          <section>
+            <div class="custom-builder-heading">
+              <h2>Translated preview</h2>
+              <div><button id="translate-preview-refresh" type="button">Reload simulator</button><button id="translate-test" type="button">Auto-test signals</button></div>
+            </div>
+            <iframe id="translate-live-preview" sandbox="allow-scripts" title="Translated component preview"></iframe>
+            <div id="translate-signal-simulator" class="translate-signal-simulator"></div>
+            <small id="translate-test-result" class="hint"></small>
+            <pre id="translate-signal-log" class="translate-signal-log">Signal activity will appear here.</pre>
           </section>
         </div>
         <details>
@@ -1812,12 +1868,15 @@ Preview signal activity appears here.</pre
     <script src="music-card.component.js"></script>
     <script src="capsule-icon-dots.component.js"></script>
     <script src="text-block.component.js"></script>
+    <script src="vertical-text-block.component.js"></script>
     <script src="text-scramble.component.js"></script>
     <script src="lighting-control.component.js"></script>
     <script src="microphone-control.component.js"></script>
     <script src="shade-control.component.js"></script>
     <script src="horizontal-scrolling-text.component.js"></script>
     <script src="vertical-scrolling-text.component.js"></script>
+    <script src="horizontal-typewriter-text.component.js"></script>
+    <script src="vertical-typewriter-text.component.js"></script>
     <script src="horizontal-carousel.component.js"></script>
     <script src="vertical-carousel.component.js"></script>
     <script src="swiping-cards.component.js"></script>
@@ -1828,6 +1887,7 @@ Preview signal activity appears here.</pre
     <script src="split-button.component.js"></script>
     <script src="rolling-menu.component.js"></script>
     <script src="checkbox-button-list.component.js"></script>
+    <script src="select-all-checklist.component.js"></script>
     <script src="horizontal-button-list.component.js"></script>
     <script src="vertical-button-list.component.js"></script>
     <script src="countdown-selector.component.js"></script>
@@ -1838,6 +1898,7 @@ Preview signal activity appears here.</pre
     <script src="analog-clock.component.js"></script>
     <script src="display-control.component.js"></script>
     <script src="glass-block.component.js"></script>
+    <script src="toast-queue.component.js"></script>
     <script src="please-wait-spinner.component.js"></script>
     <script src="shutdown-progress.component.js"></script>
     <script src="weather-card.component.js"></script>
@@ -1849,6 +1910,9 @@ Preview signal activity appears here.</pre
     <script src="search-input.component.js"></script>
     <script src="single-device-controls.component.js"></script>
     <script src="video-input.component.js"></script>
+    <script src="horizontal-separator.component.js"></script>
+    <script src="vertical-separator.component.js"></script>
+    <script src="wizard-steps.component.js"></script>
     <div id="canvas-context-menu" class="context-menu" hidden>
       <button id="context-copy" type="button">Copy</button>
       <button id="context-paste" type="button">Paste</button>
