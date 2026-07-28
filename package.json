@@ -1,7 +1,7 @@
 {
   "name": "crestron-ui-composer",
   "private": true,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "scripts": {
     "test": "node tests/regression.test.js && node tests/widget-audit.test.js && node tests/component-continuity.test.js"
   },

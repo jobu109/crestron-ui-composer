@@ -345,6 +345,30 @@ run("exported action runtime is valid JavaScript", () => {
     html.includes("bundle.getWebXPanel(!inContainer)"),
     "Export must select the correct Web XPanel transport for CH5 Desktop or Web XPanel",
   );
+  assert.ok(
+    html.indexOf("startComposerCommunication") < html.indexOf("function standardAttribute"),
+    "WebXPanel communication must initialize before component subscriptions",
+  );
+  assert.ok(
+    html.indexOf("startComposerCommunication") < html.indexOf('src="cr-com-lib.js"'),
+    "WebXPanel must select the CH5 Desktop native bridge before CrComLib loads",
+  );
+  assert.ok(
+    html.includes("window.__composerCommunicationReady=true"),
+    "Export must expose CH5 Desktop communication readiness for diagnostics",
+  );
+  assert.ok(
+    !html.includes("tokenSource:''") && !html.includes("tokenUrl:''"),
+    "WebXPanel initialization must not pass empty optional configuration values",
+  );
+  assert.ok(
+    html.includes("params.ipid") && html.includes("params.host") && html.includes("params.roomid"),
+    "Web XPanel must honor CH5 Desktop connection parameters from the launch URL",
+  );
+  assert.ok(
+    html.includes("key==='NOT_AUTHORIZED'") && html.includes("window.location.replace(detail.redirectTo)"),
+    "Web XPanel must follow the processor authentication redirect",
+  );
   assert.equal(
     (html.match(/<\/script>/g) || []).length,
     4,
@@ -638,6 +662,132 @@ run("recovery snapshots are verified and crash-aware", () => {
   assert.ok(markup.includes('id="recovery-context"'));
 });
 
+run("undo history covers every persistent project field", () => {
+  const editor = read("editor.js"),
+    styles = read("editor.css");
+  assert.ok(editor.includes("function projectSnapshot()"));
+  assert.ok(editor.includes("return JSON.stringify(projectSnapshot())"));
+  assert.ok(editor.includes("...projectSnapshot()"));
+  [
+    "pages",
+    "items",
+    "assets",
+    "reusables",
+    "pageTemplates",
+    "themes",
+    "customComponents",
+    "acceptance",
+    "contract",
+  ].forEach((field) =>
+    assert.ok(
+      editor.includes(`${field}: state.${field}`),
+      `history snapshot is missing ${field}`,
+    ),
+  );
+  assert.ok(editor.includes("responsive layout`"));
+  assert.ok(editor.includes("Changed reusable designs"));
+  assert.ok(editor.includes("Changed custom components"));
+  assert.ok(styles.includes(".history-entry-time"));
+});
+
+run("versioned design libraries import without replacing existing components", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="design-library-export"'));
+  assert.ok(markup.includes('id="design-library-import"'));
+  assert.ok(markup.includes(".cuilibrary"));
+  assert.ok(editor.includes('format: "crestron-ui-composer-library"'));
+  assert.ok(editor.includes("function importDesignLibrary"));
+  assert.ok(editor.includes("function remapLibraryReferences"));
+  assert.ok(editor.includes("uniqueLibraryName"));
+  assert.ok(editor.includes("registerCustomComponent(component)"));
+});
+
+run("new projects provide editable AV starter templates", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="new-project-dialog"'));
+  ["blank", "conference", "classroom", "multi-room"].forEach((starter) =>
+    assert.ok(markup.includes(`data-starter-project="${starter}"`)),
+  );
+  assert.ok(editor.includes("function createStarterProject"));
+  assert.ok(editor.includes("function starterItem"));
+  assert.ok(editor.includes('bindingMode: "contract"'));
+  assert.ok(editor.includes('targetPage: target.id'));
+});
+
+run("responsive compare identifies and saves missing target overrides", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html"),
+    styles = read("editor.css");
+  assert.ok(markup.includes('id="responsive-compare-dialog"'));
+  assert.ok(markup.includes('id="responsive-save-adapted"'));
+  assert.ok(editor.includes("function renderResponsiveComparison"));
+  assert.ok(editor.includes("function saveAdaptedResponsiveLayout"));
+  assert.ok(editor.includes("without saved ${target.name} overrides"));
+  assert.ok(styles.includes(".responsive-mini-widget.missing-override"));
+});
+
+run("scrolling components retain bounded overflow beside global press effects", () => {
+  const runtime = read("component-runtime.js"),
+    editor = read("editor.css"),
+    exporter = read("exporter.js");
+  assert.ok(runtime.includes('"composer-scroll-horizontal"'));
+  assert.ok(runtime.includes('"composer-scroll-vertical"'));
+  assert.ok(editor.includes(".scoped-preview.composer-scroll-horizontal"));
+  assert.ok(editor.includes("overflow-x: auto !important"));
+  assert.ok(exporter.includes("composer-scroll-horizontal:not"));
+  assert.ok(exporter.includes("def.scrollAxes"));
+});
+
+run("responsive workflow validates and fits every supported target", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="responsive-validate-all"'));
+  assert.ok(markup.includes('id="responsive-fit-all"'));
+  assert.ok(editor.includes("function responsiveTargetReport"));
+  assert.ok(editor.includes("function validateAllResponsiveTargets"));
+  assert.ok(editor.includes("function fitAndSaveAllResponsiveTargets"));
+  assert.ok(editor.includes("item.deviceOverrides[key] ="));
+  assert.ok(editor.includes("device.width - margin - width"));
+});
+
+run("responsive layouts copy safely between panel targets", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="responsive-copy-source"'));
+  assert.ok(markup.includes('id="responsive-copy-layout"'));
+  assert.ok(editor.includes("function copyResponsiveLayoutToTarget"));
+  assert.ok(editor.includes("sourceKey === currentKey"));
+  assert.ok(editor.includes("item.deviceOverrides[targetKey] ="));
+  assert.ok(editor.includes("Existing ${target.name} overrides will be replaced"));
+});
+
+run("responsive breakpoint families cover touch, iPad, and large displays", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="responsive-breakpoint-family"'));
+  ["same-viewport", "compact-touch", "hd", "large-display"].forEach((family) =>
+    assert.ok(markup.includes(`value="${family}"`)),
+  );
+  assert.ok(editor.includes("function responsiveBreakpointTargets"));
+  assert.ok(editor.includes("function applyResponsiveBreakpointFamily"));
+  assert.ok(editor.includes("device.width <= 1280"));
+  assert.ok(editor.includes("device.width <= 1920"));
+  assert.ok(editor.includes("device.width > 1920"));
+});
+
+run("successful deployments can be verified and rolled back directly", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("async function redeployDeploymentBackup"));
+  assert.ok(editor.includes('nativeRequest("checkDeploymentProfile"'));
+  assert.ok(editor.includes('nativeRequest("deployCh5PackageWait"'));
+  assert.ok(editor.includes('rollback.textContent = "Roll back"'));
+  assert.ok(editor.includes("entry.success !== true"));
+  assert.ok(editor.includes("Rollback package target"));
+  assert.ok(editor.includes("deviceId: profile.deviceId"));
+});
+
 run("project health is a navigable validation dashboard", () => {
   const editor = read("editor.js"),
     markup = read("editor.html");
@@ -670,6 +820,42 @@ run("project health includes Crestron performance budgets", () => {
   assert.ok(editor.includes("Peak widgets / page"));
   assert.ok(editor.includes("Embedded assets"));
   assert.ok(editor.includes('category: "Performance"'));
+});
+
+run("panel performance profiler identifies expensive pages and widgets", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.match(markup, /id="panel-performance"/);
+  assert.match(editor, /function panelPerformanceIssues/);
+  assert.match(editor, /function panelPerformanceReport/);
+  assert.match(editor, /function runPanelPerformanceReport/);
+  assert.match(editor, /strongFilterWidgets/);
+  assert.match(editor, /Peak page score/);
+  assert.match(editor, /HIGHEST-COST WIDGETS/);
+  assert.match(editor, /confirm final frame rate, startup time, and memory/);
+  assert.match(editor, /animated = items\.filter[\s\S]*?\),\s*profiles = itemProfiles\.filter/);
+  assert.match(editor, /function runAuditUi/);
+  assert.match(editor, /The audit could not complete/);
+  assert.match(editor, /health-metric-help/);
+  assert.match(editor, /it is not a measured frame rate/);
+  assert.match(editor, /large CSS filters are expensive on touch panels/);
+  assert.match(editor, /Guidelines for/);
+  assert.match(editor, /conservative Composer engineering guidelines/);
+  assert.match(editor, /1280 × 800-class touch panels/);
+  assert.match(editor, /className = `health-metric \$\{rating/);
+});
+
+run("release readiness gates beta publication on verified evidence", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.match(markup, /id="release-readiness"/);
+  assert.match(editor, /function releaseReadinessAudit/);
+  assert.match(editor, /Project Health/);
+  assert.match(editor, /Contract generation/);
+  assert.match(editor, /Acceptance checklist/);
+  assert.match(editor, /Current build artifact/);
+  assert.match(editor, /Verified deployment/);
+  assert.match(editor, /clean-install and upgrade-install tests/);
 });
 
 run("project health audits touch-panel usability", () => {
@@ -801,6 +987,42 @@ run("Signal Manager generates standardized collision-free contract names", () =>
   assert.ok(editor.includes("collision-free contract name"));
 });
 
+run("Signal Manager previews the exact SIMPL contract hierarchy", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.match(markup, /id="signal-view-simpl"[^>]*>SIMPL preview/);
+  assert.match(markup, /id="signal-simpl-preview"/);
+  assert.match(editor, /function renderSimplPreview\(\)/);
+  assert.match(editor, /SIMPL extender:/);
+  assert.match(editor, /contract\.specifications/);
+  assert.match(editor, /component\.specifications/);
+  assert.match(editor, /attribute\.notes/);
+});
+
+run("Signal Manager compares CCE and CSE2J contract mappings", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.match(markup, /id="signal-compare-contract"/);
+  assert.match(markup, /accept="\.cce,\.cse2j/);
+  assert.match(editor, /function cceComparisonSignals/);
+  assert.match(editor, /function cse2jComparisonSignals/);
+  assert.match(editor, /function compareContractFile/);
+  assert.match(editor, /Missing from imported mapping/);
+  assert.match(editor, /Extra in imported mapping/);
+  assert.match(editor, /Type or direction mismatch/);
+});
+
+run("Signal Manager exports a human-readable signal schedule", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.match(markup, /id="signal-export-schedule"/);
+  assert.match(editor, /function signalScheduleReport/);
+  assert.match(editor, /CRESTRON UI COMPOSER — SIGNAL SCHEDULE/);
+  assert.match(editor, /CONTRACT BUILD ERRORS/);
+  assert.match(editor, /SIMPL COMPONENT SUMMARY/);
+  assert.match(editor, /-signal-schedule\.txt/);
+});
+
 run("custom fonts remain embedded from import through CH5Z export", () => {
   const editor = read("editor.js"),
     runtime = read("component-runtime.js"),
@@ -814,6 +1036,26 @@ run("custom fonts remain embedded from import through CH5Z export", () => {
   assert.ok(editor.includes("properties.fontAssetData"));
   assert.ok(exporter.includes("fontFaces"));
   assert.ok(exporter.includes("@font-face"));
+});
+
+run("cross-runtime acceptance workflow is project-persistent and reportable", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html"),
+    styles = read("editor.css");
+  assert.ok(markup.includes('id="acceptance-test"'));
+  assert.ok(markup.includes('id="acceptance-dialog"'));
+  assert.ok(markup.includes('id="acceptance-create-project"'));
+  assert.ok(markup.includes('id="acceptance-run-automatic"'));
+  assert.ok(editor.includes("const acceptanceChecks"));
+  assert.ok(editor.includes("function createAcceptanceProject"));
+  assert.ok(editor.includes("function runAcceptanceAutomaticChecks"));
+  assert.ok(editor.includes("function acceptanceReport"));
+  assert.ok(editor.includes("acceptance: state.acceptance"));
+  assert.ok(editor.includes('"CH5 Desktop"'));
+  assert.ok(editor.includes('"TSW-1070"'));
+  assert.ok(editor.includes("if (x.systemManaged || y.systemManaged || x.hidden || y.hidden) continue"));
+  assert.ok(editor.includes("0 blocking errors"));
+  assert.ok(styles.includes(".acceptance-checklist"));
 });
 
 if (process.exitCode) process.exit(process.exitCode);

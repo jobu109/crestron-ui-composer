@@ -962,6 +962,15 @@
         ]),
       );
     root.dataset.component = id;
+    const scrollAxes = definition.scrollReturnAxes || [];
+    root.classList.toggle(
+      "composer-scroll-horizontal",
+      scrollAxes.includes("horizontal"),
+    );
+    root.classList.toggle(
+      "composer-scroll-vertical",
+      scrollAxes.includes("vertical"),
+    );
     root.classList.toggle(
       "wrap-text",
       options.properties.wrapText === true ||

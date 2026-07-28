@@ -26,6 +26,7 @@
     pageTemplates: [],
     themes: [],
     customComponents: [],
+    acceptance: { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} },
     contract: {
       name: "MyCrestronUI",
       description: "",
@@ -67,7 +68,8 @@
   let lastPerformanceMetrics = null;
   let lastUsabilityMetrics = null;
   let lastApprovedPreflightFingerprint = "";
-  let signalViewMode = "table";
+  let signalViewMode = "table",
+    importedContractComparison = null;
   let joinAllocationPlan = [];
   let contractNamingPlan = [];
   let activeColorInput = null;
@@ -316,8 +318,8 @@
     });
     return items || [];
   }
-  function historyState() {
-    return JSON.stringify({
+  function projectSnapshot() {
+    return {
       width: state.width,
       height: state.height,
       targetDevice: state.targetDevice,
@@ -330,8 +332,12 @@
       pageTemplates: state.pageTemplates,
       themes: state.themes,
       customComponents: state.customComponents,
+      acceptance: state.acceptance,
       contract: state.contract,
-    });
+    };
+  }
+  function historyState() {
+    return JSON.stringify(projectSnapshot());
   }
   function describeHistoryChange(previousValue, nextValue) {
     if (!previousValue) return "Initial project state";
@@ -406,6 +412,11 @@
         return `${item.hidden ? "Hid" : "Showed"} ${item.name}`;
       if (old.groupId !== item.groupId)
         return `${item.groupId ? "Grouped" : "Ungrouped"} ${item.name}`;
+      if (
+        JSON.stringify(old.deviceOverrides) !==
+        JSON.stringify(item.deviceOverrides)
+      )
+        return `Changed ${item.name} responsive layout`;
       if (old.master !== item.master)
         return `${item.master ? "Made global" : "Removed global"}: ${item.name}`;
       if (
@@ -441,14 +452,28 @@
         return `Changed ${item.name} actions`;
       return `Changed ${item.name}`;
     }
-    if (previous.width !== next.width || previous.height !== next.height)
-      return "Changed panel size";
     if (previous.targetDevice !== next.targetDevice)
       return "Changed target panel";
+    if (previous.width !== next.width || previous.height !== next.height)
+      return "Changed panel size";
     if (JSON.stringify(previous.assets) !== JSON.stringify(next.assets))
       return "Changed project assets";
+    if (JSON.stringify(previous.reusables) !== JSON.stringify(next.reusables))
+      return "Changed reusable designs";
+    if (
+      JSON.stringify(previous.pageTemplates) !==
+      JSON.stringify(next.pageTemplates)
+    )
+      return "Changed page templates";
     if (JSON.stringify(previous.themes) !== JSON.stringify(next.themes))
       return "Changed themes";
+    if (
+      JSON.stringify(previous.customComponents) !==
+      JSON.stringify(next.customComponents)
+    )
+      return "Changed custom components";
+    if (JSON.stringify(previous.acceptance) !== JSON.stringify(next.acceptance))
+      return "Updated acceptance test";
     if (JSON.stringify(previous.contract) !== JSON.stringify(next.contract))
       return "Changed contract settings";
     return "Changed project";
@@ -460,7 +485,8 @@
     history.forEach((entry, index) => {
       const button = document.createElement("button"),
         marker = document.createElement("span"),
-        label = document.createElement("span");
+        label = document.createElement("span"),
+        time = document.createElement("time");
       button.type = "button";
       button.className = `history-entry${index === historyIndex ? " current" : ""}${index > historyIndex ? " future" : ""}`;
       button.title = `${entry.label} · ${new Date(entry.time).toLocaleTimeString()}`;
@@ -469,7 +495,14 @@
         index === historyIndex ? "●" : index > historyIndex ? "○" : "✓";
       label.className = "history-entry-label";
       label.textContent = entry.label;
-      button.append(marker, label);
+      time.className = "history-entry-time";
+      time.dateTime = entry.time;
+      time.textContent = new Date(entry.time).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      button.append(marker, label, time);
       button.onclick = () => restoreHistory(index);
       host.appendChild(button);
     });
@@ -677,6 +710,7 @@
     state.pageTemplates = saved.pageTemplates || [];
     state.themes = saved.themes || [];
     state.customComponents = saved.customComponents || [];
+    state.acceptance = saved.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.customComponents.forEach(registerCustomComponent);
     state.contract = { ...state.contract, ...(saved.contract || {}) };
     state.selected = null;
@@ -719,6 +753,7 @@
     state.pageTemplates = p.pageTemplates || [];
     state.themes = p.themes || [];
     state.customComponents = p.customComponents || [];
+    state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.customComponents.forEach(registerCustomComponent);
     state.contract = {
       ...state.contract,
@@ -2650,6 +2685,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       definition = {
         id: uid("reusable-"),
         name: name.trim(),
+        version: "1.0.0",
         items: reusableSnapshot(items),
         masterInstanceId: instanceId,
       };
@@ -2735,6 +2771,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     state.pageTemplates.push({
       id: uid("page-template-"),
       name: name.trim(),
+      version: "1.0.0",
       background: page.background,
       backgroundAsset: page.backgroundAsset || "",
       backgroundAssetFit: page.backgroundAssetFit || "cover",
@@ -2819,7 +2856,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       reusableHost.appendChild(
         card(
           entry,
-          `${entry.items.length} component${entry.items.length === 1 ? "" : "s"}`,
+          `v${entry.version || "1.0.0"} · ${entry.items.length} component${entry.items.length === 1 ? "" : "s"}`,
           () => insertReusable(entry.id),
           () => {
             state.reusables = state.reusables.filter(
@@ -2842,7 +2879,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       templateHost.appendChild(
         card(
           entry,
-          `${entry.items.length} component${entry.items.length === 1 ? "" : "s"}`,
+          `v${entry.version || "1.0.0"} · ${entry.items.length} component${entry.items.length === 1 ? "" : "s"}`,
           () => createPageFromTemplate(entry.id),
           () => {
             state.pageTemplates = state.pageTemplates.filter(
@@ -2858,6 +2895,127 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       reusableHost.innerHTML = '<p class="hint">No reusable designs.</p>';
     if (!state.pageTemplates.length)
       templateHost.innerHTML = '<p class="hint">No page templates.</p>';
+  }
+  function designLibraryPackage(name, version) {
+    return {
+      format: "crestron-ui-composer-library",
+      schemaVersion: 1,
+      name,
+      version,
+      exportedAt: new Date().toISOString(),
+      content: {
+        reusables: structuredClone(state.reusables),
+        pageTemplates: structuredClone(state.pageTemplates),
+        customComponents: structuredClone(state.customComponents),
+        themes: structuredClone(state.themes),
+        assets: structuredClone(state.assets),
+      },
+    };
+  }
+  function remapLibraryReferences(value, idMap) {
+    if (Array.isArray(value))
+      return value.map((entry) => remapLibraryReferences(entry, idMap));
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [
+          key,
+          remapLibraryReferences(entry, idMap),
+        ]),
+      );
+    return typeof value === "string" && idMap.has(value)
+      ? idMap.get(value)
+      : value;
+  }
+  function uniqueLibraryName(name, existing) {
+    const used = new Set(existing.map((entry) => entry.name));
+    if (!used.has(name)) return name;
+    let number = 2;
+    while (used.has(`${name} (Imported ${number})`)) number++;
+    return `${name} (Imported ${number})`;
+  }
+  function importDesignLibrary(packageValue) {
+    if (
+      packageValue?.format !== "crestron-ui-composer-library" ||
+      packageValue.schemaVersion !== 1 ||
+      !packageValue.content ||
+      !Array.isArray(packageValue.content.reusables) ||
+      !Array.isArray(packageValue.content.pageTemplates) ||
+      !Array.isArray(packageValue.content.customComponents) ||
+      !Array.isArray(packageValue.content.assets)
+    )
+      throw new Error("This is not a valid Crestron UI Composer library.");
+    const content = structuredClone(packageValue.content),
+      idMap = new Map(),
+      assetByData = new Map(state.assets.map((asset) => [asset.dataUrl, asset]));
+    content.assets.forEach((asset) => {
+      const matching = assetByData.get(asset.dataUrl);
+      if (matching) {
+        idMap.set(asset.id, matching.id);
+        return;
+      }
+      const originalId = asset.id;
+      if (state.assets.some((entry) => entry.id === asset.id))
+        asset.id = uid("asset-");
+      idMap.set(originalId, asset.id);
+      state.assets.push(asset);
+      assetByData.set(asset.dataUrl, asset);
+    });
+    content.customComponents.forEach((component) => {
+      const originalId = component.id;
+      if (
+        state.customComponents.some((entry) => entry.id === component.id) ||
+        state.components.some(
+          (entry) => entry.componentId === component.id &&
+            !state.customComponents.some((custom) => custom.id === component.id),
+        )
+      ) {
+        component.id = `custom-${String(component.name || "component")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")}-${uid().slice(-6)}`;
+        component.name = uniqueLibraryName(component.name, state.customComponents);
+      }
+      idMap.set(originalId, component.id);
+    });
+    content.reusables.forEach((entry) => {
+      const originalId = entry.id;
+      if (state.reusables.some((existing) => existing.id === entry.id))
+        entry.id = uid("reusable-");
+      entry.name = uniqueLibraryName(entry.name, state.reusables);
+      entry.version = entry.version || packageValue.version || "1.0.0";
+      delete entry.masterInstanceId;
+      idMap.set(originalId, entry.id);
+    });
+    content.pageTemplates.forEach((entry) => {
+      if (state.pageTemplates.some((existing) => existing.id === entry.id))
+        entry.id = uid("page-template-");
+      entry.name = uniqueLibraryName(entry.name, state.pageTemplates);
+      entry.version = entry.version || packageValue.version || "1.0.0";
+    });
+    const imported = remapLibraryReferences(content, idMap);
+    imported.customComponents.forEach((component) => {
+      state.customComponents.push(component);
+      registerCustomComponent(component);
+    });
+    state.reusables.push(...imported.reusables);
+    state.pageTemplates.push(...imported.pageTemplates);
+    (imported.themes || []).forEach((theme) => {
+      if (state.themes.some((entry) => entry.id === theme.id))
+        theme.id = uid("theme-");
+      theme.name = uniqueLibraryName(theme.name, state.themes);
+      state.themes.push(theme);
+    });
+    renderAssets();
+    renderComponentLibrary();
+    renderReusableLibrary();
+    renderThemes();
+    commitHistory();
+    return {
+      reusables: imported.reusables.length,
+      templates: imported.pageTemplates.length,
+      components: imported.customComponents.length,
+      assets: imported.assets.length,
+    };
   }
   function currentTheme() {
     const tokenKeys = [
@@ -3311,6 +3469,367 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("layout-apply-page").onclick = () => applyRules("page");
     $("layout-apply-project").onclick = () => applyRules("project");
     renderSafeMarginGuide(item);
+  }
+  function responsiveComparisonTarget() {
+    return deviceProfiles.find(
+      (device) => device.id === $("responsive-compare-target").value,
+    );
+  }
+  function renderResponsiveMiniPanel(host, device, target = false) {
+    host.innerHTML = "";
+    host.style.setProperty("--panel-aspect", device.width / device.height);
+    host.style.background = currentPage().background || "#182126";
+    const key = panelLayoutKey(device.id, device.width, device.height),
+      from = { width: state.width, height: state.height };
+    state.items
+      .filter((item) => itemVisibleOnPage(item, state.activePage))
+      .forEach((item) => {
+        const saved = target ? item.deviceOverrides?.[key] : null,
+          rect = target
+            ? saved ||
+              window.ComposerResponsiveLayout.adaptRect(
+                item,
+                from,
+                { width: device.width, height: device.height },
+                layoutDefaults(item),
+              )
+            : item,
+          widget = document.createElement("div");
+        widget.className = `responsive-mini-widget${target && !saved ? " missing-override" : ""}`;
+        widget.title = `${item.name}${target && !saved ? " · calculated, not saved" : ""}`;
+        widget.textContent = item.name;
+        Object.assign(widget.style, {
+          left: `${(Number(rect.x) / device.width) * 100}%`,
+          top: `${(Number(rect.y) / device.height) * 100}%`,
+          width: `${(Number(rect.w) / device.width) * 100}%`,
+          height: `${(Number(rect.h) / device.height) * 100}%`,
+          zIndex: Number(item.z) || 1,
+        });
+        host.appendChild(widget);
+      });
+  }
+  function renderResponsiveComparison() {
+    const target = responsiveComparisonTarget();
+    if (!target) return;
+    const current = selectedDevice(),
+      key = panelLayoutKey(target.id, target.width, target.height),
+      items = state.items.filter((item) =>
+        itemVisibleOnPage(item, state.activePage),
+      ),
+      missing = items.filter((item) => !item.deviceOverrides?.[key]);
+    $("responsive-current-title").textContent =
+      `${current.name} · ${state.width} × ${state.height}`;
+    $("responsive-target-title").textContent =
+      `${target.name} · ${target.width} × ${target.height}`;
+    $("responsive-compare-summary").textContent =
+      `${currentPage().name}: ${items.length} visible widgets · ${missing.length} without saved ${target.name} overrides.`;
+    $("responsive-save-adapted").disabled = !missing.length;
+    $("responsive-copy-layout").disabled =
+      $("responsive-copy-source").value === target.id;
+    renderResponsiveMiniPanel(
+      $("responsive-current-preview"),
+      { ...current, width: state.width, height: state.height },
+      false,
+    );
+    renderResponsiveMiniPanel($("responsive-target-preview"), target, true);
+  }
+  function openResponsiveComparison() {
+    const select = $("responsive-compare-target"),
+      sourceSelect = $("responsive-copy-source"),
+      previous = select.value,
+      previousSource = sourceSelect.value;
+    select.innerHTML = "";
+    sourceSelect.innerHTML = "";
+    deviceProfiles
+      .filter((device) => device.id !== "custom" && device.id !== state.targetDevice)
+      .forEach((device) => {
+        const option = document.createElement("option");
+        option.value = device.id;
+        option.textContent = `${device.name} — ${device.width} × ${device.height}`;
+        select.appendChild(option);
+      });
+    deviceProfiles
+      .filter((device) => device.id !== "custom")
+      .forEach((device) => {
+        const option = document.createElement("option"),
+          key = panelLayoutKey(device.id, device.width, device.height),
+          savedCount = state.items.filter(
+            (item) => item.deviceOverrides?.[key],
+          ).length;
+        option.value = device.id;
+        option.textContent = `${device.name}${device.id === state.targetDevice ? " (current)" : ` (${savedCount} saved)`}`;
+        sourceSelect.appendChild(option);
+      });
+    if (previous && [...select.options].some((option) => option.value === previous))
+      select.value = previous;
+    sourceSelect.value =
+      previousSource &&
+      [...sourceSelect.options].some((option) => option.value === previousSource)
+        ? previousSource
+        : state.targetDevice;
+    renderResponsiveComparison();
+    $("responsive-compare-dialog").showModal();
+  }
+  function saveAdaptedResponsiveLayout() {
+    const target = responsiveComparisonTarget();
+    if (!target) return;
+    const key = panelLayoutKey(target.id, target.width, target.height),
+      from = { width: state.width, height: state.height },
+      items = state.items.filter((item) =>
+        itemVisibleOnPage(item, state.activePage),
+      );
+    items.forEach((item) => {
+      if (item.deviceOverrides?.[key]) return;
+      const rect = window.ComposerResponsiveLayout.adaptRect(
+        item,
+        from,
+        { width: target.width, height: target.height },
+        layoutDefaults(item),
+      );
+      item.deviceOverrides[key] = {
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        panelWidth: target.width,
+        panelHeight: target.height,
+      };
+    });
+    commitHistory();
+    renderResponsiveComparison();
+    setStatus(`Saved adapted ${target.name} layout for ${items.length} widgets`);
+  }
+  function copyResponsiveLayoutToTarget() {
+    const target = responsiveComparisonTarget(),
+      source = deviceProfiles.find(
+        (device) => device.id === $("responsive-copy-source").value,
+      );
+    if (!target || !source || target.id === source.id) {
+      setStatus("Choose two different panel targets to copy a layout");
+      return;
+    }
+    if (
+      !confirm(
+        `Copy the ${source.name} layout to ${target.name}? Existing ${target.name} overrides will be replaced for all ${state.items.length} widgets.`,
+      )
+    )
+      return;
+    const sourceKey = panelLayoutKey(source.id, source.width, source.height),
+      targetKey = panelLayoutKey(target.id, target.width, target.height),
+      currentKey = panelLayoutKey(),
+      currentSize = { width: state.width, height: state.height };
+    state.items.forEach((item) => {
+      const sourceRect =
+          sourceKey === currentKey
+            ? item
+            : item.deviceOverrides?.[sourceKey] ||
+              window.ComposerResponsiveLayout.adaptRect(
+                item,
+                currentSize,
+                { width: source.width, height: source.height },
+                layoutDefaults(item),
+              ),
+        targetRect = window.ComposerResponsiveLayout.adaptRect(
+          sourceRect,
+          { width: source.width, height: source.height },
+          { width: target.width, height: target.height },
+          layoutDefaults(item),
+        );
+      item.deviceOverrides[targetKey] = {
+        x: targetRect.x,
+        y: targetRect.y,
+        w: targetRect.w,
+        h: targetRect.h,
+        panelWidth: target.width,
+        panelHeight: target.height,
+      };
+    });
+    commitHistory();
+    renderResponsiveComparison();
+    setStatus(`Copied ${source.name} layout to ${target.name}`);
+  }
+  function responsiveBreakpointTargets(family, source) {
+    return deviceProfiles.filter((device) => {
+      if (
+        device.id === "custom" ||
+        device.supportsCh5 === false ||
+        device.id === source.id
+      )
+        return false;
+      if (family === "same-viewport")
+        return device.width === source.width && device.height === source.height;
+      if (family === "compact-touch")
+        return device.width <= 1280 && device.height <= 800;
+      if (family === "hd")
+        return device.width > 1280 && device.width <= 1920 && device.height <= 1080;
+      if (family === "large-display") return device.width > 1920;
+      return false;
+    });
+  }
+  function applyResponsiveBreakpointFamily() {
+    const source = deviceProfiles.find(
+        (device) => device.id === $("responsive-copy-source").value,
+      ),
+      family = $("responsive-breakpoint-family").value,
+      targets = source ? responsiveBreakpointTargets(family, source) : [];
+    if (!source || !targets.length) {
+      setStatus("No other panel targets match that breakpoint family");
+      return;
+    }
+    if (
+      !confirm(
+        `Apply the ${source.name} layout to ${targets.length} matching target${targets.length === 1 ? "" : "s"}? Existing overrides for ${targets.map((target) => target.name).join(", ")} will be replaced.`,
+      )
+    )
+      return;
+    const sourceKey = panelLayoutKey(source.id, source.width, source.height),
+      currentKey = panelLayoutKey(),
+      currentSize = { width: state.width, height: state.height };
+    state.items.forEach((item) => {
+      const sourceRect =
+        sourceKey === currentKey
+          ? item
+          : item.deviceOverrides?.[sourceKey] ||
+            window.ComposerResponsiveLayout.adaptRect(
+              item,
+              currentSize,
+              { width: source.width, height: source.height },
+              layoutDefaults(item),
+            );
+      targets.forEach((target) => {
+        const key = panelLayoutKey(target.id, target.width, target.height),
+          rect = window.ComposerResponsiveLayout.adaptRect(
+            sourceRect,
+            { width: source.width, height: source.height },
+            { width: target.width, height: target.height },
+            layoutDefaults(item),
+          );
+        item.deviceOverrides[key] = {
+          x: rect.x,
+          y: rect.y,
+          w: rect.w,
+          h: rect.h,
+          panelWidth: target.width,
+          panelHeight: target.height,
+        };
+      });
+    });
+    commitHistory();
+    renderResponsiveComparison();
+    validateAllResponsiveTargets();
+    setStatus(
+      `Applied ${source.name} layout to ${targets.length} ${family.replaceAll("-", " ")} targets`,
+    );
+  }
+  function responsiveTargetReport(device) {
+    const key = panelLayoutKey(device.id, device.width, device.height),
+      currentKey = panelLayoutKey(),
+      from = { width: state.width, height: state.height };
+    let missing = 0,
+      offCanvas = 0;
+    state.items.forEach((item) => {
+      const saved = key === currentKey ? item : item.deviceOverrides?.[key],
+        rect =
+          saved ||
+          window.ComposerResponsiveLayout.adaptRect(
+            item,
+            from,
+            { width: device.width, height: device.height },
+            layoutDefaults(item),
+          );
+      if (!saved) missing++;
+      if (
+        !Number.isFinite(Number(rect.x)) ||
+        !Number.isFinite(Number(rect.y)) ||
+        !Number.isFinite(Number(rect.w)) ||
+        !Number.isFinite(Number(rect.h)) ||
+        Number(rect.x) < 0 ||
+        Number(rect.y) < 0 ||
+        Number(rect.x) + Number(rect.w) > device.width ||
+        Number(rect.y) + Number(rect.h) > device.height
+      )
+        offCanvas++;
+    });
+    return { device, key, missing, offCanvas };
+  }
+  function validateAllResponsiveTargets() {
+    const host = $("responsive-validation-results"),
+      reports = deviceProfiles
+        .filter((device) => device.id !== "custom" && device.supportsCh5 !== false)
+        .map(responsiveTargetReport);
+    host.innerHTML = "";
+    reports.forEach((report) => {
+      const row = document.createElement("div");
+      row.className = `responsive-validation-row${report.missing || report.offCanvas ? " problem" : ""}`;
+      row.innerHTML = `<strong>${report.device.name}</strong><span>${report.missing} missing overrides</span><span>${report.offCanvas} off canvas</span>`;
+      host.appendChild(row);
+    });
+    const problems = reports.reduce(
+      (total, report) => total + report.missing + report.offCanvas,
+      0,
+    );
+    setStatus(
+      problems
+        ? `Responsive validation found ${problems} target-layout issue${problems === 1 ? "" : "s"}`
+        : "All responsive targets have saved, in-bounds layouts",
+    );
+    return reports;
+  }
+  function fitAndSaveAllResponsiveTargets() {
+    const targets = deviceProfiles.filter(
+      (device) => device.id !== "custom" && device.supportsCh5 !== false,
+    );
+    if (
+      !confirm(
+        `Create or update responsive overrides for ${state.items.length} widgets across ${targets.length} panel targets? Existing overrides will only be adjusted when they are outside the target panel.`,
+      )
+    )
+      return;
+    const from = { width: state.width, height: state.height },
+      currentKey = panelLayoutKey();
+    targets.forEach((device) => {
+      const key = panelLayoutKey(device.id, device.width, device.height);
+      state.items.forEach((item) => {
+        const layout = layoutDefaults(item),
+          margin = Math.max(0, Number(layout.safeMargin) || 0),
+          availableWidth = Math.max(20, device.width - margin * 2),
+          availableHeight = Math.max(20, device.height - margin * 2),
+          existing = key === currentKey ? item : item.deviceOverrides?.[key],
+          adapted =
+            existing ||
+            window.ComposerResponsiveLayout.adaptRect(
+              item,
+              from,
+              { width: device.width, height: device.height },
+              layout,
+            ),
+          width = Math.max(20, Math.min(Number(adapted.w) || 20, availableWidth)),
+          height = Math.max(20, Math.min(Number(adapted.h) || 20, availableHeight)),
+          x = Math.max(
+            margin,
+            Math.min(Number(adapted.x) || margin, device.width - margin - width),
+          ),
+          y = Math.max(
+            margin,
+            Math.min(Number(adapted.y) || margin, device.height - margin - height),
+          );
+        item.deviceOverrides[key] = {
+          x,
+          y,
+          w: width,
+          h: height,
+          panelWidth: device.width,
+          panelHeight: device.height,
+        };
+        if (key === currentKey)
+          Object.assign(item, { x, y, w: width, h: height });
+      });
+    });
+    commitHistory();
+    renderPage();
+    renderResponsiveComparison();
+    validateAllResponsiveTargets();
+    setStatus(`Fitted and saved ${targets.length} responsive panel layouts`);
   }
   function playPageTransition(page = currentPage()) {
     const transition = page.transition || "none";
@@ -4671,9 +5190,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       "active",
       signalViewMode === "address",
     );
+    $("signal-view-simpl").classList.toggle("active", signalViewMode === "simpl");
     document.querySelector(".signal-table-wrap").hidden = signalViewMode !== "table";
     $("signal-map").hidden = signalViewMode !== "map";
     $("signal-address-map").hidden = signalViewMode !== "address";
+    $("signal-simpl-preview").hidden = signalViewMode !== "simpl";
     body.innerHTML = "";
     shown.forEach((row) => {
       const tr = document.createElement("tr"),
@@ -4739,6 +5260,205 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       `${rows.length} signals · ${unbound} unbound · ${duplicates} duplicate rows · ${shown.length} shown`;
     renderSignalMap(shown, counts);
     renderSignalAddressMap(shown);
+    renderSimplPreview();
+  }
+  function currentContractComparisonSignals() {
+    return expandedContractSignals().map((row) => {
+      const shape = contractSignalShape(row);
+      return {
+        path: `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`,
+        type: row.type,
+        direction: row.direction,
+      };
+    });
+  }
+  function cceComparisonSignals(contract) {
+    const components = new Map(
+        (contract.components || []).map((component) => [component.id, component]),
+      ),
+      result = [],
+      typeName = (value) =>
+        Number(value) === 1 ? "digital" : Number(value) === 2 ? "analog" : "serial",
+      visit = (specification, parentPath = "") => {
+        const component = components.get(specification.componentId),
+          path = [parentPath, specification.instanceName].filter(Boolean).join(".");
+        if (!component) return;
+        (component.commands || []).filter((entry) => entry.name).forEach((entry) =>
+          result.push({ path: `${path}.${entry.name}`, type: typeName(entry.dataType), direction: "input" }),
+        );
+        (component.feedbacks || []).filter((entry) => entry.name).forEach((entry) =>
+          result.push({ path: `${path}.${entry.name}`, type: typeName(entry.dataType), direction: "output" }),
+        );
+        (component.specifications || []).forEach((child) => visit(child, path));
+      };
+    (contract.specifications || []).forEach((specification) => visit(specification));
+    return result;
+  }
+  function cse2jComparisonSignals(mapping) {
+    const result = [], known = new Set(), metadata = /^(type|direction|join|value|state|event|serial|analog|digital|notes|id)$/i;
+    const add = (path, node) => {
+      path = String(path || "").replace(/^signals\.?/i, "").replace(/^\.+|\.+$/g, "");
+      if (!path || !path.includes(".") || known.has(path)) return;
+      known.add(path);
+      const rawType = String(node?.type || node?.signalType || node?.dataType || "").toLowerCase(),
+        type = /bool|digital|^1$/.test(rawType) ? "digital" : /analog|number|ushort|^2$/.test(rawType) ? "analog" : /serial|string|^3$/.test(rawType) ? "serial" : "",
+        rawDirection = String(node?.direction || node?.attributeType || "").toLowerCase(),
+        direction = /output|event|^1$/.test(rawDirection) ? "output" : /input|state|^0$/.test(rawDirection) ? "input" : "";
+      result.push({ path, type, direction });
+    };
+    const walk = (node, parts = []) => {
+      if (!node || typeof node !== "object") return;
+      if (typeof node.name === "string" && node.name.includes(".")) add(node.name, node);
+      Object.entries(node).forEach(([key, value]) => {
+        if (metadata.test(key)) return;
+        const next = key.includes(".") ? key.split(".") : [...parts, key];
+        if (key.includes(".")) add(key, value);
+        if (value && typeof value === "object") walk(value, next);
+        else if (next.length > 1) add(next.join("."), node);
+      });
+    };
+    walk(mapping.signals || mapping, []);
+    return result;
+  }
+  async function compareContractFile(file) {
+    try {
+      const contents = await file.text(), data = JSON.parse(contents),
+        imported = Array.isArray(data.components) && Array.isArray(data.specifications)
+          ? cceComparisonSignals(data)
+          : data.signals && typeof data.signals === "object"
+            ? cse2jComparisonSignals(data)
+            : null;
+      if (!imported) throw new Error("This file is not a recognized .cce project or .cse2j mapping.");
+      const current = currentContractComparisonSignals(),
+        currentMap = new Map(current.map((entry) => [entry.path, entry])),
+        importedMap = new Map(imported.map((entry) => [entry.path, entry]));
+      importedContractComparison = {
+        fileName: file.name,
+        missing: current.filter((entry) => !importedMap.has(entry.path)),
+        extra: imported.filter((entry) => !currentMap.has(entry.path)),
+        mismatched: current.filter((entry) => {
+          const other = importedMap.get(entry.path);
+          return other && ((other.type && other.type !== entry.type) || (other.direction && other.direction !== entry.direction));
+        }).map((entry) => ({ current: entry, imported: importedMap.get(entry.path) })),
+        matched: current.filter((entry) => importedMap.has(entry.path)).length,
+        currentCount: current.length,
+        importedCount: imported.length,
+      };
+      signalViewMode = "simpl";
+      renderSignalManager();
+      setStatus(`Compared contract mapping ${file.name}`);
+    } catch (error) {
+      alert(`The contract mapping could not be compared.\n\n${error.message}`);
+    }
+  }
+  function renderContractComparison(host) {
+    const comparison = importedContractComparison;
+    if (!comparison) return;
+    const details = document.createElement("details"), summary = document.createElement("summary");
+    details.className = "contract-comparison";
+    details.open = true;
+    summary.textContent = `Compared with ${comparison.fileName} — ${comparison.matched} matched · ${comparison.missing.length} missing · ${comparison.extra.length} extra · ${comparison.mismatched.length} mismatched`;
+    details.append(summary);
+    const groups = [
+      ["Missing from imported mapping", comparison.missing, (entry) => entry],
+      ["Extra in imported mapping", comparison.extra, (entry) => entry],
+      ["Type or direction mismatch", comparison.mismatched, (entry) => entry.current],
+    ];
+    groups.forEach(([label, entries, normalize]) => {
+      if (!entries.length) return;
+      const group = document.createElement("details"), groupSummary = document.createElement("summary");
+      group.open = true;
+      groupSummary.textContent = `${label} (${entries.length})`;
+      group.append(groupSummary);
+      entries.slice(0, 500).forEach((raw) => {
+        const entry = normalize(raw), row = document.createElement("div");
+        row.className = "contract-comparison-row";
+        row.textContent = `${entry.path} · ${entry.type || "unknown type"} ${entry.direction || "unknown direction"}`;
+        group.append(row);
+      });
+      details.append(group);
+    });
+    if (!comparison.missing.length && !comparison.extra.length && !comparison.mismatched.length) {
+      const passed = document.createElement("p");
+      passed.className = "contract-comparison-pass";
+      passed.textContent = `The imported mapping matches all ${comparison.currentCount} project contract signals.`;
+      details.append(passed);
+    }
+    host.append(details);
+  }
+  function renderSimplPreview() {
+    const host = $("signal-simpl-preview"),
+      result = contractBuildData(),
+      contract = result.contract,
+      components = new Map(
+        (contract.components || []).map((component) => [component.id, component]),
+      ),
+      typeName = (value) =>
+        Number(value) === 1 ? "Digital" : Number(value) === 2 ? "Analog" : "Serial";
+    host.replaceChildren();
+    const heading = document.createElement("div");
+    heading.className = "simpl-preview-heading";
+    const contractName = document.createElement("strong"), summaryText = document.createElement("span");
+    contractName.textContent = contract.name || "CrestronUiContract";
+    summaryText.textContent = result.errors.length
+      ? `${result.errors.length} contract error${result.errors.length === 1 ? "" : "s"}`
+      : `${contract.specifications.length} top-level extender${contract.specifications.length === 1 ? "" : "s"} · ${contract.components.length} component definitions`;
+    heading.append(contractName, summaryText);
+    host.append(heading);
+    renderContractComparison(host);
+    if (result.errors.length) {
+      const errors = document.createElement("details"), summary = document.createElement("summary");
+      errors.className = "simpl-preview-errors";
+      errors.open = true;
+      summary.textContent = "Contract errors";
+      errors.append(summary);
+      result.errors.forEach((message) => {
+        const row = document.createElement("div");
+        row.textContent = message;
+        errors.append(row);
+      });
+      host.append(errors);
+    }
+    const appendSpecification = (specification, parent, depth = 0) => {
+      const component = components.get(specification.componentId),
+        details = document.createElement("details"),
+        summary = document.createElement("summary"),
+        count = Math.max(1, Number(specification.numberOfInstances) || 1);
+      details.open = depth < 1;
+      details.className = "simpl-preview-component";
+      summary.textContent = `${specification.instanceName || component?.name || "Component"}${count > 1 ? ` [0–${count - 1}]` : ""}`;
+      details.append(summary);
+      if (component) {
+        const definition = document.createElement("small");
+        definition.textContent = `SIMPL extender: ${component.name}`;
+        details.append(definition);
+        const attributes = [
+          ...(component.commands || []).filter((entry) => entry.name).map((entry) => ({ ...entry, role: "State" })),
+          ...(component.feedbacks || []).filter((entry) => entry.name).map((entry) => ({ ...entry, role: "Event" })),
+        ];
+        attributes.forEach((attribute) => {
+          const row = document.createElement("div"), name = document.createElement("code"), meta = document.createElement("span");
+          row.className = "simpl-preview-attribute";
+          name.textContent = attribute.name;
+          meta.textContent = `${typeName(attribute.dataType)} ${attribute.role}${attribute.notes ? ` · ${attribute.notes}` : ""}`;
+          row.append(name, meta);
+          details.append(row);
+        });
+        (component.specifications || []).forEach((child) =>
+          appendSpecification(child, details, depth + 1),
+        );
+      }
+      parent.append(details);
+    };
+    (contract.specifications || []).forEach((specification) =>
+      appendSpecification(specification, host),
+    );
+    if (!(contract.specifications || []).length && !result.errors.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No Contract-mode signals are assigned.";
+      host.append(empty);
+    }
   }
   function navigateToSignalRow(row) {
     const item = row.itemId
@@ -5246,6 +5966,70 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     ]
       .map((row) => row.map(quote).join(","))
       .join("\r\n");
+  }
+  function signalScheduleReport() {
+    const rows = collectProjectSignals(),
+      contractResult = contractBuildData(),
+      counts = new Map(),
+      pages = new Map(),
+      line = "-".repeat(88),
+      generatedAddress = (row) => {
+        if (row.mode !== "contract" || !String(row.value || "").trim()) return "—";
+        const shape = contractSignalShape(row);
+        return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`;
+      };
+    rows.forEach((row) => {
+      if (row.value) {
+        const key = `${row.mode}:${row.type}:${row.direction}:${row.value}`;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      const page = row.page || "Project-wide", widget = row.widget || "Page signals";
+      if (!pages.has(page)) pages.set(page, new Map());
+      if (!pages.get(page).has(widget)) pages.get(page).set(widget, []);
+      pages.get(page).get(widget).push(row);
+    });
+    const unbound = rows.filter((row) => !String(row.value || "").trim()).length,
+      duplicateRows = rows.filter((row) => row.value && counts.get(`${row.mode}:${row.type}:${row.direction}:${row.value}`) > 1).length,
+      output = [
+        "CRESTRON UI COMPOSER — SIGNAL SCHEDULE",
+        `Generated: ${new Date().toLocaleString()}`,
+        `Project / contract: ${state.contract.name || "Untitled"}`,
+        `Target: ${selectedDevice().name} (${state.width} × ${state.height})`,
+        `Pages: ${state.pages.length} · Widgets: ${state.items.length} · Signals: ${rows.length}`,
+        `Contract signals: ${rows.filter((row) => row.mode === "contract").length} · Join signals: ${rows.filter((row) => row.mode === "join").length}`,
+        `Unbound: ${unbound} · Duplicate rows: ${duplicateRows} · Contract-build errors: ${contractResult.errors.length}`,
+        "",
+      ];
+    if (contractResult.errors.length) {
+      output.push("CONTRACT BUILD ERRORS", line);
+      contractResult.errors.forEach((error, index) => output.push(`${index + 1}. ${error}`));
+      output.push("");
+    }
+    pages.forEach((widgets, pageName) => {
+      output.push(`PAGE: ${pageName}`, line);
+      widgets.forEach((widgetRows, widgetName) => {
+        output.push(`  WIDGET: ${widgetName}`);
+        widgetRows.forEach((row) => {
+          const value = String(row.value || "").trim(),
+            duplicate = value && counts.get(`${row.mode}:${row.type}:${row.direction}:${row.value}`) > 1,
+            status = !value ? "UNBOUND" : duplicate ? "DUPLICATE" : "OK",
+            range = row.range ? ` · range ${row.rangeCount || 1} × ${row.rangeIncrement || 1}` : "";
+          output.push(
+            `    ${row.name} — ${row.type.toUpperCase()} ${row.direction.toUpperCase()} · ${row.mode.toUpperCase()} · ${status}${range}`,
+            `      Assigned: ${value || "—"}`,
+          );
+          if (row.mode === "contract") output.push(`      SIMPL:    ${generatedAddress(row)}`);
+        });
+        output.push("");
+      });
+    });
+    output.push("SIMPL COMPONENT SUMMARY", line);
+    contractResult.contract.specifications.forEach((specification) => {
+      const count = Math.max(1, Number(specification.numberOfInstances) || 1);
+      output.push(`  ${specification.instanceName}${count > 1 ? ` [${count} instances]` : ""}`);
+    });
+    output.push("", "END OF SIGNAL SCHEDULE");
+    return output.join("\r\n");
   }
   function stableContractId(value) {
     let a = 2166136261,
@@ -5980,6 +6764,67 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     });
     renderDeploymentProfiles(selected.id);
   }
+  async function redeployDeploymentBackup(entry) {
+    if (!native || !entry?.backupPath || entry.success !== true) return;
+    const savedProfile = deploymentProfiles().find(
+        (profile) => profile.id === entry.profileId,
+      ),
+      deviceId = entry.deviceId || savedProfile?.deviceId || state.targetDevice,
+      deploymentType =
+        entry.deploymentType ||
+        savedProfile?.deploymentType ||
+        defaultDeploymentType(deviceId),
+      profile = {
+        ...(savedProfile || {}),
+        id: savedProfile?.id || entry.profileId || uid("rollback-"),
+        name: `${entry.profileName || entry.host} rollback`,
+        host: entry.host,
+        packagePath: entry.backupPath,
+        deviceId,
+        deploymentType,
+      };
+    $("deploy-status").textContent = "Verifying rollback package and panel…";
+    try {
+      const check = await nativeRequest("checkDeploymentProfile", {
+        host: profile.host,
+        packagePath: profile.packagePath,
+        deviceId,
+      });
+      if (!check.packageValid)
+        throw new Error(check.packageStatus || "The rollback package is invalid.");
+      if (!check.reachable)
+        throw new Error(`The panel is not reachable: ${check.status || "unknown status"}`);
+      if (check.targetDeviceId && check.targetDeviceId !== deviceId)
+        throw new Error(
+          `Rollback package target ${check.targetDeviceId} does not match profile target ${deviceId}.`,
+        );
+      if (
+        !confirm(
+          `Rollback ${profile.host} using the successful package from ${new Date(entry.time).toLocaleString()}?\n\n${entry.backupPath}\n\nA terminal will request the panel credentials.`,
+        )
+      ) {
+        $("deploy-status").textContent = "Rollback cancelled.";
+        return;
+      }
+      $("deploy-status").textContent =
+        "Rollback terminal opened — complete the credential prompt…";
+      const result = await nativeRequest("deployCh5PackageWait", {
+        host: profile.host,
+        packagePath: profile.packagePath,
+        slowMode: true,
+        deploymentType,
+      });
+      const success = result.success === true,
+        message = success
+          ? `Rollback succeeded using ${entry.backupPath}`
+          : `Rollback failed with exit code ${result.exitCode}; log: ${result.logPath}`;
+      appendDeploymentHistory(profile, result, success, message);
+      $("deploy-status").textContent = message;
+    } catch (error) {
+      appendDeploymentHistory(profile, null, false, `Rollback failed: ${error.message}`);
+      $("deploy-status").textContent = `Rollback failed: ${error.message}`;
+    }
+  }
   function renderDeploymentHistory() {
     const host = $("deployment-history"),
       settings = deploymentSettings(),
@@ -5987,22 +6832,31 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     host.innerHTML = "";
     history.forEach((entry) => {
       const row = document.createElement("div"),
+        selectBackup = document.createElement("button"),
         rollback = document.createElement("button"),
         title = document.createElement("strong"),
         detail = document.createElement("small");
       row.className = "deployment-entry";
-      rollback.type = "button";
-      rollback.textContent = "Use backup";
-      rollback.disabled = !entry.backupPath;
-      rollback.onclick = () => {
+      selectBackup.type = "button";
+      selectBackup.textContent = "Select backup";
+      selectBackup.disabled = !entry.backupPath;
+      selectBackup.onclick = () => {
         $("deploy-package").value = entry.backupPath;
         saveDeploymentSettings({ packagePath: entry.backupPath });
         $("deploy-status").textContent =
           `Rollback package selected: ${entry.backupPath}`;
       };
+      rollback.type = "button";
+      rollback.textContent = "Roll back";
+      rollback.disabled = !entry.backupPath || entry.success !== true;
+      rollback.title =
+        entry.success === true
+          ? "Verify and redeploy this successful package"
+          : "Direct rollback is available for verified successful deployments";
+      rollback.onclick = () => redeployDeploymentBackup(entry);
       title.textContent = `${entry.success === false ? "FAILED · " : entry.success === true ? "SUCCESS · " : ""}${entry.profileName ? `${entry.profileName} · ` : ""}${entry.host} · slow mode`;
       detail.textContent = `${new Date(entry.time).toLocaleString()} · ${entry.device || "Touchscreen"}${entry.deploymentType ? ` · ${entry.deploymentType}` : ""}${entry.resolution ? ` · ${entry.resolution}` : ""} · ${entry.packagePath}`;
-      row.append(rollback, title, detail);
+      row.append(rollback, selectBackup, title, detail);
       host.appendChild(row);
     });
     if (!history.length)
@@ -6833,6 +7687,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         "shutdown-progress",
         "text-scramble",
       ]),
+      itemProfiles = state.items.filter((item) => !item.systemManaged).map((item) => {
+        const definition = item.componentId ? window.ComposerRuntime.get(item.componentId) : null,
+          continuous = continuousIds.has(item.componentId),
+          interactionCount = (item.interactions || []).length,
+          actionCount = (item.actions || []).length,
+          filterValues = Object.entries(item.properties || {}).filter(([key, value]) =>
+            /(?:glowStrength|glowSize|blur|shadowSize|shadowDistance)/i.test(key) && Number(value) > 0,
+          ),
+          strongFilters = filterValues.filter(([, value]) => Number(value) >= 20),
+          customFrame = !item.componentId || state.customComponents.some((entry) => entry.id === item.componentId),
+          assetIds = new Set([item.assetId, item.backgroundAsset, item.graphicAsset, item.selectedGraphicAsset].filter(Boolean)),
+          assetBytes = state.assets.filter((asset) => assetIds.has(asset.id)).reduce((total, asset) => total + embeddedDataBytes(asset.dataUrl), 0),
+          score = 1 + (continuous ? 12 : 0) + interactionCount * 2 + actionCount + filterValues.length * 2 + strongFilters.length * 5 + (customFrame ? 5 : 0) + Math.ceil(assetBytes / (1024 * 1024));
+        return { item, definition, continuous, interactionCount, actionCount, filterValues, strongFilters, customFrame, assetBytes, score };
+      }),
       pageLoads = state.pages.map((page) => {
         const items = state.items.filter((item) =>
             itemVisibleOnPage(item, page.id),
@@ -6841,8 +7710,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             (item) =>
               continuousIds.has(item.componentId) ||
               (item.interactions || []).length > 2,
-          );
-        return { page, items, animated };
+          ),
+          profiles = itemProfiles.filter((entry) => itemVisibleOnPage(entry.item, page.id));
+        return { page, items, animated, profiles, score: profiles.reduce((total, entry) => total + entry.score, 0) };
       }),
       customSourceBytes = state.customComponents.reduce(
         (total, component) =>
@@ -6856,13 +7726,160 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       embeddedAssetBytes,
       exportedBytes,
       customSourceBytes,
+      itemProfiles,
       pageLoads,
       peakWidgets: Math.max(0, ...pageLoads.map((entry) => entry.items.length)),
       peakAnimations: Math.max(
         0,
         ...pageLoads.map((entry) => entry.animated.length),
       ),
+      peakPageScore: Math.max(0, ...pageLoads.map((entry) => entry.score)),
+      continuousWidgets: itemProfiles.filter((entry) => entry.continuous).length,
+      strongFilterWidgets: itemProfiles.filter((entry) => entry.strongFilters.length).length,
+      customFrames: itemProfiles.filter((entry) => entry.customFrame).length,
     };
+  }
+  function panelPerformanceIssues(metrics) {
+    const issues = [], compact = state.width <= 1280 || state.height <= 800,
+      pageWarning = compact ? 115 : 180,
+      add = (message, context = {}) => issues.push({ severity: "warning", category: "Panel performance", message, ...context });
+    metrics.pageLoads.forEach((entry) => {
+      if (entry.score >= pageWarning)
+        add(`Page “${entry.page.name}” has an estimated rendering cost of ${entry.score}; reduce simultaneous animation, filters, or widget count.`, { pageId: entry.page.id, pageName: entry.page.name });
+    });
+    metrics.itemProfiles.forEach((entry) => {
+      const item = entry.item, page = state.pages.find((candidate) => candidate.id === item.pageId), context = { pageId: item.pageId, pageName: page?.name || "", itemId: item.id, itemName: item.name };
+      if (entry.strongFilters.length)
+        add(`“${item.name}” uses ${entry.strongFilters.length} strong glow, blur, or shadow setting${entry.strongFilters.length === 1 ? "" : "s"}; large CSS filters are expensive on touch panels.`, context);
+      if (entry.continuous && entry.interactionCount > 2)
+        add(`“${item.name}” combines continuous animation with ${entry.interactionCount} timeline tracks.`, context);
+      if (entry.assetBytes > 4 * 1024 * 1024)
+        add(`“${item.name}” references ${formatMetricBytes(entry.assetBytes)} of embedded assets.`, context);
+      if (entry.score >= 24)
+        add(`“${item.name}” has a high estimated widget cost of ${entry.score}.`, context);
+    });
+    if (metrics.embeddedAssetBytes > 20 * 1024 * 1024)
+      add(`Embedded assets total ${formatMetricBytes(metrics.embeddedAssetBytes)}; optimize large images and audio before panel deployment.`);
+    if (metrics.customFrames > 20)
+      add(`${metrics.customFrames} custom/iframe widgets may increase memory use and startup time.`);
+    return issues;
+  }
+  function panelPerformanceReport(metrics, issues) {
+    const lines = [
+      "CRESTRON UI COMPOSER — PANEL PERFORMANCE REPORT",
+      `Generated: ${new Date().toLocaleString()}`,
+      `Target: ${selectedDevice().name} (${state.width} × ${state.height})`,
+      `Pages: ${state.pages.length} · Widgets: ${state.items.filter((item) => !item.systemManaged).length}`,
+      `Exported HTML: ${formatMetricBytes(metrics.exportedBytes)} · Embedded assets: ${formatMetricBytes(metrics.embeddedAssetBytes)} · Custom source: ${formatMetricBytes(metrics.customSourceBytes)}`,
+      `Continuous widgets: ${metrics.continuousWidgets} · Strong-filter widgets: ${metrics.strongFilterWidgets} · Custom frames: ${metrics.customFrames}`,
+      `Peak page score: ${metrics.peakPageScore} · Findings: ${issues.length}`,
+      "",
+      "PAGE LOAD ESTIMATES",
+      ...metrics.pageLoads.sort((a, b) => b.score - a.score).map((entry) => `  ${entry.page.name}: score ${entry.score} · ${entry.items.length} widgets · ${entry.animated.length} animated`),
+      "",
+      "HIGHEST-COST WIDGETS",
+      ...metrics.itemProfiles.slice().sort((a, b) => b.score - a.score).slice(0, 20).map((entry) => {
+        const page = state.pages.find((candidate) => candidate.id === entry.item.pageId);
+        return `  ${page?.name || "Global"} · ${entry.item.name}: score ${entry.score}${entry.continuous ? " · continuous" : ""}${entry.strongFilters.length ? ` · ${entry.strongFilters.length} strong filters` : ""}${entry.assetBytes ? ` · ${formatMetricBytes(entry.assetBytes)} assets` : ""}`;
+      }),
+      "",
+      "RECOMMENDATIONS",
+      ...(issues.length ? issues.map((issue, index) => `${index + 1}. ${issue.message}`) : ["No performance risks exceeded the current target-panel thresholds."]),
+      "",
+      "Scores are static complexity estimates for comparison and preflight; confirm final frame rate, startup time, and memory on the target panel.",
+    ];
+    return lines.join("\r\n");
+  }
+  function runPanelPerformanceReport() {
+    const metrics = projectPerformanceAudit(), issues = panelPerformanceIssues(metrics), errors = [];
+    lastPerformanceMetrics = metrics;
+    lastHealthIssues = issues;
+    lastHealthReport = panelPerformanceReport(metrics, issues);
+    healthIssueFilter = "all";
+    $("health-search").value = "";
+    document.querySelectorAll("[data-health-filter]").forEach((button) => button.classList.toggle("active", button.dataset.healthFilter === "all"));
+    setHealthDisplayMode(true);
+    renderHealthMetrics();
+    renderHealthDashboard();
+    $("health-fix-all").disabled = true;
+    $("health-title").textContent = "Panel performance report";
+    $("health-summary").textContent = issues.length ? `${issues.length} performance recommendation${issues.length === 1 ? "" : "s"}` : "No performance risks exceeded the current thresholds.";
+    $("health-report").textContent = lastHealthReport;
+    $("compatibility-device").hidden = true;
+    $("compatibility-preview").hidden = true;
+    $("compatibility-autofit").hidden = true;
+    if (!$("health-dialog").open) $("health-dialog").showModal();
+    setStatus(`Panel performance audit completed${issues.length ? ` with ${issues.length} recommendations` : ""}`);
+    return { metrics, issues, errors };
+  }
+  function releaseReadinessAudit() {
+    const validation = runValidation(false),
+      contract = contractBuildData(),
+      performance = lastPerformanceMetrics || projectPerformanceAudit(),
+      performanceIssues = panelPerformanceIssues(performance),
+      acceptance = acceptanceState(),
+      acceptanceResults = acceptanceChecks.map(([, id, title]) => ({ id, title, ...acceptanceResult(id) })),
+      failedAcceptance = acceptanceResults.filter((entry) => entry.status === "fail"),
+      untestedAcceptance = acceptanceResults.filter((entry) => entry.status === "untested"),
+      fingerprint = recoveryFingerprint(project()),
+      settings = deploymentSettings(),
+      currentArtifact = (settings.buildArtifacts || []).find((entry) => entry.fingerprint === fingerprint),
+      successfulDeployment = (settings.history || []).find((entry) => entry.success === true && (!currentArtifact || normalizedArtifactPath(entry.packagePath) === normalizedArtifactPath(currentArtifact.path))),
+      checks = [
+        { name: "Project Health", pass: validation.errors.length === 0, detail: validation.errors.length ? `${validation.errors.length} blocking error${validation.errors.length === 1 ? "" : "s"}` : `${validation.issues.length} non-blocking warning${validation.issues.length === 1 ? "" : "s"}` },
+        { name: "Contract generation", pass: contract.errors.length === 0 && contract.rows.length > 0, detail: contract.errors.length ? `${contract.errors.length} contract error${contract.errors.length === 1 ? "" : "s"}` : contract.rows.length ? `${contract.rows.length} mapped contract signals` : "No contract signals are assigned" },
+        { name: "Acceptance checklist", pass: failedAcceptance.length === 0 && untestedAcceptance.length === 0, detail: failedAcceptance.length ? `${failedAcceptance.length} failed` : untestedAcceptance.length ? `${untestedAcceptance.length} untested` : `${acceptanceResults.length} passed` },
+        { name: "Panel performance", pass: performanceIssues.length === 0, detail: performanceIssues.length ? `${performanceIssues.length} recommendation${performanceIssues.length === 1 ? "" : "s"} remain` : `Peak page score ${performance.peakPageScore}` },
+        { name: "Current build artifact", pass: !!currentArtifact, detail: currentArtifact ? `${currentArtifact.targetName || currentArtifact.targetDevice} · ${formatMetricBytes(currentArtifact.size || 0)} · ${String(currentArtifact.sha256 || "").slice(0, 12) || "no hash"}` : "Build the current saved project after its latest changes" },
+        { name: "Verified deployment", pass: !!successfulDeployment, detail: successfulDeployment ? `${successfulDeployment.host} · ${new Date(successfulDeployment.time).toLocaleString()}` : "Deploy the current build successfully to a target panel" },
+      ],
+      blockers = checks.filter((check) => !check.pass),
+      lines = [
+        `CRESTRON UI COMPOSER — RELEASE READINESS — ${blockers.length ? "NOT READY" : "PASSED"}`,
+        `Generated: ${new Date().toLocaleString()}`,
+        `Application: ${document.title || "Crestron UI Composer"} · Project: ${state.contract.name || "Untitled"}`,
+        `Target: ${selectedDevice().name} (${state.width} × ${state.height})`,
+        `Project fingerprint: ${fingerprint}`,
+        "",
+        ...checks.flatMap((check) => [`[${check.pass ? "PASS" : "BLOCKED"}] ${check.name}`, `  ${check.detail}`]),
+        "",
+        blockers.length
+          ? `Resolve ${blockers.length} blocked release gate${blockers.length === 1 ? "" : "s"}, rebuild, deploy, and run this audit again.`
+          : "All project-level beta release gates passed. Perform clean-install and upgrade-install tests before publishing stable.",
+      ];
+    return { checks, blockers, report: lines.join("\r\n") };
+  }
+  function openReleaseReadiness() {
+    const result = releaseReadinessAudit();
+    lastHealthReport = result.report;
+    setHealthDisplayMode(false);
+    $("health-title").textContent = "Release readiness";
+    $("health-summary").textContent = result.blockers.length
+      ? `${result.blockers.length} release gate${result.blockers.length === 1 ? "" : "s"} blocked.`
+      : "Project-level beta release gates passed.";
+    $("health-report").textContent = result.report;
+    $("compatibility-device").hidden = true;
+    $("compatibility-preview").hidden = true;
+    $("compatibility-autofit").hidden = true;
+    if (!$("health-dialog").open) $("health-dialog").showModal();
+    setStatus(result.blockers.length ? "Release readiness found blockers" : "Release readiness passed");
+  }
+  function runAuditUi(action, title) {
+    try {
+      return action();
+    } catch (error) {
+      lastHealthReport = `${title.toUpperCase()} — FAILED\r\n\r\n${error.stack || error.message || error}`;
+      setHealthDisplayMode(false);
+      $("health-title").textContent = title;
+      $("health-summary").textContent = "The audit could not complete.";
+      $("health-report").textContent = lastHealthReport;
+      $("compatibility-device").hidden = true;
+      $("compatibility-preview").hidden = true;
+      $("compatibility-autofit").hidden = true;
+      if (!$("health-dialog").open) $("health-dialog").showModal();
+      setStatus(`${title} failed: ${error.message || error}`);
+      return null;
+    }
   }
   function formatMetricBytes(bytes) {
     if (bytes >= 1024 * 1024)
@@ -7543,6 +8560,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       for (let b = a + 1; b < state.items.length; b++) {
         const x = state.items[a],
           y = state.items[b];
+        if (x.systemManaged || y.systemManaged || x.hidden || y.hidden) continue;
         if (x.pageId !== y.pageId) continue;
         const overlap =
           x.x < y.x + y.w &&
@@ -7584,26 +8602,53 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function renderHealthMetrics() {
     const host = $("health-metrics"),
-      metrics = lastPerformanceMetrics;
+      metrics = lastPerformanceMetrics,
+      compact = state.width <= 1280 || state.height <= 800,
+      limits = {
+        widgets: compact ? [45, 60] : [75, 100],
+        animations: compact ? [4, 8] : [8, 14],
+        pageScore: compact ? [80, 115] : [130, 180],
+        filters: compact ? [3, 8] : [6, 12],
+        assets: [10 * 1024 * 1024, 20 * 1024 * 1024],
+        html: [15 * 1024 * 1024, 30 * 1024 * 1024],
+        custom: [500 * 1024, 2 * 1024 * 1024],
+        touch: [0, 5],
+      },
+      rating = (value, thresholds) =>
+        Number(value) > thresholds[1] ? "high" : Number(value) > thresholds[0] ? "caution" : "recommended";
     host.replaceChildren();
     if (!metrics) return;
     [
-      [metrics.peakWidgets, "Peak widgets / page"],
-      [metrics.peakAnimations, "Peak animation load"],
-      [formatMetricBytes(metrics.embeddedAssetBytes), "Embedded assets"],
-      [formatMetricBytes(metrics.exportedBytes), "Exported HTML"],
-      [formatMetricBytes(metrics.customSourceBytes), "Custom source"],
-      [lastUsabilityMetrics?.smallTargets || 0, "Small touch targets"],
-    ].forEach(([value, label]) => {
+      [metrics.peakWidgets, metrics.peakWidgets, "Peak widgets / page", `The greatest number visible on one page. Guideline for this target: recommended ≤${limits.widgets[0]}, caution ${limits.widgets[0] + 1}–${limits.widgets[1]}, high >${limits.widgets[1]}.`, limits.widgets],
+      [metrics.peakAnimations, metrics.peakAnimations, "Peak animation load", `Continuously animated or animation-heavy widgets on one page. Recommended ≤${limits.animations[0]}, caution ${limits.animations[0] + 1}–${limits.animations[1]}, high >${limits.animations[1]}.`, limits.animations],
+      [metrics.peakPageScore || 0, metrics.peakPageScore || 0, "Peak page cost", `Relative complexity score; it is not a measured frame rate (FPS). Recommended ≤${limits.pageScore[0]}, caution ${limits.pageScore[0] + 1}–${limits.pageScore[1]}, high ≥${limits.pageScore[1]}.`, limits.pageScore],
+      [metrics.strongFilterWidgets || 0, metrics.strongFilterWidgets || 0, "Strong-filter widgets", `Widgets using large glow, blur, or shadow values. Recommended ≤${limits.filters[0]}, caution ${limits.filters[0] + 1}–${limits.filters[1]}, high >${limits.filters[1]}.`, limits.filters],
+      [formatMetricBytes(metrics.embeddedAssetBytes), metrics.embeddedAssetBytes, "Embedded assets", "Decoded project assets. Recommended ≤10 MB, caution 10–20 MB, high >20 MB. Optimize large images and audio.", limits.assets],
+      [formatMetricBytes(metrics.exportedBytes), metrics.exportedBytes, "Exported HTML", "Uncompressed generated project size. Recommended ≤15 MB, caution 15–30 MB, high >30 MB.", limits.html],
+      [formatMetricBytes(metrics.customSourceBytes), metrics.customSourceBytes, "Custom source", "Combined custom HTML/CSS/JavaScript. Recommended ≤500 KB, caution 500 KB–2 MB, high >2 MB.", limits.custom],
+      [lastUsabilityMetrics?.smallTargets || 0, lastUsabilityMetrics?.smallTargets || 0, "Small touch targets", "Controls below the recommended touch area. Recommended 0, caution 1–5, high >5. Enlarge interactive controls where possible.", limits.touch],
+    ].forEach(([value, rawValue, label, note, thresholds]) => {
       const card = document.createElement("div"),
         strong = document.createElement("strong"),
-        caption = document.createElement("span");
-      card.className = "health-metric";
+        caption = document.createElement("span"),
+        help = document.createElement("button");
+      card.className = `health-metric ${rating(rawValue, thresholds)}`;
       strong.textContent = value;
       caption.textContent = label;
+      help.type = "button";
+      help.className = "health-metric-help";
+      help.textContent = "?";
+      help.title = note;
+      help.setAttribute("aria-label", `${label}: ${note}`);
+      help.onclick = () => alert(`${label}\n\n${note}`);
+      caption.append(" ", help);
       card.append(strong, caption);
       host.append(card);
     });
+    const guide = document.createElement("div");
+    guide.className = "performance-guidelines";
+    guide.innerHTML = `<strong>Guidelines for ${compact ? "1280 × 800-class touch panels" : "larger displays"}</strong><span><i class="recommended"></i> Recommended: suitable starting target</span><span><i class="caution"></i> Caution: test carefully on the actual panel</span><span><i class="high"></i> High: simplify before deployment when possible</span><small>These are conservative Composer engineering guidelines, not hard Crestron limits. Final approval should include startup, animation, scrolling, and touch-response testing on the lowest-powered target panel.</small>`;
+    host.append(guide);
   }
   function navigateToHealthIssue(issue) {
     const item = issue.itemId
@@ -8602,27 +9647,134 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     setStatus("Project Health preflight passed");
     return true;
   }
+  const acceptanceChecks = [
+    ["Automatic", "health", "Project Health passes", "No blocking project, signal, navigation, asset, or panel problems."],
+    ["Automatic", "roundtrip", "Save/open round trip", "Pages, widgets, assets, reusable symbols, custom components, and test results survive serialization."],
+    ["Automatic", "export", "HTML runtime export", "Export contains pages, component runtime, CrComLib, Web XPanel, and interaction actions."],
+    ["Automatic", "signals", "Signal coverage", "Representative digital, analog, serial, single-widget, and repeated-item bindings are present."],
+    ["Automatic", "responsive", "Responsive target coverage", "Representative widgets have a saved alternate-panel override."],
+    ["Automatic", "font", "Embedded custom font", "An imported font is selected and emitted through @font-face."],
+    ["Editor", "editor-render", "Editor visual inspection", "All acceptance pages render without component errors, clipped glow, or unexpected overflow."],
+    ["Editor", "editor-simulate", "Signal simulation", "Digital Selected, analog Feedback, and serial Name visibly update representative widgets."],
+    ["Editor", "editor-navigation", "Navigation and actions", "Local navigation, contract page selection, timeline animation, and actions execute correctly."],
+    ["Preview", "preview-render", "Preview rendering", "Layout, fonts, assets, animations, and widget states match the Editor."],
+    ["Preview", "preview-signals", "Preview signal behavior", "Simulator-driven digital, analog, serial, and repeated-item behavior matches the Editor."],
+    ["CH5 Desktop", "desktop-load", "CH5 Desktop load", "The same CH5Z opens without a blank page or component runtime errors."],
+    ["CH5 Desktop", "desktop-signals", "CH5 Desktop communication", "Button presses and processor feedback work through the selected contract mapping."],
+    ["TSW-1070", "panel-load", "Panel install and load", "Deployment verifies the package, installs it, and the intended project remains active."],
+    ["TSW-1070", "panel-signals", "Physical-panel signals", "Digital, analog, serial, page, and multi-device signals operate with SIMPL Windows."],
+    ["TSW-1070", "panel-performance", "Panel performance", "Startup, page transitions, scrolling, animations, memory, and touch response remain acceptable."],
+    ["Packaging", "portable", "Portable project round trip", "Save/open portable package preserves assets, fonts, custom components, and reusable designs."],
+    ["Packaging", "component-package", "Component package round trip", "Export/import of a custom component preserves properties, signals, assets, and behavior."],
+    ["Packaging", "contract", "Contract Editor and SIMPL", "CCE import, .cse2j build mapping, and SIMPL component hierarchy/names are correct."],
+  ];
+  function acceptanceState() {
+    state.acceptance ||= { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
+    state.acceptance.results ||= {};
+    return state.acceptance;
+  }
+  function escapeAcceptanceHtml(value) {
+    const span = document.createElement("span");
+    span.textContent = String(value ?? "");
+    return span.innerHTML;
+  }
+  function acceptanceResult(id) {
+    return acceptanceState().results[id] || { status: "untested", notes: "", testedAt: "" };
+  }
+  function setAcceptanceResult(id, status, notes = "") {
+    const acceptance = acceptanceState(), previous = acceptanceResult(id);
+    acceptance.startedAt ||= new Date().toISOString();
+    acceptance.updatedAt = new Date().toISOString();
+    acceptance.results[id] = { status, notes: notes || previous.notes || "", testedAt: status === "untested" ? "" : new Date().toISOString() };
+    projectDirty = true;
+    setAutosaveState("Unsaved changes");
+  }
+  function renderAcceptanceEnvironment() {
+    const environment = acceptanceState().environment || {}, artifact = (deploymentSettings().buildArtifacts || [])[0], entries = [
+      ["Application", environment.appVersion || "—"], ["Windows", environment.os || navigator.userAgent],
+      ["WebView2", environment.webView2 || "—"], ["Node / NPM", `${environment.node || "—"} / ${environment.npm || "—"}`],
+      ["Crestron CLI", environment.ch5Cli || "—"], ["Project", `${state.contract.name || "Untitled"} · ${state.pages.length} pages · ${state.items.length} widgets`],
+      ["Target", `${selectedDevice().name} · ${state.width}×${state.height}`], ["Latest CH5Z", artifact ? `${artifact.path} · ${artifact.sha256 || "no hash"}` : "No verified build artifact"],
+    ];
+    $("acceptance-environment").innerHTML = entries.map(([key, value]) => `<div><strong>${escapeAcceptanceHtml(key)}:</strong> ${escapeAcceptanceHtml(String(value))}</div>`).join("");
+  }
+  function renderAcceptanceChecklist() {
+    const host = $("acceptance-checklist"), acceptance = acceptanceState(), completed = acceptanceChecks.filter(([, id]) => acceptanceResult(id).status !== "untested").length,
+      passed = acceptanceChecks.filter(([, id]) => acceptanceResult(id).status === "pass").length, failed = acceptanceChecks.filter(([, id]) => acceptanceResult(id).status === "fail").length;
+    $("acceptance-summary").textContent = `${completed}/${acceptanceChecks.length} checked · ${passed} passed · ${failed} failed. Results are saved with this project.`;
+    host.innerHTML = "";
+    [...new Set(acceptanceChecks.map(([group]) => group))].forEach((group) => {
+      const section = document.createElement("section"), heading = document.createElement("h3"); section.className = "acceptance-group"; heading.textContent = group; section.appendChild(heading);
+      acceptanceChecks.filter(([entryGroup]) => entryGroup === group).forEach(([, id, title, description]) => {
+        const result = acceptanceResult(id), row = document.createElement("div"), copy = document.createElement("div"), status = document.createElement("select"), notes = document.createElement("input");
+        row.className = "acceptance-row"; row.dataset.status = result.status; copy.innerHTML = `<strong>${escapeAcceptanceHtml(title)}</strong><small>${escapeAcceptanceHtml(description)}</small>`;
+        [["untested","Not tested"],["pass","Pass"],["fail","Fail"],["blocked","Blocked"]].forEach(([value,label]) => { const option=document.createElement("option"); option.value=value; option.textContent=label; status.appendChild(option); });
+        status.value = result.status; status.onchange = () => { setAcceptanceResult(id, status.value, notes.value); renderAcceptanceChecklist(); scheduleHistory(); };
+        notes.type="text"; notes.placeholder="Notes / evidence"; notes.value=result.notes || ""; notes.onchange=()=>{ setAcceptanceResult(id,status.value,notes.value); scheduleHistory(); };
+        row.append(copy,status,notes); section.appendChild(row);
+      }); host.appendChild(section);
+    });
+    $("acceptance-notes").value = acceptance.notes || "";
+  }
+  async function openAcceptanceTest() {
+    const acceptance = acceptanceState();
+    if (native) try { acceptance.environment = await nativeRequest("systemDiagnostics"); } catch (error) { acceptance.environment = { error:error.message }; }
+    renderAcceptanceEnvironment(); renderAcceptanceChecklist();
+    if (!$("acceptance-dialog").open) $("acceptance-dialog").showModal();
+  }
+  function acceptanceItem(componentId, pageId, x, y, overrides = {}) {
+    const definition = window.ComposerRuntime.get(componentId); if (!definition) return null;
+    const itemId=uid("acceptance-"), contractName=`Acceptance.${componentId.replace(/[^A-Za-z0-9_]/g,"_")}_${itemId.replace(/[^A-Za-z0-9_]/g,"_")}`;
+    return { id:itemId, pageId, name:overrides.name || definition.name, componentId, source:"", x,y,
+      w:overrides.w || definition.defaultSize?.width || 240, h:overrides.h || definition.defaultSize?.height || 140, z:state.items.length+1,
+      properties:{ ...Object.fromEntries((definition.properties || []).map((property)=>[property.key,structuredClone(property.defaultValue)])), ...(overrides.properties || {}) },
+      signalBindings:Object.fromEntries((definition.signals || []).map((signal)=>[signal.key,{mode:"contract",value:`${contractName}.${signal.key.replace(/[^A-Za-z0-9_]/g,"_")}`}])) ,
+      targetPage:overrides.targetPage || "", actions:overrides.actions || [], interactions:overrides.interactions || [],
+      layout:{anchorX:overrides.anchorX || "left",anchorY:overrides.anchorY || "top",scaleMode:overrides.scaleMode || "fixed",safeMargin:12}, deviceOverrides:{} };
+  }
+  function createAcceptanceProject() {
+    if ((state.items.length || state.pages.length > 1) && !confirm("Replace the current project with the acceptance test project? Save it first if needed.")) return;
+    const retainedFonts=state.assets.filter((asset)=>String(asset.type || "").includes("font")), asset={id:"acceptance-graphic",name:"Acceptance Graphic.svg",type:"image/svg+xml",size:100,dataUrl:"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MiIgZmlsbD0iIzA0YWFlOCIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjQiLz48L3N2Zz4="},
+      pages=[{id:"acceptance-home",name:"Acceptance Home",background:"#182126",bindingMode:"contract",binding:"AcceptanceHome",transition:"slide-left",transitionDuration:350},{id:"acceptance-signals",name:"Signals",background:"#122022",bindingMode:"contract",binding:"AcceptanceSignals",transition:"fade",transitionDuration:300},{id:"acceptance-media",name:"Media & Motion",background:"#182126",bindingMode:"contract",binding:"AcceptanceMedia",transition:"scale",transitionDuration:350}];
+    state.pages=pages; state.activePage=pages[0].id; state.items=[]; state.assets=[asset,...retainedFonts]; state.reusables=[]; state.pageTemplates=[]; state.themes=[]; state.customComponents=[];
+    const customAcceptance={id:"custom-acceptance-button",name:"Acceptance Custom Button",category:"Custom",icon:"🧪",version:"1.0.0",defaultSize:{width:260,height:120},
+      html:'<!doctype html><html><head><style>html,body{margin:0;width:100%;height:100%;background:transparent}.acceptance-custom{width:100%;height:100%;border:1px solid #fff;border-radius:14px;background:#203332;color:#fff;box-shadow:0 0 14px #04dcb9;font:700 22px Segoe UI}</style></head><body><button class="acceptance-custom">CUSTOM</button><script>var b=document.querySelector("button"),up=function(){window.ComposerSignals.publish("press",false)};b.onpointerdown=function(){window.ComposerSignals.publish("press",true)};b.onpointerup=up;b.onpointercancel=up;window.ComposerSignals.subscribe("selected",function(v){b.style.background=v?"#04aa8e":"#203332"});window.ComposerSignals.subscribe("name",function(v){if(v!=null&&v!=="")b.textContent=String(v)});<\/script></body></html>',
+      properties:[{key:"textSize",name:"Text size",type:"number",defaultValue:22}],signals:[{key:"press",name:"Press",type:"digital",direction:"output",defaultValue:"Acceptance.Custom.Press"},{key:"selected",name:"Selected",type:"digital",direction:"input",defaultValue:"Acceptance.Custom.Selected"},{key:"name",name:"Name",type:"serial",direction:"input",defaultValue:"Acceptance.Custom.Name"}]};
+    state.customComponents.push(customAcceptance); registerCustomComponent(customAcceptance);
+    const fontFamily=retainedFonts[0]?fontAssetFamily(retainedFonts[0]):"", add=(id,page,x,y,overrides)=>{const item=acceptanceItem(id,page,x,y,overrides);if(item)state.items.push(item);return item;};
+    const nav=add("standard-button",pages[0].id,40,40,{name:"Navigate to Signals",targetPage:pages[1].id,properties:{text:"SIGNALS",fontAsset:fontFamily},interactions:[{trigger:"press",preset:"glow",duration:300,delay:0,easing:"ease-out",pressEffect:"particle"}]});
+    if(nav){nav.graphicAsset=asset.id;nav.graphicAssetMode="overlay";nav.graphicAssetWidth=24;nav.graphicAssetHeight=24;nav.graphicAssetX=16;}
+    add("volume-slider",pages[0].id,390,40,{name:"Analog Volume"}); add("rolling-menu",pages[0].id,40,260,{name:"Repeated Rolling Menu"}); add("text-block",pages[0].id,470,280,{name:"Font and Serial Text",properties:{text:"CUSTOM FONT / SERIAL",fontAsset:fontFamily}});
+    add("standard-button",pages[1].id,20,30,{name:"Digital Button",w:240,h:110}); add("rotary-knob",pages[1].id,300,20,{name:"Analog Rotary",w:280,h:330}); add("lighting-control",pages[1].id,620,20,{name:"Multi Lighting",w:620,h:330}); add("microphone-control",pages[1].id,20,400,{name:"Multi Microphones",w:1220,h:360});
+    add("horizontal-scrolling-text",pages[2].id,40,40,{name:"Scrolling Serial Text"}); add("video-input",pages[2].id,40,210,{name:"Video and PTZ",w:620,h:360}); add("loading-spinner",pages[2].id,760,210,{name:"Animated Loading"}); add("custom-acceptance-button",pages[2].id,950,40,{name:"Custom Component"});
+    const reusableSource=add("standard-button",pages[0].id,900,40,{name:"Reusable Master",properties:{text:"MASTER"}}); if(reusableSource){const reusableId=uid("reusable-"),instanceId=uid("instance-");reusableSource.reusableId=reusableId;reusableSource.reusableKey="button";reusableSource.linkedInstanceId=instanceId;state.reusables.push({id:reusableId,name:"Acceptance Navigation Symbol",masterInstanceId:instanceId,items:reusableSnapshot([reusableSource])});}
+    const alternateKey=panelLayoutKey("ipad-landscape",1920,1080); state.items.forEach((item)=>{item.deviceOverrides[alternateKey]=window.ComposerResponsiveLayout.adaptRect(item,{width:1280,height:800},{width:1920,height:1080},item.layout);});
+    state.contract={name:"ComposerAcceptance",description:"Cross-runtime acceptance test",company:"",client:"",author:"",version:"1.0.0.0"}; state.acceptance={startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),results:{},notes:"",environment:{}};
+    state.targetDevice="tsw-1070";state.width=1280;state.height=800;$("target-device").value=state.targetDevice;$("panel-width").value=state.width;$("panel-height").value=state.height;resize(state.width,state.height);renderPage();history.length=0;historyIndex=-1;commitHistory();renderAcceptanceEnvironment();renderAcceptanceChecklist();setStatus("Acceptance test project created");
+  }
+  async function runAcceptanceAutomaticChecks() {
+    const test=(id,condition,message)=>setAcceptanceResult(id,condition?"pass":"fail",message),p=project(),serialized=JSON.stringify(p),reopened=JSON.parse(serialized),html=window.ComposerExporter.exportProject(p),validation=runValidation(false),signals=collectProjectSignals(),font=state.assets.find((asset)=>String(asset.type || "").includes("font"));
+    test("health",validation.errors.length===0,validation.issues.length?`0 blocking errors; ${validation.issues.length} warning(s). Open Project Health for details.`:"No Project Health issues.");
+    test("roundtrip",reopened.pages.length===state.pages.length&&reopened.items.length===state.items.length&&reopened.assets.length===state.assets.length&&!!reopened.acceptance,"Project JSON serialized and reopened with acceptance results.");
+    test("export",html.includes("cr-com-lib.js")&&html.includes("ch5-webxpanel.js")&&html.includes("composer-interaction"),`Exported ${Math.ceil(html.length/1024)} KB HTML runtime.`);
+    test("signals",["digital","analog","serial"].every((type)=>signals.some((row)=>row.type===type))&&signals.some((row)=>row.range),`${signals.length} signal rows inspected.`);
+    test("responsive",state.items.some((item)=>Object.keys(item.deviceOverrides || {}).length),"Alternate-panel overrides found.");
+    test("font",!!font&&html.includes("@font-face")&&html.includes(font.dataUrl),font?`Embedded ${font.name}.`:"Import a TTF, OTF, WOFF, or WOFF2 font, select it on a text widget, and rerun.");
+    if(native)try{acceptanceState().environment=await nativeRequest("systemDiagnostics");}catch(_){} renderAcceptanceEnvironment();renderAcceptanceChecklist();scheduleHistory();setStatus("Acceptance automated checks completed");
+  }
+  function acceptanceReport() {
+    const acceptance=acceptanceState(),lines=["CRESTRON UI COMPOSER — CROSS-RUNTIME ACCEPTANCE REPORT",`Generated: ${new Date().toLocaleString()}`,`Project: ${state.contract.name || "Untitled"}`,`Target: ${selectedDevice().name} (${state.width}×${state.height})`,`Started: ${acceptance.startedAt || "Not started"}`,`Last updated: ${acceptance.updatedAt || "—"}`,"","ENVIRONMENT",JSON.stringify(acceptance.environment || {},null,2),""]; let lastGroup="";
+    acceptanceChecks.forEach(([group,id,title,description])=>{if(group!==lastGroup){lines.push(group.toUpperCase());lastGroup=group;}const result=acceptanceResult(id);lines.push(`[${result.status.toUpperCase()}] ${title}`,`  ${description}`,result.notes?`  Evidence: ${result.notes}`:"",result.testedAt?`  Tested: ${new Date(result.testedAt).toLocaleString()}`:"");}); lines.push("","OVERALL NOTES",acceptance.notes || "None"); return lines.filter((line,index,array)=>line!==""||array[index-1]!=="").join("\n");
+  }
   function project() {
     return {
       version: window.ComposerProjectMigrations.CURRENT_VERSION,
-      width: state.width,
-      height: state.height,
-      targetDevice: state.targetDevice,
+      ...projectSnapshot(),
       targetDeviceProfile: {
         ...selectedDevice(),
         width: state.width,
         height: state.height,
       },
-      diagnostics: state.diagnostics,
-      pages: state.pages,
-      activePage: state.activePage,
-      items: state.items,
-      assets: state.assets,
-      reusables: state.reusables,
-      pageTemplates: state.pageTemplates,
-      themes: state.themes,
-      customComponents: state.customComponents,
-      contract: state.contract,
     };
   }
   function exportHtml() {
@@ -13055,6 +14207,43 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("add-page").onclick = addPage;
   $("save-page-template").onclick = savePageTemplate;
+  $("design-library-export").onclick = () => {
+    const itemCount =
+      state.reusables.length +
+      state.pageTemplates.length +
+      state.customComponents.length;
+    if (!itemCount) {
+      alert(
+        "Create a reusable design, page template, or custom component before exporting a library.",
+      );
+      return;
+    }
+    const name = prompt("Library name", `${state.contract.name || "Composer"} Library`);
+    if (!name?.trim()) return;
+    const version = prompt("Library version", "1.0.0");
+    if (!version?.trim()) return;
+    const packageValue = designLibraryPackage(name.trim(), version.trim()),
+      fileName = `${name.trim().replace(/[^A-Za-z0-9_-]+/g, "-") || "component-library"}-${version.trim().replace(/[^A-Za-z0-9_.-]+/g, "-")}.cuilibrary`;
+    download(fileName, JSON.stringify(packageValue, null, 2), "application/json");
+    setStatus(
+      `Exported library “${packageValue.name}” v${packageValue.version}`,
+    );
+  };
+  $("design-library-import").onclick = () => $("design-library-file").click();
+  $("design-library-file").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const packageValue = JSON.parse(await file.text()),
+        result = importDesignLibrary(packageValue);
+      setStatus(
+        `Imported “${packageValue.name}” v${packageValue.version}: ${result.components} components, ${result.reusables} reusable designs, ${result.templates} page templates`,
+      );
+    } catch (error) {
+      alert(`Library import failed.\n\n${error.message}`);
+    }
+  };
   $("theme-selection").onclick = () => applyTheme("selection");
   $("theme-component-type").onclick = () => applyTheme("component-type");
   $("theme-page-apply").onclick = () => applyTheme("page");
@@ -13211,6 +14400,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     state.pageTemplates = p.pageTemplates || [];
     state.themes = p.themes || [];
     state.customComponents = p.customComponents || [];
+    state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.customComponents.forEach(registerCustomComponent);
     state.contract = { ...state.contract, ...(p.contract || {}) };
     state.pages = p.pages || [
@@ -13316,6 +14506,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
   };
   $("validate-project").onclick = () => runValidation(true);
+  $("panel-performance").onclick = () =>
+    runAuditUi(runPanelPerformanceReport, "Panel performance report");
+  $("release-readiness").onclick = () =>
+    runAuditUi(openReleaseReadiness, "Release readiness");
   document.querySelectorAll("[data-health-filter]").forEach((button) => {
     button.onclick = () => {
       healthIssueFilter = button.dataset.healthFilter;
@@ -13328,6 +14522,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("health-search").oninput = renderHealthDashboard;
   $("health-fix-all").onclick = fixAllHealthIssues;
   $("build-self-test").onclick = runBuildSelfTest;
+  $("acceptance-test").onclick = openAcceptanceTest;
+  $("acceptance-create-project").onclick = createAcceptanceProject;
+  $("acceptance-run-automatic").onclick = runAcceptanceAutomaticChecks;
+  $("acceptance-reset").onclick = () => {
+    if (!confirm("Reset every acceptance result and note?")) return;
+    state.acceptance = { startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),results:{},notes:"",environment:acceptanceState().environment || {} };
+    renderAcceptanceChecklist(); scheduleHistory();
+  };
+  $("acceptance-notes").onchange = (event) => {
+    const acceptance=acceptanceState(); acceptance.notes=event.target.value; acceptance.updatedAt=new Date().toISOString(); scheduleHistory();
+  };
+  $("acceptance-export").onclick = () => download("crestron-ui-acceptance-report.txt",acceptanceReport(),"text/plain");
   $("project-backups").onclick = async () => {
     if (!native)
       return alert("Project backups are available in the Windows application.");
@@ -13381,6 +14587,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     signalViewMode = "address";
     renderSignalManager();
   };
+  $("signal-view-simpl").onclick = () => {
+    signalViewMode = "simpl";
+    renderSignalManager();
+  };
+  $("signal-compare-contract").onclick = () => $("signal-compare-file").click();
+  $("signal-compare-file").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await compareContractFile(file);
+  };
   $("signal-replace-prefix").onclick = replaceContractPrefix;
   $("signal-allocate-joins").onclick = () => {
     $("join-allocator-scope").value = "project";
@@ -13411,6 +14627,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("project-search-query").oninput = renderProjectSearch;
   $("signal-export-csv").onclick = () =>
     download("crestron-signal-map.csv", signalCsv(), "text/csv");
+  $("signal-export-schedule").onclick = () =>
+    download(
+      `${simplIdentifier(state.contract.name || "crestron-ui")}-signal-schedule.txt`,
+      signalScheduleReport(),
+      "text/plain",
+    );
   $("signal-simulator").onclick = () => openSignalSimulator();
   $("simulator-search").oninput = renderSignalSimulator;
   $("simulator-clear").onclick = () => {
@@ -13828,7 +15050,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("deploy-status").textContent =
       "Opening the Crestron deployment terminal…";
     try {
-      const result = await nativeRequest("deployCh5Package", {
+      const result = await nativeRequest("deployCh5PackageWait", {
         host,
         packagePath,
         slowMode,
@@ -13846,9 +15068,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             host,
             packagePath,
             backupPath: result.backupPath,
+            success: result.success === true,
+            message:
+              result.success === true
+                ? "Deployment succeeded"
+                : `Deployment failed with exit code ${result.exitCode}`,
+            logPath: result.logPath || "",
             slowMode,
             profileId: profile?.id || "",
             profileName: profile?.name || "",
+            deviceId: profile?.deviceId || state.targetDevice,
             deploymentType:
               result.deploymentType || profile?.deploymentType || "touchscreen",
             device:
@@ -13867,7 +15096,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       });
       renderDeploymentHistory();
       $("deploy-status").textContent =
-        `Deployment terminal opened. It will remain open after completion. Detailed output will be saved to ${result.logPath || "the deployment log folder"}.`;
+        result.success === true
+          ? `Deployment succeeded. Detailed output was saved to ${result.logPath || "the deployment log folder"}.`
+          : `Deployment failed with exit code ${result.exitCode}. Detailed output was saved to ${result.logPath || "the deployment log folder"}.`;
     } catch (error) {
       $("deploy-status").textContent =
         `Deployment failed to start: ${error.message}`;
@@ -13940,6 +15171,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           slowMode: true,
           profileId: profile.id,
           profileName: profile.name,
+          deviceId: profile.deviceId,
           device: device?.name || profile.deviceId,
           deploymentType:
             profile.deploymentType || defaultDeploymentType(profile.deviceId),
@@ -14112,22 +15344,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       if (error.message !== "cancelled") setStatus(error.message);
     }
   };
-  $("new-project").onclick = () => {
-    if (
-      (state.items.length ||
-        state.assets.length ||
-        state.reusables.length ||
-        state.pageTemplates.length ||
-        state.themes.length) &&
-      !confirm("Clear this project?")
-    )
-      return;
+  function clearProjectForStarter() {
+    const customIds = new Set(state.customComponents.map((entry) => entry.id));
+    state.components = state.components.filter(
+      (component) => !customIds.has(component.componentId),
+    );
     state.items = [];
     state.assets = [];
     state.reusables = [];
     state.pageTemplates = [];
     state.themes = [];
     state.customComponents = [];
+    state.acceptance = { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.contract = {
       name: "MyCrestronUI",
       description: "",
@@ -14148,7 +15376,122 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     commitHistory(false);
     lastManualFingerprint = historyState();
     setAutosaveState("Saved");
+  }
+  function starterPage(id, name) {
+    return {
+      id,
+      name,
+      background: "#182126",
+      bindingMode: "contract",
+      binding: `Page_Select_${name.replace(/[^A-Za-z0-9_]/g, "_")}`,
+      transition: "slide-left",
+      transitionDuration: 350,
+    };
+  }
+  function starterItem(componentId, page, x, y, overrides = {}) {
+    const definition = window.ComposerRuntime.get(componentId);
+    if (!definition) return null;
+    const item = acceptanceItem(componentId, page.id, x, y, overrides),
+      namespace = `${page.name.replace(/[^A-Za-z0-9_]/g, "_")}.${String(overrides.name || definition.name).replace(/[^A-Za-z0-9_]/g, "_")}`;
+    Object.entries(item.signalBindings || {}).forEach(([key, binding]) => {
+      binding.value = `${namespace}.${key.replace(/[^A-Za-z0-9_]/g, "_")}`;
+    });
+    return item;
+  }
+  function createStarterProject(type) {
+    clearProjectForStarter();
+    if (type === "blank") {
+      setStatus("Created blank project");
+      return;
+    }
+    const definitions = {
+      conference: {
+        name: "ConferenceRoom",
+        pages: ["Home", "Sources", "Audio", "Lighting"],
+        widgets: [
+          ["horizontal-button-list", 0, 60, 150, { name: "Room Navigation", w: 1160, h: 150 }],
+          ["text-block", 0, 60, 350, { name: "Room Status", w: 1160, h: 120, properties: { text: "CONFERENCE ROOM" } }],
+          ["display-control", 1, 60, 150, { name: "Displays", w: 1160, h: 520 }],
+          ["volume-slider", 2, 60, 170, { name: "Program Volume", w: 520, h: 190 }],
+          ["microphone-control", 2, 620, 130, { name: "Microphones", w: 590, h: 560 }],
+          ["lighting-control", 3, 60, 130, { name: "Lighting", w: 1160, h: 570 }],
+        ],
+      },
+      classroom: {
+        name: "Classroom",
+        pages: ["Home", "Presentation", "Camera", "Audio"],
+        widgets: [
+          ["horizontal-button-list", 0, 60, 150, { name: "Classroom Navigation", w: 1160, h: 150 }],
+          ["text-block", 0, 60, 350, { name: "Class Status", w: 1160, h: 120, properties: { text: "CLASSROOM READY" } }],
+          ["display-control", 1, 60, 140, { name: "Presentation Sources", w: 1160, h: 540 }],
+          ["video-input", 2, 110, 110, { name: "Instructor Camera", w: 1060, h: 620 }],
+          ["volume-slider", 3, 100, 180, { name: "Program Volume", w: 500, h: 190 }],
+          ["microphone-control", 3, 650, 120, { name: "Classroom Microphones", w: 540, h: 570 }],
+        ],
+      },
+      "multi-room": {
+        name: "MultiRoom",
+        pages: ["Overview", "Rooms", "Room Control"],
+        widgets: [
+          ["text-block", 0, 60, 60, { name: "System Overview", w: 1160, h: 110, properties: { text: "MULTI-ROOM OVERVIEW" } }],
+          ["display-control", 0, 60, 220, { name: "Room Status", w: 1160, h: 500 }],
+          ["horizontal-button-list", 1, 60, 120, { name: "Room Selection", w: 1160, h: 180 }],
+          ["lighting-control", 2, 40, 120, { name: "Room Lighting", w: 590, h: 570 }],
+          ["microphone-control", 2, 650, 120, { name: "Room Audio", w: 590, h: 570 }],
+        ],
+      },
+    }[type];
+    if (!definitions) return;
+    state.pages = definitions.pages.map((name, index) =>
+      starterPage(`page-${type}-${index + 1}`, name),
+    );
+    state.activePage = state.pages[0].id;
+    state.contract.name = definitions.name;
+    definitions.widgets.forEach(([componentId, pageIndex, x, y, overrides]) => {
+      const item = starterItem(
+        componentId,
+        state.pages[pageIndex],
+        x,
+        y,
+        overrides,
+      );
+      if (item) state.items.push(item);
+    });
+    state.pages.forEach((page, pageIndex) => {
+      state.pages.forEach((target, targetIndex) => {
+        if (pageIndex === targetIndex) return;
+        const item = starterItem("standard-button", page, 30 + targetIndex * 190, 24, {
+          name: `Go to ${target.name}`,
+          w: 170,
+          h: 70,
+          targetPage: target.id,
+          properties: { text: target.name.toUpperCase() },
+        });
+        if (item) state.items.push(item);
+      });
+    });
+    renderPage();
+    history.length = 0;
+    historyIndex = -1;
+    commitHistory(false);
+    lastManualFingerprint = historyState();
+    setAutosaveState("Saved");
+    setStatus(`Created ${definitions.pages.length}-page ${definitions.name} starter project`);
+  }
+  $("new-project").onclick = () => {
+    if (
+      (state.items.length || state.assets.length || state.pages.length > 1) &&
+      !confirm("Create a new project? Unsaved changes will be cleared.")
+    )
+      return;
+    $("new-project-dialog").showModal();
   };
+  document.querySelectorAll("[data-starter-project]").forEach((button) => {
+    button.onclick = () => {
+      $("new-project-dialog").close();
+      createStarterProject(button.dataset.starterProject);
+    };
+  });
   $("undo").onclick = undo;
   $("redo").onclick = redo;
   $("timeline-add").onclick = () => {
@@ -14234,6 +15577,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("feature-help-dialog").showModal();
   }
   $("responsive-help-open").onclick = () => openFeatureHelp("responsive");
+  $("responsive-compare").onclick = openResponsiveComparison;
+  $("responsive-compare-target").onchange = renderResponsiveComparison;
+  $("responsive-copy-source").onchange = renderResponsiveComparison;
+  $("responsive-copy-layout").onclick = copyResponsiveLayoutToTarget;
+  $("responsive-apply-family").onclick = applyResponsiveBreakpointFamily;
+  $("responsive-save-adapted").onclick = saveAdaptedResponsiveLayout;
+  $("responsive-validate-all").onclick = validateAllResponsiveTargets;
+  $("responsive-fit-all").onclick = fitAndSaveAllResponsiveTargets;
+  $("responsive-switch-target").onclick = () => {
+    const target = responsiveComparisonTarget();
+    if (!target) return;
+    $("target-device").value = target.id;
+    applyDevice(target.id);
+    commitHistory();
+    $("responsive-compare-dialog").close();
+  };
   document.querySelectorAll(".timeline-action-help-open").forEach((button) => {
     button.onclick = () => openFeatureHelp("timeline-action");
   });

@@ -215,6 +215,7 @@
             </button>
             <button id="preview">Preview</button>
             <button id="panel-compatibility">Panel fit</button>
+            <button id="responsive-compare">Responsive compare</button>
             <button id="signal-manager">Signals</button>
             <button id="signal-simulator">Simulate</button>
           </div>
@@ -223,7 +224,10 @@
           <summary>Project</summary>
           <div class="app-menu-popup">
             <button id="validate-project">Health check</button>
+            <button id="panel-performance">Panel performance</button>
             <button id="build-self-test">Export/build self-test</button>
+            <button id="acceptance-test">Acceptance test</button>
+            <button id="release-readiness">Release readiness</button>
             <button id="project-backups">Backups</button>
             <button id="storage-settings">Storage locations</button>
             <button id="build-ch5">Build Project</button>
@@ -328,6 +332,16 @@
         </div>
         <div id="asset-list" class="asset-list"></div>
         <h2 style="margin-top: 24px">Reusable designs</h2>
+        <div class="asset-actions">
+          <button id="design-library-export" type="button">Export library</button>
+          <button id="design-library-import" type="button">Import library</button>
+        </div>
+        <input
+          id="design-library-file"
+          type="file"
+          accept=".cuilibrary,application/json"
+          hidden
+        />
         <div id="reusable-list" class="design-list"></div>
         <h2 style="margin-top: 24px">Page templates</h2>
         <button id="save-page-template" type="button">Save current page</button>
@@ -830,6 +844,65 @@
         </button>
       </aside>
     </main>
+    <dialog id="new-project-dialog" class="feature-help-dialog">
+      <form method="dialog">
+        <h2>New Project</h2>
+        <p class="hint">
+          Choose a clean starting point. Every starter uses normal editable pages,
+          widgets, signals, and responsive-layout settings.
+        </p>
+        <div class="starter-project-grid">
+          <button type="button" data-starter-project="blank">
+            <strong>Blank</strong><span>One empty Home page</span>
+          </button>
+          <button type="button" data-starter-project="conference">
+            <strong>Conference Room</strong><span>Sources, audio, lighting, and microphones</span>
+          </button>
+          <button type="button" data-starter-project="classroom">
+            <strong>Classroom</strong><span>Presentation, camera, and audio pages</span>
+          </button>
+          <button type="button" data-starter-project="multi-room">
+            <strong>Multi-Room</strong><span>Overview, room selection, and room control</span>
+          </button>
+        </div>
+        <footer><button value="cancel">Cancel</button></footer>
+      </form>
+    </dialog>
+    <dialog id="responsive-compare-dialog" class="responsive-compare-dialog">
+      <form method="dialog">
+        <h2>Responsive Layout Compare</h2>
+        <div class="responsive-compare-toolbar">
+          <label>Compare with <select id="responsive-compare-target"></select></label>
+          <label>Copy layout from <select id="responsive-copy-source"></select></label>
+          <button id="responsive-copy-layout" type="button">Copy to target</button>
+          <label>Target family <select id="responsive-breakpoint-family">
+            <option value="same-viewport">Same viewport size</option>
+            <option value="compact-touch">Compact touch panels</option>
+            <option value="hd">HD displays and iPads</option>
+            <option value="large-display">Large displays</option>
+          </select></label>
+          <button id="responsive-apply-family" type="button">Apply to family</button>
+          <button id="responsive-save-adapted" type="button">Save adapted layout</button>
+          <button id="responsive-validate-all" type="button">Validate all targets</button>
+          <button id="responsive-fit-all" type="button">Fit &amp; save all targets</button>
+          <button id="responsive-switch-target" type="button">Edit this target</button>
+        </div>
+        <p id="responsive-compare-summary" class="hint"></p>
+        <div class="responsive-compare-grid">
+          <section>
+            <h3 id="responsive-current-title">Current</h3>
+            <div id="responsive-current-preview" class="responsive-mini-panel"></div>
+          </section>
+          <section>
+            <h3 id="responsive-target-title">Target</h3>
+            <div id="responsive-target-preview" class="responsive-mini-panel"></div>
+          </section>
+        </div>
+        <p class="responsive-compare-legend"><span></span> Yellow widgets use calculated responsive rules and do not yet have a saved target override.</p>
+        <div id="responsive-validation-results" class="responsive-validation-results"></div>
+        <footer><button value="cancel">Close</button></footer>
+      </form>
+    </dialog>
     <dialog id="source-dialog">
       <form method="dialog">
         <h2>Component HTML</h2>
@@ -862,6 +935,9 @@
           <button id="signal-view-table" type="button" class="active">Table</button>
           <button id="signal-view-map" type="button">Signal map</button>
           <button id="signal-view-address" type="button">Address map</button>
+          <button id="signal-view-simpl" type="button">SIMPL preview</button>
+          <button id="signal-compare-contract" type="button">Compare contract…</button>
+          <input id="signal-compare-file" type="file" accept=".cce,.cse2j,application/json" hidden />
           <button id="signal-replace-prefix" type="button">Replace contract prefix…</button>
           <button id="signal-allocate-joins" type="button">Allocate joins…</button>
           <button id="signal-name-contracts" type="button">Name contracts…</button>
@@ -885,8 +961,10 @@
         </div>
         <div id="signal-map" class="signal-map" hidden></div>
         <div id="signal-address-map" class="signal-map signal-address-map" hidden></div>
+        <div id="signal-simpl-preview" class="signal-map signal-simpl-preview" hidden></div>
         <div class="dialog-actions">
-          <button id="signal-export-csv" type="button">Export CSV</button
+          <button id="signal-export-csv" type="button">Export CSV</button>
+          <button id="signal-export-schedule" type="button">Export signal schedule</button
           ><button value="default">Close</button>
         </div>
       </form>
@@ -1869,6 +1947,29 @@ Preview signal activity appears here.</pre
         <p id="project-search-summary" class="hint"></p>
         <div id="project-search-results" class="project-search-results"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="acceptance-dialog" class="acceptance-dialog">
+      <form method="dialog">
+        <h2>Cross-runtime acceptance test</h2>
+        <p id="acceptance-summary" class="hint"></p>
+        <div class="acceptance-toolbar">
+          <button id="acceptance-create-project" type="button" class="primary">Create acceptance project</button>
+          <button id="acceptance-run-automatic" type="button">Run automated checks</button>
+          <button id="acceptance-reset" type="button">Reset results</button>
+        </div>
+        <section class="acceptance-environment">
+          <h3>Environment and package</h3>
+          <div id="acceptance-environment"></div>
+        </section>
+        <div id="acceptance-checklist" class="acceptance-checklist"></div>
+        <label class="acceptance-notes">Overall test notes
+          <textarea id="acceptance-notes" rows="4" placeholder="Processor, panel firmware, observed differences, ticket numbers, or follow-up work…"></textarea>
+        </label>
+        <div class="dialog-actions">
+          <button id="acceptance-export" type="button">Export report</button>
+          <button value="default">Close</button>
+        </div>
       </form>
     </dialog>
     <dialog id="backup-dialog" class="backup-dialog">
