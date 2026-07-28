@@ -11,4 +11,17 @@ dotnet publish $project `
   --output $output
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
 
+$requiredFiles = @(
+  (Join-Path $output "CrestronUiComposer.exe"),
+  (Join-Path $output "Web\editor.html"),
+  (Join-Path $output "Web\editor.js"),
+  (Join-Path $output "Web\components.manifest.json"),
+  (Join-Path $output "Packaging\cr-com-lib.js"),
+  (Join-Path $output "Packaging\ch5-webxpanel.js")
+)
+$missingFiles = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
+if ($missingFiles.Count) {
+  throw "Desktop publish is incomplete. Missing required application files:`n$($missingFiles -join "`n")"
+}
+
 Write-Host "Desktop application published to $output"

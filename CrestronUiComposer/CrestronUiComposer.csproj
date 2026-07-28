@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.4.0</Version>
-    <FileVersion>1.4.0.0</FileVersion>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <Version>1.4.1</Version>
+    <FileVersion>1.4.1.0</FileVersion>
+    <AssemblyVersion>1.4.1.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -116,6 +116,9 @@
 
   <ItemGroup>
     <!-- The publish output may be recreated independently of MSBuild's incremental cache. -->
-    <Content Update="..\*.*" CopyToPublishDirectory="Always" />
+    <!-- MainWindow serves these files from disk. Keep them beside the single-file
+         executable instead of allowing the bundle task to absorb them. -->
+    <Content Update="..\*.*" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
+    <Content Update="Packaging\**\*" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
   </ItemGroup>
 </Project>
