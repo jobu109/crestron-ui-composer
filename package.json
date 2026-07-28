@@ -1,9 +1,9 @@
 {
   "name": "crestron-ui-composer",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "scripts": {
-    "test": "node tests/regression.test.js && node tests/widget-audit.test.js"
+    "test": "node tests/regression.test.js && node tests/widget-audit.test.js && node tests/component-continuity.test.js"
   },
   "dependencies": {
     "@crestron/ch5-webxpanel": "^2.8.0"

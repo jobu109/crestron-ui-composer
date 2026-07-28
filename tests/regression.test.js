@@ -627,5 +627,194 @@ run(
   },
 );
 
+run("recovery snapshots are verified and crash-aware", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(editor.includes("function projectIntegrityErrors"));
+  assert.ok(editor.includes("function recoveryFingerprint"));
+  assert.ok(editor.includes("function recoveryIntegrity"));
+  assert.ok(editor.includes("previousSessionWasUnclean"));
+  assert.ok(editor.includes("Snapshot checksum does not match"));
+  assert.ok(markup.includes('id="recovery-context"'));
+});
+
+run("project health is a navigable validation dashboard", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="health-dashboard"'));
+  assert.ok(markup.includes('id="health-search"'));
+  assert.ok(markup.includes('data-health-filter="error"'));
+  assert.ok(editor.includes("function renderHealthDashboard"));
+  assert.ok(editor.includes("function navigateToHealthIssue"));
+  assert.ok(editor.includes("Go to problem"));
+  assert.ok(editor.includes("category: details.category"));
+});
+
+run("build self-test includes save, recovery, and export workflow gates", () => {
+  const editor = read("editor.js"),
+    packageJson = JSON.parse(read("package.json"));
+  assert.ok(editor.includes("function runProjectWorkflowAcceptance"));
+  assert.ok(editor.includes("project serialized to JSON"));
+  assert.ok(editor.includes("recovery snapshot checksum and structure validated"));
+  assert.ok(editor.includes("export included the Crestron signal runtime"));
+  assert.ok(editor.includes("Project workflow checks passed:"));
+  assert.ok(packageJson.scripts.test.includes("component-continuity.test.js"));
+});
+
+run("project health includes Crestron performance budgets", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="health-metrics"'));
+  assert.ok(editor.includes("function projectPerformanceAudit"));
+  assert.ok(editor.includes("function renderHealthMetrics"));
+  assert.ok(editor.includes("Peak widgets / page"));
+  assert.ok(editor.includes("Embedded assets"));
+  assert.ok(editor.includes('category: "Performance"'));
+});
+
+run("project health audits touch-panel usability", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("function projectUsabilityAudit"));
+  assert.ok(editor.includes("function auditContrast"));
+  assert.ok(editor.includes("at least 44 × 44 pixels"));
+  assert.ok(editor.includes('category: "Touch usability"'));
+  assert.ok(editor.includes("Small touch targets"));
+});
+
+run("project health offers undoable safe quick fixes", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="health-fix-all"'));
+  assert.ok(editor.includes("function applyHealthFix"));
+  assert.ok(editor.includes("function fixAllHealthIssues"));
+  assert.ok(editor.includes('fix: "fit-bounds"'));
+  assert.ok(editor.includes('fix: "touch-minimum"'));
+  assert.ok(editor.includes('fix: "minimum-type"'));
+  assert.ok(editor.includes("commitHistory()"));
+});
+
+run("build and deployment are guarded by Project Health preflight", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("lastApprovedPreflightFingerprint"));
+  assert.ok(editor.includes("Build/deploy blocked by"));
+  assert.ok(editor.includes("Choose Cancel to review these warnings"));
+  assert.ok(editor.includes("Project Health preflight passed. Check the panel"));
+  assert.ok(
+    (editor.match(/if \(!approveExport\(\)\) return;/g) || []).length >= 7,
+  );
+});
+
+run("built CH5Z artifacts retain deployment provenance", () => {
+  const editor = read("editor.js"),
+    desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
+  assert.ok(editor.includes("function recordBuildArtifact"));
+  assert.ok(editor.includes("function deploymentArtifactProblems"));
+  assert.ok(editor.includes("Package verification warning:"));
+  assert.ok(editor.includes("older project state"));
+  assert.ok(editor.includes("buildArtifacts"));
+  assert.ok(desktop.includes("SHA256.HashData"));
+  assert.ok(desktop.includes("sha256"));
+});
+
+run("deployment dialog exposes recent verified build artifacts", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="build-artifact-list"'));
+  assert.ok(editor.includes("function renderBuildArtifacts"));
+  assert.ok(editor.includes("Use package"));
+  assert.ok(editor.includes("SHA-256"));
+  assert.ok(editor.includes("CURRENT"));
+  assert.ok(editor.includes("STALE"));
+});
+
+run("deployment includes a structural CH5Z package inspector", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html"),
+    desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
+  assert.ok(markup.includes('id="deploy-inspect"'));
+  assert.ok(markup.includes('id="package-inspector-dialog"'));
+  assert.ok(editor.includes('nativeRequest("inspectCh5Package"'));
+  assert.ok(editor.includes("CH5Z PACKAGE INSPECTION"));
+  assert.ok(desktop.includes("void InspectCh5Package"));
+  assert.ok(desktop.includes("contractStates"));
+  assert.ok(desktop.includes("hasWebXPanel"));
+});
+
+run("Signal Manager includes a navigable page and widget map", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="signal-view-map"'));
+  assert.ok(markup.includes('id="signal-map"'));
+  assert.ok(editor.includes("function renderSignalMap"));
+  assert.ok(editor.includes("function navigateToSignalRow"));
+  assert.ok(editor.includes("signal-map-row"));
+  assert.ok(editor.includes("Duplicate"));
+  assert.ok(editor.includes("Unbound"));
+});
+
+run("Signal Manager maps commands and feedback by address", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html"),
+    styles = read("editor.css");
+  assert.ok(markup.includes('id="signal-view-address"'));
+  assert.ok(markup.includes('id="signal-address-map"'));
+  assert.ok(editor.includes("function renderSignalAddressMap"));
+  assert.ok(styles.includes("command + feedback"));
+  assert.ok(editor.includes("Collision"));
+  assert.ok(editor.includes("sameDirectionCount"));
+});
+
+run("Signal Manager supports undoable address refactoring", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="signal-replace-prefix"'));
+  assert.ok(editor.includes("function renameSignalAddress"));
+  assert.ok(editor.includes("function replaceContractPrefix"));
+  assert.ok(editor.includes("function validSignalRefactorValue"));
+  assert.ok(editor.includes("Rename all uses…"));
+  assert.ok(editor.includes("This operation can be undone in one step"));
+  assert.ok(editor.includes("finishSignalRefactor"));
+});
+
+run("Signal Manager allocates collision-free joins with range awareness", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="signal-allocate-joins"'));
+  assert.ok(markup.includes('id="join-allocator-dialog"'));
+  assert.ok(editor.includes("function buildJoinAllocationPlan"));
+  assert.ok(editor.includes("function applyJoinAllocationPlan"));
+  assert.ok(editor.includes("rangeIncrement"));
+  assert.ok(editor.includes("without reusing occupied joins"));
+  assert.ok(editor.includes("This operation can be undone in one step"));
+});
+
+run("Signal Manager generates standardized collision-free contract names", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html");
+  assert.ok(markup.includes('id="signal-name-contracts"'));
+  assert.ok(markup.includes('id="contract-namer-dialog"'));
+  assert.ok(editor.includes("function standardContractLeaf"));
+  assert.ok(editor.includes("function generatedContractAddress"));
+  assert.ok(editor.includes("function buildContractNamingPlan"));
+  assert.ok(editor.includes("function applyContractNamingPlan"));
+  assert.ok(editor.includes("Items[{index}]"));
+  assert.ok(editor.includes("collision-free contract name"));
+});
+
+run("custom fonts remain embedded from import through CH5Z export", () => {
+  const editor = read("editor.js"),
+    runtime = read("component-runtime.js"),
+    exporter = read("exporter.js"),
+    desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
+  assert.ok(desktop.includes("*.woff;*.woff2;*.ttf;*.otf"));
+  assert.ok(runtime.includes('type: "font"'));
+  assert.ok(runtime.includes('key: "fontAsset"'));
+  assert.ok(editor.includes("function fontFaceCss"));
+  assert.ok(editor.includes('Default (Segoe UI)'));
+  assert.ok(editor.includes("properties.fontAssetData"));
+  assert.ok(exporter.includes("fontFaces"));
+  assert.ok(exporter.includes("@font-face"));
+});
+
 if (process.exitCode) process.exit(process.exitCode);
 console.log("All regression checks passed.");

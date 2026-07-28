@@ -190,7 +190,10 @@ const allWidgetItems = [...definitions.values()].map((definition, index) => ({
     w: definition.defaultSize?.width || 200,
     h: definition.defaultSize?.height || 120,
     z: index + 1,
-    properties: Object.fromEntries((definition.properties || []).map((property) => [property.key, property.defaultValue])),
+    properties: Object.fromEntries((definition.properties || []).map((property) => [
+      property.key,
+      property.key === "fontAsset" ? "ComposerFont_audit_font" : property.defaultValue,
+    ])),
     signalBindings: Object.fromEntries((definition.signals || []).map((signal) => [
       signal.key,
       { mode: /^\d+$/.test(String(signal.defaultValue || "")) ? "join" : "contract", value: signal.defaultValue || "" },
@@ -202,10 +205,25 @@ const allWidgetItems = [...definitions.values()].map((definition, index) => ({
     height: 1200,
     pages: [{ id: "audit-page", name: "Audit", background: "#000", bindingMode: "none" }],
     items: allWidgetItems,
+    assets: [{
+      id: "audit-font",
+      name: "Audit Font.woff2",
+      type: "font/woff2",
+      size: 4,
+      dataUrl: "data:font/woff2;base64,d09GMg==",
+    }],
   }),
   runtimeStart = exportedHtml.lastIndexOf("<script>") + 8,
   runtimeEnd = exportedHtml.lastIndexOf("</script>");
 assert.ok(exportedHtml.includes("weather-card"));
 assert.ok(exportedHtml.includes("rolling-menu"));
+assert.ok(exportedHtml.includes('@font-face{font-family:"ComposerFont_audit_font"'));
+assert.ok(exportedHtml.includes("data:font/woff2;base64,d09GMg=="));
+assert.ok(
+  [...definitions.values()].filter((definition) =>
+    definition.properties.some((property) => property.key === "fontAsset"),
+  ).length > 20,
+  "Expected shared font selection on text-capable widgets",
+);
 new Function(exportedHtml.slice(runtimeStart, runtimeEnd));
 console.log(`PASS exported and compiled a catalog project containing all ${allWidgetItems.length} widgets`);

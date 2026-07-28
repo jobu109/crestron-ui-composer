@@ -109,6 +109,12 @@
     const assetUrl = (id) =>
         ((project.assets || []).find((asset) => asset.id === id) || {})
           .dataUrl || "",
+      fontAssetFamily = (asset) =>
+        `ComposerFont_${String(asset?.id || "font").replace(/[^A-Za-z0-9_]/g, "_")}`,
+      fontFaces = (project.assets || [])
+        .filter((asset) => String(asset.type || "").includes("font"))
+        .map((asset) => `@font-face{font-family:"${fontAssetFamily(asset)}";src:url("${asset.dataUrl}");font-display:swap}`)
+        .join("\n"),
       backgroundStyle = (id) => {
         const url = assetUrl(id);
         return url
@@ -275,7 +281,7 @@
     // A static copy also makes Preview use the same dependable stylesheet path
     // as the editor canvas.
     const componentCss =
-      ".scoped-widget,.scoped-preview,.scoped-preview>[data-component]{overflow:visible!important}\n" +
+      fontFaces + "\n.scoped-widget,.scoped-preview,.scoped-preview>[data-component]{overflow:visible!important}\n" +
       usedComponentIds
         .map((id) => global.ComposerRuntime.get(id)?.styles || "")
         .join("\n");

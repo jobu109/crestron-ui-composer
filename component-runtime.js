@@ -844,9 +844,18 @@
     const textCapable = definition.properties.some(
       (property) =>
         !property.signalSetting &&
-        (property.type === "text" || property.key === "textSize") &&
+        (property.type === "text" || property.type === "cip-text" || property.key === "textSize") &&
         /text|label|name|title|message|font/i.test(property.key),
     );
+    if (textCapable && !definition.properties.some((property) => property.key === "fontAsset")) {
+      definition.properties.push({
+        key: "fontAsset",
+        name: "Font family",
+        type: "font",
+        defaultValue: "",
+      });
+      definition.styles += `[data-component="${definition.id}"],[data-component="${definition.id}"] *:not(svg):not(path):not(use){font-family:var(--font-asset),"Segoe UI",sans-serif!important}`;
+    }
     if (textCapable && !definition.properties.some((property) => property.key === "wrapText")) {
       definition.properties.push({
         key: "wrapText",

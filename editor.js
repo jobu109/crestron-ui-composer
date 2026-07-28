@@ -43,8 +43,18 @@
     historyTimer = 0;
   const legacyAutosaveKey = "crestron-ui-composer-autosave-v3";
   const autosaveKey = "crestron-ui-composer-recovery-v4";
+  const sessionKey = "crestron-ui-composer-session-v1";
   const autosaveLimit = 10;
   const autosaveInterval = 30000;
+  let previousSessionWasUnclean = false;
+  try {
+    previousSessionWasUnclean =
+      JSON.parse(localStorage.getItem(sessionKey) || "null")?.active === true;
+    localStorage.setItem(
+      sessionKey,
+      JSON.stringify({ active: true, startedAt: new Date().toISOString() }),
+    );
+  } catch (_) {}
   let autosaveEnabled = false,
     autosaveTimer = 0,
     projectDirty = false,
@@ -52,6 +62,14 @@
   let componentClipboard = "";
   let actionClipboard = [];
   let lastHealthReport = "";
+  let lastHealthIssues = [];
+  let healthIssueFilter = "all";
+  let lastPerformanceMetrics = null;
+  let lastUsabilityMetrics = null;
+  let lastApprovedPreflightFingerprint = "";
+  let signalViewMode = "table";
+  let joinAllocationPlan = [];
+  let contractNamingPlan = [];
   let activeColorInput = null;
   let panelZoom = 1;
   let lastRenderedPageId = "";
@@ -490,6 +508,64 @@
     } catch (_) {}
     return { version: 4, snapshots: [] };
   }
+  function projectIntegrityErrors(value) {
+    const errors = [];
+    if (!value || typeof value !== "object") return ["Project data is not an object."];
+    if (!Number.isFinite(Number(value.width)) || Number(value.width) <= 0)
+      errors.push("Panel width is invalid.");
+    if (!Number.isFinite(Number(value.height)) || Number(value.height) <= 0)
+      errors.push("Panel height is invalid.");
+    if (!Array.isArray(value.pages) || !value.pages.length)
+      errors.push("The project has no pages.");
+    if (!Array.isArray(value.items)) errors.push("The widget collection is missing.");
+    const pages = Array.isArray(value.pages) ? value.pages : [],
+      items = Array.isArray(value.items) ? value.items : [],
+      pageIds = pages.map((page) => String(page?.id || "")),
+      itemIds = items.map((item) => String(item?.id || ""));
+    if (pageIds.some((id) => !id)) errors.push("A page has no ID.");
+    if (new Set(pageIds).size !== pageIds.length)
+      errors.push("Two or more pages have the same ID.");
+    if (value.activePage && !pageIds.includes(String(value.activePage)))
+      errors.push("The active page does not exist.");
+    if (itemIds.some((id) => !id)) errors.push("A widget has no ID.");
+    if (new Set(itemIds).size !== itemIds.length)
+      errors.push("Two or more widgets have the same ID.");
+    const orphaned = items.filter(
+      (item) => item?.pageId && !pageIds.includes(String(item.pageId)),
+    );
+    if (orphaned.length)
+      errors.push(`${orphaned.length} widget${orphaned.length === 1 ? " references" : "s reference"} a missing page.`);
+    ["assets", "customComponents", "reusables", "pageTemplates", "themes"].forEach(
+      (key) => {
+        if (value[key] != null && !Array.isArray(value[key]))
+          errors.push(`${key} is not a valid collection.`);
+      },
+    );
+    try {
+      JSON.stringify(value);
+    } catch (error) {
+      errors.push(`Project data cannot be serialized: ${error.message}`);
+    }
+    return errors;
+  }
+  function recoveryFingerprint(value) {
+    const text = JSON.stringify(value);
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index++) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  }
+  function recoveryIntegrity(snapshot) {
+    const errors = projectIntegrityErrors(snapshot?.project);
+    if (
+      snapshot?.fingerprint &&
+      snapshot.fingerprint !== recoveryFingerprint(snapshot.project)
+    )
+      errors.push("Snapshot checksum does not match its project data.");
+    return { valid: !errors.length, errors };
+  }
   function clearRecovery() {
     clearTimeout(autosaveTimer);
     try {
@@ -506,7 +582,14 @@
         latest = store.snapshots[0],
         latestTime = latest ? new Date(latest.savedAt).getTime() : 0,
         parsed = JSON.parse(value),
-        snapshot = { savedAt: now.toISOString(), project: parsed };
+        integrityErrors = projectIntegrityErrors(parsed),
+        snapshot = {
+          savedAt: now.toISOString(),
+          project: parsed,
+          fingerprint: recoveryFingerprint(parsed),
+        };
+      if (integrityErrors.length)
+        throw new Error(`Recovery snapshot rejected: ${integrityErrors.join(" ")}`);
       if (
         forceSnapshot ||
         !latest ||
@@ -674,9 +757,10 @@
       } catch (error) {
         console.warn("Desktop recovery file could not be read", error);
       }
-    const snapshots = store.snapshots.filter(
-      (entry) => entry && entry.project && entry.savedAt,
-    );
+    const snapshots = store.snapshots
+      .filter((entry) => entry && entry.project && entry.savedAt)
+      .map((entry) => ({ ...entry, integrity: recoveryIntegrity(entry) })),
+      validSnapshots = snapshots.filter((entry) => entry.integrity.valid);
     if (!snapshots.length) {
       autosaveEnabled = true;
       lastManualFingerprint = historyState();
@@ -684,12 +768,16 @@
       return;
     }
     const list = $("recovery-list");
+    $("recovery-context").textContent = previousSessionWasUnclean
+      ? "The previous Composer session did not close normally. Choose a verified recovery snapshot, or discard the recovery history."
+      : "Composer found unsaved work from an earlier session. Choose a verified recovery snapshot, or discard the recovery history.";
     list.innerHTML = snapshots
       .map(
         (entry, index) =>
-          `<label class="recovery-entry"><input type="radio" name="recovery-snapshot" value="${index}" ${index === 0 ? "checked" : ""}><span><strong>${new Date(entry.savedAt).toLocaleString()}${index === 0 ? " · Latest" : ""}</strong><small>${recoveryDescription(entry)}</small></span></label>`,
+          `<label class="recovery-entry${entry.integrity.valid ? "" : " invalid"}"><input type="radio" name="recovery-snapshot" value="${index}" ${entry.integrity.valid && entry === validSnapshots[0] ? "checked" : ""} ${entry.integrity.valid ? "" : "disabled"}><span><strong>${new Date(entry.savedAt).toLocaleString()}${index === 0 ? " · Latest" : ""} · ${entry.integrity.valid ? "Verified" : "Invalid"}</strong><small>${entry.integrity.valid ? recoveryDescription(entry) : entry.integrity.errors.join(" ")}</small></span></label>`,
       )
       .join("");
+    $("recovery-restore").disabled = !validSnapshots.length;
     $("recovery-restore").onclick = () => {
       const selected = list.querySelector(
           'input[name="recovery-snapshot"]:checked',
@@ -948,6 +1036,9 @@ font-size:${Math.max(1, Number(properties.fontSize) || 18)}px!important;
 box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(properties.glowColor, "#04dcb9")}!important;
 }</style>`
             : "",
+          customFontStyle = properties.fontAsset && properties.fontAssetData
+            ? `<style>@font-face{font-family:"${String(properties.fontAsset).replace(/["<>]/g, "")}";src:url("${String(properties.fontAssetData).replace(/["<>]/g, "")}");font-display:swap}html,body,button,input,textarea,select,option,[data-custom-text],.label,.text,.name,.value,.title{font-family:"${String(properties.fontAsset).replace(/["<>]/g, "")}"!important}</style>`
+            : "",
           localText = String(properties.localText || ""),
           localTextScript = localText
             ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
@@ -984,6 +1075,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             ? resolved.replace(
                 /<\/body>/i,
                 frameBaseStyle +
+                  customFontStyle +
                   appearance +
                   localTextScript +
                   bridge +
@@ -996,6 +1088,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               )
             : resolved +
               frameBaseStyle +
+              customFontStyle +
               appearance +
               localTextScript +
               bridge +
@@ -2036,6 +2129,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     wireItemInteraction(el, item);
   }
   function renderPage() {
+    refreshProjectFonts();
     ensureToastQueueItem();
     stage.innerHTML = "";
     const page = currentPage(),
@@ -2204,6 +2298,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     setStatus(`Moved “${source.name}” to z-index ${source.z}`);
   }
   function assetUsage(assetId) {
+    const asset = state.assets.find((entry) => entry.id === assetId),
+      fontFamily = asset && fontAssetFamily(asset);
     return (
       state.pages.filter((page) => page.backgroundAsset === assetId).length +
       state.items.filter(
@@ -2211,9 +2307,30 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           item.assetId === assetId ||
           item.backgroundAsset === assetId ||
           item.graphicAsset === assetId ||
-          item.selectedGraphicAsset === assetId,
+          item.selectedGraphicAsset === assetId ||
+          (fontFamily && Object.values(item.properties || {}).includes(fontFamily)),
       ).length
     );
+  }
+  function fontAssetFamily(asset) {
+    return asset
+      ? `ComposerFont_${String(asset.id || "font").replace(/[^A-Za-z0-9_]/g, "_")}`
+      : "";
+  }
+  function fontFaceCss(assets = state.assets) {
+    return assets
+      .filter((asset) => String(asset.type || "").includes("font"))
+      .map((asset) => `@font-face{font-family:"${fontAssetFamily(asset)}";src:url("${asset.dataUrl}");font-display:swap}`)
+      .join("\n");
+  }
+  function refreshProjectFonts() {
+    let style = $("composer-project-fonts");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "composer-project-fonts";
+      document.head.appendChild(style);
+    }
+    style.textContent = fontFaceCss();
   }
   function assetSource(asset) {
     const style =
@@ -2260,6 +2377,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     setStatus(`Added asset “${asset.name}” to the canvas`);
   }
   function renderAssets() {
+    refreshProjectFonts();
     const host = $("asset-list");
     if (!host) return;
     const query = String($("asset-search")?.value || "")
@@ -2320,9 +2438,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             }
             if (item.selectedGraphicAsset === asset.id)
               delete item.selectedGraphicAsset;
+            if (item.properties)
+              Object.keys(item.properties).forEach((key) => {
+                if (item.properties[key] === fontAssetFamily(asset))
+                  item.properties[key] = "";
+              });
           });
           state.items = state.items.filter((item) => item.assetId !== asset.id);
           state.assets = state.assets.filter((entry) => entry.id !== asset.id);
+          refreshProjectFonts();
           renderPage();
           commitHistory();
           setStatus(`Removed asset “${asset.name}”`);
@@ -3908,7 +4032,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         return;
       }
       const input = document.createElement(
-        property.type === "select" || property.type === "asset"
+        property.type === "select" || property.type === "asset" || property.type === "font"
           ? "select"
           : "input",
       );
@@ -3923,6 +4047,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             const option = document.createElement("option");
             option.value = asset.id;
             option.textContent = asset.name;
+            input.appendChild(option);
+          });
+      } else if (property.type === "font") {
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "Default (Segoe UI)";
+        input.appendChild(empty);
+        state.assets
+          .filter((asset) => String(asset.type || "").includes("font"))
+          .forEach((asset) => {
+            const option = document.createElement("option");
+            option.value = fontAssetFamily(asset);
+            option.textContent = asset.name.replace(/\.(?:woff2?|ttf|otf)$/i, "");
             input.appendChild(option);
           });
       } else if (property.type === "select")
@@ -3957,9 +4094,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           propertyValue === "1" ||
           String(propertyValue).toLowerCase() === "true";
       else input.value = propertyValue;
-      if (property.type === "asset") {
+      if (property.type === "asset" || property.type === "font") {
         const selectedAsset = state.assets.find(
-          (asset) => asset.id === propertyValue,
+          (asset) => property.type === "font"
+            ? fontAssetFamily(asset) === propertyValue
+            : asset.id === propertyValue,
         );
         item.properties[`${property.key}Data`] = selectedAsset?.dataUrl || "";
       }
@@ -3981,9 +4120,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           input.value = String(nextValue);
         }
         item.properties[property.key] = nextValue;
-        if (property.type === "asset") {
+        if (property.type === "asset" || property.type === "font") {
           const selectedAsset = state.assets.find(
-            (asset) => asset.id === nextValue,
+            (asset) => property.type === "font"
+              ? fontAssetFamily(asset) === nextValue
+              : asset.id === nextValue,
           );
           item.properties[`${property.key}Data`] = selectedAsset?.dataUrl || "";
         }
@@ -4524,6 +4665,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             .includes(query),
       ),
       body = $("signal-table-body");
+    $("signal-view-table").classList.toggle("active", signalViewMode === "table");
+    $("signal-view-map").classList.toggle("active", signalViewMode === "map");
+    $("signal-view-address").classList.toggle(
+      "active",
+      signalViewMode === "address",
+    );
+    document.querySelector(".signal-table-wrap").hidden = signalViewMode !== "table";
+    $("signal-map").hidden = signalViewMode !== "map";
+    $("signal-address-map").hidden = signalViewMode !== "address";
     body.innerHTML = "";
     shown.forEach((row) => {
       const tr = document.createElement("tr"),
@@ -4587,6 +4737,497 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ).length;
     $("signal-summary").textContent =
       `${rows.length} signals · ${unbound} unbound · ${duplicates} duplicate rows · ${shown.length} shown`;
+    renderSignalMap(shown, counts);
+    renderSignalAddressMap(shown);
+  }
+  function navigateToSignalRow(row) {
+    const item = row.itemId
+        ? state.items.find((entry) => entry.id === row.itemId)
+        : null,
+      pageId = row.pageId || item?.pageId;
+    if (pageId && state.pages.some((page) => page.id === pageId)) {
+      state.activePage = pageId;
+      renderPage();
+    }
+    if (item) select(item.id);
+    $("signal-dialog").close();
+    setStatus(
+      item
+        ? `Opened ${row.page} · “${item.name}” · ${row.name}`
+        : `Opened ${row.page} · ${row.name}`,
+    );
+  }
+  function renderSignalMap(rows, counts) {
+    const host = $("signal-map"),
+      pages = new Map();
+    host.replaceChildren();
+    rows.forEach((row) => {
+      const pageName = row.page || "Project-wide",
+        pageKey = row.pageId || pageName,
+        widgetName = row.widget || "Page signals",
+        widgetKey = row.itemId || widgetName;
+      if (!pages.has(pageKey))
+        pages.set(pageKey, { name: pageName, widgets: new Map() });
+      const widgets = pages.get(pageKey).widgets;
+      if (!widgets.has(widgetKey))
+        widgets.set(widgetKey, { name: widgetName, signals: [] });
+      widgets.get(widgetKey).signals.push(row);
+    });
+    pages.forEach(({ name: pageName, widgets }) => {
+      const pageDetails = document.createElement("details"),
+        pageSummary = document.createElement("summary"),
+        pageCount = [...widgets.values()].reduce(
+          (total, entry) => total + entry.signals.length,
+          0,
+        );
+      pageDetails.open = true;
+      pageSummary.textContent = `${pageName} (${pageCount})`;
+      pageDetails.append(pageSummary);
+      widgets.forEach(({ name: widgetName, signals }) => {
+        const widgetDetails = document.createElement("details"),
+          widgetSummary = document.createElement("summary");
+        widgetDetails.open = true;
+        widgetSummary.textContent = `${widgetName} (${signals.length})`;
+        widgetDetails.append(widgetSummary);
+        signals.forEach((row) => {
+          const button = document.createElement("button"),
+            address = document.createElement("code"),
+            status = document.createElement("span"),
+            missing = !String(row.value || "").trim(),
+            duplicate =
+              !missing &&
+              counts.get(`${row.type}:${row.direction}:${row.value}`) > 1;
+          button.type = "button";
+          button.className = `signal-map-row${duplicate ? " duplicate" : ""}${missing ? " unbound" : ""}`;
+          [row.name, row.type, row.direction, row.mode].forEach((value) => {
+            const span = document.createElement("span");
+            span.textContent = value;
+            button.append(span);
+          });
+          address.textContent = row.value || "Unbound";
+          status.className = "signal-map-status";
+          status.textContent = duplicate ? "Duplicate" : missing ? "Unbound" : "Open";
+          button.append(address, status);
+          button.onclick = () => navigateToSignalRow(row);
+          widgetDetails.append(button);
+        });
+        pageDetails.append(widgetDetails);
+      });
+      host.append(pageDetails);
+    });
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.style.padding = "14px";
+      empty.textContent = "No signals match the current filter.";
+      host.append(empty);
+    }
+  }
+  function renderSignalAddressMap(rows) {
+    const host = $("signal-address-map"),
+      groups = new Map();
+    host.replaceChildren();
+    rows.forEach((row, index) => {
+      const value = String(row.value || "").trim(),
+        key = value
+          ? `${row.mode}:${row.type}:${value}`
+          : `unbound:${row.itemId || row.pageId || "project"}:${row.name}:${index}`;
+      if (!groups.has(key))
+        groups.set(key, {
+          value: value || "Unbound",
+          mode: row.mode,
+          type: row.type,
+          rows: [],
+        });
+      groups.get(key).rows.push(row);
+    });
+    [...groups.values()]
+      .sort((left, right) =>
+        `${left.mode}:${left.type}:${left.value}`.localeCompare(
+          `${right.mode}:${right.type}:${right.value}`,
+          undefined,
+          { numeric: true },
+        ),
+      )
+      .forEach((group) => {
+        const details = document.createElement("details"),
+          summary = document.createElement("summary"),
+          address = document.createElement("code"),
+          outputCount = group.rows.filter(
+            (row) => row.direction === "output",
+          ).length,
+          inputCount = group.rows.filter(
+            (row) => row.direction === "input",
+          ).length,
+          collision = outputCount > 1 || inputCount > 1,
+          paired = outputCount > 0 && inputCount > 0;
+        details.open = collision || group.value === "Unbound";
+        details.className = `signal-address-group${collision ? " collision" : ""}${paired ? " paired" : ""}`;
+        address.textContent = group.value;
+        summary.append(
+          `${group.mode} · ${group.type} · `,
+          address,
+          ` (${group.rows.length} use${group.rows.length === 1 ? "" : "s"})`,
+        );
+        details.append(summary);
+        if (group.value !== "Unbound") {
+          const actions = document.createElement("div"),
+            rename = document.createElement("button");
+          actions.className = "signal-address-actions";
+          rename.type = "button";
+          rename.textContent = "Rename all uses…";
+          rename.onclick = () => renameSignalAddress(group);
+          actions.append(rename);
+          details.append(actions);
+        }
+        group.rows.forEach((row) => {
+          const button = document.createElement("button"),
+            status = document.createElement("span"),
+            sameDirectionCount = group.rows.filter(
+              (entry) => entry.direction === row.direction,
+            ).length;
+          button.type = "button";
+          button.className = `signal-map-row signal-address-use${sameDirectionCount > 1 ? " duplicate" : ""}${group.value === "Unbound" ? " unbound" : ""}`;
+          [row.page, row.widget, row.name, row.direction, row.mode].forEach(
+            (value) => {
+              const span = document.createElement("span");
+              span.textContent = value;
+              button.append(span);
+            },
+          );
+          status.className = "signal-map-status";
+          status.textContent =
+            group.value === "Unbound"
+              ? "Unbound"
+              : sameDirectionCount > 1
+                ? "Collision"
+                : row.direction === "output"
+                  ? "Command"
+                  : "Feedback";
+          button.append(status);
+          button.onclick = () => navigateToSignalRow(row);
+          details.append(button);
+        });
+        host.append(details);
+      });
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.style.padding = "14px";
+      empty.textContent = "No signal addresses match the current filter.";
+      host.append(empty);
+    }
+  }
+  function validSignalRefactorValue(mode, value) {
+    return mode === "join"
+      ? /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 65535
+      : /^[A-Za-z_][A-Za-z0-9_.{}\[\]-]*$/.test(value);
+  }
+  function finishSignalRefactor(count, message) {
+    if (!count) return;
+    renderPage();
+    commitHistory();
+    renderSignalManager();
+    setStatus(`${message} (${count} signal use${count === 1 ? "" : "s"})`);
+  }
+  function renameSignalAddress(group) {
+    const next = prompt(
+      `Rename ${group.rows.length} use${group.rows.length === 1 ? "" : "s"} of:\n\n${group.value}\n\nNew ${group.mode === "join" ? "join number" : "contract address"}:`,
+      group.value,
+    );
+    if (next == null || next.trim() === group.value) return;
+    const value = next.trim();
+    if (!validSignalRefactorValue(group.mode, value)) {
+      alert(
+        group.mode === "join"
+          ? "Enter a join number from 1 through 65535."
+          : "Enter a valid contract address beginning with a letter or underscore.",
+      );
+      return;
+    }
+    if (
+      !confirm(
+        `Replace ${group.rows.length} use${group.rows.length === 1 ? "" : "s"} of\n${group.value}\n\nwith\n${value}?`,
+      )
+    )
+      return;
+    group.rows.forEach((row) => row.setValue(value));
+    finishSignalRefactor(group.rows.length, `Renamed ${group.value} to ${value}`);
+  }
+  function replaceContractPrefix() {
+    const rows = collectProjectSignals().filter(
+        (row) => row.mode === "contract" && String(row.value || "").trim(),
+      ),
+      fromInput = prompt(
+        "Contract prefix to replace (example: Home.Lighting):",
+        "",
+      );
+    if (fromInput == null) return;
+    const from = fromInput.trim().replace(/\.+$/g, "");
+    if (!from) return;
+    const toInput = prompt(`Replace “${from}” with:`, from);
+    if (toInput == null) return;
+    const to = toInput.trim().replace(/\.+$/g, "");
+    if (!validSignalRefactorValue("contract", to)) {
+      alert("Enter a valid contract prefix beginning with a letter or underscore.");
+      return;
+    }
+    const matches = rows.filter((row) => {
+      const value = String(row.value);
+      return value === from || value.startsWith(`${from}.`) || value.startsWith(`${from}[`);
+    });
+    if (!matches.length) {
+      alert(`No contract signals begin with “${from}”.`);
+      return;
+    }
+    if (
+      !confirm(
+        `Replace contract prefix in ${matches.length} signal use${matches.length === 1 ? "" : "s"}?\n\n${from}\n→ ${to}\n\nThis operation can be undone in one step.`,
+      )
+    )
+      return;
+    matches.forEach((row) =>
+      row.setValue(`${to}${String(row.value).slice(from.length)}`),
+    );
+    finishSignalRefactor(matches.length, `Replaced contract prefix ${from} with ${to}`);
+  }
+  function buildJoinAllocationPlan() {
+    const rows = collectProjectSignals(),
+      scope = $("join-allocator-scope").value,
+      type = $("join-allocator-type").value,
+      direction = $("join-allocator-direction").value,
+      start = Math.min(
+        65535,
+        Math.max(1, Math.round(Number($("join-allocator-start").value) || 1)),
+      ),
+      used = new Map(),
+      cursors = new Map(),
+      bucket = (row) => `${row.type}:${row.direction}`,
+      reserve = (row, base, target = used) => {
+        const values = target.get(bucket(row)) || new Set(),
+          count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1,
+          increment = row.range
+            ? Math.max(1, Number(row.rangeIncrement) || 1)
+            : 1;
+        for (let index = 0; index < count; index++)
+          values.add(base + index * increment);
+        target.set(bucket(row), values);
+      };
+    rows.forEach((row) => {
+      if (row.mode !== "join" || !/^\d+$/.test(String(row.value || ""))) return;
+      reserve(row, Number(row.value));
+    });
+    const candidates = rows.filter((row) => {
+      if (row.mode !== "join" || String(row.value || "").trim()) return false;
+      if (type !== "all" && row.type !== type) return false;
+      if (direction !== "all" && row.direction !== direction) return false;
+      if (scope === "page") {
+        const item = row.itemId
+          ? state.items.find((entry) => entry.id === row.itemId)
+          : null;
+        if (!item?.master && row.pageId !== state.activePage && item?.pageId !== state.activePage)
+          return false;
+      }
+      return true;
+    });
+    joinAllocationPlan = [];
+    candidates.forEach((row) => {
+      const key = bucket(row),
+        values = used.get(key) || new Set(),
+        count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1,
+        increment = row.range
+          ? Math.max(1, Number(row.rangeIncrement) || 1)
+          : 1;
+      let base = cursors.get(key) || start;
+      while (base <= 65535) {
+        let available = true;
+        for (let index = 0; index < count; index++) {
+          const value = base + index * increment;
+          if (value > 65535 || values.has(value)) {
+            available = false;
+            break;
+          }
+        }
+        if (available) break;
+        base++;
+      }
+      if (base > 65535 || base + (count - 1) * increment > 65535) return;
+      reserve(row, base);
+      cursors.set(key, base + (count - 1) * increment + 1);
+      joinAllocationPlan.push({ row, base, count, increment });
+    });
+    return joinAllocationPlan;
+  }
+  function renderJoinAllocationPlan() {
+    const plan = buildJoinAllocationPlan(),
+      host = $("join-allocator-preview");
+    host.replaceChildren();
+    plan.forEach(({ row, base, count, increment }) => {
+      const entry = document.createElement("div"),
+        values = [
+          row.page,
+          row.widget,
+          row.name,
+          row.type,
+          row.direction,
+          count > 1
+            ? `${base}…${base + (count - 1) * increment}`
+            : String(base),
+        ];
+      entry.className = "join-allocation-row";
+      values.forEach((value, index) => {
+        const cell = document.createElement(index === 5 ? "strong" : "span");
+        cell.textContent = value;
+        entry.append(cell);
+      });
+      host.append(entry);
+    });
+    if (!plan.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.style.padding = "12px";
+      empty.textContent =
+        "No unbound Join-mode signals match these options. Set widgets to Join numbers first, or change the filters.";
+      host.append(empty);
+    }
+    $("join-allocator-summary").textContent =
+      `${plan.length} signal binding${plan.length === 1 ? "" : "s"} will be assigned without reusing occupied joins.`;
+    $("join-allocator-apply").disabled = !plan.length;
+  }
+  function applyJoinAllocationPlan() {
+    const plan = buildJoinAllocationPlan();
+    if (!plan.length) return;
+    if (
+      !confirm(
+        `Assign collision-free joins to ${plan.length} signal binding${plan.length === 1 ? "" : "s"}?\n\nThis operation can be undone in one step.`,
+      )
+    )
+      return;
+    plan.forEach(({ row, base }) => row.setValue(String(base)));
+    $("join-allocator-dialog").close();
+    finishSignalRefactor(plan.length, "Allocated joins");
+  }
+  function standardContractLeaf(row) {
+    if (/visibility/i.test(row.name || "")) return "Visibility";
+    return row.type === "digital"
+      ? row.direction === "output"
+        ? "Press"
+        : "Selected"
+      : row.type === "analog"
+        ? row.direction === "output"
+          ? "ValueSet"
+          : "Feedback"
+        : row.direction === "output"
+          ? "Text"
+          : "Name";
+  }
+  function generatedContractAddress(row) {
+    const item = row.itemId
+      ? state.items.find((entry) => entry.id === row.itemId)
+      : null;
+    if (!item)
+      return contractPageInstance(row.pageId || state.activePage);
+    const root = contractWidgetInstance(item),
+      leaf = standardContractLeaf(row);
+    return row.range
+      ? `${root}.Items[{index}].${leaf}`
+      : `${root}.${leaf}`;
+  }
+  function canonicalContractAddress(row, value) {
+    const shape = contractSignalShape({ ...row, value });
+    return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`;
+  }
+  function buildContractNamingPlan() {
+    const rows = collectProjectSignals(),
+      scope = $("contract-namer-scope").value,
+      type = $("contract-namer-type").value,
+      direction = $("contract-namer-direction").value,
+      occupied = new Map();
+    rows.forEach((row) => {
+      if (row.mode !== "contract" || !String(row.value || "").trim()) return;
+      const key = `${row.type}:${row.direction}:${canonicalContractAddress(row, row.value)}`;
+      occupied.set(key, (occupied.get(key) || 0) + 1);
+    });
+    const candidates = rows.filter((row) => {
+      if (row.mode !== "contract" || String(row.value || "").trim()) return false;
+      if (type !== "all" && row.type !== type) return false;
+      if (direction !== "all" && row.direction !== direction) return false;
+      if (scope === "page") {
+        const item = row.itemId
+          ? state.items.find((entry) => entry.id === row.itemId)
+          : null;
+        if (!item?.master && row.pageId !== state.activePage && item?.pageId !== state.activePage)
+          return false;
+      }
+      return true;
+    });
+    contractNamingPlan = candidates.map((row) => {
+      const value = generatedContractAddress(row),
+        canonical = canonicalContractAddress(row, value),
+        key = `${row.type}:${row.direction}:${canonical}`,
+        collision = occupied.has(key);
+      occupied.set(key, (occupied.get(key) || 0) + 1);
+      return { row, value, canonical, collision };
+    });
+    const totals = new Map();
+    contractNamingPlan.forEach((entry) => {
+      const key = `${entry.row.type}:${entry.row.direction}:${entry.canonical}`;
+      totals.set(key, (totals.get(key) || 0) + 1);
+    });
+    contractNamingPlan.forEach((entry) => {
+      const key = `${entry.row.type}:${entry.row.direction}:${entry.canonical}`;
+      if ((totals.get(key) || 0) > 1) entry.collision = true;
+    });
+    return contractNamingPlan;
+  }
+  function renderContractNamingPlan() {
+    const plan = buildContractNamingPlan(),
+      host = $("contract-namer-preview"),
+      collisions = plan.filter((entry) => entry.collision).length;
+    host.replaceChildren();
+    plan.forEach(({ row, value, collision }) => {
+      const entry = document.createElement("div"),
+        values = [
+          row.page,
+          row.widget,
+          row.name,
+          row.type,
+          row.direction,
+          collision ? `${value} · COLLISION` : value,
+        ];
+      entry.className = `join-allocation-row${collision ? " contract-collision" : ""}`;
+      values.forEach((text, index) => {
+        const cell = document.createElement(index === 5 ? "strong" : "span");
+        cell.textContent = text;
+        entry.append(cell);
+      });
+      host.append(entry);
+    });
+    if (!plan.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.style.padding = "12px";
+      empty.textContent =
+        "No unbound Contract-mode signals match these options.";
+      host.append(empty);
+    }
+    $("contract-namer-summary").textContent = collisions
+      ? `${plan.length} names proposed · ${collisions} collision${collisions === 1 ? "" : "s"} must be resolved manually.`
+      : `${plan.length} collision-free contract name${plan.length === 1 ? "" : "s"} proposed.`;
+    $("contract-namer-apply").disabled = !plan.length || collisions > 0;
+  }
+  function applyContractNamingPlan() {
+    const plan = buildContractNamingPlan();
+    if (!plan.length || plan.some((entry) => entry.collision)) return;
+    if (
+      !confirm(
+        `Apply ${plan.length} generated contract name${plan.length === 1 ? "" : "s"}?\n\nThis operation can be undone in one step.`,
+      )
+    )
+      return;
+    plan.forEach(({ row, value }) => row.setValue(value));
+    $("contract-namer-dialog").close();
+    finishSignalRefactor(plan.length, "Generated contract names");
   }
   function signalCsv() {
     const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`,
@@ -5083,6 +5724,107 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const settings = { ...deploymentSettings(), ...patch };
     localStorage.setItem(deploymentSettingsKey, JSON.stringify(settings));
     return settings;
+  }
+  function normalizedArtifactPath(value) {
+    return String(value || "").replace(/\//g, "\\").toLowerCase();
+  }
+  function recordBuildArtifact(result, device) {
+    if (!result?.path) return;
+    const settings = deploymentSettings(),
+      artifact = {
+        path: result.path,
+        size: Number(result.size) || 0,
+        sha256: result.sha256 || "",
+        fingerprint: recoveryFingerprint(project()),
+        targetDevice: device?.id || state.targetDevice,
+        targetName: device?.name || selectedDevice().name,
+        width: device?.width || state.width,
+        height: device?.height || state.height,
+        builtAt: new Date().toISOString(),
+      },
+      normalized = normalizedArtifactPath(result.path),
+      buildArtifacts = [
+        artifact,
+        ...(settings.buildArtifacts || []).filter(
+          (entry) => normalizedArtifactPath(entry.path) !== normalized,
+        ),
+      ].slice(0, 50);
+    saveDeploymentSettings({ buildArtifacts });
+    if ($("build-artifact-list")) renderBuildArtifacts();
+  }
+  function buildArtifactForPath(path) {
+    const normalized = normalizedArtifactPath(path);
+    return (deploymentSettings().buildArtifacts || []).find(
+      (entry) => normalizedArtifactPath(entry.path) === normalized,
+    );
+  }
+  function deploymentArtifactProblems(path, deviceId) {
+    const artifact = buildArtifactForPath(path),
+      problems = [];
+    if (!artifact) return problems;
+    if (artifact.fingerprint !== recoveryFingerprint(project()))
+      problems.push(
+        `The package was built from an older project state (${new Date(artifact.builtAt).toLocaleString()}).`,
+      );
+    if (deviceId && artifact.targetDevice && artifact.targetDevice !== deviceId) {
+      const expected = deviceProfiles.find((device) => device.id === deviceId);
+      problems.push(
+        `The package targets ${artifact.targetName || artifact.targetDevice}, but this deployment profile targets ${expected?.name || deviceId}.`,
+      );
+    }
+    return problems;
+  }
+  function approveDeploymentArtifact(path, deviceId) {
+    const problems = deploymentArtifactProblems(path, deviceId);
+    return (
+      !problems.length ||
+      confirm(
+        `Package verification warning:\n\n${problems.join("\n")}\n\nDeploy this archive anyway?`,
+      )
+    );
+  }
+  function renderBuildArtifacts() {
+    const host = $("build-artifact-list");
+    if (!host) return;
+    const artifacts = deploymentSettings().buildArtifacts || [],
+      currentFingerprint = recoveryFingerprint(project());
+    host.replaceChildren();
+    artifacts.forEach((artifact) => {
+      const row = document.createElement("div"),
+        title = document.createElement("strong"),
+        detail = document.createElement("small"),
+        use = document.createElement("button"),
+        current = artifact.fingerprint === currentFingerprint,
+        fileName = String(artifact.path || "").split(/[\\/]/).pop();
+      row.className = `build-artifact-entry ${current ? "current" : "stale"}`;
+      title.textContent = `${current ? "CURRENT" : "STALE"} · ${fileName || "Unknown package"}`;
+      detail.textContent = [
+        artifact.targetName || artifact.targetDevice || "Unknown target",
+        `${artifact.width || "?"} × ${artifact.height || "?"}`,
+        artifact.size ? formatMetricBytes(artifact.size) : "Unknown size",
+        artifact.builtAt ? new Date(artifact.builtAt).toLocaleString() : "Unknown date",
+        artifact.sha256 ? `SHA-256 ${artifact.sha256.slice(0, 12)}…` : "No hash",
+      ].join(" · ");
+      use.type = "button";
+      use.textContent = "Use package";
+      use.onclick = () => {
+        $("deploy-package").value = artifact.path;
+        saveDeploymentSettings({ packagePath: artifact.path });
+        updateActiveDeploymentProfile({ packagePath: artifact.path });
+        $("deploy-status").textContent =
+          `${current ? "Current" : "Stale"} build selected: ${artifact.path}`;
+      };
+      row.title = artifact.path;
+      row.append(title, detail, use);
+      host.append(row);
+    });
+    if (!artifacts.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.style.padding = "10px";
+      empty.textContent = "No Composer-built CH5Z artifacts are recorded yet.";
+      host.append(empty);
+    }
   }
   function deploymentProfiles() {
     return deploymentSettings().profiles || [];
@@ -6067,12 +6809,243 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
+  function embeddedDataBytes(value) {
+    const source = String(value || ""),
+      comma = source.indexOf(",");
+    if (comma < 0) return 0;
+    const payload = source.slice(comma + 1);
+    return /;base64/i.test(source.slice(0, comma))
+      ? Math.max(0, Math.floor((payload.length * 3) / 4) - (payload.match(/=*$/)?.[0].length || 0))
+      : new TextEncoder().encode(decodeURIComponent(payload)).length;
+  }
+  function projectPerformanceAudit() {
+    const embeddedAssetBytes = state.assets.reduce(
+        (total, asset) => total + embeddedDataBytes(asset.dataUrl),
+        0,
+      ),
+      exportedBytes = new TextEncoder().encode(
+        window.ComposerExporter.exportProject(project()),
+      ).length,
+      continuousIds = new Set([
+        "analog-clock",
+        "loading-spinner",
+        "please-wait-spinner",
+        "shutdown-progress",
+        "text-scramble",
+      ]),
+      pageLoads = state.pages.map((page) => {
+        const items = state.items.filter((item) =>
+            itemVisibleOnPage(item, page.id),
+          ),
+          animated = items.filter(
+            (item) =>
+              continuousIds.has(item.componentId) ||
+              (item.interactions || []).length > 2,
+          );
+        return { page, items, animated };
+      }),
+      customSourceBytes = state.customComponents.reduce(
+        (total, component) =>
+          total +
+          new TextEncoder().encode(
+            `${component.html || ""}${component.css || ""}${component.javascript || ""}`,
+          ).length,
+        0,
+      );
+    return {
+      embeddedAssetBytes,
+      exportedBytes,
+      customSourceBytes,
+      pageLoads,
+      peakWidgets: Math.max(0, ...pageLoads.map((entry) => entry.items.length)),
+      peakAnimations: Math.max(
+        0,
+        ...pageLoads.map((entry) => entry.animated.length),
+      ),
+    };
+  }
+  function formatMetricBytes(bytes) {
+    if (bytes >= 1024 * 1024)
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+  function componentPropertyValue(item, definition, property) {
+    return item.properties?.[property.key] ?? property.defaultValue ?? "";
+  }
+  function parseAuditColor(value) {
+    const source = String(value || "").trim();
+    if (!source || /transparent|none/i.test(source)) return null;
+    let match = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (match) {
+      const hex =
+        match[1].length === 3
+          ? match[1]
+              .split("")
+              .map((entry) => entry + entry)
+              .join("")
+          : match[1];
+      return [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16));
+    }
+    match = source.match(
+      /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i,
+    );
+    return match ? match.slice(1, 4).map((entry) => Number(entry)) : null;
+  }
+  function auditContrast(foreground, background) {
+    const luminance = (rgb) => {
+        const channels = rgb.map((value) => {
+          const channel = Math.min(255, Math.max(0, value)) / 255;
+          return channel <= 0.03928
+            ? channel / 12.92
+            : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return (
+          channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+        );
+      },
+      first = luminance(foreground),
+      second = luminance(background);
+    return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+  }
+  function projectUsabilityAudit() {
+    const issues = [];
+    let interactiveCount = 0,
+      smallTargets = 0,
+      smallType = 0,
+      unlabeled = 0,
+      lowContrast = 0;
+    state.items.forEach((item) => {
+      if (item.systemManaged) return;
+      const definition = item.componentId
+          ? window.ComposerRuntime.get(item.componentId)
+          : null,
+        properties = definition?.properties || [],
+        interactive =
+          Boolean(item.targetPage) ||
+          (item.actions || []).some((action) =>
+            ["press", "release", "hold"].includes(action.event),
+          ) ||
+          (definition?.signals || []).some(
+            (signal) => signal.direction === "output",
+          );
+      if (!interactive) return;
+      interactiveCount++;
+      if (item.w < 44 || item.h < 44) {
+        smallTargets++;
+        issues.push({
+          severity: "warning",
+          message: `“${item.name}” is ${Math.round(item.w)} × ${Math.round(item.h)}; interactive touch targets should be at least 44 × 44 pixels.`,
+          item,
+          fix: "touch-minimum",
+        });
+      }
+      const typeSizes = properties.filter((property) =>
+        /(?:text|label|font|icon).*size|size.*(?:text|label|font|icon)/i.test(
+          `${property.key} ${property.label || ""}`,
+        ),
+      );
+      typeSizes.forEach((property) => {
+        const value = Number(componentPropertyValue(item, definition, property));
+        if (Number.isFinite(value) && value > 0 && value < 12) {
+          smallType++;
+          issues.push({
+            severity: "warning",
+            message: `“${item.name}” uses ${property.label || property.key} of ${value}px; text and icons below 12px may be difficult to read.`,
+            item,
+            fix: "minimum-type",
+            fixData: { propertyKey: property.key },
+          });
+        }
+      });
+      const identityProperties = properties.filter((property) =>
+          /^(?:text|label|name|icon|symbol|standardText|standardIcon)$/i.test(
+            property.key,
+          ),
+        ),
+        hasIdentity = identityProperties.some((property) =>
+          String(componentPropertyValue(item, definition, property)).trim(),
+        ),
+        hasGraphic = Boolean(
+          item.assetId || item.graphicAsset || item.backgroundAsset,
+        );
+      if (identityProperties.length && !hasIdentity && !hasGraphic) {
+        unlabeled++;
+        issues.push({
+          severity: "warning",
+          message: `“${item.name}” has no text, icon, symbol, or graphic identifying its function.`,
+          item,
+        });
+      }
+      const textColors = properties.filter((property) =>
+          /(?:text|label|font).*color|color.*(?:text|label|font)/i.test(
+            `${property.key} ${property.label || ""}`,
+          ),
+        ),
+        backgrounds = properties.filter((property) =>
+          /(?:background|button).*color|color.*(?:background|button)/i.test(
+            `${property.key} ${property.label || ""}`,
+          ),
+        );
+      if (textColors.length && backgrounds.length) {
+        const foreground = parseAuditColor(
+            componentPropertyValue(item, definition, textColors[0]),
+          ),
+          background = parseAuditColor(
+            componentPropertyValue(item, definition, backgrounds[0]),
+          );
+        if (foreground && background && auditContrast(foreground, background) < 3) {
+          lowContrast++;
+          issues.push({
+            severity: "warning",
+            message: `“${item.name}” has low text/background contrast in its standard state.`,
+            item,
+          });
+        }
+      }
+    });
+    return {
+      issues,
+      interactiveCount,
+      smallTargets,
+      smallType,
+      unlabeled,
+      lowContrast,
+    };
+  }
   function validateProject() {
     const issues = [],
       used = new Map(),
-      add = (severity, message) => issues.push({ severity, message }),
+      validationCategory = (message) =>
+        /asset/i.test(message)
+          ? "Assets"
+          : /contract|join|signal|binding/i.test(message)
+            ? "Signals & contracts"
+            : /page|navigate|navigation/i.test(message)
+              ? "Navigation & pages"
+              : /outside|bounds|margin|position|size|overlap|z-index/i.test(
+                    message,
+                  )
+                ? "Layout"
+                : /component|HTML|behavior|action|event|widget/i.test(message)
+                  ? "Components & behavior"
+                  : /support|capability|CH5|panel/i.test(message)
+                    ? "Panel compatibility"
+                    : "Project",
+      add = (severity, message, details = {}) =>
+        issues.push({
+          severity,
+          message,
+          category: details.category || validationCategory(message),
+          pageId: details.pageId || validationContext.pageId || "",
+          itemId: details.itemId || validationContext.itemId || "",
+          pageName: details.pageName || validationContext.pageName || "",
+          itemName: details.itemName || validationContext.itemName || "",
+          fix: details.fix || "",
+          fixData: details.fixData || null,
+        }),
       key = (type, direction, value) =>
         type + ":" + direction + ":" + String(value).trim();
+    let validationContext = {};
     if (!state.items.length) add("warning", "The project has no components.");
     const device = selectedDevice();
     if (device.supportsCh5 === false)
@@ -6081,11 +7054,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       add("warning", device.name + " has not been verified for CH5.");
     if (!state.pages.length) add("error", "The project has no pages.");
     if (!state.pages.some((page) => page.id === state.activePage))
-      add("error", "The active page no longer exists.");
+      add("error", "The active page no longer exists.", {
+        fix: "active-page",
+      });
     const pageIds = new Set(),
       pageNames = new Set();
     state.pages.forEach((page) => {
-      if (!String(page.name || "").trim()) add("error", "A page has no name.");
+      validationContext = { pageId: page.id, pageName: page.name };
+      if (!String(page.name || "").trim())
+        add("error", "A page has no name.", { fix: "page-name" });
       if (pageIds.has(page.id))
         add("error", `Page ID “${page.id}” is duplicated.`);
       pageIds.add(page.id);
@@ -6093,11 +7070,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .trim()
         .toLowerCase();
       if (pageNames.has(normalizedName))
-        add("warning", `Page name “${page.name}” is duplicated.`);
+        add("warning", `Page name “${page.name}” is duplicated.`, {
+          fix: "unique-page-name",
+        });
       pageNames.add(normalizedName);
       if (page.bindingMode !== "none" && !String(page.binding || "").trim())
         add("error", `Page “${page.name}” has no external selection signal.`);
     });
+    validationContext = {};
 
     const assetIds = new Set();
     state.assets.forEach((asset) => {
@@ -6141,8 +7121,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       supported = device.supportedComponents
         ? new Set(device.supportedComponents)
         : null,
-      capabilities = new Set(device.capabilities || []);
+      capabilities = new Set(device.capabilities || []),
+      validatedCustomComponents = new Set();
     state.items.forEach((item) => {
+      const itemPage = state.pages.find((page) => page.id === item.pageId);
+      validationContext = {
+        pageId: item.pageId,
+        pageName: itemPage?.name || "Missing page",
+        itemId: item.id,
+        itemName: item.name,
+      };
       if (!item.master && !pageIds.has(item.pageId))
         add("error", `“${item.name}” belongs to a page that no longer exists.`);
       if (
@@ -6154,6 +7142,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         add(
           "error",
           `“${item.name}” is outside the ${state.width} × ${state.height} panel bounds.`,
+          { fix: "fit-bounds" },
         );
       const safeMargin = Math.max(0, Number(item.layout?.safeMargin) || 0);
       if (
@@ -6169,7 +7158,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           `“${item.name}” crosses its ${safeMargin}px safe margin.`,
         );
       if (item.w < 20 || item.h < 20)
-        add("error", `“${item.name}” is smaller than the editor minimum.`);
+        add("error", `“${item.name}” is smaller than the editor minimum.`, {
+          fix: "editor-minimum",
+        });
       if (![item.x, item.y, item.w, item.h, item.z].every(Number.isFinite))
         add(
           "error",
@@ -6274,7 +7265,56 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             `“${item.name}” requires unsupported panel capability “${capability}”.`,
           );
       });
+      const customEntry = state.customComponents.find(
+        (entry) => entry.id === item.componentId,
+      );
+      if (customEntry && !validatedCustomComponents.has(customEntry.id)) {
+        validatedCustomComponents.add(customEntry.id);
+        const propertyKeys = new Set(
+            (customEntry.properties || []).map((entry) => entry.key),
+          ),
+          signalKeys = new Set(
+            (customEntry.signals || []).map((entry) => entry.key),
+          ),
+          sourceDocument = new DOMParser().parseFromString(
+            customEntry.html || "",
+            "text/html",
+          );
+        (customEntry.behaviors || []).forEach((behavior, index) => {
+          const sourceKeys =
+            behavior.source === "property" ? propertyKeys : signalKeys;
+          if (!sourceKeys.has(behavior.key))
+            add(
+              "error",
+              `“${customEntry.name}” behavior ${index + 1} references missing ${behavior.source === "property" ? "property" : "signal"} “${behavior.key}”.`,
+              { category: "Custom components" },
+            );
+          try {
+            if (
+              behavior.selector &&
+              !sourceDocument.querySelector(behavior.selector)
+            )
+              add(
+                "error",
+                `“${customEntry.name}” behavior ${index + 1} target “${behavior.selector}” does not exist.`,
+                { category: "Custom components" },
+              );
+          } catch (_) {
+            add(
+              "error",
+              `“${customEntry.name}” behavior ${index + 1} has invalid selector “${behavior.selector}”.`,
+              { category: "Custom components" },
+            );
+          }
+        });
+        customComponentDependencyReport(customEntry).errors.forEach((message) =>
+          add("error", `“${customEntry.name}”: ${message}`, {
+            category: "Custom components",
+          }),
+        );
+      }
     });
+    validationContext = {};
     const pageEnterNavigation = new Map();
     state.items.forEach((item) =>
       (item.actions || [])
@@ -6327,6 +7367,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     collectProjectSignals()
       .flatMap(expandContractSubItems)
       .forEach((row) => {
+        const rowItem = state.items.find((item) => item.id === row.itemId),
+          rowPage = state.pages.find((page) => page.id === row.pageId);
+        validationContext = {
+          itemId: row.itemId || rowItem?.id || "",
+          itemName: row.widget || rowItem?.name || "",
+          pageId: row.pageId || rowItem?.pageId || "",
+          pageName: row.page || rowPage?.name || "",
+        };
         const value = String(row.value || "").trim(),
           count = row.range ? Math.max(1, Number(row.rangeCount) || 1) : 1;
         if (!value) {
@@ -6381,6 +7429,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             });
         }
       });
+    validationContext = {};
     expandedSignals.forEach((row) => {
       const shape = row.mode === "contract" ? contractSignalShape(row) : null,
         canonicalValue = shape
@@ -6410,6 +7459,86 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         "warning",
         `Estimated project size is ${(estimatedBytes / maximumBytes).toLocaleString(undefined, { style: "percent", maximumFractionDigits: 0 })} of the ${device.name} limit.`,
       );
+    try {
+      const performance = projectPerformanceAudit(),
+        compactPanel = state.width <= 1280 || state.height <= 800,
+        widgetWarning = compactPanel ? 60 : 100,
+        animationWarning = compactPanel ? 8 : 14;
+      lastPerformanceMetrics = performance;
+      state.assets.forEach((asset) => {
+        const bytes = embeddedDataBytes(asset.dataUrl);
+        if (bytes > 4 * 1024 * 1024)
+          add(
+            "warning",
+            `Asset “${asset.name || asset.id}” is ${formatMetricBytes(bytes)}; optimize it for faster panel startup.`,
+            { category: "Performance" },
+          );
+      });
+      if (performance.embeddedAssetBytes > 20 * 1024 * 1024)
+        add(
+          "warning",
+          `Embedded assets total ${formatMetricBytes(performance.embeddedAssetBytes)}; panel startup and deployment may be slower.`,
+          { category: "Performance" },
+        );
+      if (performance.exportedBytes > 30 * 1024 * 1024)
+        add(
+          "warning",
+          `Exported HTML is ${formatMetricBytes(performance.exportedBytes)} before CH5 packaging.`,
+          { category: "Performance" },
+        );
+      performance.pageLoads.forEach(({ page, items, animated }) => {
+        if (items.length > widgetWarning)
+          add(
+            "warning",
+            `Page “${page.name}” renders ${items.length} widgets; ${device.name} may respond more slowly.`,
+            {
+              category: "Performance",
+              pageId: page.id,
+              pageName: page.name,
+            },
+          );
+        if (animated.length > animationWarning)
+          add(
+            "warning",
+            `Page “${page.name}” has ${animated.length} continuously or heavily animated widgets.`,
+            {
+              category: "Performance",
+              pageId: page.id,
+              pageName: page.name,
+            },
+          );
+      });
+      state.customComponents.forEach((component) => {
+        const bytes = new TextEncoder().encode(
+          `${component.html || ""}${component.css || ""}${component.javascript || ""}`,
+        ).length;
+        if (bytes > 250 * 1024)
+          add(
+            "warning",
+            `Custom component “${component.name}” contains ${formatMetricBytes(bytes)} of source code.`,
+            { category: "Performance" },
+          );
+      });
+    } catch (error) {
+      lastPerformanceMetrics = null;
+      add("warning", `Performance audit could not complete: ${error.message}.`, {
+        category: "Performance",
+      });
+    }
+    const usability = projectUsabilityAudit();
+    lastUsabilityMetrics = usability;
+    usability.issues.forEach(({ severity, message, item, fix, fixData }) => {
+      const page = state.pages.find((entry) => entry.id === item.pageId);
+      add(severity, message, {
+        category: "Touch usability",
+        pageId: item.pageId,
+        pageName: page?.name || "",
+        itemId: item.id,
+        itemName: item.name,
+        fix,
+        fixData,
+      });
+    });
     for (let a = 0; a < state.items.length; a++)
       for (let b = a + 1; b < state.items.length; b++) {
         const x = state.items[a],
@@ -6424,6 +7553,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           add(
             "warning",
             `“${x.name}” overlaps “${y.name}” on ${state.pages.find((p) => p.id === x.pageId)?.name || "a page"}.`,
+            {
+              pageId: x.pageId,
+              pageName:
+                state.pages.find((page) => page.id === x.pageId)?.name || "",
+              itemId: x.id,
+              itemName: x.name,
+              category: "Layout",
+            },
           );
       }
     return issues;
@@ -6438,6 +7575,222 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ),
     );
     return lines.join("\n");
+  }
+  function setHealthDisplayMode(dashboard) {
+    $("health-dashboard-tools").hidden = !dashboard;
+    $("health-dashboard").hidden = !dashboard;
+    $("health-report").hidden = dashboard;
+    $("health-metrics").hidden = !dashboard;
+  }
+  function renderHealthMetrics() {
+    const host = $("health-metrics"),
+      metrics = lastPerformanceMetrics;
+    host.replaceChildren();
+    if (!metrics) return;
+    [
+      [metrics.peakWidgets, "Peak widgets / page"],
+      [metrics.peakAnimations, "Peak animation load"],
+      [formatMetricBytes(metrics.embeddedAssetBytes), "Embedded assets"],
+      [formatMetricBytes(metrics.exportedBytes), "Exported HTML"],
+      [formatMetricBytes(metrics.customSourceBytes), "Custom source"],
+      [lastUsabilityMetrics?.smallTargets || 0, "Small touch targets"],
+    ].forEach(([value, label]) => {
+      const card = document.createElement("div"),
+        strong = document.createElement("strong"),
+        caption = document.createElement("span");
+      card.className = "health-metric";
+      strong.textContent = value;
+      caption.textContent = label;
+      card.append(strong, caption);
+      host.append(card);
+    });
+  }
+  function navigateToHealthIssue(issue) {
+    const item = issue.itemId
+        ? state.items.find((entry) => entry.id === issue.itemId)
+        : null,
+      pageId = issue.pageId || item?.pageId;
+    if (pageId && state.pages.some((page) => page.id === pageId)) {
+      state.activePage = pageId;
+      renderPage();
+    }
+    if (item) select(item.id);
+    $("health-dialog").close();
+    setStatus(
+      item
+        ? `Opened ${issue.pageName || "page"} · “${item.name}”`
+        : `Opened ${issue.pageName || "project issue"}`,
+    );
+  }
+  function applyHealthFix(issue) {
+    const item = issue.itemId
+        ? state.items.find((entry) => entry.id === issue.itemId)
+        : null,
+      page = issue.pageId
+        ? state.pages.find((entry) => entry.id === issue.pageId)
+        : null;
+    switch (issue.fix) {
+      case "active-page":
+        if (state.pages[0]) state.activePage = state.pages[0].id;
+        break;
+      case "page-name":
+        if (page) page.name = `Page ${state.pages.indexOf(page) + 1}`;
+        break;
+      case "unique-page-name":
+        if (page) {
+          const base = String(page.name || "Page").trim() || "Page";
+          let suffix = 2;
+          while (
+            state.pages.some(
+              (entry) =>
+                entry !== page &&
+                String(entry.name || "").toLowerCase() ===
+                  `${base} ${suffix}`.toLowerCase(),
+            )
+          )
+            suffix++;
+          page.name = `${base} ${suffix}`;
+        }
+        break;
+      case "fit-bounds":
+        if (item) {
+          item.w = Math.min(state.width, Math.max(20, Number(item.w) || 20));
+          item.h = Math.min(state.height, Math.max(20, Number(item.h) || 20));
+          item.x = Math.min(state.width - item.w, Math.max(0, Number(item.x) || 0));
+          item.y = Math.min(state.height - item.h, Math.max(0, Number(item.y) || 0));
+        }
+        break;
+      case "editor-minimum":
+        if (item) {
+          item.w = Math.min(state.width, Math.max(20, Number(item.w) || 20));
+          item.h = Math.min(state.height, Math.max(20, Number(item.h) || 20));
+        }
+        break;
+      case "touch-minimum":
+        if (item) {
+          item.w = Math.min(state.width, Math.max(44, Number(item.w) || 44));
+          item.h = Math.min(state.height, Math.max(44, Number(item.h) || 44));
+          item.x = Math.min(state.width - item.w, Math.max(0, item.x));
+          item.y = Math.min(state.height - item.h, Math.max(0, item.y));
+        }
+        break;
+      case "minimum-type":
+        if (item && issue.fixData?.propertyKey) {
+          item.properties ||= {};
+          item.properties[issue.fixData.propertyKey] = 12;
+        }
+        break;
+      default:
+        return false;
+    }
+    return true;
+  }
+  function finishHealthFixes(count) {
+    if (!count) return;
+    renderPages();
+    renderPage();
+    commitHistory();
+    runValidation(true);
+    setStatus(`Fixed ${count} project health issue${count === 1 ? "" : "s"}`);
+  }
+  function fixHealthIssue(issue) {
+    finishHealthFixes(applyHealthFix(issue) ? 1 : 0);
+  }
+  function fixAllHealthIssues() {
+    let count = 0;
+    lastHealthIssues.filter((issue) => issue.fix).forEach((issue) => {
+      if (applyHealthFix(issue)) count++;
+    });
+    finishHealthFixes(count);
+  }
+  function renderHealthDashboard() {
+    const host = $("health-dashboard"),
+      search = String($("health-search").value || "").trim().toLowerCase(),
+      visible = lastHealthIssues.filter((issue) => {
+        if (
+          healthIssueFilter !== "all" &&
+          issue.severity !== healthIssueFilter
+        )
+          return false;
+        return (
+          !search ||
+          [
+            issue.message,
+            issue.category,
+            issue.pageName,
+            issue.itemName,
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(search)
+        );
+      }),
+      groups = new Map();
+    host.replaceChildren();
+    visible.forEach((issue) => {
+      const groupName = issue.pageName || "Project-wide",
+        key = `${groupName}\u0000${issue.category}`;
+      if (!groups.has(key))
+        groups.set(key, {
+          title: `${groupName} — ${issue.category}`,
+          issues: [],
+        });
+      groups.get(key).issues.push(issue);
+    });
+    if (!visible.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint health-empty";
+      empty.textContent = lastHealthIssues.length
+        ? "No issues match the current filter."
+        : "Validation passed. No project issues were found.";
+      host.append(empty);
+      return;
+    }
+    groups.forEach((group) => {
+      const section = document.createElement("section"),
+        heading = document.createElement("h3");
+      section.className = "health-group";
+      heading.textContent = `${group.title} (${group.issues.length})`;
+      section.append(heading);
+      group.issues.forEach((issue) => {
+        const row = document.createElement("div"),
+          severity = document.createElement("span"),
+          message = document.createElement("div");
+        row.className = `health-issue ${issue.severity}`;
+        severity.className = "health-severity";
+        severity.textContent = issue.severity;
+        message.className = "health-message";
+        message.textContent = issue.message;
+        if (issue.itemName) {
+          const context = document.createElement("small");
+          context.textContent = `Widget: ${issue.itemName}`;
+          message.append(context);
+        }
+        row.append(severity, message);
+        if (issue.pageId || issue.itemId || issue.fix) {
+          const actions = document.createElement("div");
+          actions.className = "health-actions";
+          if (issue.fix) {
+            const fix = document.createElement("button");
+            fix.type = "button";
+            fix.className = "health-fix";
+            fix.textContent = "Quick fix";
+            fix.onclick = () => fixHealthIssue(issue);
+            actions.append(fix);
+          }
+          if (issue.pageId || issue.itemId) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = "Go to problem";
+          button.onclick = () => navigateToHealthIssue(issue);
+            actions.append(button);
+          }
+          row.append(actions);
+        }
+        section.append(row);
+      });
+      host.append(section);
+    });
   }
   function runValidation(interactive = true) {
     const issues = validateProject(),
@@ -6454,6 +7807,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         : "0 error(s), 0 warning(s)\n\nValidation passed. No project issues were found.",
     ].join("\n");
     if (interactive) {
+      lastHealthIssues = issues;
+      healthIssueFilter = "all";
+      $("health-search").value = "";
+      document
+        .querySelectorAll("[data-health-filter]")
+        .forEach((button) =>
+          button.classList.toggle(
+            "active",
+            button.dataset.healthFilter === healthIssueFilter,
+          ),
+        );
+      setHealthDisplayMode(true);
+      renderHealthMetrics();
+      renderHealthDashboard();
+      $("health-fix-all").disabled = !issues.some((issue) => issue.fix);
       $("health-title").textContent = "Project health report";
       $("compatibility-device").hidden = true;
       $("compatibility-preview").hidden = true;
@@ -6462,7 +7830,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         ? `${errors.length} error(s), ${issues.length - errors.length} warning(s)`
         : "No project issues were found.";
       $("health-report").textContent = lastHealthReport;
-      $("health-dialog").showModal();
+      if (!$("health-dialog").open) $("health-dialog").showModal();
     }
     setStatus(
       issues.length
@@ -6473,6 +7841,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   async function runBuildSelfTest() {
     const dialog = $("health-dialog");
+    setHealthDisplayMode(false);
     $("health-title").textContent = "Export/build self-test";
     $("health-summary").textContent =
       "Running widget export and Crestron CLI package checks…";
@@ -6505,6 +7874,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       validDirections = new Set(["input", "output"]);
     const translatedAcceptance = runTranslatedComponentAcceptance();
     errors.push(...translatedAcceptance.errors);
+    const workflowAcceptance = runProjectWorkflowAcceptance();
+    errors.push(...workflowAcceptance.errors);
     definitions.forEach((definition) => {
       const properties = new Map(
         (definition.properties || []).map((property) => [
@@ -6657,6 +8028,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         `Current project assets validated: ${state.assets.length}`,
         `Import & Translate behaviors validated: ${translatedAcceptance.behaviorCount}`,
         `Custom package assets round-tripped: ${translatedAcceptance.packageAssetCount}`,
+        `Project workflow checks passed: ${workflowAcceptance.checks.length}`,
         `Temporary CH5Z size: ${Math.ceil(result.size / 1024)} KB`,
         `Crestron CLI build time: ${result.elapsedMilliseconds} ms`,
         "",
@@ -6674,6 +8046,73 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     } catch (error) {
       throw error;
     }
+  }
+
+  function runProjectWorkflowAcceptance() {
+    const errors = [],
+      checks = [],
+      expect = (condition, message) => {
+        if (condition) checks.push(message);
+        else errors.push(`Project workflow: ${message}`);
+      };
+    try {
+      const source = structuredClone(project()),
+        serialized = JSON.stringify(source),
+        parsed = JSON.parse(serialized),
+        integrityErrors = projectIntegrityErrors(parsed),
+        migrated = window.ComposerProjectMigrations.migrate(parsed).project,
+        exported = window.ComposerExporter.exportProject(migrated),
+        recovery = recoveryIntegrity({
+          project: parsed,
+          checksum: recoveryFingerprint(parsed),
+        });
+      expect(serialized.length > 0, "project serialized to JSON");
+      expect(!integrityErrors.length, "saved project passed structural integrity");
+      expect(
+        migrated.version === window.ComposerProjectMigrations.CURRENT_VERSION,
+        "saved project reopened at the current format version",
+      );
+      expect(
+        migrated.pages.length === source.pages.length,
+        "page count survived save/open round trip",
+      );
+      expect(
+        migrated.items.length === source.items.length,
+        "widget count survived save/open round trip",
+      );
+      expect(
+        migrated.assets.length === source.assets.length,
+        "asset count survived save/open round trip",
+      );
+      expect(
+        migrated.pages.some((page) => page.id === migrated.activePage),
+        "active page survived save/open round trip",
+      );
+      expect(recovery.valid, "recovery snapshot checksum and structure validated");
+      expect(
+        exported.includes('<script src="cr-com-lib.js">'),
+        "export included the Crestron signal runtime",
+      );
+      migrated.pages.forEach((page) =>
+        expect(
+          exported.includes(`id="${page.id}"`),
+          `export included page “${page.name}”`,
+        ),
+      );
+      migrated.items.forEach((item) =>
+        expect(
+          exported.includes(`data-instance="${item.id}"`),
+          `export included widget “${item.name}”`,
+        ),
+      );
+      const ids = migrated.items.map((item) => item.id);
+      expect(new Set(ids).size === ids.length, "widget IDs remained unique");
+    } catch (error) {
+      errors.push(
+        `Project workflow threw an exception: ${error.message || error}`,
+      );
+    }
+    return { errors, checks };
   }
 
   function runTranslatedComponentAcceptance() {
@@ -6849,6 +8288,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     };
   }
   function runPanelCompatibility() {
+    setHealthDisplayMode(false);
     const profiles = deviceProfiles.filter((device) => device.id !== "custom"),
       lines = [
         "CRESTRON UI COMPOSER — PANEL COMPATIBILITY REPORT",
@@ -7138,16 +8578,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
   }
   function approveExport() {
+    const fingerprint = recoveryFingerprint(project());
+    if (fingerprint === lastApprovedPreflightFingerprint) return true;
     const result = runValidation(false);
     if (result.errors.length) {
-      alert(validationReport(result.issues));
+      runValidation(true);
+      setStatus(
+        `Build/deploy blocked by ${result.errors.length} project health error${result.errors.length === 1 ? "" : "s"}`,
+      );
       return false;
     }
     if (
       result.issues.length &&
-      !confirm(validationReport(result.issues) + "\n\nContinue anyway?")
-    )
+      !confirm(
+        validationReport(result.issues) +
+          "\n\nContinue anyway? Choose Cancel to review these warnings in Project Health.",
+      )
+    ) {
+      runValidation(true);
       return false;
+    }
+    lastApprovedPreflightFingerprint = fingerprint;
+    setStatus("Project Health preflight passed");
     return true;
   }
   function project() {
@@ -11722,6 +13174,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const parsed = JSON.parse(text),
       migration = window.ComposerProjectMigrations.migrate(parsed),
       p = migration.project;
+    const integrityErrors = projectIntegrityErrors(p);
+    if (integrityErrors.length)
+      throw new Error(
+        `Project integrity check failed:\n\n${integrityErrors.join("\n")}`,
+      );
     if (migration.migrated) {
       let backupName = "";
       if (native && sourcePath) {
@@ -11790,7 +13247,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       setStatus("Project opened for " + selectedDevice().name);
   }
   $("save-project").onclick = async () => {
-    const text = JSON.stringify(project(), null, 2);
+    const value = project(),
+      integrityErrors = projectIntegrityErrors(value);
+    if (integrityErrors.length) {
+      projectDirty = true;
+      persistAutosave(historyState(), true);
+      alert(
+        `The project was not saved because its integrity check failed. A recovery snapshot was preserved.\n\n${integrityErrors.join("\n")}`,
+      );
+      return;
+    }
+    const text = JSON.stringify(value, null, 2);
     if (native) {
       try {
         const path = await nativeRequest("saveProject", text);
@@ -11809,6 +13276,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (!native) {
       alert(
         "Portable project packages are available in the Windows application.",
+      );
+      return;
+    }
+    const integrityErrors = projectIntegrityErrors(project());
+    if (integrityErrors.length) {
+      projectDirty = true;
+      persistAutosave(historyState(), true);
+      alert(
+        `The portable package was not saved because its integrity check failed. A recovery snapshot was preserved.\n\n${integrityErrors.join("\n")}`,
       );
       return;
     }
@@ -11840,6 +13316,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
   };
   $("validate-project").onclick = () => runValidation(true);
+  document.querySelectorAll("[data-health-filter]").forEach((button) => {
+    button.onclick = () => {
+      healthIssueFilter = button.dataset.healthFilter;
+      document
+        .querySelectorAll("[data-health-filter]")
+        .forEach((entry) => entry.classList.toggle("active", entry === button));
+      renderHealthDashboard();
+    };
+  });
+  $("health-search").oninput = renderHealthDashboard;
+  $("health-fix-all").onclick = fixAllHealthIssues;
   $("build-self-test").onclick = runBuildSelfTest;
   $("project-backups").onclick = async () => {
     if (!native)
@@ -11877,10 +13364,49 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
   $("signal-manager").onclick = () => {
     $("signal-search").value = "";
+    signalViewMode = "table";
     renderSignalManager();
     $("signal-dialog").showModal();
   };
   $("signal-search").oninput = renderSignalManager;
+  $("signal-view-table").onclick = () => {
+    signalViewMode = "table";
+    renderSignalManager();
+  };
+  $("signal-view-map").onclick = () => {
+    signalViewMode = "map";
+    renderSignalManager();
+  };
+  $("signal-view-address").onclick = () => {
+    signalViewMode = "address";
+    renderSignalManager();
+  };
+  $("signal-replace-prefix").onclick = replaceContractPrefix;
+  $("signal-allocate-joins").onclick = () => {
+    $("join-allocator-scope").value = "project";
+    $("join-allocator-type").value = "all";
+    $("join-allocator-direction").value = "all";
+    renderJoinAllocationPlan();
+    $("join-allocator-dialog").showModal();
+  };
+  $("join-allocator-refresh").onclick = renderJoinAllocationPlan;
+  $("join-allocator-scope").onchange = renderJoinAllocationPlan;
+  $("join-allocator-type").onchange = renderJoinAllocationPlan;
+  $("join-allocator-direction").onchange = renderJoinAllocationPlan;
+  $("join-allocator-start").oninput = renderJoinAllocationPlan;
+  $("join-allocator-apply").onclick = applyJoinAllocationPlan;
+  $("signal-name-contracts").onclick = () => {
+    $("contract-namer-scope").value = "project";
+    $("contract-namer-type").value = "all";
+    $("contract-namer-direction").value = "all";
+    renderContractNamingPlan();
+    $("contract-namer-dialog").showModal();
+  };
+  $("contract-namer-refresh").onclick = renderContractNamingPlan;
+  $("contract-namer-scope").onchange = renderContractNamingPlan;
+  $("contract-namer-type").onchange = renderContractNamingPlan;
+  $("contract-namer-direction").onchange = renderContractNamingPlan;
+  $("contract-namer-apply").onclick = applyContractNamingPlan;
   $("project-search").onclick = () => openProjectSearch();
   $("project-search-query").oninput = renderProjectSearch;
   $("signal-export-csv").onclick = () =>
@@ -12037,6 +13563,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         packages,
         usesContracts,
       });
+      packages.forEach((entry, index) =>
+        recordBuildArtifact(
+          result.artifacts?.[index] || { path: result.paths?.[index] },
+          entry.device,
+        ),
+      );
       const builtByDevice = new Map(
         packages.map((entry, index) => [
           entry.device.id,
@@ -12075,6 +13607,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       alert("Panel deployment is available in the Windows application.");
       return;
     }
+    if (!approveExport()) return;
     $("build-project-dialog").close();
     $("deploy-panel").click();
   };
@@ -12125,6 +13658,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         usesContracts,
         device,
       });
+      recordBuildArtifact(result, device);
       $("deploy-package").value = result.path;
       saveDeploymentSettings({ packagePath: result.path });
       updateActiveDeploymentProfile({ packagePath: result.path });
@@ -12143,8 +13677,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       alert("Panel deployment is available in the Windows application.");
       return;
     }
+    if (!approveExport()) return;
     renderDeploymentProfiles();
-    $("deploy-status").textContent = "Ready. Check the panel, then deploy.";
+    renderBuildArtifacts();
+    $("deploy-status").textContent =
+      "Project Health preflight passed. Check the panel, then deploy.";
     renderDeploymentHistory();
     $("deployment-dialog").showModal();
   };
@@ -12219,6 +13756,52 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
   };
   $("deploy-build").onclick = () => $("build-ch5").click();
+  $("deploy-inspect").onclick = async () => {
+    const packagePath = $("deploy-package").value;
+    if (!packagePath) {
+      $("deploy-status").textContent = "Select or build a CH5Z package first.";
+      return;
+    }
+    $("deploy-status").textContent = "Inspecting CH5Z package…";
+    try {
+      const result = await nativeRequest("inspectCh5Package", packagePath),
+        yesNo = (value) => (value ? "Yes" : "No"),
+        lines = [
+          `CH5Z PACKAGE INSPECTION — ${result.valid ? "PASSED" : "FAILED"}`,
+          "",
+          `File: ${result.path}`,
+          `Size: ${formatMetricBytes(result.size)}`,
+          `SHA-256: ${result.sha256}`,
+          `Validation: ${result.validationStatus}`,
+          "",
+          `Embedded project: ${result.embeddedProject || "Missing"}`,
+          `Outer archive entries: ${result.outerEntries}`,
+          `CH5 payload entries: ${result.payloadEntries}`,
+          `Manifest: ${yesNo(result.hasManifest)}`,
+          `index.html: ${yesNo(result.hasIndex)}`,
+          `CrComLib runtime: ${yesNo(result.hasCrComLib)}`,
+          `CH5 Desktop runtime: ${yesNo(result.hasWebXPanel)}`,
+          `WebXPanel worker: ${yesNo(result.hasWorker)}`,
+          `Contract mapping: ${yesNo(result.hasContract)}`,
+          `Contract states/events: ${result.contractStates} / ${result.contractEvents}`,
+          "",
+          `Target: ${result.targetName || result.targetDeviceId || "Not tagged"}`,
+          `Viewport: ${result.targetWidth && result.targetHeight ? `${result.targetWidth} × ${result.targetHeight}` : "Not tagged"}`,
+        ];
+      if (result.warnings?.length)
+        lines.push("", "WARNINGS", ...result.warnings.map((warning) => `- ${warning}`));
+      $("package-inspector-summary").textContent = result.valid
+        ? "The archive passed structural validation."
+        : "The archive has blocking structural problems.";
+      $("package-inspector-report").textContent = lines.join("\n");
+      $("package-inspector-dialog").showModal();
+      $("deploy-status").textContent = result.valid
+        ? "Package inspection passed."
+        : "Package inspection failed.";
+    } catch (error) {
+      $("deploy-status").textContent = `Package inspection failed: ${error.message}`;
+    }
+  };
   $("deploy-start").onclick = async () => {
     const host = $("deploy-host").value.trim(),
       packagePath = $("deploy-package").value,
@@ -12228,6 +13811,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         "Enter a panel host and select or build a .ch5z package.";
       return;
     }
+    if (!approveExport()) return;
+    if (
+      !approveDeploymentArtifact(
+        packagePath,
+        activeDeploymentProfile()?.deviceId || state.targetDevice,
+      )
+    )
+      return;
     if (
       !confirm(
         `Deploy ${packagePath}\n\nto ${$("deploy-target-type").selectedOptions[0]?.textContent || "CH5 target"} at ${host}?\n\nA terminal will request the device credentials.`,
@@ -12362,6 +13953,19 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     renderDeploymentHistory();
   }
   async function deployProfileQueue(profiles) {
+    if (!approveExport()) return;
+    const artifactProblems = profiles.flatMap((profile) =>
+      deploymentArtifactProblems(profile.packagePath, profile.deviceId).map(
+        (problem) => `${profile.name}: ${problem}`,
+      ),
+    );
+    if (
+      artifactProblems.length &&
+      !confirm(
+        `Package verification warning:\n\n${artifactProblems.join("\n")}\n\nContinue with the deployment queue anyway?`,
+      )
+    )
+      return;
     const ready = await checkDeploymentQueue(profiles);
     if (!ready.length) return;
     if (
@@ -12817,6 +14421,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     clearTimeout(autosaveTimer);
     if (!restoringHistory) commitHistory(false);
     persistAutosave(historyState(), true);
+    try {
+      localStorage.setItem(
+        sessionKey,
+        JSON.stringify({ active: false, closedAt: new Date().toISOString() }),
+      );
+    } catch (_) {}
   });
   resize(1920, 1200);
   setPanelZoom(

@@ -153,6 +153,9 @@ public partial class MainWindow : Window
                 case "selectCh5Package":
                     SelectCh5Package(id);
                     break;
+                case "inspectCh5Package":
+                    InspectCh5Package(id, root.GetProperty("payload").GetString() ?? "");
+                    break;
                 case "checkPanel":
                     CheckPanel(id, root.GetProperty("payload").GetString() ?? "");
                     break;
@@ -789,7 +792,9 @@ public partial class MainWindow : Window
             ValidateCh5Archive(archive);
             File.Copy(archive, saveDialog.FileName, true);
             ValidateCh5Archive(saveDialog.FileName);
-            Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null }, null);
+            var file = new FileInfo(saveDialog.FileName);
+            var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(saveDialog.FileName)));
+            Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null, size = file.Length, sha256 }, null);
         }
         finally
         {
@@ -819,6 +824,7 @@ public partial class MainWindow : Window
         if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
 
         var paths = new List<string>();
+        var artifacts = new List<object>();
         foreach (var package in packages)
         {
             var requestedName = package.GetProperty("projectName").GetString() ?? "CrestronUi";
@@ -829,8 +835,14 @@ public partial class MainWindow : Window
             var destination = Path.Combine(folderDialog.FolderName, projectName + ".ch5z");
             CreateCh5Archive(cli, runtime, html, projectName, deviceJson, contractPath, destination);
             paths.Add(destination);
+            artifacts.Add(new
+            {
+                path = destination,
+                size = new FileInfo(destination).Length,
+                sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destination)))
+            });
         }
-        Respond(id, true, new { folder = folderDialog.FolderName, paths }, null);
+        Respond(id, true, new { folder = folderDialog.FolderName, paths, artifacts }, null);
     }
 
     private static void CreateCh5Archive(string cli, string runtime, string html, string projectName, string deviceJson, string? contractPath, string destination)
@@ -981,7 +993,108 @@ public partial class MainWindow : Window
         var dialog = new OpenFileDialog { Title = "Select Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", Multiselect = false, InitialDirectory = LoadStorageSettings()["exports"] };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         ValidateCh5Archive(dialog.FileName);
-        Respond(id, true, new { path = dialog.FileName, size = new FileInfo(dialog.FileName).Length }, null);
+        Respond(id, true, new
+        {
+            path = dialog.FileName,
+            size = new FileInfo(dialog.FileName).Length,
+            sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(dialog.FileName)))
+        }, null);
+    }
+
+    private void InspectCh5Package(string id, string path)
+    {
+        if (!File.Exists(path)) throw new FileNotFoundException("The selected CH5Z package no longer exists.", path);
+        var warnings = new List<string>();
+        var valid = true;
+        var validationStatus = "Valid CH5 package";
+        try { ValidateCh5Archive(path); }
+        catch (Exception ex) { valid = false; validationStatus = ex.Message; }
+
+        using var zip = ZipFile.OpenRead(path);
+        var ch5Entry = zip.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".ch5", StringComparison.OrdinalIgnoreCase));
+        var hasManifest = zip.Entries.Any(entry => entry.FullName.EndsWith("manifest.json", StringComparison.OrdinalIgnoreCase));
+        string? targetDeviceId = null;
+        string? targetName = null;
+        int? targetWidth = null;
+        int? targetHeight = null;
+        var hasIndex = false;
+        var hasCrComLib = false;
+        var hasWebXPanel = false;
+        var hasWorker = false;
+        var hasContract = false;
+        var contractStates = 0;
+        var contractEvents = 0;
+        var payloadEntries = 0;
+        if (ch5Entry is not null)
+        {
+            using var payloadMemory = new MemoryStream();
+            using (var stream = ch5Entry.Open()) stream.CopyTo(payloadMemory);
+            payloadMemory.Position = 0;
+            using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
+            payloadEntries = payload.Entries.Count;
+            hasIndex = payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase));
+            hasCrComLib = payload.Entries.Any(entry => entry.FullName.EndsWith("cr-com-lib.js", StringComparison.OrdinalIgnoreCase));
+            hasWebXPanel = payload.Entries.Any(entry => entry.FullName.Equals("ch5-webxpanel.js", StringComparison.OrdinalIgnoreCase));
+            hasWorker = payload.Entries.Any(entry => entry.FullName.EndsWith(".worker.js", StringComparison.OrdinalIgnoreCase));
+            var target = payload.Entries.FirstOrDefault(entry => entry.FullName.EndsWith("composer-target.json", StringComparison.OrdinalIgnoreCase));
+            if (target is not null)
+            {
+                try
+                {
+                    using var stream = target.Open();
+                    using var document = JsonDocument.Parse(stream);
+                    var root = document.RootElement;
+                    targetDeviceId = root.TryGetProperty("id", out var targetId) ? targetId.GetString() : null;
+                    targetName = root.TryGetProperty("name", out var name) ? name.GetString() : null;
+                    targetWidth = root.TryGetProperty("width", out var width) && width.TryGetInt32(out var widthValue) ? widthValue : null;
+                    targetHeight = root.TryGetProperty("height", out var height) && height.TryGetInt32(out var heightValue) ? heightValue : null;
+                }
+                catch (Exception ex) { warnings.Add("Target metadata could not be read: " + ex.Message); }
+            }
+            else warnings.Add("No Composer target metadata is embedded; this may be an external or older package.");
+            var contract = payload.Entries.FirstOrDefault(entry => entry.FullName.EndsWith("contract.cse2j", StringComparison.OrdinalIgnoreCase));
+            hasContract = contract is not null && contract.Length > 0;
+            if (hasContract && contract is not null)
+            {
+                try
+                {
+                    using var stream = contract.Open();
+                    using var document = JsonDocument.Parse(stream);
+                    if (document.RootElement.TryGetProperty("signals", out var signals))
+                    {
+                        if (signals.TryGetProperty("states", out var states) && states.ValueKind == JsonValueKind.Object) contractStates = states.EnumerateObject().Count();
+                        if (signals.TryGetProperty("events", out var events) && events.ValueKind == JsonValueKind.Object) contractEvents = events.EnumerateObject().Count();
+                    }
+                }
+                catch (Exception ex) { warnings.Add("Contract mapping could not be summarized: " + ex.Message); }
+            }
+        }
+        var info = new FileInfo(path);
+        Respond(id, true, new
+        {
+            path,
+            name = info.Name,
+            size = info.Length,
+            sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))),
+            valid,
+            validationStatus,
+            outerEntries = zip.Entries.Count,
+            payloadEntries,
+            embeddedProject = ch5Entry?.FullName,
+            hasManifest,
+            hasIndex,
+            hasCrComLib,
+            hasWebXPanel,
+            hasWorker,
+            hasContract,
+            contractStates,
+            contractEvents,
+            targetDeviceId,
+            targetName,
+            targetWidth,
+            targetHeight,
+            warnings
+        }, null);
     }
 
     private async void CheckPanel(string id, string host)

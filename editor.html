@@ -858,6 +858,14 @@
             placeholder="Filter page, widget, signal, type, or value"
           />
         </div>
+        <div class="signal-view-tools">
+          <button id="signal-view-table" type="button" class="active">Table</button>
+          <button id="signal-view-map" type="button">Signal map</button>
+          <button id="signal-view-address" type="button">Address map</button>
+          <button id="signal-replace-prefix" type="button">Replace contract prefix…</button>
+          <button id="signal-allocate-joins" type="button">Allocate joins…</button>
+          <button id="signal-name-contracts" type="button">Name contracts…</button>
+        </div>
         <div class="signal-table-wrap">
           <table class="signal-table">
             <thead>
@@ -875,9 +883,52 @@
             <tbody id="signal-table-body"></tbody>
           </table>
         </div>
+        <div id="signal-map" class="signal-map" hidden></div>
+        <div id="signal-address-map" class="signal-map signal-address-map" hidden></div>
         <div class="dialog-actions">
           <button id="signal-export-csv" type="button">Export CSV</button
           ><button value="default">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="join-allocator-dialog" class="join-allocator-dialog">
+      <form method="dialog">
+        <h2>Join Allocator</h2>
+        <p class="hint">
+          Assigns collision-free joins to unbound signals already using Join mode. Multi-item ranges reserve every required join.
+        </p>
+        <div class="join-allocator-options">
+          <label>Scope<select id="join-allocator-scope"><option value="project">Entire project</option><option value="page">Current page</option></select></label>
+          <label>Signal type<select id="join-allocator-type"><option value="all">All types</option><option value="digital">Digital</option><option value="analog">Analog</option><option value="serial">Serial</option></select></label>
+          <label>Direction<select id="join-allocator-direction"><option value="all">Inputs and outputs</option><option value="input">Inputs</option><option value="output">Outputs</option></select></label>
+          <label>Starting join<input id="join-allocator-start" type="number" min="1" max="65535" value="1"></label>
+        </div>
+        <p id="join-allocator-summary" class="hint"></p>
+        <div id="join-allocator-preview" class="join-allocator-preview"></div>
+        <div class="dialog-actions">
+          <button id="join-allocator-refresh" type="button">Refresh preview</button>
+          <button value="cancel">Cancel</button>
+          <button id="join-allocator-apply" type="button" class="primary">Apply joins</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="contract-namer-dialog" class="join-allocator-dialog">
+      <form method="dialog">
+        <h2>Contract Naming Assistant</h2>
+        <p class="hint">
+          Fills unbound Contract-mode signals using page, widget, and standard Press/Selected/ValueSet/Feedback/Name/Text attributes.
+        </p>
+        <div class="join-allocator-options contract-namer-options">
+          <label>Scope<select id="contract-namer-scope"><option value="project">Entire project</option><option value="page">Current page</option></select></label>
+          <label>Signal type<select id="contract-namer-type"><option value="all">All types</option><option value="digital">Digital</option><option value="analog">Analog</option><option value="serial">Serial</option></select></label>
+          <label>Direction<select id="contract-namer-direction"><option value="all">Inputs and outputs</option><option value="input">Inputs</option><option value="output">Outputs</option></select></label>
+        </div>
+        <p id="contract-namer-summary" class="hint"></p>
+        <div id="contract-namer-preview" class="join-allocator-preview"></div>
+        <div class="dialog-actions">
+          <button id="contract-namer-refresh" type="button">Refresh preview</button>
+          <button value="cancel">Cancel</button>
+          <button id="contract-namer-apply" type="button" class="primary">Apply names</button>
         </div>
       </form>
     </dialog>
@@ -931,7 +982,7 @@
     <dialog id="recovery-dialog" class="recovery-dialog">
       <form method="dialog">
         <h2>Recover unsaved work</h2>
-        <p class="hint">
+        <p id="recovery-context" class="hint">
           Crestron UI Composer found autosaved work from an earlier session.
           Choose a snapshot to restore, or discard the recovery history.
         </p>
@@ -994,6 +1045,7 @@
           <button id="deploy-check" type="button">Check panel</button
           ><button id="deploy-select" type="button">Select .ch5z</button
           ><button id="deploy-build" type="button">Build .ch5z</button
+          ><button id="deploy-inspect" type="button">Inspect package</button
           ><button id="deploy-start" type="button" class="primary">
             Deploy to panel
           </button>
@@ -1008,8 +1060,18 @@
           <button id="deploy-retry-failed" type="button">Retry failed</button>
         </div>
         <div id="deployment-profile-list" class="deployment-profile-list"></div>
+        <h2>Build artifacts</h2>
+        <div id="build-artifact-list" class="build-artifact-list"></div>
         <h2>Deployment history</h2>
         <div id="deployment-history" class="deployment-history"></div>
+        <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="package-inspector-dialog" class="package-inspector-dialog">
+      <form method="dialog">
+        <h2>CH5Z Package Inspector</h2>
+        <p id="package-inspector-summary" class="hint"></p>
+        <pre id="package-inspector-report" class="health-report"></pre>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
@@ -1763,6 +1825,15 @@ Preview signal activity appears here.</pre
       <form method="dialog">
         <h2 id="health-title">Project health report</h2>
         <p id="health-summary" class="hint"></p>
+        <div id="health-dashboard-tools" class="health-dashboard-tools" hidden>
+          <button type="button" data-health-filter="all" class="active">All</button>
+          <button type="button" data-health-filter="error">Errors</button>
+          <button type="button" data-health-filter="warning">Warnings</button>
+          <button type="button" id="health-fix-all">Fix all safe issues</button>
+          <input id="health-search" type="search" placeholder="Filter page, widget, category, or message…">
+        </div>
+        <div id="health-metrics" class="health-metrics" hidden></div>
+        <div id="health-dashboard" class="health-dashboard" hidden></div>
         <pre id="health-report" class="health-report"></pre>
         <div class="dialog-actions">
           <select
