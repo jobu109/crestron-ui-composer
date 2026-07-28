@@ -243,6 +243,7 @@
         <details class="app-menu">
           <summary>Help</summary>
           <div class="app-menu-popup">
+            <button id="users-manual">General user’s manual</button>
             <button id="check-updates">Check for updates</button>
           </div>
         </details>
@@ -1895,6 +1896,161 @@ Preview signal activity appears here.</pre
             Both are saved in the project and included in Preview, exported
             HTML, and CH5Z builds.
           </p>
+        </div>
+        <div id="users-manual-content" class="feature-help-content users-manual-content" hidden>
+          <p class="manual-introduction">
+            Crestron UI Composer is a Windows WYSIWYG editor for building HTML5
+            interfaces for Crestron CH5 touch panels, CH5 Desktop, Web XPanel,
+            iPad layouts, and display interfaces. Projects can use Contract
+            names, traditional join numbers, local navigation, or a mixture of
+            all three.
+          </p>
+          <nav class="manual-contents" aria-label="Manual contents">
+            <a href="#manual-start">Getting started</a>
+            <a href="#manual-editor">Editor layout</a>
+            <a href="#manual-pages">Pages</a>
+            <a href="#manual-widgets">Widgets</a>
+            <a href="#manual-signals">Signals and contracts</a>
+            <a href="#manual-responsive">Responsive layouts</a>
+            <a href="#manual-preview">Preview and simulation</a>
+            <a href="#manual-assets">Assets and fonts</a>
+            <a href="#manual-custom">Custom components</a>
+            <a href="#manual-build">Build and deployment</a>
+            <a href="#manual-safety">Validation and recovery</a>
+            <a href="#manual-troubleshooting">Troubleshooting</a>
+          </nav>
+
+          <section id="manual-start">
+            <h3>1. Getting started</h3>
+            <ol>
+              <li>Choose <strong>File → New project</strong> and select Blank or an editable starter.</li>
+              <li>Select the intended <strong>Target panel</strong> before laying out the interface.</li>
+              <li>Add pages, then drag components from the left library onto the panel.</li>
+              <li>Edit appearance and behavior in the right Inspector.</li>
+              <li>Assign Contract names or joins under <strong>Signal bindings</strong>.</li>
+              <li>Save the `.cuiproj`, Preview it, run Health Check, then build the CH5Z.</li>
+            </ol>
+            <p><strong>Recommended base target:</strong> design touch-panel projects at the effective CH5 viewport, such as 1280 × 800 for the TSW-1070/1080 family. The physical display resolution is not the same as the application viewport.</p>
+          </section>
+
+          <section id="manual-editor">
+            <h3>2. Editor layout</h3>
+            <dl>
+              <dt>Left sidebar</dt><dd>Component library, assets, reusable designs, page templates, themes, page list, and page settings.</dd>
+              <dt>Center panel</dt><dd>The active page. Drag, resize, multi-select, zoom, and right-click widgets here.</dd>
+              <dt>Right Inspector</dt><dd>Position, size, z-index, appearance, component properties, signals, responsive rules, timelines, and actions.</dd>
+              <dt>Top menus</dt><dd>File operations, editing, Preview/Signals, project validation, deployment, diagnostics, and Help.</dd>
+            </dl>
+            <p>Resize either sidebar by dragging its divider. Use the panel zoom controls or <strong>Fit panel</strong> to see the complete target without changing exported coordinates.</p>
+          </section>
+
+          <section id="manual-pages">
+            <h3>3. Pages and navigation</h3>
+            <p>Add, rename, duplicate, reorder, or delete pages in the Page section. Each page can have its own background color/image, transition, size, and external selection signal.</p>
+            <ul>
+              <li><strong>Local navigation:</strong> select a widget and choose a destination page. No processor programming is required.</li>
+              <li><strong>Contract selection:</strong> assign the page’s digital Contract signal.</li>
+              <li><strong>Join selection:</strong> assign a digital feedback join.</li>
+              <li><strong>Global widgets:</strong> reusable elements can remain visible across pages with page-specific visibility overrides.</li>
+            </ul>
+            <p>The page display name determines the namespace used by automatically generated widget contracts. Changing the page-selection contract does not rename its child widget namespace.</p>
+          </section>
+
+          <section id="manual-widgets">
+            <h3>4. Adding and editing widgets</h3>
+            <p>Drag a component from the categorized library. Select it to edit its local text, colors, glow, assets, text/icon size, position, dimensions, z-index, and component-specific options.</p>
+            <ul>
+              <li>Right-click for copy/paste, lock/unlock, align, layer, grouping, reusable symbols, and component simulation.</li>
+              <li>Use a blank text field when a button or item should display no label.</li>
+              <li>Use Standard and Selected state options for state-specific text, icons, backgrounds, and assets.</li>
+              <li>Keep enough content inset around strong glows so effects are not visually clipped.</li>
+              <li>Use Undo/Redo or the visible History list to reverse project edits.</li>
+            </ul>
+          </section>
+
+          <section id="manual-signals">
+            <h3>5. Signals, joins, and Contracts</h3>
+            <p>Each signal binding has one overall mode: <strong>Contract</strong> or <strong>Join</strong>. Contract is the default. The project follows these standard names:</p>
+            <table class="manual-table"><thead><tr><th>Signal</th><th>Direction</th><th>Standard attribute</th></tr></thead><tbody>
+              <tr><td>Digital</td><td>Widget → processor</td><td>Press</td></tr>
+              <tr><td>Digital</td><td>Processor → widget</td><td>Selected</td></tr>
+              <tr><td>Analog</td><td>Widget → processor</td><td>ValueSet</td></tr>
+              <tr><td>Analog</td><td>Processor → widget</td><td>Feedback</td></tr>
+              <tr><td>Serial</td><td>Widget → processor</td><td>Text</td></tr>
+              <tr><td>Serial</td><td>Processor → widget</td><td>Name</td></tr>
+            </tbody></table>
+            <p>Open <strong>View → Signals</strong> to search, find uses, inspect the page/widget tree, rename all uses, allocate joins, generate contract names, preview the exact SIMPL hierarchy, compare `.cce`/`.cse2j` files, or export a signal schedule.</p>
+            <p>Repeated widgets use zero-based item indexing. Their configured/default item count controls how many Contract Editor instances are generated—not the component’s maximum capacity.</p>
+          </section>
+
+          <section id="manual-responsive">
+            <h3>6. Responsive and multi-panel layouts</h3>
+            <p>Design the base target first. Then configure each widget’s anchors and scale behavior. Use <strong>View → Responsive compare</strong> for side-by-side layouts, missing-override highlighting, copying between similar panels, breakpoint families, and batch Fit/Validate.</p>
+            <p>Prefer fixed-size touch controls, edge anchors for navigation/status, stretch for lists and video containers, and center anchoring for dialogs. Use explicit target overrides only when the layout structure genuinely differs.</p>
+          </section>
+
+          <section id="manual-preview">
+            <h3>7. Preview, simulation, timelines, and actions</h3>
+            <ul>
+              <li><strong>Preview:</strong> runs the exported interface locally for visual and interaction checks.</li>
+              <li><strong>Simulate:</strong> drives digital, analog, and serial feedback without SIMPL and captures widget output events.</li>
+              <li><strong>Timeline Editor:</strong> controls visual animation such as fade, slide, scale, glow, press state, and shake.</li>
+              <li><strong>Action Editor:</strong> performs navigation, visibility, selection, properties, animation, or signal publishing in response to events.</li>
+            </ul>
+            <p>CH5 Desktop and a physical panel remain required for final processor-communication testing.</p>
+          </section>
+
+          <section id="manual-assets">
+            <h3>8. Assets, backgrounds, and custom fonts</h3>
+            <p>Import images, audio, video, WOFF/WOFF2, TTF, or OTF files through Assets. Imported assets become immediately available to widget graphics, Standard/Selected state artwork, and page backgrounds.</p>
+            <p>Large embedded assets increase project memory, startup time, build time, and deployment size. Review <strong>Project → Panel performance</strong> before deployment.</p>
+          </section>
+
+          <section id="manual-custom">
+            <h3>9. Custom components and reusable designs</h3>
+            <ul>
+              <li><strong>Import &amp; translate:</strong> analyzes HTML snippets and proposes editable text, button behavior, analog values, signals, and standard appearance properties.</li>
+              <li><strong>Create custom component:</strong> starts from Button, Slider/Gauge, Text/Input, Repeated List, or Blank templates.</li>
+              <li><strong>Visual behavior builder:</strong> connects properties/signals to selected HTML elements while preserving handwritten code.</li>
+              <li><strong>Reusable designs:</strong> create a master whose instances update together while allowing selected property and signal overrides.</li>
+              <li><strong>Design libraries:</strong> export/import versioned `.cuilibrary` packages without replacing built-in widgets.</li>
+            </ul>
+          </section>
+
+          <section id="manual-build">
+            <h3>10. Building and deploying</h3>
+            <ol>
+              <li>Save the project and run <strong>Health check</strong>.</li>
+              <li>For Contracts, export/open the `.cce` in CH5 Contract Editor and compile its `.cse2j` mapping.</li>
+              <li>Choose <strong>Project → Build Project</strong>, select target panels, and provide the populated `.cse2j` when requested.</li>
+              <li>Inspect the CH5Z before deployment. Confirm index, CrComLib, Web XPanel runtime, worker, contract mapping, target, and viewport.</li>
+              <li>Deploy using a saved panel profile. The terminal requests credentials and remains open with the complete result.</li>
+            </ol>
+            <p>Deployment History records package, device, result, log, and backup. A verified successful package can be selected or rolled back later.</p>
+          </section>
+
+          <section id="manual-safety">
+            <h3>11. Validation, performance, and recovery</h3>
+            <ul>
+              <li><strong>Health check:</strong> detects project, signal, asset, navigation, layout, custom-runtime, panel, usability, and performance problems.</li>
+              <li><strong>Panel performance:</strong> provides target-aware recommended/caution/high guidance. Scores compare static complexity; they are not measured FPS.</li>
+              <li><strong>Acceptance test:</strong> stores Editor, Preview, CH5 Desktop, panel, package, and Contract Editor evidence with the project.</li>
+              <li><strong>Release readiness:</strong> requires health, contracts, acceptance, performance, current build provenance, and verified deployment.</li>
+              <li><strong>Recovery:</strong> rotating integrity-checked snapshots protect unsaved work and can be browsed by timestamp.</li>
+            </ul>
+          </section>
+
+          <section id="manual-troubleshooting">
+            <h3>12. Troubleshooting checklist</h3>
+            <dl>
+              <dt>CH5 Desktop loads but has no signals</dt><dd>Confirm the same populated contract mapping was used, set the processor/IP ID in CH5 Desktop, and verify the processor login prompt appears.</dd>
+              <dt>Panel rejects the CH5Z</dt><dd>Run package inspection, verify the selected target supports CH5, and confirm `contract.cse2j` is populated rather than empty.</dd>
+              <dt>Widget differs in Preview</dt><dd>Run Health Check and Export/Build Self-Test; inspect custom-component runtime errors and missing assets.</dd>
+              <dt>Multi-device signals do not work</dt><dd>Confirm zero-based item contracts and ensure the configured default count matches the Contract Editor/SIMPL instances.</dd>
+              <dt>Interface feels slow</dt><dd>Open Panel Performance, reduce simultaneous animation and strong filters, optimize assets, and test on the lowest-powered supported panel.</dd>
+              <dt>Work was lost after a crash</dt><dd>Open Project → Backups or accept the startup recovery prompt. Do not overwrite the known-good save until integrity validation passes.</dd>
+            </dl>
+          </section>
         </div>
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>

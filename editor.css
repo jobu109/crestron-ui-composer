@@ -1881,6 +1881,57 @@ dialog {
 .feature-help-content dd {
   margin: 2px 0 0 18px;
 }
+.users-manual-content {
+  scroll-behavior: smooth;
+}
+.users-manual-content section {
+  scroll-margin-top: 10px;
+  margin: 18px 0;
+  padding-top: 4px;
+  border-top: 1px solid #38504f;
+}
+.users-manual-content .manual-introduction {
+  padding: 12px 14px;
+  border: 1px solid #3b5b58;
+  border-radius: 6px;
+  background: #102321;
+  color: #d5eeea;
+}
+.manual-contents {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 12px 0 20px;
+}
+.manual-contents a {
+  padding: 7px 9px;
+  border: 1px solid #34504e;
+  border-radius: 4px;
+  background: #142426;
+  color: #77dccb;
+  text-decoration: none;
+}
+.manual-contents a:hover,
+.manual-contents a:focus-visible {
+  border-color: #04dcb9;
+  color: #cffff7;
+}
+.manual-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 14px;
+}
+.manual-table th,
+.manual-table td {
+  padding: 7px 9px;
+  border: 1px solid #38504f;
+  text-align: left;
+}
+.manual-table th { background: #18302f; color: #bff7ee; }
+.manual-table td { background: #101a1c; }
+@media (max-width: 760px) {
+  .manual-contents { grid-template-columns: 1fr 1fr; }
+}
 dialog form {
   height: 100%;
   display: flex;

@@ -858,6 +858,18 @@ run("release readiness gates beta publication on verified evidence", () => {
   assert.match(editor, /clean-install and upgrade-install tests/);
 });
 
+run("Help includes a complete built-in general user manual", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html"),
+    styles = read("editor.css");
+  assert.match(markup, /id="users-manual"[^>]*>General user’s manual/);
+  assert.match(markup, /id="users-manual-content"/);
+  ["Getting started", "Signals, joins, and Contracts", "Building and deploying", "Troubleshooting checklist"].forEach((heading) => assert.ok(markup.includes(heading)));
+  assert.match(editor, /openFeatureHelp\("users-manual"\)/);
+  assert.match(styles, /\.manual-contents/);
+  assert.match(styles, /\.manual-table/);
+});
+
 run("project health audits touch-panel usability", () => {
   const editor = read("editor.js");
   assert.ok(editor.includes("function projectUsabilityAudit"));

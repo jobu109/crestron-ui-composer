@@ -47,6 +47,7 @@ This beta focuses on project safety, contract engineering, responsive design, de
 - Added target-aware Panel Performance profiling for page complexity, simultaneous widgets, animation load, CSS filters, custom frames, and embedded assets.
 - Performance metrics include definitions, recommended/caution/high guidelines, and navigable findings.
 - Added Release Readiness gates for Project Health, contracts, acceptance evidence, performance, a current build artifact, and verified deployment.
+- Added a built-in General User’s Manual under Help covering the complete design, signal, validation, build, deployment, recovery, and troubleshooting workflow.
 
 ## Testing
 

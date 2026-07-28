@@ -15568,14 +15568,19 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("action-paste").disabled = true;
   function openFeatureHelp(kind) {
-    const responsive = kind === "responsive";
-    $("feature-help-title").textContent = responsive
-      ? "Responsive Layout Help"
-      : "Timeline & Action Editor Help";
+    const responsive = kind === "responsive",
+      manual = kind === "users-manual";
+    $("feature-help-title").textContent = manual
+      ? "Crestron UI Composer — General User’s Manual"
+      : responsive
+        ? "Responsive Layout Help"
+        : "Timeline & Action Editor Help";
     $("responsive-help-content").hidden = !responsive;
-    $("timeline-action-help-content").hidden = responsive;
+    $("timeline-action-help-content").hidden = responsive || manual;
+    $("users-manual-content").hidden = !manual;
     $("feature-help-dialog").showModal();
   }
+  $("users-manual").onclick = () => openFeatureHelp("users-manual");
   $("responsive-help-open").onclick = () => openFeatureHelp("responsive");
   $("responsive-compare").onclick = openResponsiveComparison;
   $("responsive-compare-target").onchange = renderResponsiveComparison;
