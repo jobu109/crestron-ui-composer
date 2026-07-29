@@ -190,6 +190,7 @@
                 accept="application/json,.json,.cuiproj"
             /></label>
             <button id="save-project">Save project</button>
+            <button id="save-project-preset">Save project as preset</button>
             <button id="open-project-package">Open portable package</button>
             <button id="save-project-package">Save portable package</button>
             <span class="menu-separator"></span>
@@ -470,6 +471,14 @@
           >
             Fit panel
           </button>
+          <button
+            id="center-subpage-master"
+            type="button"
+            title="Center the subpage master in the editor workspace"
+            hidden
+          >
+            Center master
+          </button>
         </div>
         <div id="stage" class="stage" tabindex="0"></div>
       </section>
@@ -560,6 +569,13 @@
               </button>
             </div>
             <p id="layout-override-status" class="hint"></p>
+            <div id="widget-list-responsive-tools" hidden>
+              <div class="grid2">
+                <button id="widget-list-fit-items" type="button">Fit list items</button>
+                <button id="widget-list-visible-count" type="button">Calculate visible items</button>
+              </div>
+              <p id="widget-list-responsive-summary" class="hint"></p>
+            </div>
           </section>
           <label
             >Local navigation<select id="prop-target">
@@ -579,7 +595,7 @@
             <div id="component-properties"></div>
           </section>
           <section id="asset-inspector-section" class="signal-section">
-            <h2>Asset / graphic</h2>
+            <h2>Asset &amp; graphic</h2>
             <label
               >Standard state image<select id="prop-asset">
                 <option value="">None</option>
@@ -722,6 +738,7 @@
                 <option value="water-ripple">Water ripple</option>
                 <option value="wave">Wave</option>
                 <option value="particle-burst">Particle burst</option>
+                <option value="glass-crack">Glass crack</option>
                 <option value="shake">Shake</option>
               </select></label
             >
@@ -856,23 +873,28 @@
       <form method="dialog">
         <h2>New Project</h2>
         <p class="hint">
-          Choose a clean starting point. Every starter uses normal editable pages,
-          widgets, signals, and responsive-layout settings.
+          Start with one blank page or create a new project from one of your saved
+          Preset Templates.
         </p>
-        <div class="starter-project-grid">
-          <button type="button" data-starter-project="blank">
-            <strong>Blank</strong><span>One empty Home page</span>
+        <div id="new-project-choices" class="starter-project-grid">
+          <button type="button" id="create-blank-project">
+            <strong>Create blank</strong><span>Start with one empty Home page</span>
           </button>
-          <button type="button" data-starter-project="conference">
-            <strong>Conference Room</strong><span>Sources, audio, lighting, and microphones</span>
-          </button>
-          <button type="button" data-starter-project="classroom">
-            <strong>Classroom</strong><span>Presentation, camera, and audio pages</span>
-          </button>
-          <button type="button" data-starter-project="multi-room">
-            <strong>Multi-Room</strong><span>Overview, room selection, and room control</span>
+          <button type="button" id="create-from-preset">
+            <strong>Create from preset</strong><span>Use a saved project as your starting point</span>
           </button>
         </div>
+        <section id="project-preset-picker" class="project-preset-picker" hidden>
+          <div class="project-preset-heading">
+            <div>
+              <h3>Preset Templates</h3>
+              <p class="hint">Opening a preset creates an independent, unsaved project. The preset remains unchanged.</p>
+            </div>
+            <button type="button" id="refresh-project-presets">Refresh</button>
+          </div>
+          <div id="project-preset-list" class="project-preset-list"></div>
+          <button type="button" id="project-preset-back">Back</button>
+        </section>
         <footer><button value="cancel">Cancel</button></footer>
       </form>
     </dialog>
@@ -2194,6 +2216,28 @@ Preview signal activity appears here.</pre
         <div class="dialog-actions"><button value="cancel">Cancel</button><button id="subpage-pages-save" value="default" class="primary">Save pages</button></div>
       </form>
     </dialog>
+    <dialog id="create-subpage-dialog" class="feature-help-dialog create-subpage-dialog">
+      <form method="dialog">
+        <header class="dialog-title"><h2>Create Subpage</h2><button value="cancel" aria-label="Close">×</button></header>
+        <p id="create-subpage-description" class="hint"></p>
+        <label>Subpage name<input id="create-subpage-name" type="text" value="Header" required></label>
+        <fieldset class="subpage-placement-fieldset">
+          <legend>Placement</legend>
+          <div class="subpage-placement-options">
+            <label><input type="radio" name="create-subpage-placement" value="top" checked><span>↑<strong>Top</strong></span></label>
+            <label><input type="radio" name="create-subpage-placement" value="bottom"><span>↓<strong>Bottom</strong></span></label>
+            <label><input type="radio" name="create-subpage-placement" value="left"><span>←<strong>Left</strong></span></label>
+            <label><input type="radio" name="create-subpage-placement" value="right"><span>→<strong>Right</strong></span></label>
+          </div>
+        </fieldset>
+        <div class="subpage-create-size-grid">
+          <label>Width<input id="create-subpage-width" type="number" min="1"></label>
+          <label>Height<input id="create-subpage-height" type="number" min="1"></label>
+        </div>
+        <p class="hint">Top and Bottom span the panel width. Left and Right span the panel height. You can customize placement later in Subpage Properties.</p>
+        <div class="dialog-actions"><button value="cancel">Cancel</button><button id="create-subpage-confirm" value="default" class="primary">Create subpage</button></div>
+      </form>
+    </dialog>
     <dialog id="subpage-properties-dialog" class="feature-help-dialog subpage-properties-dialog">
       <form method="dialog">
         <header class="dialog-title"><h2>Subpage Properties</h2><button value="cancel" aria-label="Close">×</button></header>
@@ -2276,6 +2320,8 @@ Preview signal activity appears here.</pre
     <script src="analog-clock.component.js"></script>
     <script src="display-control.component.js"></script>
     <script src="glass-block.component.js"></script>
+    <script src="glass-crack.component.js"></script>
+    <script src="widget-list.component.js"></script>
     <script src="toast-queue.component.js"></script>
     <script src="please-wait-spinner.component.js"></script>
     <script src="shutdown-progress.component.js"></script>

@@ -107,6 +107,13 @@ run("global components backfill per-page visibility overrides", () => {
   assert.equal(migrated.version, ComposerProjectMigrations.CURRENT_VERSION);
 });
 
+run("per-page hide control is limited to true global components", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("const isGlobalComponent = item.master === true && !item.systemManaged"));
+  assert.ok(editor.includes('$("prop-hide-on-page-wrap").hidden = !isGlobalComponent'));
+  assert.ok(editor.includes("if (!item || item.master !== true || item.systemManaged)"));
+});
+
 run("legacy projects gain exactly one system Toast Notifications item", () => {
   const legacy = ComposerProjectMigrations.migrate({
     version: 5,
@@ -466,6 +473,85 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
   );
 });
 
+run("signal simulator pulses exercise the actual widget press lifecycle", () => {
+  const editor = read("editor.js"), styles = read("editor.css");
+  assert.ok(editor.includes("function dispatchSimulatedWidgetPress"));
+  assert.ok(editor.includes("definition?.itemSelector"));
+  assert.ok(editor.includes('new PointerEvent(eventName'));
+  assert.ok(editor.includes('new MouseEvent("click"'));
+  assert.ok(editor.includes("if (e.composerSimulator) return"));
+  assert.ok(styles.includes(".widget.simulator-live-press"));
+});
+
+run("native touch highlights are disabled in editor runtime and exports", () => {
+  const editorStyles = read("editor.css"), runtime = read("component-runtime.js"), exporter = read("exporter.js");
+  assert.ok(editorStyles.includes("-webkit-tap-highlight-color: transparent !important"));
+  assert.ok(runtime.includes("data-composer-touch-reset"));
+  assert.ok(runtime.includes("-webkit-tap-highlight-color:transparent!important"));
+  assert.ok(exporter.includes("-webkit-tap-highlight-color:transparent!important"));
+  assert.ok(exporter.includes("[data-component] :focus,.scoped-widget :focus{outline:none!important}"));
+});
+
+run("mouse and touch hold controls share one captured pointer lifecycle", () => {
+  const editor = read("editor.js"), runtime = read("component-runtime.js"), exporter = read("exporter.js"),
+    controls = [
+      "hold-button.component.js",
+      "circular-hold-button.component.js",
+      "safety-armed.component.js",
+      "countdown-auto-fire.component.js",
+    ].map(read);
+  assert.ok(editor.includes("const openComponentCategories = new Set()"));
+  assert.ok(editor.includes("group.open = !!query || openComponentCategories.has(category)"));
+  assert.ok(runtime.includes("function bindPrimaryPointer"));
+  assert.ok(runtime.includes("setPointerCapture?.(event.pointerId)"));
+  assert.ok(runtime.includes("event.pointerType === \"mouse\" && event.button !== 0"));
+  assert.ok(runtime.includes('element.addEventListener("pointercancel", pointerCancel)'));
+  assert.ok(runtime.includes('element.addEventListener("contextmenu", preventNative)'));
+  assert.ok(exporter.includes('global.ComposerRuntime.bindPrimaryPointer.toString() + "function show(id){"'));
+  assert.ok(exporter.includes("interactions:{bindPrimaryPointer:bindPrimaryPointer},navigate:show"));
+  assert.ok(runtime.includes('element.addEventListener("touchstart", touchStart, { passive: false })'));
+  assert.ok(runtime.includes('event.pointerType === "touch"'));
+  controls.forEach((source) => {
+    assert.ok(source.includes("context.interactions.bindPrimaryPointer"));
+    assert.ok(source.includes("configuredDuration") || source.includes("configuredWindowMs"));
+  });
+  assert.ok(
+    controls.slice(0, 2).every((source) =>
+      source.includes("function cancel()") && !source.includes('addEventListener("lostpointercapture"'),
+    ),
+    "Cancelled holds must reset without publishing a short press",
+  );
+});
+
+run("empty processor feedback preserves configured widget labels and timing", () => {
+  const radio = read("radio-group.component.js"), menu = read("menu-item.component.js"),
+    neo = read("neumorphic-kit-components.js"), folding = read("folding-menu.component.js"),
+    microphone = read("microphone-control.component.js"), shade = read("shade-control.component.js"),
+    carousel = read("horizontal-carousel.component.js");
+  assert.ok(radio.includes('String(value) !== ""'));
+  assert.ok(menu.includes("if (choice > 0) renderChoice(button, choice - 1, localLabels[index])"));
+  assert.ok((neo.match(/String\(value\) !== ""/g) || []).length >= 4);
+  assert.ok((folding.match(/String\(value\) !== ""/g) || []).length >= 2);
+  assert.ok(microphone.includes('String(value)!==""'));
+  assert.ok(shade.includes('String(value)!==""'));
+  assert.ok(carousel.includes('String(value) !== ""'));
+});
+
+run("Glass Block remains visible and styled on older touch-panel Chromium", () => {
+  const glass = read("glass-block.component.js");
+  assert.ok(glass.includes('key: "useVisibleFeedback"'));
+  assert.ok(glass.includes("if (p.useVisibleFeedback === true"));
+  assert.ok(glass.includes("background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(52,68,68,.72)"));
+  assert.ok(glass.includes("-webkit-backdrop-filter"));
+});
+
+run("circular D-Pad center icon does not depend on panel fonts", () => {
+  const neo = read("neumorphic-kit-components.js");
+  assert.ok(neo.includes('centerIconMarkup = `<svg viewBox="0 0 24 24"'));
+  assert.ok(neo.includes('root.querySelector(".nd-center").innerHTML = centerIconMarkup'));
+  assert.ok(neo.includes('power: \'<path d="M12 3v9"'));
+});
+
 run("migration repairs legacy Rolling Menu collection paths", () => {
   const result = ComposerProjectMigrations.migrate({
     version: 4,
@@ -703,17 +789,69 @@ run("versioned design libraries import without replacing existing components", (
   assert.ok(editor.includes("registerCustomComponent(component)"));
 });
 
-run("new projects provide editable AV starter templates", () => {
+run("new projects support blank projects and persistent preset templates", () => {
   const editor = read("editor.js"),
-    markup = read("editor.html");
+    markup = read("editor.html"),
+    desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
   assert.ok(markup.includes('id="new-project-dialog"'));
-  ["blank", "conference", "classroom", "multi-room"].forEach((starter) =>
-    assert.ok(markup.includes(`data-starter-project="${starter}"`)),
+  assert.ok(markup.includes('id="create-blank-project"'));
+  assert.ok(markup.includes('id="create-from-preset"'));
+  assert.ok(markup.includes('id="save-project-preset"'));
+  assert.ok(markup.includes('id="project-preset-list"'));
+  assert.ok(!markup.includes('data-starter-project="conference"'));
+  assert.ok(!markup.includes('data-starter-project="classroom"'));
+  assert.ok(!markup.includes('data-starter-project="multi-room"'));
+  assert.ok(editor.includes("function createBlankProject"));
+  assert.ok(editor.includes('nativeRequest("saveProjectPreset"'));
+  assert.ok(editor.includes('nativeRequest("listProjectPresets"'));
+  assert.ok(editor.includes('nativeRequest("readProjectPreset"'));
+  assert.ok(editor.includes('nativeRequest("deleteProjectPreset"'));
+  assert.ok(desktop.includes('case "saveProjectPreset"'));
+  assert.ok(desktop.includes("ProjectPresetFolder"));
+  assert.ok(desktop.includes('"Project Presets"'));
+});
+
+run("panel zoom controls remain above high-z widgets and subpages", () => {
+  const styles = read("editor.css");
+  assert.match(styles, /\.stage-tools\s*\{[\s\S]*?z-index:\s*1000001/);
+  assert.match(styles, /\.stage\s*\{[\s\S]*?isolation:\s*isolate/);
+  assert.match(styles, /\.toolbar\s*\{[\s\S]*?z-index:\s*2000000/);
+  assert.match(styles, /\.app-menu-popup\s*\{[\s\S]*?z-index:\s*2000001/);
+});
+
+run("all pop-out dialogs use one draggable resizable dark window system", () => {
+  const editor = read("editor.js"), styles = read("editor.css");
+  assert.ok(editor.includes(".dialog-title > button"));
+  assert.ok(editor.includes('close.classList.add("dialog-close")'));
+  assert.ok(editor.includes('form.querySelector(".dialog-title")'));
+  assert.match(styles, /dialog\s*\{[\s\S]*?resize:\s*both/);
+  assert.ok(styles.includes('dialog input:not([type="checkbox"])'));
+  assert.ok(styles.includes("dialog select option"));
+  assert.ok(styles.includes(".subpage-properties-dialog{width:min(820px,92vw)}"));
+});
+
+run("subpages use visual placement choices and direct instance sizing", () => {
+  const editor = read("editor.js"),
+    markup = read("editor.html"),
+    styles = read("editor.css");
+  assert.ok(markup.includes('id="create-subpage-dialog"'));
+  ["top", "bottom", "left", "right"].forEach((placement) =>
+    assert.ok(markup.includes(`name="create-subpage-placement" value="${placement}"`)),
   );
-  assert.ok(editor.includes("function createStarterProject"));
-  assert.ok(editor.includes("function starterItem"));
-  assert.ok(editor.includes('bindingMode: "contract"'));
-  assert.ok(editor.includes('targetPage: target.id'));
+  assert.ok(editor.includes("function openCreateSubpage"));
+  assert.ok(editor.includes("function subpagePointerOp"));
+  assert.ok(editor.includes('layer.placement = "custom"'));
+  assert.ok(editor.includes("instance.deviceOverrides[targetKey]"));
+  assert.ok(editor.includes("masterSubpage ? subpageResolved(masterSubpage, state.activePage)"));
+  assert.ok(editor.includes("pasteOriginX + (Number(item.x) || 0) - sourceBounds.left"));
+  assert.ok(editor.includes("inside subpage"));
+  assert.ok(editor.includes('stage.classList.toggle("subpage-master-canvas"'));
+  assert.ok(editor.includes("masterBounds?.width || state.width"));
+  assert.ok(editor.includes("PLACED ${String(resolved.placement"));
+  assert.ok(editor.includes("function centerSubpageMasterCanvas"));
+  assert.ok(markup.includes('id="center-subpage-master"'));
+  assert.ok(styles.includes(".subpage-resize-handle"));
+  assert.ok(styles.includes(".stage.subpage-master-canvas"));
 });
 
 run("responsive compare identifies and saves missing target overrides", () => {
@@ -820,6 +958,14 @@ run("project health includes Crestron performance budgets", () => {
   assert.ok(editor.includes("Peak widgets / page"));
   assert.ok(editor.includes("Embedded assets"));
   assert.ok(editor.includes('category: "Performance"'));
+});
+
+run("project health and panel performance use distinct report views", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("function setHealthDisplayMode(dashboard, showMetrics = false)"));
+  assert.ok(editor.includes("setHealthDisplayMode(true, true);"));
+  assert.ok(editor.includes("setHealthDisplayMode(true, false);"));
+  assert.ok(editor.includes('$("health-metrics").hidden = !dashboard || !showMetrics'));
 });
 
 run("panel performance profiler identifies expensive pages and widgets", () => {
@@ -1113,6 +1259,41 @@ run("linked subpages persist, render, export, and travel in design libraries", (
   assert.ok(exporter.includes("resolved.visibilityEnabled"));
   assert.ok(exporter.includes("subpageClipStyle"));
   assert.ok(exporter.includes("contractSourcePageId"));
+});
+
+run("Widget List exports nested component identities and styling", () => {
+  const exporter = read("exporter.js"), widgetList = read("widget-list.component.js"), editor = read("editor.js");
+  assert.ok(exporter.includes("{id:${JSON.stringify(id)},template:"));
+  assert.ok(widgetList.includes("widget.dataset.component = definition.id"));
+  assert.ok(widgetList.includes('"<style>" + definition.styles + "</style>"'));
+  assert.ok(widgetList.includes('inspectorProperties: includedWidgetProperties'));
+  assert.ok(widgetList.includes('includedWidget__'));
+  assert.ok(widgetList.includes('definition.optionalContent || {}'));
+  assert.ok(widgetList.includes('dynamicRangeBindings: includedWidgetRanges'));
+  assert.ok(widgetList.includes('includedRange__${signal.key}'));
+  assert.ok(widgetList.includes('includedGraphicAsset'));
+  assert.ok(widgetList.includes('wl-shared-graphic-selected'));
+  assert.ok(widgetList.includes('Included Widget Interaction & Animation'));
+  assert.ok(widgetList.includes('function wireSharedInteraction(target, index)'));
+  assert.ok(widgetList.includes('includedMaxEffects'));
+  assert.ok(widgetList.includes('includedEffectIntensity'));
+  assert.ok(widgetList.includes('includedHoldAnimation'));
+  assert.ok(widgetList.includes('includedActionTrigger'));
+  assert.ok(widgetList.includes('function runIncludedAction(phase, index, target)'));
+  assert.ok(widgetList.includes('replace(/\\{index\\}/g'));
+  assert.ok(widgetList.includes('context.interactions.bindPrimaryPointer'));
+  assert.ok(widgetList.includes('name + "-percent"'));
+  assert.ok(editor.includes('definition.inspectorProperties(item.properties || {}'));
+  assert.ok(editor.includes('function resolvedRangeBindings(definition, item)'));
+  assert.ok(exporter.includes('optionalContent:${JSON.stringify(d.optionalContent || {})}'));
+  assert.ok(exporter.includes('properties.includedGraphicAssetData = assetUrl'));
+  assert.ok(editor.includes('function widgetListResponsiveSnapshot(item)'));
+  assert.ok(editor.includes('function fitWidgetListItems(item, rect = item)'));
+  assert.ok(editor.includes('scrolling lists'));
+  assert.ok(editor.includes('Reset included widget settings'));
+  assert.ok(editor.includes('unavailable or recursive included widget'));
+  assert.ok(editor.includes('simultaneous effects across a large list'));
+  assert.ok(read("editor.html").includes('id="widget-list-responsive-tools"'));
 });
 
 if (process.exitCode) process.exit(process.exitCode);

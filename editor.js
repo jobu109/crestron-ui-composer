@@ -79,6 +79,8 @@
   let customEditingId = "";
   let editingSubpagePagesId = "";
   let editingSubpagePropertiesId = "";
+  let creatingSubpageMode = "";
+  let selectedSubpageInstanceKey = "";
   let contextSubpageId = "", contextSubpagePageId = "";
   let simulatorSubpageKey = "";
   const hiddenSubpageInstances = new Set(), highlightedSubpageInstances = new Set();
@@ -100,13 +102,33 @@
     stage.style.zoom = panelZoom;
     $("zoom-level").textContent = `${Math.round(panelZoom * 100)}%`;
     localStorage.setItem("crestron-ui-composer-panel-zoom", panelZoom);
+    requestAnimationFrame(centerSubpageMasterCanvas);
+  }
+  function centerSubpageMasterCanvas(scroll = false) {
+    const viewport = document.querySelector(".stage-wrap"),
+      isMaster = stage.classList.contains("subpage-master-canvas");
+    $("center-subpage-master").hidden = !isMaster;
+    if (!isMaster) {
+      stage.style.marginLeft = "";
+      stage.style.marginTop = "";
+      return;
+    }
+    const canvasWidth = Math.max(1, parseFloat(stage.style.width) || state.width),
+      canvasHeight = Math.max(1, parseFloat(stage.style.height) || state.height),
+      horizontalSpace = Math.max(0, viewport.clientWidth - canvasWidth * panelZoom - 64),
+      verticalSpace = Math.max(0, viewport.clientHeight - canvasHeight * panelZoom - 105);
+    stage.style.marginLeft = `${Math.max(0, horizontalSpace / 2 / panelZoom)}px`;
+    stage.style.marginTop = `${Math.max(20, verticalSpace / 2 / panelZoom)}px`;
+    if (scroll) viewport.scrollTo({ left: 0, top: 0, behavior: "smooth" });
   }
   function fitPanel() {
     const viewport = document.querySelector(".stage-wrap"),
       horizontalPadding = 64,
       verticalPadding = 82,
-      widthZoom = (viewport.clientWidth - horizontalPadding) / state.width,
-      heightZoom = (viewport.clientHeight - verticalPadding) / state.height;
+      canvasWidth = Math.max(1, parseFloat(stage.style.width) || state.width),
+      canvasHeight = Math.max(1, parseFloat(stage.style.height) || state.height),
+      widthZoom = (viewport.clientWidth - horizontalPadding) / canvasWidth,
+      heightZoom = (viewport.clientHeight - verticalPadding) / canvasHeight;
     setPanelZoom(Math.min(widthZoom, heightZoom, 1));
     viewport.scrollTo({ left: 0, top: 0 });
   }
@@ -161,6 +183,7 @@
       body = document.createElement("div"),
       saved = localStorage.getItem(`crestron-ui-composer-section-${key}`);
     details.className = "side-panel-section";
+    details.id = key;
     details.open = saved === null ? open : saved === "open";
     summary.textContent = title;
     body.className = "side-panel-section-body";
@@ -212,9 +235,12 @@
     if (basicNodes.length)
       collapsiblePanelSection("Widget", basicNodes, "inspector-widget", true);
     [...form.querySelectorAll(":scope > section")].forEach((section) => {
-      const heading = section.querySelector(":scope > h2"),
+      const headerRow = section.querySelector(":scope > .section-header-row"),
+        heading = section.querySelector(":scope > h2, :scope > .section-header-row > h2"),
         title = heading?.textContent.trim() || "Section",
-        children = [...section.children].filter((child) => child !== heading),
+        children = [...section.children].filter(
+          (child) => child !== heading && child !== headerRow,
+        ),
         details = collapsiblePanelSection(
           title,
           children,
@@ -223,23 +249,45 @@
           section,
         );
       if (details) {
-        details.id = section.id;
+        if (section.id) details.id = section.id;
         details.classList.add(
           ...[...section.classList].filter((name) => name !== "signal-section"),
         );
         details.hidden = section.hidden;
+        const summary = details.querySelector(":scope > summary");
+        if (summary && headerRow) {
+          [...headerRow.children]
+            .filter((child) => child !== heading)
+            .forEach((child) => {
+              child.addEventListener("click", (event) => event.stopPropagation());
+              summary.appendChild(child);
+            });
+        }
       }
       heading?.remove();
+      headerRow?.remove();
       section.remove();
     });
-    const navigation = $("prop-target")?.closest("label");
-    if (navigation)
-      collapsiblePanelSection(
-        "Navigation",
-        [navigation],
-        "inspector-navigation",
-        false,
-      );
+    const widgetBody = form.querySelector(
+        ":scope > .side-panel-section > .side-panel-section-body",
+      ),
+      navigation = $("prop-target")?.closest("label"),
+      pageVisibility = $("prop-hide-on-page-wrap");
+    if (widgetBody && navigation) widgetBody.appendChild(navigation);
+    if (widgetBody && pageVisibility) widgetBody.appendChild(pageVisibility);
+
+    const sectionOrder = [
+      "inspector-widget",
+      "component-properties-section",
+      "asset-inspector-section",
+      "inspector-interaction-animation",
+      "inspector-signal-bindings",
+      "inspector-responsive-layout",
+    ];
+    sectionOrder.forEach((id) => {
+      const section = $(id);
+      if (section && section.parentNode === form) form.appendChild(section);
+    });
     const pageHeading = [...inspector.querySelectorAll(":scope > h2")].find(
       (heading) => heading.textContent.trim() === "Page",
     );
@@ -250,22 +298,7 @@
         pageNodes.push(node);
         node = next;
       }
-      const pageBody = $("page-library-section")?.querySelector(
-        ":scope > .side-panel-section-body",
-      );
-      if (pageBody) {
-        const divider = document.createElement("div"),
-          heading = document.createElement("h3"),
-          settings = document.createElement("div");
-        divider.className = "page-settings-divider";
-        heading.className = "page-settings-title";
-        heading.textContent = "Page settings";
-        settings.className = "page-sidebar-settings";
-        settings.append(...pageNodes);
-        pageBody.append(divider, heading, settings);
-      } else {
-        collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
-      }
+      collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
       pageHeading.remove();
     }
     const inspectorHeading = inspector.querySelector(":scope > h2");
@@ -853,6 +886,9 @@
     "Status & Information",
     "Visual Only",
   ];
+  // Category expansion is deliberately session-only. A fresh application
+  // launch always begins with a compact, fully collapsed component palette.
+  const openComponentCategories = new Set();
   const native = window.chrome && window.chrome.webview,
     nativePending = new Map();
   if (native)
@@ -1282,11 +1318,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         summary = document.createElement("summary"),
         items = document.createElement("div");
       group.className = "component-category";
-      group.open =
-        !!query ||
-        ["Standard Buttons", "Sliders & Levels", "Text & Input"].includes(
-          category,
-        );
+      group.open = !!query || openComponentCategories.has(category);
+      group.addEventListener("toggle", () => {
+        if (query) return;
+        if (group.open) openComponentCategories.add(category);
+        else openComponentCategories.delete(category);
+      });
       summary.innerHTML =
         category +
         '<span class="category-count">' +
@@ -1410,6 +1447,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   ) {
     return id === "custom" ? `custom:${width}x${height}` : id;
   }
+  const widgetListResponsiveKeys = [
+    "orientation", "defaultCount", "useWidgetDefaultSize", "itemWidth", "itemHeight", "itemGap", "itemPadding", "alignItems",
+    "scrollReturnEnabled", "scrollReturnThreshold", "scrollReturnSize", "includedGraphicWidth", "includedGraphicHeight", "includedGraphicX", "includedGraphicY", "includedGraphicOpacity", "includedMaxEffects"
+  ];
+  function widgetListResponsiveSnapshot(item) {
+    if (item?.componentId !== "widget-list") return null;
+    return Object.fromEntries(widgetListResponsiveKeys.filter(key => Object.prototype.hasOwnProperty.call(item.properties || {}, key)).map(key => [key, structuredClone(item.properties[key])]));
+  }
+  function applyWidgetListResponsiveSnapshot(item, snapshot) {
+    if (item?.componentId !== "widget-list" || !snapshot) return;
+    item.properties = { ...(item.properties || {}), ...structuredClone(snapshot) };
+  }
+  function widgetListVisibleCount(item, rect = item) {
+    if (item?.componentId !== "widget-list") return 0;
+    const p = item.properties || {}, horizontal = p.orientation !== "vertical", padding = Math.max(0, Number(p.itemPadding) || 0), gap = Math.max(0, Number(p.itemGap) || 0),
+      definition = window.ComposerRuntime.get(p.widgetType || "standard-button"), useDefault = p.useWidgetDefaultSize === true || p.useWidgetDefaultSize === 1 || p.useWidgetDefaultSize === "1" || String(p.useWidgetDefaultSize).toLowerCase() === "true",
+      rawSize = horizontal ? (useDefault ? Number(definition?.defaultSize?.width) || 220 : Number(p.itemWidth) || 220) : (useDefault ? Number(definition?.defaultSize?.height) || 120 : Number(p.itemHeight) || 120),
+      itemSize = Math.max(1, rawSize + padding * 2), available = Math.max(1, Number(horizontal ? rect.w : rect.h) - 8);
+    return Math.max(1, Math.floor((available + gap) / (itemSize + gap)));
+  }
+  function fitWidgetListItems(item, rect = item) {
+    if (item?.componentId !== "widget-list") return;
+    const p = item.properties ||= {}, horizontal = p.orientation !== "vertical", count = Math.max(1, Math.min(20, Number(p.defaultCount) || 1)), gap = Math.max(0, Number(p.itemGap) || 0), padding = Math.max(0, Number(p.itemPadding) || 0),
+      available = Math.max(44, Number(horizontal ? rect.w : rect.h) - 8), fitted = Math.max(44, Math.floor((available - gap * (count - 1)) / count) - padding * 2);
+    p.useWidgetDefaultSize = false;
+    if (horizontal) p.itemWidth = fitted; else p.itemHeight = fitted;
+  }
   function savePanelLayouts(
     id = state.targetDevice,
     width = state.width,
@@ -1425,6 +1489,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         h: item.h,
         panelWidth: width,
         panelHeight: height,
+        widgetListProperties: widgetListResponsiveSnapshot(item),
       };
     });
     state.subpages.forEach((entry) => {
@@ -1465,6 +1530,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           layout,
         );
       Object.assign(item, { x: rect.x, y: rect.y, w: rect.w, h: rect.h });
+      if (saved?.widgetListProperties) applyWidgetListResponsiveSnapshot(item, saved.widgetListProperties);
     });
     resize(width, height);
     renderPage();
@@ -1628,7 +1694,94 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       easing: interaction.easing || "ease-out",
     });
   }
-  function playPressEffect(element, interaction, clientX, clientY) {
+  function playGlassCrackEffect(element, interaction, clientX, clientY, pressedTarget) {
+    let target = pressedTarget?.closest?.("button,[role='button'],.button,.btn");
+    if (!target || !element.contains(target))
+      target = element.querySelector("button,[role='button'],.button,.btn,.scoped-preview") || element;
+    const rect = target.getBoundingClientRect();
+    const x = Number.isFinite(clientX) ? clientX - rect.left : rect.width / 2;
+    const y = Number.isFinite(clientY) ? clientY - rect.top : rect.height / 2;
+    const duration = Math.max(180, Number(interaction.effectDuration) || 650);
+    const color = interaction.effectColor || "#eaf8ff";
+    const canvas = document.createElement("canvas");
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    Object.assign(canvas.style, {
+      position: "absolute", inset: "0", width: "100%", height: "100%",
+      pointerEvents: "none", borderRadius: "inherit", zIndex: "9999",
+    });
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const size = Math.max(25, Number(interaction.effectSize) || 125) / 100;
+    const radius = Math.min(rect.width, rect.height) * 0.5 * size;
+    const count = 16;
+    const spokes = [];
+    const strokePath = (points, width = .72, alpha = .88) => {
+      if (points.length < 2) return;
+      const draw = (strokeStyle, lineWidth, offsetX, offsetY) => {
+        ctx.beginPath();
+        points.forEach((point, index) =>
+          index ? ctx.lineTo(point.x + offsetX, point.y + offsetY) : ctx.moveTo(point.x + offsetX, point.y + offsetY));
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+      };
+      draw(`rgba(0,0,0,${alpha * .6})`, width + .75, .55, .7);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 1.1;
+      draw(color, width, 0, 0);
+      ctx.shadowBlur = 0;
+      draw(`rgba(255,255,255,${alpha * .62})`, Math.max(.22, width * .28), -.28, -.32);
+    };
+    for (let index = 0; index < count; index += 1) {
+      const angle = index / count * Math.PI * 2 + (Math.random() - .5) * .19;
+      const length = radius * (.52 + Math.random() * .56);
+      const steps = 6 + Math.floor(Math.random() * 4);
+      const points = [{ x, y }];
+      for (let step = 1; step <= steps; step += 1) {
+        const distance = length * step / steps;
+        const jitter = step === steps ? 0 : (Math.random() - .5) * 5.5;
+        points.push({
+          x: x + Math.cos(angle) * distance + Math.cos(angle + Math.PI / 2) * jitter,
+          y: y + Math.sin(angle) * distance + Math.sin(angle + Math.PI / 2) * jitter,
+        });
+      }
+      spokes.push(points);
+      strokePath(points, .48 + Math.random() * .5, .78 + Math.random() * .2);
+      if (index % 2 === 0) {
+        const origin = points[3 + Math.floor(Math.random() * Math.max(1, points.length - 4))];
+        const branchAngle = angle + (Math.random() > .5 ? 1 : -1) * (.38 + Math.random() * .42);
+        const branchLength = length * (.16 + Math.random() * .18);
+        strokePath([
+          origin,
+          { x: origin.x + Math.cos(branchAngle) * branchLength * .45 + (Math.random() - .5) * 3,
+            y: origin.y + Math.sin(branchAngle) * branchLength * .45 + (Math.random() - .5) * 3 },
+          { x: origin.x + Math.cos(branchAngle) * branchLength,
+            y: origin.y + Math.sin(branchAngle) * branchLength },
+        ], .42, .72);
+      }
+    }
+    [.16, .29, .43, .58].forEach((fraction, ringIndex) => {
+      for (let index = 0; index < count; index += 1) {
+        if (Math.random() < .18 + ringIndex * .04) continue;
+        const first = spokes[index], second = spokes[(index + 1) % count];
+        const a = first[Math.min(first.length - 1, Math.max(1, Math.round((first.length - 1) * fraction)))];
+        const b = second[Math.min(second.length - 1, Math.max(1, Math.round((second.length - 1) * fraction)))];
+        strokePath([a, { x: (a.x + b.x) / 2 + (Math.random() - .5) * 4, y: (a.y + b.y) / 2 + (Math.random() - .5) * 4 }, b], .34, .5);
+      }
+    });
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    ctx.beginPath();
+    ctx.arc(x, y, 1.25, 0, Math.PI * 2);
+    ctx.fill();
+    target.appendChild(canvas);
+    canvas.animate([{ opacity: 1 }, { opacity: .9, offset: .65 }, { opacity: 0 }], { duration, easing: "ease-out" });
+    setTimeout(() => canvas.remove(), duration + 40);
+  }
+  function playPressEffect(element, interaction, clientX, clientY, pressedTarget) {
     const effect = interaction?.pressEffect || "none";
     if (!element || effect === "none") return;
     const rect = element.getBoundingClientRect();
@@ -1645,6 +1798,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const duration = Math.max(100, Number(interaction.effectDuration) || 650);
     const size = Math.max(25, Number(interaction.effectSize) || 125) / 100;
     const color = interaction.effectColor || "#04dcb9";
+    if (effect === "glass-crack") {
+      playGlassCrackEffect(element, interaction, clientX, clientY, pressedTarget);
+      return;
+    }
     if (effect === "shake") {
       const target = element.querySelector(".scoped-preview") || element;
       const distance = Math.max(2, 6 * size);
@@ -1837,6 +1994,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           effectInteraction,
           event.clientX,
           event.clientY,
+          event.target,
         );
         interactions
           .filter((interaction) => interaction.trigger === "press")
@@ -2200,9 +2358,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     ensureToastQueueItem();
     stage.innerHTML = "";
     const page = currentPage(),
+      masterSubpage = state.subpages.find((entry) => entry.sourcePageId === page.id),
+      masterBounds = masterSubpage ? subpageResolved(masterSubpage, page.id) : null,
       backgroundAsset = state.assets.find(
         (asset) => asset.id === page.backgroundAsset,
       );
+    stage.style.width = `${masterBounds?.width || state.width}px`;
+    stage.style.height = `${masterBounds?.height || state.height}px`;
+    stage.classList.toggle("subpage-master-canvas", !!masterSubpage);
+    stage.dataset.masterPlacement = masterSubpage?.placement || "";
+    requestAnimationFrame(centerSubpageMasterCanvas);
     stage.style.backgroundColor = page.background;
     stage.style.backgroundImage = backgroundAsset
       ? `url("${backgroundAsset.dataUrl}")`
@@ -2376,6 +2541,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           item.backgroundAsset === assetId ||
           item.graphicAsset === assetId ||
           item.selectedGraphicAsset === assetId ||
+          Object.values(item.properties || {}).includes(assetId) ||
           (fontFamily && Object.values(item.properties || {}).includes(fontFamily)),
       ).length
     );
@@ -2990,48 +3156,69 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     renderPage(); renderReusableLibrary(); commitHistory();
     setStatus(`Moved “${entry.name}” ${direction < 0 ? "back" : "forward"}`);
   }
-  function createSubpageFromCurrentPage() {
-    const page = currentPage(),
-      name = prompt("Subpage name", page.name === "Home" ? "Header" : page.name);
-    if (!name?.trim()) return;
-    const placement = String(prompt("Placement: top, bottom, left, right, or overlay", /footer/i.test(name) ? "bottom" : "top") || "top").trim().toLowerCase(),
-      horizontal = placement === "top" || placement === "bottom",
-      size = Math.max(1, Math.round(Number(prompt(horizontal ? "Subpage height" : "Subpage width", "100")) || 100));
+  function createSubpageFromCurrentPage(name, placement, width, height) {
+    const page = currentPage();
     const subpageId = uid("subpage-");
     page.subpageMasterId = subpageId;
     state.subpages.push({
-      id: subpageId, name: name.trim(), sourcePageId: page.id,
-      placement: ["top", "bottom", "left", "right", "overlay"].includes(placement) ? placement : "top",
-      width: horizontal ? state.width : size, height: horizontal ? size : state.height,
+      id: subpageId, name, sourcePageId: page.id, placement, width, height,
       includedPages: [], excludedPages: [page.id], visibilityEnabled: false,
-      bindingMode: "contract", bindingScope: "shared", visibility: `${String(name).replace(/[^A-Za-z0-9_]/g, "_")}.Visibility`, z: 9000, instanceOverrides: {}, deviceOverrides: {},
+      bindingMode: "contract", bindingScope: "shared", visibility: `${name.replace(/[^A-Za-z0-9_]/g, "_")}.Visibility`, z: 9000, instanceOverrides: {}, deviceOverrides: {},
       basePanelKey: panelLayoutKey(), basePanelWidth: state.width, basePanelHeight: state.height,
     });
-    renderPage(); commitHistory(); setStatus(`Created linked subpage “${name.trim()}”`);
+    renderPage(); commitHistory(); setStatus(`Created linked subpage “${name}”`);
   }
-  function createBlankSubpage() {
-    const name = prompt("Blank subpage name", "Header");
-    if (!name?.trim()) return;
-    const placement = String(prompt("Placement: top, bottom, left, right, or overlay", /footer/i.test(name) ? "bottom" : "top") || "top").trim().toLowerCase(),
-      normalizedPlacement = ["top", "bottom", "left", "right", "overlay"].includes(placement) ? placement : "top",
-      horizontal = normalizedPlacement === "top" || normalizedPlacement === "bottom",
-      width = horizontal ? state.width : Math.max(1, Math.round(Number(prompt("Subpage width", "100")) || 100)),
-      height = horizontal ? Math.max(1, Math.round(Number(prompt("Subpage height", "100")) || 100)) : state.height,
-      id = uid("subpage-"),
+  function createBlankSubpage(name, placement, width, height) {
+    const id = uid("subpage-"),
       page = {
-        id: uid("page-"), name: `${name.trim()} Master`, background: currentPage()?.background || "#182126",
+        id: uid("page-"), name: `${name} Master`, background: currentPage()?.background || "#182126",
         bindingMode: "none", binding: "", transition: "none", transitionDuration: 350,
         subpageMasterId: id,
       };
     state.pages.push(page);
     state.subpages.push({
-      id, name: name.trim(), sourcePageId: page.id, placement: normalizedPlacement,
+      id, name, sourcePageId: page.id, placement,
       width, height, includedPages: [], excludedPages: [page.id], visibilityEnabled: false,
-      bindingMode: "contract", bindingScope: "shared", visibility: `${String(name).replace(/[^A-Za-z0-9_]/g, "_")}.Visibility`, z: 9000, instanceOverrides: {}, deviceOverrides: {},
+      bindingMode: "contract", bindingScope: "shared", visibility: `${name.replace(/[^A-Za-z0-9_]/g, "_")}.Visibility`, z: 9000, instanceOverrides: {}, deviceOverrides: {},
       basePanelKey: panelLayoutKey(), basePanelWidth: state.width, basePanelHeight: state.height,
     });
     state.activePage = page.id;
-    renderPage(); commitHistory(); setStatus(`Created blank subpage “${name.trim()}”`);
+    renderPage(); commitHistory(); setStatus(`Created blank subpage “${name}”`);
+  }
+  function selectedCreateSubpagePlacement() {
+    return document.querySelector('input[name="create-subpage-placement"]:checked')?.value || "top";
+  }
+  function syncCreateSubpageDimensions(reset = false) {
+    const placement = selectedCreateSubpagePlacement(), horizontal = placement === "top" || placement === "bottom",
+      width = $("create-subpage-width"), height = $("create-subpage-height");
+    width.disabled = horizontal; height.disabled = !horizontal;
+    if (reset || horizontal) width.value = state.width;
+    if (reset || !horizontal) height.value = state.height;
+    if (reset) {
+      if (horizontal) height.value = 100;
+      else width.value = 100;
+    }
+  }
+  function openCreateSubpage(mode) {
+    creatingSubpageMode = mode;
+    const fromCurrent = mode === "current", page = currentPage();
+    $("create-subpage-description").textContent = fromCurrent
+      ? `Use “${page.name}” as the linked subpage master.`
+      : "Create a new blank linked master page.";
+    $("create-subpage-name").value = fromCurrent && page.name !== "Home" ? page.name : "Header";
+    document.querySelector('input[name="create-subpage-placement"][value="top"]').checked = true;
+    syncCreateSubpageDimensions(true);
+    $("create-subpage-dialog").showModal();
+    $("create-subpage-name").select();
+  }
+  function confirmCreateSubpage(event) {
+    const name = $("create-subpage-name").value.trim(), placement = selectedCreateSubpagePlacement(),
+      horizontal = placement === "top" || placement === "bottom",
+      width = horizontal ? state.width : Math.max(1, Number($("create-subpage-width").value) || 100),
+      height = horizontal ? Math.max(1, Number($("create-subpage-height").value) || 100) : state.height;
+    if (!name) { event.preventDefault(); return $("create-subpage-name").focus(); }
+    if (creatingSubpageMode === "current") createSubpageFromCurrentPage(name, placement, width, height);
+    else createBlankSubpage(name, placement, width, height);
   }
   function activeSubpagePropertyLayer(entry, create = false) {
     const pageId = $("subpage-property-page").value, targetKey = $("subpage-property-target").value;
@@ -3167,6 +3354,46 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     entry.excludedPages = [entry.sourcePageId, ...normalPages.filter((page) => !included.has(page.id)).map((page) => page.id)];
     renderPage(); renderReusableLibrary(); commitHistory(); setStatus(`Updated pages for “${entry.name}”`);
   }
+  function subpagePointerOp(event, entry, pageId, resize = false) {
+    if (event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    const key = `${entry.id}:${pageId}`, resolved = subpageResolved(entry, pageId), offset = subpageOffset(entry, pageId),
+      targetKey = panelLayoutKey(), startX = event.clientX, startY = event.clientY,
+      start = { x: offset.x, y: offset.y, width: resolved.width, height: resolved.height },
+      surface = event.currentTarget.closest(".subpage-instance-surface"),
+      children = [...stage.querySelectorAll(`[data-id^="subpage-instance-${entry.id}-${pageId}-"]`)];
+    selectedSubpageInstanceKey = key;
+    stage.querySelectorAll(".subpage-instance-surface").forEach((element) => element.classList.toggle("selected", element === surface));
+    select(null);
+    function move(moveEvent) {
+      const dx = (moveEvent.clientX - startX) / panelZoom, dy = (moveEvent.clientY - startY) / panelZoom;
+      if (resize) {
+        surface.style.width = `${Math.max(20, snap(start.width + dx))}px`;
+        surface.style.height = `${Math.max(20, snap(start.height + dy))}px`;
+      } else {
+        surface.style.left = `${snap(start.x + dx)}px`;
+        surface.style.top = `${snap(start.y + dy)}px`;
+        children.forEach((element) => { element.style.transform = `translate(${snap(dx)}px, ${snap(dy)}px)`; });
+      }
+    }
+    function up(upEvent) {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up);
+      entry.instanceOverrides ||= {}; const instance = entry.instanceOverrides[pageId] ||= {};
+      instance.deviceOverrides ||= {}; const layer = instance.deviceOverrides[targetKey] ||= {};
+      const dx = (upEvent.clientX - startX) / panelZoom, dy = (upEvent.clientY - startY) / panelZoom;
+      layer.placement = "custom";
+      if (resize) {
+        layer.width = Math.max(20, snap(start.width + dx)); layer.height = Math.max(20, snap(start.height + dy));
+        layer.x = start.x; layer.y = start.y;
+      } else {
+        layer.x = snap(start.x + dx); layer.y = snap(start.y + dy);
+        layer.width = start.width; layer.height = start.height;
+      }
+      renderPage(); renderReusableLibrary(); commitHistory();
+      setStatus(`${resize ? "Resized" : "Moved"} subpage “${entry.name}” for ${currentPage()?.name || "page"}`);
+    }
+    addEventListener("pointermove", move); addEventListener("pointerup", up);
+  }
   function renderSubpageInstances() {
     const pageId = state.activePage;
     state.subpages.filter((entry) => subpageApplies(entry, pageId)).forEach((entry) => {
@@ -3177,11 +3404,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       surface.dataset.subpage = entry.id;
       const editorKey = `${entry.id}:${pageId}`, editorHidden = hiddenSubpageInstances.has(editorKey);
       if (highlightedSubpageInstances.has(editorKey)) surface.classList.add("subpage-editor-highlight");
+      if (selectedSubpageInstanceKey === editorKey) surface.classList.add("selected");
       if (editorHidden) surface.classList.add("subpage-editor-hidden");
       surface.dataset.subpagePage = pageId;
       surface.style.cssText = `position:absolute;left:${offset.x}px;top:${offset.y}px;width:${resolved.width}px;height:${resolved.height}px;overflow:hidden;pointer-events:auto;z-index:${(Number(resolved.z) || 9000) - 1};${editorHidden ? "background:rgba(241,189,55,.035);outline:1px dashed rgba(241,189,55,.5);" : `background-color:${sourcePage?.background || "transparent"};${backgroundAsset ? `background-image:url("${backgroundAsset.dataUrl}");background-size:${sourcePage?.backgroundAssetFit || "cover"};background-position:${Number(sourcePage?.backgroundAssetX ?? 50)}% ${Number(sourcePage?.backgroundAssetY ?? 50)}%;background-repeat:no-repeat;` : ""}`}`;
       surface.title = editorHidden ? `${entry.name} (hidden in editor — right-click to show)` : `${entry.name} linked subpage — right-click for options`;
       surface.oncontextmenu = (event) => showSubpageContextMenu(event, entry.id, pageId);
+      surface.onpointerdown = (event) => {
+        if (event.target.classList.contains("subpage-resize-handle")) return;
+        subpagePointerOp(event, entry, pageId, false);
+      };
+      const resizeHandle = document.createElement("i");
+      resizeHandle.className = "subpage-resize-handle";
+      resizeHandle.title = "Resize subpage instance";
+      resizeHandle.onpointerdown = (event) => subpagePointerOp(event, entry, pageId, true);
+      surface.appendChild(resizeHandle);
       stage.appendChild(surface);
       if (editorHidden) return;
       state.items.filter((item) => item.pageId === entry.sourcePageId && !item.master).forEach((source) => {
@@ -3210,10 +3447,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       });
     });
     state.subpages.filter((entry) => entry.sourcePageId === pageId).forEach((entry) => {
+      const resolved = subpageResolved(entry, pageId);
       const guide = document.createElement("div");
       guide.className = "subpage-master-guide";
-      guide.style.cssText = `position:absolute;left:0;top:0;width:${entry.width}px;height:${entry.height}px;border:2px dashed #f1bd37;pointer-events:none;z-index:999999;color:#f1bd37;font:700 14px Segoe UI;padding:4px`;
-      guide.textContent = `SUBPAGE MASTER: ${entry.name}`; stage.appendChild(guide);
+      guide.style.cssText = `position:absolute;inset:0;border:2px dashed #f1bd37;pointer-events:none;z-index:999999;color:#f1bd37;font:700 14px Segoe UI;padding:4px`;
+      guide.textContent = `SUBPAGE MASTER: ${entry.name} · ${resolved.width}×${resolved.height} · PLACED ${String(resolved.placement || "top").toUpperCase()}`; stage.appendChild(guide);
     });
   }
   function renderReusableLibrary() {
@@ -3810,8 +4048,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       $("prop-w").value = item.w;
       $("prop-h").value = item.h;
       $("prop-z").value = item.z;
-      $("prop-hide-on-page-wrap").hidden = !item.master || !!item.systemManaged;
-      if (item.master)
+      const isGlobalComponent = item.master === true && !item.systemManaged;
+      $("prop-hide-on-page-wrap").hidden = !isGlobalComponent;
+      if (isGlobalComponent)
         $("prop-hide-on-page").checked = (item.excludedPages || []).includes(
           state.activePage,
         );
@@ -3832,7 +4071,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       renderBindings(item);
       renderInteractionEditor(item);
       renderResponsiveEditor(item);
-    } else renderSafeMarginGuide(null);
+    } else {
+      $("prop-hide-on-page-wrap").hidden = true;
+      renderSafeMarginGuide(null);
+    }
     $("toast-queue-editor-badge").hidden = !(
       item &&
       !multiple &&
@@ -3879,6 +4121,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("layout-override-status").textContent = item.deviceOverrides[key]
       ? `Saved override for ${key}`
       : `Using responsive rules for ${key}`;
+    const widgetListTools = $("widget-list-responsive-tools"), isWidgetList = item.componentId === "widget-list";
+    widgetListTools.hidden = !isWidgetList;
+    if (isWidgetList) {
+      const updateWidgetListSummary = () => {
+        const visible = widgetListVisibleCount(item), total = Math.max(1, Number(item.properties?.defaultCount) || 1), minDimension = Math.min(Number(item.properties?.itemWidth) || 220, Number(item.properties?.itemHeight) || 120);
+        $("widget-list-responsive-summary").textContent = `${visible} of ${total} item${total === 1 ? "" : "s"} visible without scrolling · ${minDimension < 44 ? "Warning: touch target below 44 px" : "Touch target size is acceptable"}`;
+      };
+      $("widget-list-fit-items").onclick = () => { fitWidgetListItems(item); renderItem(item); renderProperties(item); updateWidgetListSummary(); scheduleHistory(); setStatus(`Fitted “${item.name}” items to ${key}`); };
+      $("widget-list-visible-count").onclick = () => { updateWidgetListSummary(); setStatus(`${widgetListVisibleCount(item)} Widget List items fit on ${key}`); };
+      updateWidgetListSummary();
+    }
     $("layout-save-override").onclick = () => {
       item.deviceOverrides[key] = {
         x: item.x,
@@ -3887,6 +4140,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         h: item.h,
         panelWidth: state.width,
         panelHeight: state.height,
+        widgetListProperties: widgetListResponsiveSnapshot(item),
       };
       renderResponsiveEditor(item);
       commitHistory();
@@ -4051,6 +4305,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         h: rect.h,
         panelWidth: target.width,
         panelHeight: target.height,
+        widgetListProperties: widgetListResponsiveSnapshot(item),
       };
     });
     commitHistory();
@@ -4100,6 +4355,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         h: targetRect.h,
         panelWidth: target.width,
         panelHeight: target.height,
+        widgetListProperties: structuredClone(sourceRect.widgetListProperties || widgetListResponsiveSnapshot(item)),
       };
     });
     commitHistory();
@@ -4169,6 +4425,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           h: rect.h,
           panelWidth: target.width,
           panelHeight: target.height,
+          widgetListProperties: structuredClone(sourceRect.widgetListProperties || widgetListResponsiveSnapshot(item)),
         };
       });
     });
@@ -4184,7 +4441,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       currentKey = panelLayoutKey(),
       from = { width: state.width, height: state.height };
     let missing = 0,
-      offCanvas = 0;
+      offCanvas = 0,
+      clippedLists = 0,
+      smallTargets = 0;
     state.items.forEach((item) => {
       const saved = key === currentKey ? item : item.deviceOverrides?.[key],
         rect =
@@ -4207,8 +4466,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         Number(rect.y) + Number(rect.h) > device.height
       )
         offCanvas++;
+      if (item.componentId === "widget-list") {
+        const original = item.properties, responsiveProperties = saved?.widgetListProperties || original;
+        item.properties = responsiveProperties;
+        const visible = widgetListVisibleCount(item, rect), total = Math.max(1, Number(responsiveProperties?.defaultCount) || 1), horizontal = responsiveProperties?.orientation !== "vertical",
+          dimension = Number(horizontal ? responsiveProperties?.itemWidth : responsiveProperties?.itemHeight) || (horizontal ? 220 : 120);
+        if (visible < total) clippedLists++;
+        if (dimension < 44) smallTargets++;
+        item.properties = original;
+      }
     });
-    return { device, key, missing, offCanvas };
+    return { device, key, missing, offCanvas, clippedLists, smallTargets };
   }
   function validateAllResponsiveTargets() {
     const host = $("responsive-validation-results"),
@@ -4218,12 +4486,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     host.innerHTML = "";
     reports.forEach((report) => {
       const row = document.createElement("div");
-      row.className = `responsive-validation-row${report.missing || report.offCanvas ? " problem" : ""}`;
-      row.innerHTML = `<strong>${report.device.name}</strong><span>${report.missing} missing overrides</span><span>${report.offCanvas} off canvas</span>`;
+      row.className = `responsive-validation-row${report.missing || report.offCanvas || report.clippedLists || report.smallTargets ? " problem" : ""}`;
+      row.innerHTML = `<strong>${report.device.name}</strong><span>${report.missing} missing overrides</span><span>${report.offCanvas} off canvas</span><span>${report.clippedLists} scrolling lists</span><span>${report.smallTargets} undersized list targets</span>`;
       host.appendChild(row);
     });
     const problems = reports.reduce(
-      (total, report) => total + report.missing + report.offCanvas,
+      (total, report) => total + report.missing + report.offCanvas + report.clippedLists + report.smallTargets,
       0,
     );
     setStatus(
@@ -4278,9 +4546,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           h: height,
           panelWidth: device.width,
           panelHeight: device.height,
+          widgetListProperties: (() => {
+            if (item.componentId !== "widget-list") return null;
+            const snapshot = widgetListResponsiveSnapshot(item), original = item.properties;
+            item.properties = { ...(item.properties || {}), ...(existing?.widgetListProperties || snapshot || {}) };
+            fitWidgetListItems(item, { w: width, h: height });
+            const fitted = widgetListResponsiveSnapshot(item);
+            item.properties = original;
+            return fitted;
+          })(),
         };
-        if (key === currentKey)
+        if (key === currentKey) {
           Object.assign(item, { x, y, w: width, h: height });
+          applyWidgetListResponsiveSnapshot(item, item.deviceOverrides[key].widgetListProperties);
+        }
       });
     });
     commitHistory();
@@ -4721,7 +5000,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       host = $("component-properties"),
       definition =
         item.componentId && window.ComposerRuntime.get(item.componentId),
-      properties = ((definition && definition.properties) || []).filter(
+      declaredProperties = (definition && definition.properties) || [],
+      dynamicProperties = definition && typeof definition.inspectorProperties === "function"
+        ? definition.inspectorProperties(item.properties || {}, window.ComposerRuntime) || []
+        : [],
+      properties = [...declaredProperties, ...dynamicProperties].filter(
         (property) => {
           if (property.signalSetting || property.key === "bindingMode")
             return false;
@@ -4749,6 +5032,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         ? `Master of “${reusableDefinition.name}” — edits automatically update linked instances.`
         : `Linked to “${reusableDefinition.name}” — enable Override on properties that should differ here.`;
       host.appendChild(status);
+    }
+    if (item.componentId === "widget-list") {
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "wide";
+      reset.textContent = "Reset included widget settings";
+      reset.onclick = () => {
+        item.properties ||= {};
+        Object.keys(item.properties).filter(key => key.startsWith("includedWidget__") || key.startsWith("includedRange__") || key.startsWith("includedRangeIncrement__") || key.startsWith("includedGraphic") || key.startsWith("includedInteraction") || key === "includedPressEffect" || key === "includedAnimation" || key === "includedEffectColor" || key === "includedEntryAnimation" || key === "includedStaggerDelay" || key === "includedHoldDuration" || key === "includedNavigationTrigger" || key === "includedNavigationTarget" || key === "includedMaxEffects").forEach(key => delete item.properties[key]);
+        (definition.properties || []).filter(property => property.key.startsWith("included")).forEach(property => item.properties[property.key] = structuredClone(property.defaultValue));
+        renderItem(item); renderProperties(item); renderBindings(item); commitHistory();
+        setStatus(`Reset shared settings for “${item.name}”`);
+      };
+      host.appendChild(reset);
     }
     function wireReusableOverride(label, controls, property) {
       if (!reusableDefinition || reusableMaster) return;
@@ -5081,6 +5378,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       }
       input.oninput = () => {
         item.properties = item.properties || {};
+        const previousValue = item.properties[property.key];
         let nextValue =
           property.type === "checkbox"
             ? input.checked
@@ -5097,6 +5395,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           input.value = String(nextValue);
         }
         item.properties[property.key] = nextValue;
+        if (item.componentId === "widget-list" && property.key === "widgetType" && previousValue !== nextValue)
+          Object.keys(item.properties).filter(key => key.startsWith("includedWidget__") || key.startsWith("includedRange__") || key.startsWith("includedRangeIncrement__")).forEach(key => delete item.properties[key]);
         if (property.type === "asset" || property.type === "font") {
           const selectedAsset = state.assets.find(
             (asset) => property.type === "font"
@@ -5241,6 +5541,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       Math.min(100, Math.round(configured || labelCount || capacity || 1)),
     );
   }
+  function resolvedRangeBindings(definition, item) {
+    if (!definition) return [];
+    const dynamic = typeof definition.dynamicRangeBindings === "function"
+      ? definition.dynamicRangeBindings(item?.properties || {}, window.ComposerRuntime) || []
+      : null;
+    if (!dynamic) return definition.rangeBindings || [];
+    const visibility = (definition.rangeBindings || []).filter(range => range.visibilitySelector);
+    return [...dynamic, ...visibility];
+  }
   function contractPageInstance(pageId) {
     if (!pageId) return "Global";
     const page = state.pages.find((entry) => entry.id === pageId),
@@ -5301,7 +5610,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           entry.direction,
         );
     });
-    (definition?.rangeBindings || []).forEach((entry) => {
+    resolvedRangeBindings(definition, item).forEach((entry) => {
       if (typeof item.properties?.[entry.baseKey] === "string")
         item.properties[entry.baseKey] = rebase(item.properties[entry.baseKey]);
     });
@@ -5434,7 +5743,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             },
           }),
         );
-        (definition.rangeBindings || []).forEach((range) => {
+        resolvedRangeBindings(definition, item).forEach((range) => {
           if (range.optionalProperty && !item.properties?.[range.optionalProperty]) return;
           rows.push({
             page,
@@ -5443,7 +5752,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             type: range.type,
             direction: range.direction,
             mode: overall,
-            value: String(item.properties[range.baseKey] || ""),
+            value: String(item.properties[range.baseKey] || range.defaultValue || ""),
             itemId: item.id,
             range: true,
             rangeCount: configuredRangeCount(item, range),
@@ -7411,6 +7720,49 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
     refreshSimulatorEvents();
   }
+  function dispatchSimulatedWidgetPress(row, pressed) {
+    const item = state.items.find((candidate) => candidate.id === row.itemId);
+    if (!item) return false;
+    if (!itemVisibleOnPage(item, state.activePage)) {
+      state.activePage = item.pageId;
+      renderPage();
+    }
+    const element = stage.querySelector(`.widget[data-id="${CSS.escape(item.id)}"]`),
+      root = element?.querySelector(".scoped-preview"),
+      definition = item.componentId ? window.ComposerRuntime.get(item.componentId) : null;
+    if (!element || !root) return false;
+    let target = null;
+    if (definition?.itemSelector && Number.isInteger(Number(row.contractIndex))) {
+      try {
+        target = root.querySelectorAll(definition.itemSelector)[Number(row.contractIndex)] || null;
+      } catch (_) {}
+    }
+    target ||= root.querySelector(
+      'button:not([disabled]), [role="button"], input[type="button"], input[type="submit"], [tabindex]',
+    );
+    target ||= root.querySelector("[data-component]") || root.firstElementChild;
+    if (!target) return false;
+    const eventName = pressed ? "pointerdown" : "pointerup",
+      pointerEvent = new PointerEvent(eventName, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        buttons: pressed ? 1 : 0,
+        button: 0,
+      });
+    Object.defineProperty(pointerEvent, "composerSimulator", { value: true });
+    target.dispatchEvent(pointerEvent);
+    element.classList.toggle("simulator-live-press", pressed);
+    if (!pressed) {
+      const clickEvent = new MouseEvent("click", { bubbles: true, cancelable: true, composed: true, button: 0 });
+      Object.defineProperty(clickEvent, "composerSimulator", { value: true });
+      target.dispatchEvent(clickEvent);
+    }
+    return true;
+  }
   function simulatedSignalAddress(row) {
     if (!row.itemId) return String(row.value || "");
     const item = state.items.find((candidate) => candidate.id === row.itemId);
@@ -7478,11 +7830,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         button.className = "simulator-toggle";
         button.textContent = "PULSE";
         button.onclick = () => {
-          setSimulatedSignal(row, true);
+          const dispatched = dispatchSimulatedWidgetPress(row, true);
+          if (!dispatched) setSimulatedSignal(row, true);
           button.classList.add("on");
           setTimeout(() => {
-            setSimulatedSignal(row, false);
+            if (dispatched) dispatchSimulatedWidgetPress(row, false);
+            else setSimulatedSignal(row, false);
             button.classList.remove("on");
+            refreshSimulatorEvents();
           }, 120);
         };
         controlCell.appendChild(button);
@@ -7964,7 +8319,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       row.append(title, controls, help);
       host.appendChild(row);
     });
-    (definition.rangeBindings || []).forEach((range) => {
+    const activeRangeBindings = resolvedRangeBindings(definition, item);
+    activeRangeBindings.forEach((range) => {
       if (range.optionalProperty && !item.properties?.[range.optionalProperty]) return;
       const row = document.createElement("div"),
         title = document.createElement("strong"),
@@ -7976,7 +8332,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       row.className = "signal-binding";
       controls.className = "binding-controls";
       title.textContent = range.name;
-      base.value = (item.properties && item.properties[range.baseKey]) || "";
+      if (item.properties && !Object.prototype.hasOwnProperty.call(item.properties, range.baseKey)) {
+        if (bindingMode === "join") {
+          const sameTypeSlot = activeRangeBindings.filter(entry => entry.type === range.type && activeRangeBindings.indexOf(entry) < activeRangeBindings.indexOf(range)).length,
+            directSignals = (definition.signals || []).filter(signal => signal.type === range.type).length,
+            count = configuredRangeCount(item, range);
+          item.properties[range.baseKey] = String(1 + directSignals + sameTypeSlot * count);
+        } else if (range.defaultValue) item.properties[range.baseKey] = range.defaultValue;
+      }
+      if (item.properties && !Object.prototype.hasOwnProperty.call(item.properties, range.incrementKey))
+        item.properties[range.incrementKey] = 1;
+      base.value = (item.properties && item.properties[range.baseKey]) || range.defaultValue || "";
       base.type = bindingMode === "join" ? "number" : "text";
       base.min = bindingMode === "join" ? "1" : "";
       base.placeholder =
@@ -8024,7 +8390,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     (definition.signalGroups || [])
       .filter(
         (group) =>
-          !(definition.rangeBindings || []).some(
+          !activeRangeBindings.some(
             (range) =>
               range.type === group.type && range.direction === group.direction,
           ),
@@ -8146,6 +8512,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     select(state.selected, "preserve");
   }
   function startMove(e) {
+    if (e.composerSimulator) return;
     if (!e.target.classList.contains("handle")) pointerOp(e, false);
   }
   function startResize(e) {
@@ -8293,7 +8660,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     healthIssueFilter = "all";
     $("health-search").value = "";
     document.querySelectorAll("[data-health-filter]").forEach((button) => button.classList.toggle("active", button.dataset.healthFilter === "all"));
-    setHealthDisplayMode(true);
+    setHealthDisplayMode(true, true);
     renderHealthMetrics();
     renderHealthDashboard();
     $("health-fix-all").disabled = true;
@@ -8829,6 +9196,30 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           "warning",
           `“${item.name}” is not listed as supported by ${device.name}.`,
         );
+      if (item.componentId === "widget-list") {
+        const properties = item.properties || {}, nestedId = String(properties.widgetType || "standard-button"), nested = window.ComposerRuntime.get(nestedId), owner = `Widget List “${item.name}”`;
+        if (!nested || nestedId === "widget-list")
+          add("error", `${owner} selects an unavailable or recursive included widget “${nestedId}”.`, { category: "Widget List" });
+        else {
+          if (unsupported.has(nestedId)) add("error", `${device.name} does not support ${owner}'s included “${nested.name}”.`, { category: "Widget List" });
+          if (supported && !supported.has(nestedId)) add("warning", `${owner}'s included “${nested.name}” is not listed as supported by ${device.name}.`, { category: "Widget List" });
+          (nested.requiresCapabilities || []).forEach(capability => { if (!capabilities.has(capability)) add("error", `${owner}'s included “${nested.name}” requires unsupported capability “${capability}”.`, { category: "Widget List" }); });
+          const useDefault = properties.useWidgetDefaultSize === true || properties.useWidgetDefaultSize === 1 || properties.useWidgetDefaultSize === "1" || String(properties.useWidgetDefaultSize).toLowerCase() === "true",
+            width = useDefault ? Number(nested.defaultSize?.width) || 220 : Number(properties.itemWidth) || 220,
+            height = useDefault ? Number(nested.defaultSize?.height) || 120 : Number(properties.itemHeight) || 120,
+            visible = widgetListVisibleCount(item), total = Math.max(1, Number(properties.defaultCount) || 1);
+          if (width < 44 || height < 44) add("warning", `${owner} contains ${Math.round(width)} × ${Math.round(height)} touch targets; use at least 44 × 44 pixels.`, { category: "Widget List" });
+          if (visible < total) add("warning", `${owner} shows ${visible} of ${total} items without scrolling on ${device.name}.`, { category: "Widget List" });
+        }
+        checkAsset(properties.includedGraphicAsset, owner);
+        checkAsset(properties.includedSelectedGraphicAsset, owner);
+        if (properties.includedNavigationTrigger && properties.includedNavigationTrigger !== "none" && !pageIds.has(properties.includedNavigationTarget))
+          add("error", `${owner} targets a missing page for its shared ${properties.includedNavigationTrigger} navigation.`, { category: "Widget List" });
+        const ranges = resolvedRangeBindings(definition, item).filter(range => !range.visibilitySelector), addresses = new Map();
+        ranges.forEach(range => { const value = String(properties[range.baseKey] || range.defaultValue || "").trim(); if (!value) add("error", `${owner}'s ${range.name} range has no address.`, { category: "Widget List" }); else { const signature = `${range.type}:${range.direction}:${value}`; if (addresses.has(signature)) add("error", `${owner} assigns “${value}” to both ${addresses.get(signature)} and ${range.name}.`, { category: "Widget List" }); else addresses.set(signature, range.name); } });
+        if (Math.max(1, Number(properties.defaultCount) || 1) > 12 && Math.max(1, Number(properties.includedMaxEffects) || 6) > 8)
+          add("warning", `${owner} allows more than eight simultaneous effects across a large list; reduce the effect limit for touch-panel performance.`, { category: "Widget List" });
+      }
       (definition.requiresCapabilities || []).forEach((capability) => {
         if (!capabilities.has(capability))
           add(
@@ -9148,11 +9539,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
     return lines.join("\n");
   }
-  function setHealthDisplayMode(dashboard) {
+  function setHealthDisplayMode(dashboard, showMetrics = false) {
     $("health-dashboard-tools").hidden = !dashboard;
     $("health-dashboard").hidden = !dashboard;
     $("health-report").hidden = dashboard;
-    $("health-metrics").hidden = !dashboard;
+    $("health-metrics").hidden = !dashboard || !showMetrics;
   }
   function renderHealthMetrics() {
     const host = $("health-metrics"),
@@ -9417,8 +9808,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             button.dataset.healthFilter === healthIssueFilter,
           ),
         );
-      setHealthDisplayMode(true);
-      renderHealthMetrics();
+      setHealthDisplayMode(true, false);
       renderHealthDashboard();
       $("health-fix-all").disabled = !issues.some((issue) => issue.fix);
       $("health-title").textContent = "Project health report";
@@ -12047,13 +12437,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           item.assetId === asset.id ||
           item.backgroundAsset === asset.id ||
           item.graphicAsset === asset.id ||
-          item.selectedGraphicAsset === asset.id,
+          item.selectedGraphicAsset === asset.id ||
+          Object.values(item.properties || {}).includes(asset.id),
       )
       .forEach((item) => {
         if (item.assetId === asset.id) {
           item.name = asset.name;
           item.source = assetSource(asset);
         }
+        Object.entries(item.properties || {}).forEach(([key, value]) => {
+          if (value === asset.id) item.properties[`${key}Data`] = asset.dataUrl;
+        });
         renderItem(item);
       });
     event.target.value = "";
@@ -12214,7 +12608,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   };
   $("prop-hide-on-page").onchange = (e) => {
     const item = current();
-    if (!item) return;
+    if (!item || item.master !== true || item.systemManaged) {
+      $("prop-hide-on-page-wrap").hidden = true;
+      return;
+    }
     const excluded = new Set(item.excludedPages || []);
     e.target.checked
       ? excluded.add(state.activePage)
@@ -12256,6 +12653,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const source = JSON.parse(componentClipboard),
       sourceItems = Array.isArray(source) ? source : [source],
       groupMap = new Map(),
+      masterSubpage = state.subpages.find((entry) => entry.sourcePageId === state.activePage),
+      canvasBounds = masterSubpage ? subpageResolved(masterSubpage, state.activePage) : { width: state.width, height: state.height },
+      sourceBounds = {
+        left: Math.min(...sourceItems.map((item) => Number(item.x) || 0)),
+        top: Math.min(...sourceItems.map((item) => Number(item.y) || 0)),
+        right: Math.max(...sourceItems.map((item) => (Number(item.x) || 0) + Math.max(20, Number(item.w) || 20))),
+        bottom: Math.max(...sourceItems.map((item) => (Number(item.y) || 0) + Math.max(20, Number(item.h) || 20))),
+      },
+      groupWidth = sourceBounds.right - sourceBounds.left,
+      groupHeight = sourceBounds.bottom - sourceBounds.top,
+      fitOrigin = (start, end, groupSize, canvasSize) =>
+        start < 0 || end > canvasSize
+          ? Math.max(0, snap((canvasSize - groupSize) / 2))
+          : Math.max(0, Math.min(Math.max(0, canvasSize - groupSize), snap(start + 20))),
+      pasteOriginX = fitOrigin(sourceBounds.left, sourceBounds.right, groupWidth, canvasBounds.width),
+      pasteOriginY = fitOrigin(sourceBounds.top, sourceBounds.bottom, groupHeight, canvasBounds.height),
       baseZ = Math.max(
         0,
         ...state.items
@@ -12266,14 +12679,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         const item = structuredClone(original);
         item.id = uid("item-");
         item.pageId = state.activePage;
-        item.x = Math.max(
-          0,
-          Math.min(state.width - item.w, Number(item.x || 0) + 20),
-        );
-        item.y = Math.max(
-          0,
-          Math.min(state.height - item.h, Number(item.y || 0) + 20),
-        );
+        item.x = pasteOriginX + (Number(item.x) || 0) - sourceBounds.left;
+        item.y = pasteOriginY + (Number(item.y) || 0) - sourceBounds.top;
         item.z = baseZ + index + 1;
         if (item.groupId) {
           if (!groupMap.has(item.groupId))
@@ -12297,8 +12704,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     commitHistory();
     setStatus(
       pasted.length === 1
-        ? "Pasted “" + pasted[0].name + "”"
-        : `Pasted ${pasted.length} components`,
+        ? `Pasted “${pasted[0].name}”${masterSubpage ? ` inside subpage “${masterSubpage.name}”` : ""}`
+        : `Pasted ${pasted.length} components${masterSubpage ? ` inside subpage “${masterSubpage.name}”` : ""}`,
     );
   }
   function cutSelected() {
@@ -14812,8 +15219,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("add-page").onclick = addPage;
   $("save-page-template").onclick = savePageTemplate;
-  $("create-subpage").onclick = createSubpageFromCurrentPage;
-  $("new-blank-subpage").onclick = createBlankSubpage;
+  $("create-subpage").onclick = () => openCreateSubpage("current");
+  $("new-blank-subpage").onclick = () => openCreateSubpage("blank");
+  document.querySelectorAll('input[name="create-subpage-placement"]').forEach((input) => {
+    input.onchange = () => syncCreateSubpageDimensions(true);
+  });
+  $("create-subpage-confirm").onclick = confirmCreateSubpage;
   $("subpage-pages-all").onclick = () => setSubpagePageChecks("all");
   $("subpage-pages-none").onclick = () => setSubpagePageChecks("none");
   $("subpage-pages-invert").onclick = () => setSubpagePageChecks("invert");
@@ -15078,6 +15489,46 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     } else {
       download("crestron-ui-project.cuiproj", text, "application/json");
       markProjectSaved();
+    }
+  };
+  $("save-project-preset").onclick = async () => {
+    const value = project(),
+      integrityErrors = projectIntegrityErrors(value);
+    if (integrityErrors.length) {
+      alert(`The preset was not saved because project integrity validation failed.\n\n${integrityErrors.join("\n")}`);
+      return;
+    }
+    const suggested = String(state.contract.name || "Project Preset").trim(),
+      name = prompt("Preset template name", suggested);
+    if (name === null) return;
+    if (!name.trim()) {
+      alert("Enter a name for the preset template.");
+      return;
+    }
+    const contents = JSON.stringify(value, null, 2);
+    try {
+      let result;
+      if (native) {
+        result = await nativeRequest("saveProjectPreset", { name: name.trim(), contents });
+      } else {
+        const presets = browserProjectPresets(),
+          path = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") || "project-preset",
+          entry = {
+            path,
+            name: name.trim(),
+            modifiedUtc: new Date().toISOString(),
+            size: new Blob([contents]).size,
+            contents,
+          },
+          existing = presets.findIndex((preset) => preset.path === path);
+        if (existing >= 0) presets[existing] = entry;
+        else presets.push(entry);
+        localStorage.setItem(browserPresetKey, JSON.stringify(presets));
+        result = entry;
+      }
+      setStatus(`Saved preset template ${result.name || name.trim()}`);
+    } catch (error) {
+      alert(`The preset template could not be saved.\n\n${error.message}`);
     }
   };
   $("save-project-package").onclick = async () => {
@@ -16001,106 +16452,99 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     lastManualFingerprint = historyState();
     setAutosaveState("Saved");
   }
-  function starterPage(id, name) {
-    return {
-      id,
-      name,
-      background: "#182126",
-      bindingMode: "contract",
-      binding: `Page_Select_${name.replace(/[^A-Za-z0-9_]/g, "_")}`,
-      transition: "slide-left",
-      transitionDuration: 350,
-    };
-  }
-  function starterItem(componentId, page, x, y, overrides = {}) {
-    const definition = window.ComposerRuntime.get(componentId);
-    if (!definition) return null;
-    const item = acceptanceItem(componentId, page.id, x, y, overrides),
-      namespace = `${page.name.replace(/[^A-Za-z0-9_]/g, "_")}.${String(overrides.name || definition.name).replace(/[^A-Za-z0-9_]/g, "_")}`;
-    Object.entries(item.signalBindings || {}).forEach(([key, binding]) => {
-      binding.value = `${namespace}.${key.replace(/[^A-Za-z0-9_]/g, "_")}`;
-    });
-    return item;
-  }
-  function createStarterProject(type) {
+  function createBlankProject() {
     clearProjectForStarter();
-    if (type === "blank") {
-      setStatus("Created blank project");
-      return;
+    setStatus("Created blank project");
+  }
+  const browserPresetKey = "composer-project-presets-v1";
+  function browserProjectPresets() {
+    try {
+      return JSON.parse(localStorage.getItem(browserPresetKey) || "[]");
+    } catch (_) {
+      return [];
     }
-    const definitions = {
-      conference: {
-        name: "ConferenceRoom",
-        pages: ["Home", "Sources", "Audio", "Lighting"],
-        widgets: [
-          ["horizontal-button-list", 0, 60, 150, { name: "Room Navigation", w: 1160, h: 150 }],
-          ["text-block", 0, 60, 350, { name: "Room Status", w: 1160, h: 120, properties: { text: "CONFERENCE ROOM" } }],
-          ["display-control", 1, 60, 150, { name: "Displays", w: 1160, h: 520 }],
-          ["volume-slider", 2, 60, 170, { name: "Program Volume", w: 520, h: 190 }],
-          ["microphone-control", 2, 620, 130, { name: "Microphones", w: 590, h: 560 }],
-          ["lighting-control", 3, 60, 130, { name: "Lighting", w: 1160, h: 570 }],
-        ],
-      },
-      classroom: {
-        name: "Classroom",
-        pages: ["Home", "Presentation", "Camera", "Audio"],
-        widgets: [
-          ["horizontal-button-list", 0, 60, 150, { name: "Classroom Navigation", w: 1160, h: 150 }],
-          ["text-block", 0, 60, 350, { name: "Class Status", w: 1160, h: 120, properties: { text: "CLASSROOM READY" } }],
-          ["display-control", 1, 60, 140, { name: "Presentation Sources", w: 1160, h: 540 }],
-          ["video-input", 2, 110, 110, { name: "Instructor Camera", w: 1060, h: 620 }],
-          ["volume-slider", 3, 100, 180, { name: "Program Volume", w: 500, h: 190 }],
-          ["microphone-control", 3, 650, 120, { name: "Classroom Microphones", w: 540, h: 570 }],
-        ],
-      },
-      "multi-room": {
-        name: "MultiRoom",
-        pages: ["Overview", "Rooms", "Room Control"],
-        widgets: [
-          ["text-block", 0, 60, 60, { name: "System Overview", w: 1160, h: 110, properties: { text: "MULTI-ROOM OVERVIEW" } }],
-          ["display-control", 0, 60, 220, { name: "Room Status", w: 1160, h: 500 }],
-          ["horizontal-button-list", 1, 60, 120, { name: "Room Selection", w: 1160, h: 180 }],
-          ["lighting-control", 2, 40, 120, { name: "Room Lighting", w: 590, h: 570 }],
-          ["microphone-control", 2, 650, 120, { name: "Room Audio", w: 590, h: 570 }],
-        ],
-      },
-    }[type];
-    if (!definitions) return;
-    state.pages = definitions.pages.map((name, index) =>
-      starterPage(`page-${type}-${index + 1}`, name),
+  }
+  async function listProjectPresets() {
+    return native
+      ? await nativeRequest("listProjectPresets")
+      : browserProjectPresets().map(({ contents, ...entry }) => entry);
+  }
+  async function readProjectPreset(entry) {
+    if (native) return await nativeRequest("readProjectPreset", { path: entry.path });
+    const preset = browserProjectPresets().find((candidate) => candidate.path === entry.path);
+    if (!preset) throw new Error("The selected preset no longer exists.");
+    return preset;
+  }
+  async function deleteProjectPreset(entry) {
+    if (native) return await nativeRequest("deleteProjectPreset", { path: entry.path });
+    localStorage.setItem(
+      browserPresetKey,
+      JSON.stringify(browserProjectPresets().filter((candidate) => candidate.path !== entry.path)),
     );
-    state.activePage = state.pages[0].id;
-    state.contract.name = definitions.name;
-    definitions.widgets.forEach(([componentId, pageIndex, x, y, overrides]) => {
-      const item = starterItem(
-        componentId,
-        state.pages[pageIndex],
-        x,
-        y,
-        overrides,
-      );
-      if (item) state.items.push(item);
-    });
-    state.pages.forEach((page, pageIndex) => {
-      state.pages.forEach((target, targetIndex) => {
-        if (pageIndex === targetIndex) return;
-        const item = starterItem("standard-button", page, 30 + targetIndex * 190, 24, {
-          name: `Go to ${target.name}`,
-          w: 170,
-          h: 70,
-          targetPage: target.id,
-          properties: { text: target.name.toUpperCase() },
-        });
-        if (item) state.items.push(item);
+  }
+  function formatPresetSize(size) {
+    if (size < 1024) return `${size} bytes`;
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  }
+  async function renderProjectPresets() {
+    const host = $("project-preset-list");
+    host.innerHTML = '<div class="project-preset-empty">Loading preset templates…</div>';
+    try {
+      const presets = await listProjectPresets();
+      host.innerHTML = "";
+      if (!presets.length) {
+        host.innerHTML = '<div class="project-preset-empty">No presets have been saved yet. Open or build a project, then choose <strong>File → Save project as preset</strong>.</div>';
+        return;
+      }
+      presets.forEach((entry) => {
+        const card = document.createElement("article"),
+          details = document.createElement("div"),
+          actions = document.createElement("div"),
+          create = document.createElement("button"),
+          remove = document.createElement("button");
+        card.className = "project-preset-card";
+        details.innerHTML = `<strong></strong><small></small>`;
+        details.querySelector("strong").textContent = entry.name;
+        details.querySelector("small").textContent = `${new Date(entry.modifiedUtc).toLocaleString()} · ${formatPresetSize(entry.size || 0)}`;
+        actions.className = "project-preset-actions";
+        create.type = remove.type = "button";
+        create.textContent = "Create project";
+        remove.textContent = "Delete";
+        remove.className = "danger";
+        create.onclick = async () => {
+          try {
+            const preset = await readProjectPreset(entry);
+            await loadProjectText(preset.contents, false);
+            projectDirty = true;
+            persistAutosave(historyState(), true);
+            setAutosaveState("Unsaved changes");
+            $("new-project-dialog").close();
+            setStatus(`Created new project from preset ${preset.name || entry.name}`);
+          } catch (error) {
+            alert(`The preset could not be opened.\n\n${error.message}`);
+          }
+        };
+        remove.onclick = async () => {
+          if (!confirm(`Delete preset template “${entry.name}”? This cannot be undone.`)) return;
+          try {
+            await deleteProjectPreset(entry);
+            await renderProjectPresets();
+          } catch (error) {
+            alert(`The preset could not be deleted.\n\n${error.message}`);
+          }
+        };
+        actions.append(create, remove);
+        card.append(details, actions);
+        host.appendChild(card);
       });
-    });
-    renderPage();
-    history.length = 0;
-    historyIndex = -1;
-    commitHistory(false);
-    lastManualFingerprint = historyState();
-    setAutosaveState("Saved");
-    setStatus(`Created ${definitions.pages.length}-page ${definitions.name} starter project`);
+    } catch (error) {
+      host.innerHTML = "";
+      const message = document.createElement("div");
+      message.className = "project-preset-empty";
+      message.textContent = `Preset templates could not be loaded: ${error.message}`;
+      host.appendChild(message);
+    }
   }
   $("new-project").onclick = () => {
     if (
@@ -16110,11 +16554,23 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       return;
     $("new-project-dialog").showModal();
   };
-  document.querySelectorAll("[data-starter-project]").forEach((button) => {
-    button.onclick = () => {
-      $("new-project-dialog").close();
-      createStarterProject(button.dataset.starterProject);
-    };
+  $("create-blank-project").onclick = () => {
+    $("new-project-dialog").close();
+    createBlankProject();
+  };
+  $("create-from-preset").onclick = async () => {
+    $("new-project-choices").hidden = true;
+    $("project-preset-picker").hidden = false;
+    await renderProjectPresets();
+  };
+  $("project-preset-back").onclick = () => {
+    $("project-preset-picker").hidden = true;
+    $("new-project-choices").hidden = false;
+  };
+  $("refresh-project-presets").onclick = renderProjectPresets;
+  $("new-project-dialog").addEventListener("close", () => {
+    $("project-preset-picker").hidden = true;
+    $("new-project-choices").hidden = false;
   });
   $("undo").onclick = undo;
   $("redo").onclick = redo;
@@ -16232,6 +16688,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("zoom-in").onclick = () => setPanelZoom(panelZoom + 0.1);
   $("zoom-level").onclick = () => setPanelZoom(1);
   $("zoom-fit").onclick = fitPanel;
+  $("center-subpage-master").onclick = () => centerSubpageMasterCanvas(true);
   document.querySelector(".stage-wrap").addEventListener(
     "wheel",
     (event) => {
@@ -16243,17 +16700,23 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   );
   document.querySelectorAll("dialog").forEach((dialog) => {
     const form = dialog.querySelector("form");
-    if (!form || form.querySelector(":scope > .dialog-close")) return;
-    const close = document.createElement("button");
+    if (!form) return;
+    let close = form.querySelector(
+      '.dialog-close, .dialog-title > button[value="cancel"][aria-label="Close"]',
+    );
+    if (!close) {
+      close = document.createElement("button");
+      form.prepend(close);
+    }
     close.type = "button";
-    close.className = "dialog-close";
+    close.removeAttribute("value");
+    close.classList.add("dialog-close");
     close.setAttribute("aria-label", "Close");
     close.title = "Close";
     close.textContent = "×";
     close.onclick = () => dialog.close();
-    form.prepend(close);
     if (dialog.id === "simulator-dialog") return;
-    const handle = form.querySelector("h2");
+    const handle = form.querySelector(".dialog-title") || form.querySelector("h2");
     if (!handle) return;
     handle.classList.add("dialog-drag-handle");
     handle.title = "Drag to move";

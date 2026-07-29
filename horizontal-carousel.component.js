@@ -462,7 +462,7 @@
           },
         );
         context.signals.subscribeAddress("serial", labelAddress(i), (value) => {
-          if (value !== undefined && value !== null) labels[i] = String(value);
+          if (value !== undefined && value !== null && String(value) !== "") labels[i] = String(value);
           if (slides[i])
             slides[i].querySelector(".glass-label").textContent =
               labels[i] ?? "";

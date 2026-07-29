@@ -6,6 +6,7 @@ dist/
 # Local tools and temporary working files
 .tools/
 .agents/
+.claude/
 tmp/
 node_modules/
 

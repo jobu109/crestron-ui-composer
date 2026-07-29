@@ -50,7 +50,8 @@
       const fill = root.querySelector(".hold-fill");
       const label = root.querySelector(".hold-label");
       const p = context.options.properties || {};
-      let duration = Math.max(0, Math.min(10, Number(p.holdSeconds) || 0)) * 1000;
+      const configuredDuration = Math.max(0, Math.min(10, Number(p.holdSeconds) || 0)) * 1000;
+      let duration = configuredDuration;
       let holding = false, completed = false, feedbackSelected = false, localCompleted = false, started = 0, frame = 0, selectedTimer = 0;
       let remoteStandard = "", remotePressed = "", remoteSelected = "", remoteCompleted = "";
       const standardLabel = p.text == null ? "SAVE" : String(p.text);
@@ -68,20 +69,18 @@
       function pulse(key) { context.signals.publish(key, true); setTimeout(() => context.signals.publish(key, false), 100); }
       function complete() { if (completed) return; completed = true; holding = false; localCompleted = true; fill.style.width = "100%"; button.classList.remove("pressed"); button.classList.add("held", "saved-splash"); setTimeout(() => button.classList.remove("saved-splash"), 520); pulse("completed"); renderState(); clearTimeout(selectedTimer); if (autoReturn) selectedTimer = setTimeout(clearLocalSelected, selectedTime); }
       function step(now) { if (!holding) return; const amount = duration <= 0 ? 1 : Math.min(1, (now - started) / duration); fill.style.width = `${amount * 100}%`; if (amount >= 1) complete(); else frame = requestAnimationFrame(step); }
-      function down(event) { if (holding) return; clearTimeout(selectedTimer); localCompleted = false; holding = true; completed = false; started = performance.now(); button.classList.remove("active", "held"); button.classList.add("pressed"); fill.style.transition = "none"; renderState(); if (button.setPointerCapture && event) button.setPointerCapture(event.pointerId); frame = requestAnimationFrame(step); if (event) event.preventDefault(); }
+      function down() { if (holding) return; clearTimeout(selectedTimer); localCompleted = false; holding = true; completed = false; started = performance.now(); button.classList.remove("active", "held"); button.classList.add("pressed"); fill.style.transition = "none"; renderState(); frame = requestAnimationFrame(step); }
       function release() { cancelAnimationFrame(frame); const wasCompleted = completed; holding = false; button.classList.remove("pressed"); completed = false; if (!wasCompleted) { fill.style.transition = "width .2s ease"; fill.style.width = "0%"; pulse("press"); } renderState(); }
-      button.addEventListener("pointerdown", down);
-      button.addEventListener("pointerup", release);
-      button.addEventListener("pointercancel", release);
-      button.addEventListener("lostpointercapture", release);
+      function cancel() { cancelAnimationFrame(frame); holding = false; completed = false; button.classList.remove("pressed"); fill.style.transition = "width .2s ease"; fill.style.width = "0%"; renderState(); }
+      const unbindPointer = context.interactions.bindPrimaryPointer(button, { down, up: release, cancel });
       context.signals.subscribe("selected", value => { feedbackSelected = value === true || value === 1 || value === "1"; renderState(); });
       context.signals.subscribe("label", value => { remoteStandard = value == null ? "" : String(value); renderState(); });
       context.signals.subscribe("pressedLabel", value => { remotePressed = value == null ? "" : String(value); renderState(); });
       context.signals.subscribe("selectedLabel", value => { remoteSelected = value == null ? "" : String(value); renderState(); });
       context.signals.subscribe("completedLabel", value => { remoteCompleted = value == null ? "" : String(value); renderState(); });
-      context.signals.subscribe("holdTime", value => { const n = Math.max(0, Number(value) || 0); duration = Math.min(10, n > 10 ? n / 65535 * 10 : n) * 1000; });
+      context.signals.subscribe("holdTime", value => { const n = Math.max(0, Number(value) || 0); duration = n > 0 ? Math.min(10, n > 10 ? n / 65535 * 10 : n) * 1000 : configuredDuration; });
       renderState();
-      return () => { cancelAnimationFrame(frame); clearTimeout(selectedTimer); button.removeEventListener("pointerdown", down); button.removeEventListener("pointerup", release); button.removeEventListener("pointercancel", release); button.removeEventListener("lostpointercapture", release); };
+      return () => { cancelAnimationFrame(frame); clearTimeout(selectedTimer); unbindPointer(); };
     },
   });
 })(window.ComposerRuntime);

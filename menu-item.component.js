@@ -71,7 +71,7 @@
         button.addEventListener("pointerdown", event => { button.classList.add("pressed"); context.signals.publishAddress("digital", press, true); event.preventDefault(); });
         ["pointerup", "pointerleave", "pointercancel"].forEach(name => button.addEventListener(name, () => { button.classList.remove("pressed"); context.signals.publishAddress("digital", press, false); }));
         context.signals.subscribeAddress("digital", address(p.feedbackBase, index), value => button.classList.toggle("active", value === true || value === 1 || value === "1"));
-        context.signals.subscribeAddress("analog", address(p.choiceBase, index), value => renderChoice(button, (Number(value) || 1) - 1, ""));
+        context.signals.subscribeAddress("analog", address(p.choiceBase, index), value => { const choice = Number(value); if (choice > 0) renderChoice(button, choice - 1, localLabels[index]); });
         host.appendChild(button);
       }
       context.signals.subscribeAddress("analog", p.textSizeSignal, value => applyScale("--text-size-px", Number(p.textSize) || 22, value));

@@ -49,7 +49,8 @@
     mount(root, context) {
       const button = root.querySelector(".circular-hold"), ring = root.querySelector(".hold-ring"), label = root.querySelector(".hold-label"), p = context.options.properties || {};
       ring.style.setProperty("--progress-angle", "0deg");
-      let duration = Math.max(0, Math.min(10, Number(p.holdSeconds) || 0)) * 1000;
+      const configuredDuration = Math.max(0, Math.min(10, Number(p.holdSeconds) || 0)) * 1000;
+      let duration = configuredDuration;
       let holding = false, completed = false, feedbackSelected = false, localCompleted = false, started = 0, frame = 0, selectedTimer = 0;
       let remoteStandard = "", remotePressed = "", remoteSelected = "", remoteCompleted = "";
       const labels = { standard: p.text == null ? "SAVE" : String(p.text), pressed: p.pressedText == null ? "Hold to Save" : String(p.pressedText), selected: p.selectedText == null ? "Selected" : String(p.selectedText), completed: p.completedText == null ? "Saved" : String(p.completedText) };
@@ -63,14 +64,15 @@
       function pulse(key) { context.signals.publish(key, true); setTimeout(() => context.signals.publish(key, false), 100); }
       function finish() { if (completed) return; completed = true; holding = false; localCompleted = true; ring.style.setProperty("--progress-angle", "360deg"); button.classList.remove("pressed", "drawing"); button.classList.add("held", "saved-splash"); setTimeout(() => button.classList.remove("saved-splash"), 520); pulse("completed"); render(); clearTimeout(selectedTimer); if (autoReturn) selectedTimer = setTimeout(resetLocal, selectedTime); }
       function step(now) { if (!holding) return; const amount = duration <= 0 ? 1 : Math.min(1, (now - started) / duration); ring.style.setProperty("--progress-angle", `${amount * 360}deg`); if (amount > 0) button.classList.add("drawing"); if (amount >= 1) finish(); else frame = requestAnimationFrame(step); }
-      function down(event) { if (holding) return; clearTimeout(selectedTimer); localCompleted = false; holding = true; completed = false; started = performance.now(); button.classList.remove("active", "held", "pressed", "drawing"); ring.style.setProperty("--progress-angle", "0deg"); void ring.getBoundingClientRect(); button.classList.add("pressed"); render(); if (button.setPointerCapture && event) button.setPointerCapture(event.pointerId); frame = requestAnimationFrame(step); if (event) event.preventDefault(); }
+      function down() { if (holding) return; clearTimeout(selectedTimer); localCompleted = false; holding = true; completed = false; started = performance.now(); button.classList.remove("active", "held", "pressed", "drawing"); ring.style.setProperty("--progress-angle", "0deg"); void ring.getBoundingClientRect(); button.classList.add("pressed"); render(); frame = requestAnimationFrame(step); }
       function release() { cancelAnimationFrame(frame); const done = completed; holding = false; button.classList.remove("pressed", "drawing"); completed = false; if (!done) { ring.style.setProperty("--progress-angle", "0deg"); pulse("press"); } render(); }
-      button.addEventListener("pointerdown", down); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("lostpointercapture", release);
+      function cancel() { cancelAnimationFrame(frame); holding = false; completed = false; button.classList.remove("pressed", "drawing"); ring.style.setProperty("--progress-angle", "0deg"); render(); }
+      const unbindPointer = context.interactions.bindPrimaryPointer(button, { down, up: release, cancel });
       context.signals.subscribe("selected", value => { feedbackSelected = value === true || value === 1 || value === "1"; render(); });
       [["label", value => remoteStandard = value], ["pressedLabel", value => remotePressed = value], ["selectedLabel", value => remoteSelected = value], ["completedLabel", value => remoteCompleted = value]].forEach(([key, assign]) => context.signals.subscribe(key, value => { assign(value == null ? "" : String(value)); render(); }));
-      context.signals.subscribe("holdTime", value => { const n = Math.max(0, Number(value) || 0); duration = Math.min(10, n > 10 ? n / 65535 * 10 : n) * 1000; });
+      context.signals.subscribe("holdTime", value => { const n = Math.max(0, Number(value) || 0); duration = n > 0 ? Math.min(10, n > 10 ? n / 65535 * 10 : n) * 1000 : configuredDuration; });
       render();
-      return () => { cancelAnimationFrame(frame); clearTimeout(selectedTimer); };
+      return () => { cancelAnimationFrame(frame); clearTimeout(selectedTimer); unbindPointer(); };
     },
   });
 })(window.ComposerRuntime);

@@ -81,7 +81,7 @@
       const output = (value, options) => options.outputScale === "100" ? value : Math.round(value / 100 * 65535);
       const truthy = value => value === true || value === 1 || value === "1";
       const p = context.options.properties || {}, gauge = root.querySelector(".gauge"), progress = root.querySelector(".progress"), pointer = root.querySelector(".pointer"), valueNode = root.querySelector(".value"), label = root.querySelector(".label"), toggle = root.querySelector(".toggle"), fallback = p.text ?? "Microphone";
-      let active = false;
+      let active = false, selected = false, remoteName = "";
       label.textContent = fallback;
       const color = value => value <= 65 ? [Math.round(4 + 251 * value / 65), Math.round(170 - 5 * value / 65), Math.round(142 - 142 * value / 65)].join(",") : [255, Math.round(165 - 125 * (value - 65) / 35), Math.round(40 * (value - 65) / 35)].join(",");
       const update = input => { const value = analog(input), angle = value / 100 * 270 - 135; gauge.style.setProperty("--rgb", color(value)); progress.style.strokeDashoffset = String(660 - 660 * value / 100); pointer.setAttribute("transform", "rotate(" + angle + ",150,150)"); valueNode.textContent = value + "%"; };

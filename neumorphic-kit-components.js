@@ -804,7 +804,7 @@
             "serial",
             address(p.nameBase, index),
             (value) => {
-              if (value !== undefined && value !== null)
+              if (value !== undefined && value !== null && String(value) !== "")
                 label.textContent = String(value);
             },
           );
@@ -1031,8 +1031,17 @@
             stop: "■",
             check: "✓",
           },
+          centerIcons = {
+            power: '<path d="M12 3v9"/><path d="M7.05 6.75a7 7 0 1 0 9.9 0"/>',
+            home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5M10 20v-5h4v5"/>',
+            play: '<path d="m8 5 11 7-11 7z"/>',
+            pause: '<path d="M8 5v14M16 5v14"/>',
+            stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+            check: '<path d="m5 13 4 4L19 7"/>',
+          },
           display =
             p.centerDisplay === "power" ? "icon" : p.centerDisplay || "icon",
+          centerIconMarkup = `<svg viewBox="0 0 24 24" aria-hidden="true" style="display:block;width:52%;height:52%;margin:auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none">${centerIcons[p.centerIcon || "power"] || centerIcons.power}</svg>`,
           centerContent =
             display === "blank"
               ? ""
@@ -1060,10 +1069,12 @@
             const button = document.createElement("button");
             button.type = "button";
             button.className = "nd-button";
-            button.textContent = item.t;
+            if (item.a === 4 && display === "icon") button.innerHTML = centerIconMarkup;
+            else button.textContent = item.t;
             button.style.gridArea = item.grid;
             host.appendChild(button);
           });
+        else if (display === "icon") root.querySelector(".nd-center").innerHTML = centerIconMarkup;
         else root.querySelector(".nd-center").textContent = centerContent;
         [...host.querySelectorAll("[data-index],.square .nd-button")].forEach(
           (target, position) => {
@@ -1596,7 +1607,7 @@
           "serial",
           address(p.nameBase, index),
           (value) => {
-            if (value != null) {
+            if (value != null && String(value) !== "") {
               const text = String(value);
               label.textContent = text;
               label.style.display = text ? "" : "none";
@@ -1861,7 +1872,7 @@
           "serial",
           address(p.nameBase, index),
           (value) => {
-            if (value != null) {
+            if (value != null && String(value) !== "") {
               const text = String(value);
               label.textContent = text;
               label.style.display = text ? "" : "none";
@@ -2149,7 +2160,7 @@
             "serial",
             address(p.nameBase, index),
             (value) => {
-              if (value != null) {
+              if (value != null && String(value) !== "") {
                 const text = String(value);
                 label.textContent = text;
                 label.style.display = text ? "" : "none";

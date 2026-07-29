@@ -120,6 +120,18 @@ public partial class MainWindow : Window
                 case "deleteProjectBackup":
                     DeleteProjectBackup(id, root.GetProperty("payload"));
                     break;
+                case "saveProjectPreset":
+                    SaveProjectPreset(id, root.GetProperty("payload"));
+                    break;
+                case "listProjectPresets":
+                    ListProjectPresets(id);
+                    break;
+                case "readProjectPreset":
+                    ReadProjectPreset(id, root.GetProperty("payload"));
+                    break;
+                case "deleteProjectPreset":
+                    DeleteProjectPreset(id, root.GetProperty("payload"));
+                    break;
                 case "getStorageSettings":
                     GetStorageSettings(id);
                     break;
@@ -693,6 +705,72 @@ public partial class MainWindow : Window
     private void DeleteProjectBackup(string id, JsonElement payload)
     {
         var path = ValidateProjectBackupPath(payload);
+        if (File.Exists(path)) File.Delete(path);
+        Respond(id, true, true, null);
+    }
+
+    private static string ProjectPresetFolder() => Path.Combine(LoadStorageSettings()["templates"], "Project Presets");
+
+    private void SaveProjectPreset(string id, JsonElement payload)
+    {
+        var contents = payload.GetProperty("contents").GetString() ?? "";
+        using var validation = JsonDocument.Parse(contents);
+        var requestedName = payload.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "Project Preset" : "Project Preset";
+        var displayName = requestedName.Trim();
+        if (string.IsNullOrWhiteSpace(displayName)) throw new InvalidOperationException("Enter a name for the preset template.");
+        var folder = ProjectPresetFolder();
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, SafeFileName(displayName, "Project Preset") + ".cuipreset");
+        File.WriteAllText(path, JsonSerializer.Serialize(new { format = "crestron-ui-composer-project-preset", version = 1, name = displayName, savedUtc = DateTime.UtcNow, project = JsonDocument.Parse(contents).RootElement }, new JsonSerializerOptions { WriteIndented = true }));
+        var file = new FileInfo(path);
+        Respond(id, true, new { path, name = displayName, modifiedUtc = file.LastWriteTimeUtc, size = file.Length }, null);
+    }
+
+    private void ListProjectPresets(string id)
+    {
+        var folder = ProjectPresetFolder();
+        Directory.CreateDirectory(folder);
+        var presets = Directory.EnumerateFiles(folder, "*.cuipreset", SearchOption.TopDirectoryOnly)
+            .Select(path =>
+            {
+                var file = new FileInfo(path);
+                var name = Path.GetFileNameWithoutExtension(path);
+                try
+                {
+                    using var document = JsonDocument.Parse(File.ReadAllText(path));
+                    if (document.RootElement.TryGetProperty("name", out var value)) name = value.GetString() ?? name;
+                }
+                catch { }
+                return new { path = file.FullName, name, modifiedUtc = file.LastWriteTimeUtc, size = file.Length };
+            })
+            .OrderByDescending(entry => entry.modifiedUtc)
+            .ToArray();
+        Respond(id, true, presets, null);
+    }
+
+    private static string ValidateProjectPresetPath(JsonElement payload)
+    {
+        var requested = payload.GetProperty("path").GetString() ?? "";
+        var folder = Path.GetFullPath(ProjectPresetFolder()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(requested);
+        if (!path.StartsWith(folder, StringComparison.OrdinalIgnoreCase) || !path.EndsWith(".cuipreset", StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException("The selected file is not in the project preset folder.");
+        return path;
+    }
+
+    private void ReadProjectPreset(string id, JsonElement payload)
+    {
+        var path = ValidateProjectPresetPath(payload);
+        if (!File.Exists(path)) throw new FileNotFoundException("The selected preset no longer exists.", path);
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        var root = document.RootElement;
+        if (!root.TryGetProperty("project", out var project)) throw new InvalidDataException("The preset does not contain a project.");
+        Respond(id, true, new { path, name = root.TryGetProperty("name", out var name) ? name.GetString() : Path.GetFileNameWithoutExtension(path), contents = project.GetRawText() }, null);
+    }
+
+    private void DeleteProjectPreset(string id, JsonElement payload)
+    {
+        var path = ValidateProjectPresetPath(payload);
         if (File.Exists(path)) File.Delete(path);
         Respond(id, true, true, null);
     }

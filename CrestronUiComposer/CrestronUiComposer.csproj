@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.4.1</Version>
-    <FileVersion>1.4.1.0</FileVersion>
-    <AssemblyVersion>1.4.1.0</AssemblyVersion>
+    <Version>1.4.2</Version>
+    <FileVersion>1.4.2.0</FileVersion>
+    <AssemblyVersion>1.4.2.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -89,6 +89,8 @@
     <Content Include="..\analog-clock.component.js" Link="Web\analog-clock.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\display-control.component.js" Link="Web\display-control.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\glass-block.component.js" Link="Web\glass-block.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\glass-crack.component.js" Link="Web\glass-crack.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\widget-list.component.js" Link="Web\widget-list.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\toast-queue.component.js" Link="Web\toast-queue.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\please-wait-spinner.component.js" Link="Web\please-wait-spinner.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\shutdown-progress.component.js" Link="Web\shutdown-progress.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

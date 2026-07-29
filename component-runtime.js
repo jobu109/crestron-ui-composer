@@ -561,6 +561,7 @@
     if (!definition || !definition.id)
       throw new Error("A component definition requires an id");
     definition.properties = definition.properties || [];
+    definition.optionalContent = { ...(optionalContent[definition.id] || {}), ...(definition.optionalContent || {}) };
     definition.signals = definition.signals || [];
     definition.itemSelector =
       definition.itemSelector || repeatedItemSelectors[definition.id] || "";
@@ -975,6 +976,86 @@
   function get(id) {
     return definitions.get(id);
   }
+  function bindPrimaryPointer(element, handlers = {}) {
+    let active = null,
+      suppressPointerUntil = 0;
+    const preventNative = (event) => event.preventDefault();
+    const pointerDown = (event) => {
+      if (
+        active !== null ||
+        performance.now() < suppressPointerUntil ||
+        event.pointerType === "touch" ||
+        event.isPrimary === false ||
+        (event.pointerType === "mouse" && event.button !== 0)
+      )
+        return;
+      event.preventDefault();
+      active = { kind: "pointer", id: event.pointerId };
+      try {
+        element.setPointerCapture?.(event.pointerId);
+      } catch (_) {}
+      handlers.down?.(event);
+    };
+    const finishPointer = (event, cancelled) => {
+      if (active?.kind !== "pointer" || event.pointerId !== active.id) return;
+      event.preventDefault();
+      const pointerId = active.id;
+      active = null;
+      if (cancelled) handlers.cancel?.(event);
+      else handlers.up?.(event);
+      try {
+        if (element.hasPointerCapture?.(pointerId))
+          element.releasePointerCapture(pointerId);
+      } catch (_) {}
+    };
+    const pointerUp = (event) => finishPointer(event, false);
+    const pointerCancel = (event) => finishPointer(event, true);
+    const pointerLost = (event) => {
+      if (active?.kind !== "pointer" || event.pointerId !== active.id) return;
+      active = null;
+      handlers.cancel?.(event);
+    };
+    const changedTouch = (event) =>
+      [...event.changedTouches].find((touch) => touch.identifier === active?.id);
+    const touchStart = (event) => {
+      if (active !== null || !event.changedTouches.length) return;
+      event.preventDefault();
+      suppressPointerUntil = performance.now() + 800;
+      active = { kind: "touch", id: event.changedTouches[0].identifier };
+      handlers.down?.(event);
+    };
+    const finishTouch = (event, cancelled) => {
+      if (active?.kind !== "touch" || !changedTouch(event)) return;
+      event.preventDefault();
+      suppressPointerUntil = performance.now() + 800;
+      active = null;
+      if (cancelled) handlers.cancel?.(event);
+      else handlers.up?.(event);
+    };
+    const touchEnd = (event) => finishTouch(event, false);
+    const touchCancel = (event) => finishTouch(event, true);
+    element.style.touchAction = "none";
+    element.style.webkitUserSelect = "none";
+    element.style.userSelect = "none";
+    element.addEventListener("touchstart", touchStart, { passive: false });
+    element.addEventListener("touchend", touchEnd, { passive: false });
+    element.addEventListener("touchcancel", touchCancel, { passive: false });
+    element.addEventListener("pointerdown", pointerDown);
+    element.addEventListener("pointerup", pointerUp);
+    element.addEventListener("pointercancel", pointerCancel);
+    element.addEventListener("lostpointercapture", pointerLost);
+    element.addEventListener("contextmenu", preventNative);
+    return () => {
+      element.removeEventListener("touchstart", touchStart);
+      element.removeEventListener("touchend", touchEnd);
+      element.removeEventListener("touchcancel", touchCancel);
+      element.removeEventListener("pointerdown", pointerDown);
+      element.removeEventListener("pointerup", pointerUp);
+      element.removeEventListener("pointercancel", pointerCancel);
+      element.removeEventListener("lostpointercapture", pointerLost);
+      element.removeEventListener("contextmenu", preventNative);
+    };
+  }
   function mount(root, id, options = {}) {
     const definition = get(id);
     if (!definition) throw new Error("Unknown component: " + id);
@@ -1030,6 +1111,7 @@
       }
     });
     root.innerHTML =
+      '<style data-composer-touch-reset>[data-component],[data-component] *{-webkit-tap-highlight-color:transparent!important;-webkit-touch-callout:none}[data-component] :focus{outline:none!important}</style>' +
       "<style>" +
       (options.stylesOverride || definition.styles) +
       "</style>" +
@@ -1132,6 +1214,8 @@
     try {
       dispose = definition.mount(root, {
         signals,
+        interactions: { bindPrimaryPointer },
+        resolveComponent: get,
         navigate: options.navigate || function () {},
         options,
       });
@@ -1249,6 +1333,7 @@
     mount,
     definitions,
     simulator,
+    bindPrimaryPointer,
     wireScrollReturn,
     resolveAddress: contractAddress,
     typeCode,

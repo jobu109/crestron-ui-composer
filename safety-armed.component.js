@@ -42,12 +42,13 @@
     visibilityProperties: { showCountdownSeconds: ".safety-countdown" },
     mount(root, context) {
       const button = root.querySelector(".safety-button"), label = root.querySelector(".safety-label"), countdown = root.querySelector(".safety-countdown"), p = context.options.properties || {};
-      let windowMs = Math.max(0, Math.min(60, Number(p.armSeconds) || 0)) * 1000;
+      const configuredWindowMs = Math.max(0, Math.min(60, Number(p.armSeconds) || 0)) * 1000;
+      let windowMs = configuredWindowMs;
       const completedMs = Math.max(0, Math.min(10, Number(p.completedDisplaySeconds) || 0)) * 1000;
       const labels = { standard: p.text == null ? "ALL OFF" : String(p.text), selected: p.selectedText == null ? "CONFIRM?" : String(p.selectedText), completed: p.completedText == null ? "DONE" : String(p.completedText) };
       let armed = false, completed = false, feedbackArmed = false, armTimer = 0, countdownTimer = 0, armedUntil = 0, resetTimer = 0, remoteStandard = "", remoteSelected = "", remoteCompleted = "";
       const theme = document.createElement("style");
-      theme.textContent = '[data-component="safety-armed-on-off"] .safety-button.armed{color:var(--selected-text-color);border-color:var(--selected-border-color);background:linear-gradient(145deg,rgba(255,255,255,.2),rgba(0,0,0,.1)),var(--selected-color);box-shadow:inset 0 1px rgba(255,255,255,.4),0 0 var(--glow-strength-px) var(--selected-glow-color)}[data-component="safety-armed-on-off"] .safety-button.completed{color:var(--completed-text-color);border-color:var(--completed-border-color);background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(0,0,0,.08)),var(--completed-color);box-shadow:inset 0 1px rgba(255,255,255,.44),0 0 var(--glow-strength-px) var(--completed-glow-color);animation:safety-done .45s cubic-bezier(.2,.9,.3,1.2)}@keyframes safety-done{0%{transform:scale(.9)}60%{transform:scale(1.05)}100%{transform:scale(1)}}';
+      theme.textContent = '[data-component="safety-armed-on-off"] .safety-button.pressed{transform:scale(.97);filter:brightness(1.16)}[data-component="safety-armed-on-off"] .safety-button.armed{color:var(--selected-text-color);border-color:var(--selected-border-color);background:linear-gradient(145deg,rgba(255,255,255,.2),rgba(0,0,0,.1)),var(--selected-color);box-shadow:inset 0 1px rgba(255,255,255,.4),0 0 var(--glow-strength-px) var(--selected-glow-color)}[data-component="safety-armed-on-off"] .safety-button.completed{color:var(--completed-text-color);border-color:var(--completed-border-color);background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(0,0,0,.08)),var(--completed-color);box-shadow:inset 0 1px rgba(255,255,255,.44),0 0 var(--glow-strength-px) var(--completed-glow-color);animation:safety-done .45s cubic-bezier(.2,.9,.3,1.2)}@keyframes safety-done{0%{transform:scale(.9)}60%{transform:scale(1.05)}100%{transform:scale(1)}}';
       root.appendChild(theme);
       function pulse(key) { context.signals.publish(key, true); setTimeout(() => context.signals.publish(key, false), 100); }
       function renderCountdown() { countdown.textContent = armed ? `${Math.max(0, Math.ceil((armedUntil - performance.now()) / 1000))}` : ""; }
@@ -55,12 +56,12 @@
       function disarm() { clearTimeout(armTimer); clearInterval(countdownTimer); armed = false; render(); }
       function arm(send) { clearTimeout(resetTimer); completed = false; armed = true; armedUntil = performance.now() + windowMs; if (send) pulse("press"); clearTimeout(armTimer); clearInterval(countdownTimer); armTimer = setTimeout(disarm, windowMs); countdownTimer = setInterval(renderCountdown, 100); render(); }
       function confirm() { clearTimeout(armTimer); clearInterval(countdownTimer); armed = false; completed = true; pulse("completed"); render(); resetTimer = setTimeout(() => { completed = false; render(); }, completedMs); }
-      button.addEventListener("pointerdown", event => { event.preventDefault(); if (completed) return; if (armed) confirm(); else arm(true); });
+      const unbindPointer = context.interactions.bindPrimaryPointer(button, { down: () => button.classList.add("pressed"), up: () => { button.classList.remove("pressed"); if (completed) return; if (armed) confirm(); else arm(true); }, cancel: () => button.classList.remove("pressed") });
       context.signals.subscribe("selected", value => { feedbackArmed = value === true || value === 1 || value === "1"; if (!feedbackArmed && armed) disarm(); render(); });
       [["label", value => remoteStandard = value], ["selectedLabel", value => remoteSelected = value], ["completedLabel", value => remoteCompleted = value]].forEach(([key, assign]) => context.signals.subscribe(key, value => { assign(value == null ? "" : String(value)); render(); }));
-      context.signals.subscribe("armTime", value => { const n = Math.max(0, Number(value) || 0); windowMs = Math.min(60, n > 60 ? n / 65535 * 60 : n) * 1000; });
+      context.signals.subscribe("armTime", value => { const n = Math.max(0, Number(value) || 0); windowMs = n > 0 ? Math.min(60, n > 60 ? n / 65535 * 60 : n) * 1000 : configuredWindowMs; });
       render();
-      return () => { clearTimeout(armTimer); clearInterval(countdownTimer); clearTimeout(resetTimer); };
+      return () => { clearTimeout(armTimer); clearInterval(countdownTimer); clearTimeout(resetTimer); unbindPointer(); };
     },
   });
 })(window.ComposerRuntime);
