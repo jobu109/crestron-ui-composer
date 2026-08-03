@@ -2102,6 +2102,50 @@ dialog form {
   overflow: auto;
   scrollbar-color: #55706e #101719;
 }
+
+/* Match every visible native scrollbar to the compact Display Control bar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(112, 112, 112, 0.76) rgba(42, 42, 42, 0.38);
+}
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+*::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(42, 42, 42, 0.38);
+}
+*::-webkit-scrollbar-thumb {
+  min-width: 36px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(112, 112, 112, 0.76);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 142, 142, 0.88);
+}
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:single-button,
+*::-webkit-scrollbar-button:horizontal:decrement,
+*::-webkit-scrollbar-button:horizontal:increment,
+*::-webkit-scrollbar-button:vertical:decrement,
+*::-webkit-scrollbar-button:vertical:increment,
+*::-webkit-scrollbar-button:start:decrement,
+*::-webkit-scrollbar-button:end:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  -webkit-appearance: none !important;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
 dialog button,
 dialog input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
 dialog select,

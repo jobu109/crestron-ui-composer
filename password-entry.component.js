@@ -257,14 +257,17 @@
         keypad.classList.toggle("success", correct);
         keypad.classList.toggle("error", !correct && wrong);
         if (correct) {
+          enter.style.padding = "5%";
           enter.innerHTML =
-            '<svg viewBox="0 0 58 45" width="72%" height="72%"><path fill="currentColor" d="M19 44L0 26l6-6 13 13L52 0l6 6z"/></svg>';
+            '<svg viewBox="0 0 58 45" width="90%" height="90%"><path fill="currentColor" d="M19 44L0 26l6-6 13 13L52 0l6 6z"/></svg>';
           message.textContent = p.correctText || "CORRECT";
         } else if (wrong) {
+          enter.style.padding = "5%";
           enter.innerHTML =
-            '<svg viewBox="0 0 48 48" width="72%" height="72%"><path fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" d="M12 12l24 24M36 12L12 36"/></svg>';
+            '<svg viewBox="0 0 48 48" width="90%" height="90%"><path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" d="M9 9l30 30M39 9L9 39"/></svg>';
           message.textContent = p.wrongText || "INCORRECT, TRY AGAIN";
         } else {
+          enter.style.padding = "";
           enter.textContent = p.enterText || "ENTER";
           message.textContent = "";
         }

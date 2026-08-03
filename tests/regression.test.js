@@ -416,6 +416,17 @@ run("widget styles cannot enlarge sidebar action buttons", () => {
   assert.ok(css.includes("min-height: 36px !important"));
 });
 
+run("desktop close prompts to save dirty projects", () => {
+  const desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), editor = read("editor.js");
+  assert.ok(desktop.includes("Closing += OnClosing"));
+  assert.ok(desktop.includes("MessageBoxButton.YesNoCancel"));
+  assert.ok(desktop.includes("Save Project Before Closing"));
+  assert.ok(desktop.includes("window.ComposerCloseBridge ? window.ComposerCloseBridge.prepareClose() : null"));
+  assert.ok(editor.includes("window.ComposerCloseBridge ="));
+  assert.ok(editor.includes("dirty: projectDirty"));
+  assert.ok(editor.includes("errors = projectIntegrityErrors(value)"));
+});
+
 run("simulator and mounted widgets share resolved contract addresses", () => {
   assert.equal(
     ComposerRuntime.resolveAddress(
@@ -949,6 +960,17 @@ run("build self-test includes save, recovery, and export workflow gates", () => 
   assert.ok(packageJson.scripts.test.includes("component-continuity.test.js"));
 });
 
+run("CH5 archives identify themselves as Shell projects like Construct", () => {
+  const desktop = fs.readFileSync(
+    path.join(root, "CrestronUiComposer", "MainWindow.xaml.cs"),
+    "utf8",
+  );
+  assert.strictEqual(
+    (desktop.match(/-P \\"samplesource=Shell\\"/g) || []).length,
+    2,
+  );
+});
+
 run("project health includes Crestron performance budgets", () => {
   const editor = read("editor.js"),
     markup = read("editor.html");
@@ -1284,6 +1306,9 @@ run("Widget List exports nested component identities and styling", () => {
   assert.ok(widgetList.includes('context.interactions.bindPrimaryPointer'));
   assert.ok(widgetList.includes('name + "-percent"'));
   assert.ok(editor.includes('definition.inspectorProperties(item.properties || {}'));
+  assert.ok(editor.includes('orderedProperties = item.componentId === "widget-list"'));
+  assert.ok(editor.indexOf('...dynamicProperties,') < editor.indexOf('property.group === "Included Widget Graphics"'));
+  assert.ok(editor.indexOf('property.group === "Included Widget Graphics"') < editor.indexOf('property.group === "Included Widget Interaction & Animation"'));
   assert.ok(editor.includes('function resolvedRangeBindings(definition, item)'));
   assert.ok(exporter.includes('optionalContent:${JSON.stringify(d.optionalContent || {})}'));
   assert.ok(exporter.includes('properties.includedGraphicAssetData = assetUrl'));
@@ -1294,6 +1319,98 @@ run("Widget List exports nested component identities and styling", () => {
   assert.ok(editor.includes('unavailable or recursive included widget'));
   assert.ok(editor.includes('simultaneous effects across a large list'));
   assert.ok(read("editor.html").includes('id="widget-list-responsive-tools"'));
+});
+
+run("Video Switcher supports touch drag routing and per-item assets", () => {
+  const component = read("video-switcher.component.js"), editor = read("editor.js"), exporter = read("exporter.js"), manifest = read("components.manifest.json");
+  assert.ok(component.includes('id: "video-switcher"'));
+  assert.ok(component.includes('name: "TV Source Value Set range"'));
+  assert.ok(component.includes('defaultValue: "VideoSwitcher.TVs[{index}].ValueSet"'));
+  assert.ok(component.includes('sourceSelectedAssets'));
+  assert.ok(component.includes('tvSelectedAssets'));
+  assert.ok(component.includes('key: "sourcePosition"'));
+  assert.ok(component.includes('[data-source-position="bottom"] .vs-root{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) minmax(110px,30%)}'));
+  assert.ok(component.includes('key: "sourceDisplayMode"'));
+  assert.ok(component.includes(':not([data-source-display="card"]) .vs-source{border-color:transparent;background-color:transparent;background-image:none;box-shadow:none}'));
+  assert.ok(component.includes(':not([data-source-display="card"]) .vs-source.active{background-color:transparent;box-shadow:none;filter:drop-shadow'));
+  assert.ok(!component.includes('[data-source-display!="card"]'));
+  assert.ok(component.includes('const sourceIconPattern = ['));
+  assert.ok(component.includes('const iconPaths = {'));
+  assert.ok(component.includes('<svg viewBox="0 0 24 24"'));
+  assert.ok(component.includes('.vs-icon[hidden]'));
+  assert.ok(component.includes('.vs-empty[hidden]'));
+  assert.ok(component.includes('key: "sourceLayout"'));
+  assert.ok(component.includes('key: "sourcePosition"'));
+  assert.ok(component.includes('defaultValue: "bottom"'));
+  assert.ok(component.includes('defaultValue: "grid"'));
+  assert.ok(component.includes('key: "tvLayout"'));
+  assert.ok(component.includes('key: "tvNamePosition"'));
+  assert.ok(component.includes('aspect-ratio:16/9'));
+  assert.ok(component.includes('data-tv-name-position="bottom-right"'));
+  assert.ok(component.includes('font-size:var(--assigned-label-size)'));
+  assert.ok(!component.includes('key: "tvIcons"'));
+  assert.ok(!component.includes('key: "showTvIcons"'));
+  assert.ok(component.includes('function applyFitLayout()'));
+  assert.ok(component.includes('--source-fit-columns'));
+  assert.ok(component.includes('--tv-fit-rows'));
+  assert.ok(component.includes('flex:1 1 0;width:100%;height:auto'));
+  assert.ok(component.includes('root.style.setProperty("--tv-card-width", "180px")'));
+  assert.ok(component.includes('overflow:hidden!important'));
+  assert.ok(component.includes('cardHeight * 16 / 9') || component.includes('cellHeight * 16 / 9'));
+  assert.ok(component.includes('key: "noSourceValue"'));
+  assert.ok(component.includes('class="vs-tv-header"'));
+  assert.ok(component.includes('class="vs-program"'));
+  assert.ok(component.includes('class="vs-empty"'));
+  assert.ok(component.includes('getPropertyValue("--composer-item-asset")'));
+  assert.ok(component.includes('program.style.backgroundColor = "transparent"'));
+  assert.ok(component.includes('>DISPLAYS</div>'));
+  assert.ok(component.includes('root.appendChild(ghost)'));
+  assert.ok(component.includes('ghost.style.setProperty("height", `${rect.height}px`, "important")'));
+  assert.ok(component.includes('ghost.style.setProperty("inset", "auto", "important")'));
+  assert.ok(component.includes('(event.clientX - rect.left) * scaleX - grabX'));
+  assert.ok(component.includes('transform:none'));
+  assert.ok(component.includes('key: "assignedIconSize"'));
+  assert.ok(component.includes('key: "assignedLabelSize"'));
+  assert.ok(component.includes('--assigned-icon-size'));
+  assert.ok(component.includes('--assigned-label-size'));
+  assert.ok(component.includes('ghost.style.backgroundImage = computed.backgroundImage'));
+  assert.ok(component.includes('element.setPointerCapture?.(event.pointerId)'));
+  assert.ok(component.includes('assign(Number(target.dataset.index), index, true)'));
+  assert.ok(component.includes('function clearAssignment(tvIndex, publish)'));
+  assert.ok(component.includes('function wireAssigned(program, tvIndex)'));
+  assert.ok(component.includes('clearAssignment(tvIndex, true)'));
+  assert.ok(component.includes('if (source === noSource)'));
+  assert.ok(editor.includes('assetListProperties.forEach'));
+  assert.ok(exporter.includes('assetListProperties.flatMap'));
+  assert.ok(manifest.includes('"componentId":"video-switcher"'));
+});
+
+run("visible scrollbars share the Display Control appearance", () => {
+  const css = read("editor.css"), exporter = read("exporter.js"), runtime = read("component-runtime.js");
+  assert.ok(css.includes("*::-webkit-scrollbar-thumb"));
+  assert.ok(css.includes("background: rgba(112, 112, 112, 0.76)"));
+  assert.ok(css.includes("scrollbar-color: rgba(112, 112, 112, 0.76)"));
+  assert.ok(exporter.includes("*::-webkit-scrollbar{width:7px;height:7px}"));
+  assert.ok(exporter.includes("*::-webkit-scrollbar-thumb{min-width:36px;min-height:36px"));
+  assert.ok(css.includes("*::-webkit-scrollbar-button:single-button"));
+  assert.ok(exporter.includes("*::-webkit-scrollbar-button:horizontal:decrement"));
+  assert.ok(exporter.includes("-webkit-appearance:none!important"));
+  assert.ok(runtime.includes("function wireUniformScrollbars(root, holder, axes)"));
+  assert.ok(exporter.includes("global.ComposerRuntime.wireUniformScrollbars.toString()"));
+  assert.ok(runtime.includes('bar.className = `composer-uniform-scrollbar ${axis}`'));
+  assert.ok(runtime.includes('background:#2a2a2a61'));
+  assert.ok(runtime.includes('background:#707070c2'));
+  assert.ok(runtime.includes('root.querySelector(".dc-scroll")'));
+});
+
+run("Password Entry preserves icon orientation during slower result morphs", () => {
+  const runtime = fs.readFileSync(path.join(root, "component-runtime.js"), "utf8");
+  const component = fs.readFileSync(path.join(root, "password-entry.component.js"), "utf8");
+  assert.ok(runtime.includes('transform:rotate(-360deg)'));
+  assert.ok(runtime.includes('transition:all .72s'));
+  assert.ok(!runtime.includes('[data-component="password-entry"] .pw-keypad.success .pw-enter,[data-component="password-entry"] .pw-keypad.error .pw-enter{transform:rotate(-180deg)}'));
+  assert.strictEqual((component.match(/width="90%" height="90%"/g) || []).length, 2);
+  assert.strictEqual((component.match(/enter\.style\.padding = "5%"/g) || []).length, 2);
 });
 
 if (process.exitCode) process.exit(process.exitCode);

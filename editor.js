@@ -2327,22 +2327,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       }
       root.appendChild(style);
     }
-    const assetListProperty = definition?.itemSelector
-      ? (definition.properties || []).find((prop) => prop.type === "asset-list")
-      : null;
-    if (assetListProperty) {
-      const ids = String(item.properties?.[assetListProperty.key] || "").split(
-        "|",
-      );
+    const assetListProperties = (definition?.properties || []).filter(
+      (property) => property.type === "asset-list" && (property.assetSelector || definition?.itemSelector),
+    );
+    assetListProperties.forEach((assetListProperty) => {
+      const ids = String(item.properties?.[assetListProperty.key] || "").split("|");
       if (ids.some((id) => id)) {
         const root = el.querySelector(".scoped-preview"),
           style = document.createElement("style"),
-          selector = definition.itemSelector,
+          selector = assetListProperty.assetSelector || definition.itemSelector,
           rules = ids
             .map((id, index) => {
-              const asset = id && state.assets.find((entry) => entry.id === id);
+              const asset = id && state.assets.find((entry) => entry.id === id),
+                base = `${selector}:nth-of-type(${index + 1})`,
+                target = assetListProperty.assetStateSelector
+                  ? String(assetListProperty.assetStateSelector).split(",").map((suffix) => base + suffix.trim()).join(",")
+                  : base;
               return asset
-                ? `${selector}:nth-of-type(${index + 1}){background-image:url("${asset.dataUrl}")!important;background-repeat:no-repeat;background-position:center;background-size:contain}`
+                ? `${target}{--composer-item-asset:url("${asset.dataUrl}");background-image:url("${asset.dataUrl}")!important;background-repeat:no-repeat;background-position:center;background-size:contain}`
                 : "";
             })
             .filter(Boolean)
@@ -2350,7 +2352,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         style.textContent = rules;
         root.appendChild(style);
       }
-    }
+    });
     wireItemInteraction(el, item);
   }
   function renderPage() {
@@ -5004,7 +5006,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       dynamicProperties = definition && typeof definition.inspectorProperties === "function"
         ? definition.inspectorProperties(item.properties || {}, window.ComposerRuntime) || []
         : [],
-      properties = [...declaredProperties, ...dynamicProperties].filter(
+      orderedProperties = item.componentId === "widget-list"
+        ? [
+            ...declaredProperties.filter((property) => !property.group),
+            ...dynamicProperties,
+            ...declaredProperties.filter((property) => property.group === "Included Widget Graphics"),
+            ...declaredProperties.filter((property) => property.group === "Included Widget Interaction & Animation"),
+            ...declaredProperties.filter((property) => property.group && property.group !== "Included Widget Graphics" && property.group !== "Included Widget Interaction & Animation"),
+          ]
+        : [...declaredProperties, ...dynamicProperties],
+      properties = orderedProperties.filter(
         (property) => {
           if (property.signalSetting || property.key === "bindingMode")
             return false;
@@ -5040,7 +5051,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       reset.textContent = "Reset included widget settings";
       reset.onclick = () => {
         item.properties ||= {};
-        Object.keys(item.properties).filter(key => key.startsWith("includedWidget__") || key.startsWith("includedRange__") || key.startsWith("includedRangeIncrement__") || key.startsWith("includedGraphic") || key.startsWith("includedInteraction") || key === "includedPressEffect" || key === "includedAnimation" || key === "includedEffectColor" || key === "includedEntryAnimation" || key === "includedStaggerDelay" || key === "includedHoldDuration" || key === "includedNavigationTrigger" || key === "includedNavigationTarget" || key === "includedMaxEffects").forEach(key => delete item.properties[key]);
+        Object.keys(item.properties).filter(key => key.startsWith("includedWidget__") || key.startsWith("includedRange__") || key.startsWith("includedRangeIncrement__") || key.startsWith("includedGraphic") || key.startsWith("includedInteraction") || key.startsWith("includedAction") || key === "includedPressEffect" || key === "includedAnimation" || key === "includedHoldAnimation" || key === "includedEffectColor" || key === "includedEntryAnimation" || key === "includedStaggerDelay" || key === "includedHoldDuration" || key === "includedNavigationTrigger" || key === "includedNavigationTarget" || key === "includedMaxEffects").forEach(key => delete item.properties[key]);
         (definition.properties || []).filter(property => property.key.startsWith("included")).forEach(property => item.properties[property.key] = structuredClone(property.defaultValue));
         renderItem(item); renderProperties(item); renderBindings(item); commitHistory();
         setStatus(`Reset shared settings for “${item.name}”`);
@@ -16867,6 +16878,20 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   document.addEventListener("change", scheduleHistory);
   document.addEventListener("click", scheduleHistory);
   addEventListener("pointerup", scheduleHistory);
+  window.ComposerCloseBridge = {
+    prepareClose() {
+      clearTimeout(historyTimer);
+      if (!restoringHistory) commitHistory(false);
+      const value = project(),
+        errors = projectIntegrityErrors(value);
+      return {
+        dirty: projectDirty,
+        contents: JSON.stringify(value, null, 2),
+        suggestedName: String(state.contract?.name || "crestron-ui-project"),
+        errors,
+      };
+    },
+  };
   addEventListener("beforeunload", () => {
     clearTimeout(historyTimer);
     clearTimeout(autosaveTimer);

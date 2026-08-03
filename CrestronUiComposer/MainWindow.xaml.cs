@@ -1,6 +1,7 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
 using System.IO.Compression;
 using System.Net.NetworkInformation;
@@ -19,6 +20,9 @@ public partial class MainWindow : Window
 {
     private const string AppHost = "composer.local";
     private readonly string? _initialProjectPath = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(path => File.Exists(path));
+    private bool _editorReady;
+    private bool _allowClose;
+    private bool _closeCheckRunning;
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -27,6 +31,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        Closing += OnClosing;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -56,8 +61,12 @@ public partial class MainWindow : Window
                 LoadingPanel.Visibility = Visibility.Collapsed;
                 if (!args.IsSuccess)
                     MessageBox.Show($"The editor failed to load: {args.WebErrorStatus}", "Crestron UI Composer", MessageBoxButton.OK, MessageBoxImage.Error);
-                else if (_initialProjectPath is not null)
-                    EditorView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "openProjectFile", path = _initialProjectPath, contents = File.ReadAllText(_initialProjectPath) }));
+                else
+                {
+                    _editorReady = true;
+                    if (_initialProjectPath is not null)
+                        EditorView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "openProjectFile", path = _initialProjectPath, contents = File.ReadAllText(_initialProjectPath) }));
+                }
             };
             EditorView.Source = new Uri($"https://{AppHost}/editor.html");
         }
@@ -75,6 +84,100 @@ public partial class MainWindow : Window
                 MessageBoxImage.Error);
             Close();
         }
+    }
+
+    private async void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (_allowClose || !_editorReady || EditorView.CoreWebView2 is null) return;
+        e.Cancel = true;
+        if (_closeCheckRunning) return;
+        _closeCheckRunning = true;
+        try
+        {
+            var result = await EditorView.CoreWebView2.ExecuteScriptAsync(
+                "window.ComposerCloseBridge ? window.ComposerCloseBridge.prepareClose() : null");
+            using var response = JsonDocument.Parse(result);
+            if (response.RootElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                _allowClose = true;
+                Close();
+                return;
+            }
+            var closeState = response.RootElement;
+            if (closeState.ValueKind == JsonValueKind.String)
+            {
+                var nested = closeState.GetString();
+                if (string.IsNullOrWhiteSpace(nested)) return;
+                response.Dispose();
+                using var parsed = JsonDocument.Parse(nested);
+                await CompleteCloseCheck(parsed.RootElement.Clone());
+                return;
+            }
+            await CompleteCloseCheck(closeState.Clone());
+        }
+        catch (Exception ex)
+        {
+            var choice = MessageBox.Show(
+                $"Composer could not verify whether the project has unsaved changes.\n\n{ex.Message}\n\nClose without saving?",
+                "Close Crestron UI Composer",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (choice == MessageBoxResult.Yes)
+            {
+                _allowClose = true;
+                Close();
+            }
+        }
+        finally { _closeCheckRunning = false; }
+    }
+
+    private Task CompleteCloseCheck(JsonElement closeState)
+    {
+        if (!closeState.TryGetProperty("dirty", out var dirtyValue) || !dirtyValue.GetBoolean())
+        {
+            _allowClose = true;
+            Close();
+            return Task.CompletedTask;
+        }
+        var choice = MessageBox.Show(
+            "Do you want to save your changes before closing?",
+            "Save Crestron UI Composer Project",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+        if (choice == MessageBoxResult.Cancel) return Task.CompletedTask;
+        if (choice == MessageBoxResult.No)
+        {
+            _allowClose = true;
+            Close();
+            return Task.CompletedTask;
+        }
+        var errors = closeState.TryGetProperty("errors", out var errorsValue) && errorsValue.ValueKind == JsonValueKind.Array
+            ? errorsValue.EnumerateArray().Select(value => value.GetString()).Where(value => !string.IsNullOrWhiteSpace(value)).ToArray()
+            : [];
+        if (errors.Length > 0)
+        {
+            MessageBox.Show(
+                "The project could not be saved because its integrity check failed:\n\n" + string.Join("\n", errors),
+                "Project Save Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return Task.CompletedTask;
+        }
+        var contents = closeState.TryGetProperty("contents", out var contentsValue) ? contentsValue.GetString() ?? "" : "";
+        var suggestedName = closeState.TryGetProperty("suggestedName", out var nameValue) ? nameValue.GetString() ?? "crestron-ui-project" : "crestron-ui-project";
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save Project Before Closing",
+            Filter = "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json",
+            FileName = SafeFileName(suggestedName, "crestron-ui-project") + ".cuiproj",
+            AddExtension = true,
+            InitialDirectory = LoadStorageSettings()["projects"]
+        };
+        if (dialog.ShowDialog(this) != true) return Task.CompletedTask;
+        File.WriteAllText(dialog.FileName, contents);
+        _allowClose = true;
+        Close();
+        return Task.CompletedTask;
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -857,7 +960,7 @@ public partial class MainWindow : Window
             CopyWebXPanelRuntime(source);
 
             var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
-            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\"";
+            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\" -P \"samplesource=Shell\"";
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
@@ -940,7 +1043,7 @@ public partial class MainWindow : Window
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
             CopyWebXPanelRuntime(source);
             var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
-            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\"";
+            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\" -P \"samplesource=Shell\"";
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");

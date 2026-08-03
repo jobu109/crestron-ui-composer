@@ -290,7 +290,7 @@
     },
     "password-entry": {
       props: [],
-      css: '[data-component="password-entry"] .pw-display,[data-component="password-entry"] .pw-grid{transition:opacity .25s ease,transform .25s ease}[data-component="password-entry"] .pw-enter-row{transition:all .32s cubic-bezier(.67,.17,.4,.83)}[data-component="password-entry"] .pw-enter{transition:background .22s cubic-bezier(.67,.17,.4,.83),box-shadow .22s cubic-bezier(.67,.17,.4,.83),transform .32s cubic-bezier(.67,.17,.4,.83),border-radius .32s cubic-bezier(.67,.17,.4,.83),width .32s cubic-bezier(.67,.17,.4,.83),height .32s cubic-bezier(.67,.17,.4,.83)}[data-component="password-entry"] .pw-keypad.success .pw-display,[data-component="password-entry"] .pw-keypad.error .pw-display,[data-component="password-entry"] .pw-keypad.success .pw-grid,[data-component="password-entry"] .pw-keypad.error .pw-grid{transform:scale(.94)}[data-component="password-entry"] .pw-keypad.success .pw-enter,[data-component="password-entry"] .pw-keypad.error .pw-enter{transform:rotate(-180deg)}[data-component="password-entry"] .pw-message{width:min(92vw,720px);line-height:1.05;text-shadow:0 2px 5px rgba(0,0,0,.82),0 0 14px rgba(255,255,255,.58)}',
+      css: '[data-component="password-entry"] .pw-display,[data-component="password-entry"] .pw-grid{transition:opacity .6s ease,transform .6s ease}[data-component="password-entry"] .pw-enter-row{transition:all .72s cubic-bezier(.67,.17,.4,.83)}[data-component="password-entry"] .pw-enter{transition:background .6s cubic-bezier(.67,.17,.4,.83),box-shadow .6s cubic-bezier(.67,.17,.4,.83),transform .72s cubic-bezier(.67,.17,.4,.83),border-radius .72s cubic-bezier(.67,.17,.4,.83),width .72s cubic-bezier(.67,.17,.4,.83),height .72s cubic-bezier(.67,.17,.4,.83)}[data-component="password-entry"] .pw-keypad.success .pw-display,[data-component="password-entry"] .pw-keypad.error .pw-display,[data-component="password-entry"] .pw-keypad.success .pw-grid,[data-component="password-entry"] .pw-keypad.error .pw-grid{transform:scale(.94)}[data-component="password-entry"] .pw-keypad.success .pw-enter,[data-component="password-entry"] .pw-keypad.error .pw-enter{transform:rotate(-360deg)}[data-component="password-entry"] .pw-message{width:min(92vw,720px);line-height:1.05;text-shadow:0 2px 5px rgba(0,0,0,.82),0 0 14px rgba(255,255,255,.58)}',
     },
     "countdown-selector": {
       props: [],
@@ -456,6 +456,10 @@
     "lighting-control": [{ selector: ".load", countKey: "defaultCount" }],
     "microphone-control": [{ selector: ".mic-card", countKey: "defaultCount" }],
     "shade-control": [{ selector: ".shade-card", countKey: "defaultCount" }],
+    "video-switcher": [
+      { keyPrefix: "source", label: "Source", selector: ".vs-source", countKey: "defaultSourceCount" },
+      { keyPrefix: "tv", label: "TV", selector: ".vs-tv", countKey: "defaultTvCount" },
+    ],
     "directional-pad": [{ selector: ".dpad-button", countKey: "buttonCount" }],
     "hamburger-popup": [{ selector: ".hp-item", countKey: "defaultCount" }],
     "menu-item": [{ selector: ".mi-button", countKey: "defaultCount" }],
@@ -487,10 +491,97 @@
     "single-mic-control": { showLabel: ".label", showPercentage: ".value", showToggle: ".toggle" },
     "wifi-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
   };
+  function wireUniformScrollbars(root, holder, axes) {
+    holder = holder || root;
+    if (!axes.length || root.querySelector(".dc-scroll")) return function () {};
+    const bars = [], cleanups = [];
+    const style = document.createElement("style");
+    style.textContent =
+      ".composer-scrollbar-source{scrollbar-width:none!important}" +
+      ".composer-scrollbar-source::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}" +
+      ".composer-uniform-scrollbar{position:absolute;z-index:8999;border-radius:99px;background:#2a2a2a61;pointer-events:auto;touch-action:none}" +
+      ".composer-uniform-scrollbar.horizontal{left:14px;right:14px;bottom:4px;height:7px}" +
+      ".composer-uniform-scrollbar.vertical{top:14px;right:4px;bottom:14px;width:7px}" +
+      ".composer-uniform-scrollbar>i{position:absolute;display:block;border-radius:inherit;background:#707070c2;touch-action:none}" +
+      ".composer-uniform-scrollbar.horizontal>i{left:0;top:0;height:100%;min-width:36px}" +
+      ".composer-uniform-scrollbar.vertical>i{left:0;top:0;width:100%;min-height:36px}";
+    holder.appendChild(style);
+    function findTarget(axis) {
+      const candidates = [root, ...root.querySelectorAll("*")].filter((element) => {
+        const computed = getComputedStyle(element),
+          overflow = axis === "vertical" ? computed.overflowY : computed.overflowX,
+          excess = axis === "vertical" ? element.scrollHeight - element.clientHeight : element.scrollWidth - element.clientWidth;
+        return /(auto|scroll)/.test(overflow) && excess > 2;
+      });
+      return candidates.sort((a, b) => {
+        const aExcess = axis === "vertical" ? a.scrollHeight - a.clientHeight : a.scrollWidth - a.clientWidth,
+          bExcess = axis === "vertical" ? b.scrollHeight - b.clientHeight : b.scrollWidth - b.clientWidth;
+        return bExcess - aExcess;
+      })[0] || null;
+    }
+    function attach(axis, target) {
+      if (!target || String(target.dataset.composerUniformScrollbar || "").includes(axis)) return;
+      target.dataset.composerUniformScrollbar = [target.dataset.composerUniformScrollbar, axis].filter(Boolean).join(" ");
+      target.classList.add("composer-scrollbar-source");
+      const bar = document.createElement("span"), thumb = document.createElement("i");
+      bar.className = `composer-uniform-scrollbar ${axis}`;
+      bar.setAttribute("aria-hidden", "true");
+      bar.appendChild(thumb); holder.appendChild(bar); bars.push(bar);
+      const update = () => {
+        const horizontal = axis === "horizontal",
+          viewport = horizontal ? target.clientWidth : target.clientHeight,
+          content = horizontal ? target.scrollWidth : target.scrollHeight,
+          track = horizontal ? bar.clientWidth : bar.clientHeight,
+          maximum = Math.max(0, content - viewport),
+          thumbSize = Math.max(36, Math.min(track, track * viewport / Math.max(viewport, content))),
+          travel = Math.max(0, track - thumbSize),
+          position = maximum ? (horizontal ? target.scrollLeft : target.scrollTop) / maximum * travel : 0;
+        bar.style.display = maximum > 2 ? "block" : "none";
+        thumb.style[horizontal ? "width" : "height"] = `${thumbSize}px`;
+        thumb.style.transform = horizontal ? `translateX(${position}px)` : `translateY(${position}px)`;
+      };
+      target.addEventListener("scroll", update, { passive: true });
+      let start = 0, startScroll = 0;
+      const down = (event) => {
+        event.preventDefault(); event.stopPropagation();
+        start = axis === "horizontal" ? event.clientX : event.clientY;
+        startScroll = axis === "horizontal" ? target.scrollLeft : target.scrollTop;
+        thumb.setPointerCapture?.(event.pointerId);
+      };
+      const move = (event) => {
+        if (!thumb.hasPointerCapture?.(event.pointerId)) return;
+        event.preventDefault();
+        const track = axis === "horizontal" ? bar.clientWidth : bar.clientHeight,
+          thumbSize = axis === "horizontal" ? thumb.offsetWidth : thumb.offsetHeight,
+          viewport = axis === "horizontal" ? target.clientWidth : target.clientHeight,
+          content = axis === "horizontal" ? target.scrollWidth : target.scrollHeight,
+          ratio = Math.max(0, content - viewport) / Math.max(1, track - thumbSize),
+          delta = (axis === "horizontal" ? event.clientX : event.clientY) - start;
+        if (axis === "horizontal") target.scrollLeft = startScroll + delta * ratio;
+        else target.scrollTop = startScroll + delta * ratio;
+      };
+      thumb.addEventListener("pointerdown", down);
+      thumb.addEventListener("pointermove", move);
+      const observer = typeof ResizeObserver === "function" ? new ResizeObserver(update) : null;
+      observer?.observe(target); observer?.observe(holder); requestAnimationFrame(update);
+      cleanups.push(() => {
+        target.removeEventListener("scroll", update);
+        thumb.removeEventListener("pointerdown", down);
+        thumb.removeEventListener("pointermove", move);
+        observer?.disconnect();
+        target.classList.remove("composer-scrollbar-source");
+        delete target.dataset.composerUniformScrollbar;
+      });
+    }
+    requestAnimationFrame(() => axes.forEach((axis) => attach(axis, findTarget(axis))));
+    return () => { cleanups.forEach((cleanup) => cleanup()); bars.forEach((bar) => bar.remove()); style.remove(); };
+  }
   function wireScrollReturn(root, holder, definition, properties) {
     const axes = definition.scrollReturnAxes || [];
-    if (!axes.length || properties.scrollReturnEnabled === false || properties.scrollReturnEnabled === 0 || properties.scrollReturnEnabled === "0" || String(properties.scrollReturnEnabled).toLowerCase() === "false") return function () {};
     holder = holder || root;
+    if (!axes.length) return function () {};
+    const uniformScrollbarCleanup = wireUniformScrollbars(root, holder, axes);
+    if (properties.scrollReturnEnabled === false || properties.scrollReturnEnabled === 0 || properties.scrollReturnEnabled === "0" || String(properties.scrollReturnEnabled).toLowerCase() === "false") return uniformScrollbarCleanup;
     holder.querySelectorAll(":scope > .composer-scroll-return").forEach((button) => button.remove());
     const threshold = Math.max(0, Number(properties.scrollReturnThreshold) || 80),
       size = Math.max(28, Math.min(80, Number(properties.scrollReturnSize) || 44)),
@@ -555,7 +646,7 @@
     const style = document.createElement("style");
     style.textContent = ".composer-scroll-return.show{opacity:1!important;transform:translateY(0) scale(1)!important;pointer-events:auto!important}.composer-scroll-return:active{filter:brightness(1.2);transform:translateY(0) scale(.92)!important}";
     holder.appendChild(style);
-    return () => { cleanups.forEach((cleanup) => cleanup()); buttons.forEach((button) => button.remove()); style.remove(); };
+    return () => { cleanups.forEach((cleanup) => cleanup()); buttons.forEach((button) => button.remove()); style.remove(); uniformScrollbarCleanup(); };
   }
   function register(definition) {
     if (!definition || !definition.id)
@@ -1334,6 +1425,7 @@
     definitions,
     simulator,
     bindPrimaryPointer,
+    wireUniformScrollbars,
     wireScrollReturn,
     resolveAddress: contractAddress,
     typeCode,
