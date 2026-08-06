@@ -31,6 +31,32 @@
   function typeCode(type) {
     return type === "digital" ? "b" : type === "analog" ? "n" : "s";
   }
+  const feedbackState =
+    global.__composerFeedbackState instanceof Map
+      ? global.__composerFeedbackState
+      : new Map();
+  global.__composerFeedbackState = feedbackState;
+  function subscribeFeedback(lib, type, signal, callback) {
+    const code = /^[bns]$/.test(String(type)) ? String(type) : typeCode(type),
+      address = String(signal),
+      key = code + ":" + address;
+    let delivered = false;
+    const handler = (value) => {
+      delivered = true;
+      feedbackState.set(key, value);
+      callback(value);
+    };
+    const result = lib.subscribeState(code, address, handler);
+    if (!delivered && feedbackState.has(key)) {
+      const retained = feedbackState.get(key);
+      if (typeof queueMicrotask === "function")
+        queueMicrotask(() => callback(retained));
+      else Promise.resolve().then(() => callback(retained));
+    }
+    return typeof result === "function" && result !== handler && result !== callback
+      ? result
+      : function () {};
+  }
   function wireCipText(root, signals) {
     const pattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi,
       cleanups = [];
@@ -487,6 +513,7 @@
     "rotary-knob": { showLabel: ".rotary-name", showPercentage: ".rotary-value" },
     "shade-control": { showLabel: ".name", showPercentage: ".position" },
     "single-light-control": { showLabel: ".name", showPercentage: ".level" },
+    "wall-dimmer-light-load": { showLabel: ".wdl-name", showPercentage: ".wdl-value" },
     "single-shade-control": { showLabel: ".name", showPercentage: ".position" },
     "single-mic-control": { showLabel: ".label", showPercentage: ".value", showToggle: ".toggle" },
     "wifi-gauge": { showLabel: ".signal-label", showPercentage: ".signal-value" },
@@ -1253,12 +1280,9 @@
               : callback;
         if (!spec || !signal) return;
         if (lib) {
-          const result = lib.subscribeState(
-            typeCode(spec.type),
-            signal,
-            handler,
+          cleanups.push(
+            subscribeFeedback(lib, spec.type, signal, handler),
           );
-          if (typeof result === "function") cleanups.push(result);
         } else
           cleanups.push(
             simulator.subscribe(typeCode(spec.type), signal, handler),
@@ -1274,12 +1298,9 @@
         if (!signal) return;
         signal = contractAddress(signal, type, "input", contractPrefix);
         if (lib) {
-          const result = lib.subscribeState(
-            typeCode(type),
-            String(signal),
-            callback,
+          cleanups.push(
+            subscribeFeedback(lib, type, String(signal), callback),
           );
-          if (typeof result === "function") cleanups.push(result);
         } else
           cleanups.push(
             simulator.subscribe(typeCode(type), String(signal), callback),
@@ -1288,8 +1309,9 @@
       subscribeExact(type, signal, callback) {
         if (!signal) return;
         if (lib) {
-          const result = lib.subscribeState(typeCode(type), String(signal), callback);
-          if (typeof result === "function") cleanups.push(result);
+          cleanups.push(
+            subscribeFeedback(lib, type, String(signal), callback),
+          );
         } else cleanups.push(simulator.subscribe(typeCode(type), String(signal), callback));
       },
     };
@@ -1424,6 +1446,8 @@
     mount,
     definitions,
     simulator,
+    feedbackState,
+    subscribeFeedback,
     bindPrimaryPointer,
     wireUniformScrollbars,
     wireScrollReturn,

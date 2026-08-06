@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.4.3</Version>
-    <FileVersion>1.4.3.0</FileVersion>
-    <AssemblyVersion>1.4.3.0</AssemblyVersion>
+    <Version>1.4.4</Version>
+    <FileVersion>1.4.4.0</FileVersion>
+    <AssemblyVersion>1.4.4.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -100,9 +100,14 @@
     <Content Include="..\loading-spinner.component.js" Link="Web\loading-spinner.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\power-rocker.component.js" Link="Web\power-rocker.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\illuminated-power-button.component.js" Link="Web\illuminated-power-button.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\bluetooth-pairing-button.component.js" Link="Web\bluetooth-pairing-button.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\system-start-stop.component.js" Link="Web\system-start-stop.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\search-input.component.js" Link="Web\search-input.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\single-device-controls.component.js" Link="Web\single-device-controls.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\wall-dimmer-light-load.component.js" Link="Web\wall-dimmer-light-load.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\light-scenes.component.js" Link="Web\light-scenes.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\fan-controller.component.js" Link="Web\fan-controller.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\fanController.html" Link="Web\fanController.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\video-input.component.js" Link="Web\video-input.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\horizontal-separator.component.js" Link="Web\horizontal-separator.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\vertical-separator.component.js" Link="Web\vertical-separator.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

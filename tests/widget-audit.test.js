@@ -288,7 +288,7 @@ if (chromePath) {
       new URL(`file:///${smokeFile.replace(/\\/g, "/")}`).href,
     ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 30000 });
     assert.equal(result.status, 0, `Chrome Widget List smoke test failed: ${result.stderr || result.error || "unknown error"}`);
-    const mounted = (result.stdout.match(/class="wl-widget"/g) || []).length;
+    const mounted = (result.stdout.match(/class="[^"]*\bwl-widget\b[^"]*"/g) || []).length;
     assert.equal(mounted, widgetListChoices.length * 2, `Expected ${widgetListChoices.length * 2} mounted included widgets, found ${mounted}`);
     assert.doesNotMatch(result.stdout, /Component error:/i, "Widget List compatibility catalog rendered a component error");
     assert.match(result.stdout, /data-smoke-complete="true"/, "Widget List interaction probe did not complete");

@@ -365,6 +365,11 @@ run("exported action runtime is valid JavaScript", () => {
     "Export must expose CH5 Desktop communication readiness for diagnostics",
   );
   assert.ok(
+    html.includes("window.__composerFeedbackState") &&
+      html.includes("feedbackState.has(key)"),
+    "Exported widgets must replay the last Crestron feedback after a remount",
+  );
+  assert.ok(
     !html.includes("tokenSource:''") && !html.includes("tokenUrl:''"),
     "WebXPanel initialization must not pass empty optional configuration values",
   );
@@ -407,6 +412,54 @@ run("exported action runtime is valid JavaScript", () => {
     "Exported ranged analog addresses must use the mapped ValueSet attribute",
   );
   new Function(html.slice(start, end));
+});
+
+run("real Crestron feedback survives widget remounts until changed", () => {
+  ComposerRuntime.feedbackState.clear();
+  let firstHandler,
+    replayed = [],
+    synchronous = [],
+    deferred = [];
+  const originalQueueMicrotask = global.queueMicrotask;
+  global.queueMicrotask = (callback) => deferred.push(callback);
+  const asynchronousLib = {
+    subscribeState(type, signal, callback) {
+      assert.equal(type, "n");
+      assert.equal(signal, "Room.Level");
+      firstHandler = callback;
+      return function () {};
+    },
+  };
+  ComposerRuntime.subscribeFeedback(
+    asynchronousLib,
+    "analog",
+    "Room.Level",
+    function () {},
+  );
+  firstHandler(32768);
+  ComposerRuntime.subscribeFeedback(
+    asynchronousLib,
+    "analog",
+    "Room.Level",
+    (value) => replayed.push(value),
+  );
+  assert.deepEqual(replayed, []);
+  deferred.splice(0).forEach((callback) => callback());
+  assert.deepEqual(replayed, [32768]);
+  ComposerRuntime.subscribeFeedback(
+    {
+      subscribeState(type, signal, callback) {
+        callback(49152);
+        return function () {};
+      },
+    },
+    "analog",
+    "Room.Level",
+    (value) => synchronous.push(value),
+  );
+  assert.deepEqual(synchronous, [49152]);
+  assert.equal(ComposerRuntime.feedbackState.get("n:Room.Level"), 49152);
+  global.queueMicrotask = originalQueueMicrotask;
 });
 
 run("widget styles cannot enlarge sidebar action buttons", () => {
