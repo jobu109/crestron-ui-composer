@@ -194,6 +194,9 @@
             <button id="open-project-package">Open portable package</button>
             <button id="save-project-package">Save portable package</button>
             <span class="menu-separator"></span>
+            <button id="translate-snippet-menu">Import &amp; Translate</button>
+            <button id="custom-package-menu">Import Component Package</button>
+            <button id="new-custom-component-menu">Create Custom Component</button>
             <button id="export">Export HTML</button>
           </div>
         </details>
@@ -206,6 +209,8 @@
             <button id="redo" title="Redo (Ctrl+Y)" disabled>
               Redo <kbd>Ctrl+Y</kbd>
             </button>
+            <span class="menu-separator"></span>
+            <button id="palette-preferences">Preferences</button>
           </div>
         </details>
         <details class="app-menu">
@@ -1335,10 +1340,47 @@
         <div class="dialog-actions"><button value="default">Done</button></div>
       </form>
     </dialog>
+    <dialog id="component-creator-dialog" class="component-creator-dialog">
+      <form method="dialog">
+        <div class="component-creator-header">
+          <div>
+            <h2>Component Creator</h2>
+            <p class="hint">
+              Choose a starting point. Composer will supply its standard
+              properties, signals, touch handling, and runtime support.
+            </p>
+          </div>
+          <button value="cancel" class="dialog-close" aria-label="Close">×</button>
+        </div>
+        <button id="creator-import-code" type="button" class="creator-primary-choice">
+          <strong>Import HTML, CSS, or JavaScript</strong>
+          <span>Recommended for downloaded snippets and CodePen components. Composer analyzes the code before opening the full editor.</span>
+        </button>
+        <h3>Or start with a Composer template</h3>
+        <div id="creator-template-list" class="creator-template-list">
+          <button type="button" data-creator-template="button"><strong>Standard Button</strong><span>Press, Selected, Name, and familiar button styling.</span></button>
+          <button type="button" data-creator-template="toggle"><strong>Toggle Button</strong><span>Two-state control with standard and selected appearances.</span></button>
+          <button type="button" data-creator-template="slider"><strong>Slider / Knob</strong><span>Analog value control with feedback and percentage display.</span></button>
+          <button type="button" data-creator-template="gauge"><strong>Gauge / Status</strong><span>Analog feedback display without an output control.</span></button>
+          <button type="button" data-creator-template="text"><strong>Text / Input</strong><span>Editable text with standard serial signal support.</span></button>
+          <button type="button" data-creator-template="repeated"><strong>Repeated List</strong><span>Zero-based Press, Selected, Name, count, and responsive list layout.</span></button>
+          <button type="button" data-creator-template="blank"><strong>Blank Component</strong><span>Empty advanced component with Composer runtime support.</span></button>
+        </div>
+        <div class="creator-package-row">
+          <div><strong>Already have a Composer component?</strong><span>Open an exported .cuicomponent package.</span></div>
+          <button id="creator-import-package" type="button">Import Component Package</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="custom-component-dialog" class="custom-component-dialog">
       <form method="dialog">
         <h2 id="custom-component-title">Create palette component</h2>
-        <p class="hint">
+        <div class="custom-builder-mode" role="group" aria-label="Component editor mode">
+          <button id="custom-mode-guided" type="button" class="active">Guided</button>
+          <button id="custom-mode-advanced" type="button">Advanced</button>
+          <small>Guided shows the recommended workflow. Advanced exposes raw properties, signals, selectors, and source code.</small>
+        </div>
+        <p class="hint custom-advanced-only">
           Use {{propertyKey}} tokens in the selected HTML. JavaScript can call
           ComposerComponent.publish("signalKey", value) and receive feedback
           through composer-signal window messages.
@@ -1354,6 +1396,7 @@
                   <option value="slider">Slider / knob</option>
                   <option value="gauge">Gauge / status</option>
                   <option value="text">Text input</option>
+                  <option value="repeated">Repeated list</option>
                   <option value="blank">Blank component</option>
                 </select>
               </label>
@@ -1388,24 +1431,24 @@
                 >Description<input id="custom-component-description"
               /></label>
             </div>
-            <div class="custom-builder-heading">
+            <div class="custom-builder-heading custom-advanced-only">
               <h2>Editable properties</h2>
               <button id="custom-property-add" type="button">+ Property</button>
             </div>
-            <div class="custom-column-labels custom-property-columns">
+            <div class="custom-column-labels custom-property-columns custom-advanced-only">
               <span>Key</span><span>Label</span><span>Type</span
               ><span>Default</span><span></span>
             </div>
-            <div id="custom-property-list" class="custom-builder-list"></div>
-            <div class="custom-builder-heading">
+            <div id="custom-property-list" class="custom-builder-list custom-advanced-only"></div>
+            <div class="custom-builder-heading custom-advanced-only">
               <h2>Signal bindings</h2>
               <button id="custom-signal-add" type="button">+ Signal</button>
             </div>
-            <div class="custom-column-labels custom-signal-columns">
+            <div class="custom-column-labels custom-signal-columns custom-advanced-only">
               <span>Key</span><span>Label</span><span>Type</span
               ><span>Direction</span><span>Default</span><span></span>
             </div>
-            <div id="custom-signal-list" class="custom-builder-list"></div>
+            <div id="custom-signal-list" class="custom-builder-list custom-advanced-only"></div>
             <details class="custom-behavior-builder" open>
               <summary>Visual property &amp; signal behavior builder</summary>
               <p class="hint">
@@ -1413,6 +1456,12 @@
                 signal without editing the component’s handwritten CSS or
                 JavaScript.
               </p>
+              <div class="custom-element-analysis-actions">
+                <button id="custom-analyze-elements" type="button">Analyze all elements</button>
+                <button id="custom-apply-recommended" type="button" class="primary" disabled>Apply all recommended setups</button>
+                <small>Builds a guided inventory from the current HTML. Use the live picker for elements created later by JavaScript.</small>
+              </div>
+              <div id="custom-element-inventory" class="custom-element-inventory" hidden></div>
               <div class="custom-behavior-picker">
                 <button id="custom-element-picker" type="button">
                   Pick preview element
@@ -1422,7 +1471,31 @@
                   placeholder="CSS selector, e.g. .button-label"
                 />
               </div>
-              <div class="custom-behavior-presets">
+              <div id="custom-element-classifier" class="custom-element-classifier" hidden>
+                <div>
+                  <strong id="custom-element-summary">Selected element</strong>
+                  <small id="custom-element-reason">Composer will recommend a role from the element’s markup and appearance.</small>
+                </div>
+                <label>Element role
+                  <select id="custom-element-role">
+                    <option value="button">Button surface</option>
+                    <option value="text">Text or label</option>
+                    <option value="textInput">Text input</option>
+                    <option value="icon">Icon or image</option>
+                    <option value="backgroundAsset">Background image / asset</option>
+                    <option value="selected">Selected-state indicator</option>
+                    <option value="gauge">Gauge or fill</option>
+                    <option value="slider">Slider or numeric control</option>
+                    <option value="sliderHandle">Slider or gauge handle</option>
+                    <option value="repeated">Repeated-item container</option>
+                    <option value="decorative">Decorative element — preserve locally</option>
+                    <option value="ignore">Ignore — exclude from Composer setup</option>
+                  </select>
+                </label>
+                <button id="custom-element-apply-role" type="button" class="primary">Apply recommended setup</button>
+                <small id="custom-element-result">No changes are made until you apply the role.</small>
+              </div>
+              <div class="custom-behavior-presets custom-advanced-only">
                 <select id="custom-behavior-preset">
                   <optgroup label="Editable properties">
                     <option value="propertyText">Editable text</option>
@@ -1435,7 +1508,6 @@
                   <optgroup label="Signal behaviors">
                     <option value="serialText">Serial text feedback</option>
                     <option value="analogGlow">Analog glow feedback</option>
-                    <option value="digitalVisibility">Digital visibility feedback</option>
                     <option value="digitalSelected">Digital Selected feedback</option>
                     <option value="pressOutput">Digital Press output</option>
                   </optgroup>
@@ -1444,26 +1516,26 @@
                   + Add preset
                 </button>
               </div>
-              <div class="custom-builder-heading">
+              <div class="custom-builder-heading custom-advanced-only">
                 <h2>Generated behaviors</h2>
                 <button id="custom-behavior-add" type="button">
                   + Behavior
                 </button>
               </div>
-              <div class="custom-behavior-columns">
+              <div class="custom-behavior-columns custom-advanced-only">
                 <span>Source</span><span>Property / signal</span
                 ><span>Target</span><span>Behavior</span><span>Parameter</span
                 ><span></span>
               </div>
-              <div id="custom-behavior-list" class="custom-builder-list"></div>
-              <small
+              <div id="custom-behavior-list" class="custom-builder-list custom-advanced-only"></div>
+              <small class="custom-advanced-only"
                 >Generated rules are stored separately and run after handwritten
                 component code. Enable numeric mapping to convert a Crestron
                 analog range such as 0–65535 into CSS values such as 0–30px.
                 Digital-state mapping can assign separate Standard and Selected
                 values from false/true feedback.</small
               >
-              <details class="custom-generated-code">
+              <details class="custom-generated-code custom-advanced-only">
                 <summary>Generated CSS / JavaScript</summary>
                 <label
                   >Generated CSS<textarea
@@ -1504,7 +1576,7 @@
                 </div>
               </div>
               <button id="custom-state-signals" type="button">
-                Add Selected &amp; Disabled signals
+                Add Selected signal
               </button>
             </details>
             <details class="custom-repeated-items">
@@ -1560,7 +1632,7 @@
             </details>
           </section>
           <section class="custom-source-panel">
-            <div class="custom-source-tabs">
+            <div class="custom-source-tabs custom-advanced-only">
               <button type="button" data-custom-tab="html" class="active">
                 HTML
               </button>
@@ -1571,16 +1643,16 @@
             </div>
             <textarea
               id="custom-source-html"
-              class="custom-source-editor"
+              class="custom-source-editor custom-advanced-only"
             ></textarea>
             <textarea
               id="custom-source-css"
-              class="custom-source-editor"
+              class="custom-source-editor custom-advanced-only"
               hidden
             ></textarea>
             <textarea
               id="custom-source-javascript"
-              class="custom-source-editor"
+              class="custom-source-editor custom-advanced-only"
               hidden
             ></textarea>
             <div class="custom-preview-heading">
@@ -1603,12 +1675,61 @@ Preview signal activity appears here.</pre
             >
           </section>
         </div>
+        <details class="custom-compatibility-audit" open>
+          <summary>Compatibility &amp; instance-safety audit</summary>
+          <p class="hint">Checks imported code for touch-only failures, viewport leakage, global selectors, duplicate IDs, external assets, and browser APIs that may differ on a TSW panel.</p>
+          <div class="custom-audit-actions">
+            <button id="custom-audit-run" type="button">Run audit</button>
+            <button id="custom-audit-repair" type="button">Apply selected safe repairs</button>
+            <button id="custom-audit-restore" type="button">Restore original source</button>
+          </div>
+          <div id="custom-audit-report" class="custom-audit-report" aria-live="polite"></div>
+        </details>
+        <details class="custom-behavior-review" open>
+          <summary>Plain-language component review</summary>
+          <p class="hint">
+            Confirm what Composer will make editable and how Crestron signals
+            affect the component. Technical selectors and generated code remain
+            available in Advanced component rules above.
+          </p>
+          <div id="custom-behavior-review" class="custom-behavior-review-list" aria-live="polite"></div>
+        </details>
         <div
           id="custom-validation"
           class="custom-validation"
           aria-live="polite"
         ></div>
         <pre id="custom-self-test-report" class="custom-self-test-report" hidden></pre>
+        <details id="custom-manual-acceptance" class="custom-manual-acceptance" hidden>
+          <summary>CH5 Desktop &amp; touch-panel verification</summary>
+          <p class="hint">
+            Record the real-runtime checks after loading the exported component.
+            These results are saved with the component package and are not
+            replaced by the automated browser tests.
+          </p>
+          <div class="custom-manual-acceptance-grid">
+            <label>
+              CH5 Desktop
+              <select id="custom-acceptance-ch5-desktop">
+                <option value="requires-hardware">Not tested</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+            <label>
+              Crestron touch panel
+              <select id="custom-acceptance-touch-panel">
+                <option value="requires-hardware">Not tested</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Verification notes
+            <textarea id="custom-acceptance-notes" rows="3" placeholder="Panel model, firmware, CH5 Desktop version, or observed issue"></textarea>
+          </label>
+        </details>
         <div class="dialog-actions">
           <button id="custom-self-test" type="button">Run self-test</button>
           <button id="custom-component-export" type="button" hidden>
@@ -1624,7 +1745,7 @@ Preview signal activity appears here.</pre
           </button>
           <button value="cancel">Cancel</button>
           <button id="custom-component-save" value="default" class="primary">
-            Create component
+            Validate &amp; create component
           </button>
         </div>
       </form>
@@ -1688,7 +1809,7 @@ Preview signal activity appears here.</pre
         <section class="translate-inference-section">
           <div class="custom-builder-heading">
             <h2>Inferred CSS / JavaScript behaviors</h2>
-            <small>Keep original behavior local, generate a Crestron rule, or ignore it.</small>
+            <small>Preserve detected behavior, or ignore it. A Crestron rule is offered only when a safe trigger and target were identified.</small>
           </div>
           <div id="translate-suggestions" class="translate-suggestion-list"></div>
           <div id="translate-inferences" class="translate-inference-list"></div>
@@ -1990,6 +2111,7 @@ Preview signal activity appears here.</pre
             <p>Drag a component from the categorized library. Select it to edit its local text, colors, glow, assets, text/icon size, position, dimensions, z-index, and component-specific options.</p>
             <ul>
               <li>Right-click for copy/paste, lock/unlock, align, layer, grouping, reusable symbols, and component simulation.</li>
+              <li>Use <strong>Edit → Preferences</strong> to show or hide built-in and custom components in the palette without deleting them or affecting placed widgets.</li>
               <li>Use a blank text field when a button or item should display no label.</li>
               <li>Use Standard and Selected state options for state-specific text, icons, backgrounds, and assets.</li>
               <li>Keep enough content inset around strong glows so effects are not visually clipped.</li>
@@ -2184,6 +2306,27 @@ Preview signal activity appears here.</pre
         </p>
         <div id="storage-location-list" class="storage-location-list"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
+      </form>
+    </dialog>
+    <dialog id="palette-preferences-dialog" class="palette-preferences-dialog">
+      <form method="dialog">
+        <h2>Preferences</h2>
+        <p class="hint">
+          Choose which built-in and user-created components appear in the palette.
+          Hidden components remain available to existing projects and are not deleted.
+        </p>
+        <div class="palette-preferences-toolbar">
+          <input
+            id="palette-preferences-search"
+            type="search"
+            placeholder="Search component or category"
+          />
+          <button id="palette-preferences-show-all" type="button">Show all</button>
+          <button id="palette-preferences-hide-all" type="button">Hide all</button>
+        </div>
+        <p id="palette-preferences-summary" class="hint"></p>
+        <div id="palette-preferences-list" class="palette-preferences-list"></div>
+        <div class="dialog-actions"><button value="default">Done</button></div>
       </form>
     </dialog>
     <dialog id="update-dialog" class="update-dialog">

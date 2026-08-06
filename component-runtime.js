@@ -102,7 +102,9 @@
     );
   }
   function standardContractAttribute(type, direction, value) {
-    if (/^Visibility$/i.test(String(value || "").replace(/[^A-Za-z0-9_]/g, "_"))) return "Visibility";
+    const normalized = String(value || "").replace(/[^A-Za-z0-9_]/g, "_");
+    if (/^(?:Visibility|Disabled)$/i.test(normalized))
+      return /^Visibility$/i.test(normalized) ? "Visibility" : "Disabled";
     const suffix = type === "digital" ? (direction === "output" ? "Press" : "Selected") : type === "analog" ? (direction === "output" ? "ValueSet" : "Feedback") : direction === "output" ? "Text" : "Name",
       pattern = type === "digital" ? /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i : type === "analog" ? direction === "output" ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i : /(?:_?(?:IndirectText|Label|Name|Text))$/i;
     let prefix = String(value || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").replace(pattern, "").replace(/_+$/g, "");
@@ -681,6 +683,62 @@
     definition.properties = definition.properties || [];
     definition.optionalContent = { ...(optionalContent[definition.id] || {}), ...(definition.optionalContent || {}) };
     definition.signals = definition.signals || [];
+    const holdExcludedComponents = new Set([
+        "hold-button",
+        "circular-hold-button",
+        "countdown-auto-fire",
+        "safety-armed-on-off",
+        "system-start-stop",
+        "display-flip",
+        "card-flip",
+        "power-rocker",
+        "illuminated-power-button",
+        "neumorphic-rocker-vertical",
+        "neumorphic-rocker-horizontal",
+        "neumorphic-rocker-v2-vertical",
+        "neumorphic-rocker-v2-horizontal",
+      ]),
+      digitalOutputs = definition.signals.filter(
+        (signal) => signal.type === "digital" && signal.direction === "output",
+      ),
+      pressOutputs = digitalOutputs.filter((signal) => /press$/i.test(signal.key)),
+      buttonCategory = /^(?:Standard|Toggle|Advanced) Buttons$/i.test(
+        definition.category || "",
+      ),
+      standardHoldCapable =
+        buttonCategory &&
+        digitalOutputs.length === 1 &&
+        pressOutputs.length === 1 &&
+        !holdExcludedComponents.has(definition.id) &&
+        !definition.signals.some((signal) => /held|completed/i.test(signal.key));
+    if (standardHoldCapable) {
+      definition.standardHoldCapability = {
+        pressKey: pressOutputs[0].key,
+        heldKey: "held",
+      };
+      if (!definition.properties.some((property) => property.key === "heldDuration"))
+        definition.properties.push({
+          key: "heldDuration",
+          name: "Held duration (seconds)",
+          type: "number",
+          min: 0.1,
+          max: 10,
+          step: 0.1,
+          defaultValue: 1,
+        });
+      if (!definition.signals.some((signal) => signal.key === "held"))
+        definition.signals.push({
+          key: "held",
+          name: "Held",
+          type: "digital",
+          direction: "output",
+          standardHoldOutput: true,
+          defaultValue: `${definition.id
+            .split("-")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join("")}.Held`,
+        });
+    }
     definition.itemSelector =
       definition.itemSelector || repeatedItemSelectors[definition.id] || "";
     Object.keys(optionalContent[definition.id] || {}).forEach((key) => {
@@ -721,6 +779,40 @@
         defaultValue: `${namespace}.Visibility`,
         optionalProperty: "visibilityEnabled",
       });
+    if (!definition.properties.some((property) => property.key === "disabledEnabled"))
+      definition.properties.push({
+        key: "disabledEnabled",
+        name: "Enable disabled signal",
+        type: "checkbox",
+        defaultValue: false,
+        signalSetting: true,
+      });
+    else {
+      const disabledProperty = definition.properties.find(
+        (property) => property.key === "disabledEnabled",
+      );
+      disabledProperty.signalSetting = true;
+      disabledProperty.name = "Enable disabled signal";
+      disabledProperty.type = "checkbox";
+      disabledProperty.defaultValue = false;
+    }
+    let disabledSignal = definition.signals.find(
+      (signal) => signal.key === "disabled",
+    );
+    if (!disabledSignal) {
+      disabledSignal = {
+        key: "disabled",
+        name: "Disabled",
+        type: "digital",
+        direction: "input",
+        defaultValue: `${namespace}.Disabled`,
+      };
+      definition.signals.push(disabledSignal);
+    }
+    disabledSignal.name = "Disabled";
+    disabledSignal.type = "digital";
+    disabledSignal.direction = "input";
+    disabledSignal.optionalProperty = "disabledEnabled";
     const itemVisibilityConfigs = perItemVisibilityConfigs[definition.id] || [];
     if (itemVisibilityConfigs.length) {
       if (!definition.properties.some((property) => property.key === "itemVisibilityEnabled"))
@@ -1247,12 +1339,25 @@
         const holder = root.closest(".widget,.scoped-widget");
         if (holder)
           holder.dataset.assetSelected = [...selectedSignalValues.values()].some(Boolean)
-            ? "true"
-            : "false";
+              ? "true"
+              : "false";
       },
-      signals = {
-      publish(key, value) {
-        const spec = definition.signals.find((s) => s.key === key),
+      standardHold = definition.standardHoldCapability
+        ? {
+            active: false,
+            completed: false,
+            timer: 0,
+            duration: Math.max(
+              100,
+              Math.min(
+                10000,
+                (Number(options.properties.heldDuration) || 1) * 1000,
+              ),
+            ),
+          }
+        : null,
+      publishRaw = (key, value) => {
+        const spec = definition.signals.find((signal) => signal.key === key),
           signal = contractAddress(
             binding(key),
             spec?.type,
@@ -1262,6 +1367,41 @@
         if (!spec || !signal) return;
         if (lib) lib.publishEvent(typeCode(spec.type), signal, value);
         else simulator.publish(typeCode(spec.type), signal, value);
+      },
+      signals = {
+      publish(key, value) {
+        if (standardHold && key === definition.standardHoldCapability.pressKey) {
+          const pressed =
+            value === true ||
+            value === 1 ||
+            value === "1" ||
+            String(value).toLowerCase() === "true";
+          if (pressed) {
+            if (standardHold.active) return;
+            standardHold.active = true;
+            standardHold.completed = false;
+            clearTimeout(standardHold.timer);
+            standardHold.timer = setTimeout(() => {
+              if (!standardHold.active) return;
+              standardHold.completed = true;
+              publishRaw(definition.standardHoldCapability.heldKey, true);
+            }, standardHold.duration);
+          } else {
+            if (!standardHold.active) return;
+            standardHold.active = false;
+            clearTimeout(standardHold.timer);
+            standardHold.timer = 0;
+            if (standardHold.completed)
+              publishRaw(definition.standardHoldCapability.heldKey, false);
+            else {
+              publishRaw(definition.standardHoldCapability.pressKey, true);
+              publishRaw(definition.standardHoldCapability.pressKey, false);
+            }
+            standardHold.completed = false;
+          }
+          return;
+        }
+        publishRaw(key, value);
       },
       subscribe(key, callback) {
         const spec = definition.signals.find((s) => s.key === key),
@@ -1315,11 +1455,31 @@
         } else cleanups.push(simulator.subscribe(typeCode(type), String(signal), callback));
       },
     };
+    if (standardHold)
+      cleanups.push(() => {
+        clearTimeout(standardHold.timer);
+        if (standardHold.completed)
+          publishRaw(definition.standardHoldCapability.heldKey, false);
+        standardHold.active = false;
+        standardHold.completed = false;
+      });
     if (options.properties?.visibilityEnabled) {
       root.style.visibility = "visible";
       signals.subscribe("visibility", (value) => {
         root.style.visibility =
           value === true || value === 1 || value === "1" ? "visible" : "hidden";
+      });
+    }
+    if (options.properties?.disabledEnabled) {
+      root.classList.remove("composer-disabled");
+      root.removeAttribute("aria-disabled");
+      signals.subscribe("disabled", (value) => {
+        const disabled =
+          value === true || value === 1 || value === "1";
+        root.classList.toggle("composer-disabled", disabled);
+        root.setAttribute("aria-disabled", String(disabled));
+        root.style.pointerEvents = disabled ? "none" : "";
+        root.style.opacity = disabled ? ".55" : "";
       });
     }
     options.definitionData = definition.data || {};

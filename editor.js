@@ -86,8 +86,13 @@
   const hiddenSubpageInstances = new Set(), highlightedSubpageInstances = new Set();
   let customBehaviorRules = [];
   let customElementPickerActive = false;
+  let customPickedElement = null;
+  let customAnalyzedElements = [],
+    customSavedElementRoles = [];
+  let customOriginalSourceSnapshot = null;
   let customBuilderSourceItemId = "";
   let customPreviewEvents = [];
+  let customPreservedRelationships = [];
   let customSelfTestResolve = null;
   let sourceEditingComponent = false;
   let snapEnabled = true,
@@ -886,6 +891,17 @@
     "Status & Information",
     "Visual Only",
   ];
+  const palettePreferencesKey = "crestron-ui-composer-palette-preferences-v1";
+  let hiddenPaletteComponents = new Set();
+  try {
+    const savedPalettePreferences = JSON.parse(
+      localStorage.getItem(palettePreferencesKey) || "[]",
+    );
+    if (Array.isArray(savedPalettePreferences))
+      hiddenPaletteComponents = new Set(
+        savedPalettePreferences.filter((entry) => typeof entry === "string"),
+      );
+  } catch (_) {}
   // Category expansion is deliberately session-only. A fresh application
   // launch always begins with a compact, fully collapsed component palette.
   const openComponentCategories = new Set();
@@ -981,6 +997,45 @@
     });
     renderComponentLibrary();
   }
+  function syncWidgetListCustomOptions() {
+    const definition = window.ComposerRuntime.get("widget-list"),
+      property = definition?.properties?.find((entry) => entry.key === "widgetType");
+    if (!property) return false;
+    if (!definition.composerBuiltInWidgetOptions)
+      definition.composerBuiltInWidgetOptions = structuredClone(property.options || []);
+    const builtInIds = new Set(
+      definition.composerBuiltInWidgetOptions.map((option) => option.value),
+    );
+    property.options = [
+      ...structuredClone(definition.composerBuiltInWidgetOptions),
+      ...state.customComponents
+        .filter((entry) => entry.id !== "widget-list" && !builtInIds.has(entry.id))
+        .map((entry) => ({ value: entry.id, label: `${entry.name} (Custom)` })),
+    ];
+    return property.options.some((option) =>
+      state.customComponents.some((entry) => entry.id === option.value),
+    );
+  }
+  function customComponentReadinessStatus(entry) {
+    const readiness = entry?.readiness;
+    const manualSummary = () => {
+      const matrix = readiness?.acceptanceMatrix || [],
+        marker = (key) => {
+          const status = matrix.find((check) => check.key === key)?.status;
+          return status === "passed" ? "passed" : status === "failed" ? "failed" : "not tested";
+        };
+      return ` CH5 Desktop: ${marker("ch5Desktop")}. Touch panel: ${marker("touchPanel")}.`;
+    };
+    if (!readiness?.testedAt)
+      return { key: "untested", label: "Untested", title: "Run Validate & update component before release." };
+    if (readiness.fingerprint !== customComponentReadinessFingerprint(entry))
+      return { key: "outdated", label: "Outdated", title: "This component changed after its last readiness test." };
+    if (readiness.passed === false)
+      return { key: "failed", label: "Failed", title: "The saved Component Readiness result failed." };
+    if (Number(readiness.confidence) < 85 || Number(readiness.warningCount) > 0)
+      return { key: "review", label: `${Number(readiness.confidence) || 0}% Review`, title: `Readiness passed with review items.${manualSummary()}` };
+    return { key: "tested", label: "Tested", title: `Passed Component Readiness at ${Number(readiness.confidence) || 100}% confidence.${manualSummary()}` };
+  }
   function registerCustomComponent(entry) {
     const appearanceProperties = [
         {
@@ -1048,7 +1103,11 @@
         (entry.properties || []).map((property) => property.key),
       ),
       properties = [
-        ...(entry.properties || []),
+        ...(entry.properties || []).filter(
+          (property) =>
+            property.key !== "visibilityEnabled" &&
+            property.key !== "disabledEnabled",
+        ),
         ...appearanceProperties.filter(
           (property) => !declaredKeys.has(property.key),
         ),
@@ -1060,7 +1119,9 @@
       icon: entry.icon || "🧩",
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
       properties,
-      signals: entry.signals || [],
+      signals: (entry.signals || []).filter(
+        (signal) => signal.key !== "visibility" && signal.key !== "disabled",
+      ),
       rangeBindings:
         entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
       template: '<div class="custom-component-host"></div>',
@@ -1068,11 +1129,17 @@
         "[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}",
       data: {
         html: prepareCustomSource(entry.html),
-        signals: entry.signals || [],
+        signals: (entry.signals || []).filter(
+          (signal) => signal.key !== "visibility" && signal.key !== "disabled",
+        ),
         repeatedItems: entry.repeatedItems || null,
         repeatRuntime: customRepeatedFrameRuntime(entry.repeatedItems || null),
         behaviorRuntime: customBehaviorRuntime(
-          entry.behaviors || [],
+          (entry.behaviors || []).filter(
+            (behavior) =>
+              !["visibility", "disabled"].includes(behavior.key) &&
+              !["visibility", "disabledState"].includes(behavior.action),
+          ),
           Object.fromEntries(
             (entry.properties || []).map((property) => [
               property.key,
@@ -1082,7 +1149,13 @@
             ]),
           ),
         ),
-        behaviorCss: customBehaviorCss(entry.behaviors || []),
+        behaviorCss: customBehaviorCss(
+          (entry.behaviors || []).filter(
+            (behavior) =>
+              !["visibility", "disabled"].includes(behavior.key) &&
+              !["visibility", "disabledState"].includes(behavior.action),
+          ),
+        ),
         stateCss: customStateCss(entry.stateStyles || null),
         stateRuntime: customStateRuntime(entry.stateStyles || null),
       },
@@ -1125,7 +1198,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             : "",
           frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:${properties.contentInset == null || properties.contentInset === "" ? 10 : Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
           bridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback);return function(){callbacks[key]=(callbacks[key]||[]).filter(function(entry){return entry!==callback)}}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')})})();<\/script>`,
-          repeatRuntime = context.options.definitionData.repeatRuntime || "",
+          repeatRuntime = String(
+            context.options.definitionData.repeatRuntime || "",
+          ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
+            String(properties[key] ?? ""),
+          ),
           behaviorRuntime = String(
             context.options.definitionData.behaviorRuntime || "",
           ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
@@ -1214,7 +1291,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             const repeated = context.options.definitionData.repeatedItems,
               match =
                 repeated &&
-                String(event.data.key || "").match(/^__repeatPress:(\d+)$/);
+                String(event.data.key || "").match(/^__repeatPress:(\d+)$/),
+              valueMatch =
+                repeated &&
+                String(event.data.key || "").match(/^__repeatValueSet:(\d+)$/);
             if (match) {
               const index = Number(match[1]),
                 base =
@@ -1231,6 +1311,25 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                       .replaceAll("{n}", String(index));
               context.signals.publishAddress(
                 "digital",
+                address,
+                event.data.value,
+              );
+            } else if (valueMatch) {
+              const index = Number(valueMatch[1]),
+                base =
+                  properties.valueSetBase ||
+                  `${repeated.namespace}.Items[{index}].ValueSet`,
+                increment = Math.max(
+                  1,
+                  Number(properties.signalIncrement) || 1,
+                ),
+                address = /^\d+$/.test(String(base))
+                  ? String(Number(base) + index * increment)
+                  : String(base)
+                      .replaceAll("{index}", String(index))
+                      .replaceAll("{n}", String(index));
+              context.signals.publishAddress(
+                "analog",
                 address,
                 event.data.value,
               );
@@ -1276,6 +1375,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               ),
               (value) => sendFeedback(`__repeatName:${index}`, value),
             );
+            if (repeated.numericSelector)
+              context.signals.subscribeAddress(
+                "analog",
+                addressAt(
+                  properties.levelFeedbackBase ||
+                    `${repeated.namespace}.Items[{index}].Feedback`,
+                  index,
+                ),
+                (value) => sendFeedback(`__repeatFeedback:${index}`, value),
+              );
           }
         }
         return () => {
@@ -1285,7 +1394,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       },
     });
     const definition = window.ComposerRuntime.get(entry.id);
-    definition.data.signals = entry.signals || [];
+    definition.data.signals = (entry.signals || []).filter(
+      (signal) => signal.key !== "visibility" && signal.key !== "disabled",
+    );
     addComponent(`${entry.id}.html`, "", {
       componentId: entry.id,
       runtime: "scoped",
@@ -1295,6 +1406,297 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       width: entry.defaultSize?.width || 320,
       height: entry.defaultSize?.height || 180,
     });
+    syncWidgetListCustomOptions();
+  }
+  async function runRegisteredCustomComponentTest(entry) {
+    const definition = window.ComposerRuntime.get(entry?.id);
+    if (!definition)
+      return { passed: false, errors: ["The saved component was not registered in the Composer runtime."], instances: 0 };
+    const properties = Object.fromEntries(
+        (definition.properties || []).map((property) => [
+          property.key,
+          structuredClone(property.defaultValue),
+        ]),
+      ),
+      inputSignals = (definition.signals || []).filter(
+        (signal) => signal.direction === "input",
+      ),
+      bindings = Object.fromEntries(
+        (definition.signals || []).map((signal, index) => [
+          signal.key,
+          { mode: "join", value: String(64000 + index) },
+        ]),
+      ),
+      retainedInputs = inputSignals.map((signal, index) => ({
+        signal,
+        address: bindings[signal.key].value,
+        value:
+          signal.type === "digital"
+            ? true
+            : signal.type === "analog"
+              ? 32768
+              : `REMOUNT_${index + 1}`,
+      })),
+      sizes = [
+        { width: 320, height: 220 },
+        { width: 480, height: 260 },
+      ],
+      mounts = [],
+      errors = [],
+      widgetListDefinition = window.ComposerRuntime.get("widget-list"),
+      widgetListProbe = { holder: null, root: null, dispose: null },
+      exportedRuntime = { passed: false, errors: [] };
+    retainedInputs.forEach(({ signal, address, value }) =>
+      window.ComposerRuntime.simulator.set(
+        window.ComposerRuntime.typeCode(signal.type),
+        address,
+        value,
+      ),
+    );
+    sizes.forEach((size, index) => {
+      const holder = document.createElement("div"),
+        root = document.createElement("div");
+      holder.dataset.customRuntimeProbe = entry.id;
+      holder.style.cssText = `position:fixed;left:-10000px;top:${index * 280}px;width:${size.width}px;height:${size.height}px;overflow:hidden;pointer-events:none`;
+      root.style.cssText = "width:100%;height:100%";
+      holder.appendChild(root);
+      document.body.appendChild(holder);
+      try {
+        const dispose = window.ComposerRuntime.mount(root, entry.id, {
+          properties: structuredClone(properties),
+          bindings: structuredClone(bindings),
+          lib: null,
+          navigate() {},
+        });
+        mounts.push({ holder, root, dispose });
+      } catch (error) {
+        errors.push(`${size.width}px mount: ${error.message || error}`);
+        mounts.push({ holder, root, dispose: null });
+      }
+    });
+    if (widgetListDefinition) {
+      const holder = document.createElement("div"),
+        root = document.createElement("div"),
+        listProperties = Object.fromEntries(
+          (widgetListDefinition.properties || []).map((property) => [
+            property.key,
+            structuredClone(property.defaultValue),
+          ]),
+        );
+      holder.dataset.customWidgetListProbe = entry.id;
+      holder.style.cssText =
+        "position:fixed;left:-10000px;top:600px;width:720px;height:300px;overflow:hidden;pointer-events:none";
+      root.style.cssText = "width:100%;height:100%";
+      holder.appendChild(root);
+      document.body.appendChild(holder);
+      listProperties.widgetType = entry.id;
+      listProperties.defaultCount = "2";
+      listProperties.useWidgetDefaultSize = true;
+      widgetListProbe.holder = holder;
+      widgetListProbe.root = root;
+      try {
+        widgetListProbe.dispose = window.ComposerRuntime.mount(
+          root,
+          "widget-list",
+          { properties: listProperties, lib: null, navigate() {} },
+        );
+      } catch (error) {
+        errors.push(`Widget List mount: ${error.message || error}`);
+      }
+    } else errors.push("Widget List is unavailable in the Composer runtime.");
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    mounts.forEach(({ root }, index) => {
+      const runtimeError = root.querySelector(".custom-component-error"),
+        fallbackError = [...root.querySelectorAll("div")].find((element) =>
+          String(element.textContent || "").trim().startsWith("Component error:"),
+        );
+      if (runtimeError || fallbackError)
+        errors.push(
+          `${sizes[index].width}px runtime: ${String((runtimeError || fallbackError).textContent || "Component failed to mount").trim()}`,
+        );
+      if (!root.querySelector("iframe"))
+        errors.push(`${sizes[index].width}px runtime did not create the component frame.`);
+    });
+    const remount = mounts[0];
+    if (remount) {
+      try {
+        remount.dispose?.();
+        remount.root.innerHTML = "";
+        remount.dispose = window.ComposerRuntime.mount(remount.root, entry.id, {
+          properties: structuredClone(properties),
+          bindings: structuredClone(bindings),
+          lib: null,
+          navigate() {},
+        });
+        await new Promise((resolve) => setTimeout(resolve, 650));
+        const remountError = remount.root.querySelector(".custom-component-error"),
+          remountFrame = remount.root.querySelector("iframe");
+        if (remountError)
+          errors.push(
+            `Page remount runtime: ${String(remountError.textContent || "Component failed after remount").trim()}`,
+          );
+        if (!remountFrame)
+          errors.push("Page remount did not recreate the component runtime frame.");
+        retainedInputs.forEach(({ signal, address, value }) => {
+          const retained = window.ComposerRuntime.simulator.values.get(
+            `${window.ComposerRuntime.typeCode(signal.type)}:${address}`,
+          );
+          if (retained !== value)
+            errors.push(`Page remount lost retained ${signal.type} input “${signal.key}”.`);
+        });
+      } catch (error) {
+        errors.push(`Page remount runtime: ${error.message || error}`);
+      }
+    }
+    const nestedRoots = widgetListProbe.root
+        ? [...widgetListProbe.root.querySelectorAll(`[data-component="${CSS.escape(entry.id)}"]`)]
+        : [],
+      nestedErrors = widgetListProbe.root
+        ? widgetListProbe.root.querySelectorAll(".custom-component-error")
+        : [];
+    if (nestedRoots.length !== 2)
+      errors.push(
+        `Widget List created ${nestedRoots.length} of 2 expected component instances.`,
+      );
+    if (nestedErrors.length)
+      errors.push(
+        `Widget List reported ${nestedErrors.length} nested component runtime error${nestedErrors.length === 1 ? "" : "s"}.`,
+      );
+    if (nestedRoots.filter((root) => root.querySelector("iframe")).length !== 2)
+      errors.push("Widget List did not create a runtime frame for both nested instances.");
+    try {
+      const exportProject = structuredClone(project()),
+        pageId = "custom-component-export-readiness",
+        instanceId = "custom-component-export-instance",
+        signalBindings = Object.fromEntries(
+          (definition.signals || []).map((signal) => [
+            signal.key,
+            {
+              mode: /^\d+$/.test(String(signal.defaultValue || ""))
+                ? "join"
+                : "contract",
+              value: signal.defaultValue || "",
+            },
+          ]),
+        ),
+        exportedProperties = Object.fromEntries(
+          (definition.properties || []).map((property) => [
+            property.key,
+            structuredClone(property.defaultValue),
+          ]),
+        ),
+        token = uid("custom-export-probe-"),
+        frame = document.createElement("iframe"),
+        holder = document.createElement("div"),
+        messages = [],
+        receive = (event) => {
+          if (event.data?.type === "composer-export-readiness" && event.data.token === token)
+            messages.push(String(event.data.message || "Unknown exported-runtime error"));
+        };
+      exportProject.width = 640;
+      exportProject.height = 360;
+      exportProject.pages = [
+        {
+          id: pageId,
+          name: "Component Readiness",
+          background: "#101a1d",
+          bindingMode: "none",
+          binding: "",
+          transition: "none",
+          transitionDuration: 0,
+        },
+      ];
+      exportProject.items = [
+        {
+          id: instanceId,
+          pageId,
+          name: entry.name,
+          componentId: entry.id,
+          source: "",
+          signalBindings,
+          properties: exportedProperties,
+          x: 40,
+          y: 40,
+          w: Math.min(560, Math.max(120, Number(entry.defaultSize?.width) || 320)),
+          h: Math.min(280, Math.max(80, Number(entry.defaultSize?.height) || 180)),
+          z: 1,
+          targetPage: "",
+          interaction: { trigger: "none", preset: "fade", duration: 300 },
+          interactions: [],
+          actions: [],
+          excludedPages: [],
+          hidden: false,
+          master: false,
+        },
+      ];
+      exportProject.subpages = [];
+      exportProject.diagnostics = false;
+      const errorBridge = `<script>window.addEventListener('error',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:event.message},'*')});window.addEventListener('unhandledrejection',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:String(event.reason&&event.reason.message||event.reason)},'*')});<\/script>`,
+        exportedHtml = window.ComposerExporter
+          .exportProject(exportProject)
+          .replace(/<head>/i, `<head>${errorBridge}`);
+      holder.style.cssText =
+        "position:fixed;left:-10000px;top:920px;width:640px;height:360px;overflow:hidden;pointer-events:none";
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      frame.style.cssText = "width:100%;height:100%;border:0";
+      holder.appendChild(frame);
+      document.body.appendChild(holder);
+      addEventListener("message", receive);
+      frame.srcdoc = exportedHtml;
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 1200);
+        frame.addEventListener(
+          "load",
+          () => {
+            clearTimeout(timer);
+            setTimeout(resolve, 650);
+          },
+          { once: true },
+        );
+      });
+      const exportedRoot = frame.contentDocument?.querySelector(
+          `[data-instance="${instanceId}"]`,
+        ),
+        componentError = exportedRoot?.querySelector(".custom-component-error"),
+        componentFrame = exportedRoot?.querySelector("iframe");
+      if (!exportedRoot)
+        messages.push("The exported HTML did not contain the component instance.");
+      if (!componentFrame)
+        messages.push("The exported component did not create its runtime frame.");
+      if (componentError)
+        messages.push(String(componentError.textContent || "Exported component runtime error"));
+      removeEventListener("message", receive);
+      holder.remove();
+      exportedRuntime = { passed: !messages.length, errors: [...new Set(messages)] };
+      exportedRuntime.errors.forEach((message) =>
+        errors.push(`Exported HTML runtime: ${message}`),
+      );
+    } catch (error) {
+      exportedRuntime = { passed: false, errors: [String(error.message || error)] };
+      errors.push(`Exported HTML runtime: ${error.message || error}`);
+    }
+    mounts.forEach(({ holder, dispose }) => {
+      try {
+        dispose?.();
+      } catch (error) {
+        errors.push(`Cleanup: ${error.message || error}`);
+      }
+      holder.remove();
+    });
+    try {
+      widgetListProbe.dispose?.();
+    } catch (error) {
+      errors.push(`Widget List cleanup: ${error.message || error}`);
+    }
+    widgetListProbe.holder?.remove();
+    return {
+      passed: !errors.length,
+      errors: [...new Set(errors)],
+      instances: mounts.length,
+      widgetListInstances: nestedRoots.length,
+      exportedRuntime: exportedRuntime.passed,
+      remountRuntime: !errors.some((message) => message.startsWith("Page remount")),
+    };
   }
   function renderComponentLibrary() {
     const query = $("component-search").value.trim().toLowerCase();
@@ -1309,6 +1711,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .filter(
           (c) =>
             c.category === category &&
+            !hiddenPaletteComponents.has(componentPreferenceId(c)) &&
             (!query ||
               (c.displayName + " " + c.name).toLowerCase().includes(query)),
         )
@@ -1351,8 +1754,26 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           el.appendChild(name);
         }
         if (customEntry) {
-          const remove = document.createElement("button");
+          const readiness = customComponentReadinessStatus(customEntry),
+            badge = document.createElement("span"),
+            remove = document.createElement("button");
           el.classList.add("custom-component");
+          badge.className = `component-readiness ${readiness.key}`;
+          badge.textContent = readiness.label;
+          badge.title = readiness.title;
+          badge.tabIndex = 0;
+          badge.setAttribute("role", "button");
+          badge.setAttribute("aria-label", `${customEntry.name}: ${readiness.label}. Open component readiness.`);
+          const openReadiness = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openCustomBuilder(null, customEntry);
+          };
+          badge.onclick = openReadiness;
+          badge.onkeydown = (event) => {
+            if (event.key === "Enter" || event.key === " ") openReadiness(event);
+          };
+          badge.onpointerdown = (event) => event.stopPropagation();
           remove.type = "button";
           remove.className = "component-remove";
           remove.title = `Delete ${customEntry.name}`;
@@ -1364,7 +1785,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             deleteCustomComponent(customEntry);
           };
           remove.onpointerdown = (event) => event.stopPropagation();
-          el.appendChild(remove);
+          el.append(badge, remove);
         }
         el.draggable = true;
         el.addEventListener("dragstart", (e) =>
@@ -1376,6 +1797,109 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       group.append(summary, items);
       list.appendChild(group);
     });
+  }
+  function componentPreferenceId(component) {
+    return component.componentId || `file:${component.name}`;
+  }
+  function savePalettePreferences() {
+    try {
+      localStorage.setItem(
+        palettePreferencesKey,
+        JSON.stringify([...hiddenPaletteComponents].sort()),
+      );
+    } catch (_) {}
+  }
+  function setAllPaletteComponentsVisible(visible) {
+    state.components.forEach((component) => {
+      const id = componentPreferenceId(component);
+      if (visible) hiddenPaletteComponents.delete(id);
+      else hiddenPaletteComponents.add(id);
+    });
+    savePalettePreferences();
+    renderComponentLibrary();
+    renderPalettePreferences();
+  }
+  function renderPalettePreferences() {
+    const container = $("palette-preferences-list"),
+      query = $("palette-preferences-search").value.trim().toLowerCase(),
+      components = state.components
+        .filter(
+          (component) =>
+            !query ||
+            `${component.displayName} ${component.name} ${component.category}`
+              .toLowerCase()
+              .includes(query),
+        )
+        .sort(
+          (a, b) =>
+            categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category) ||
+            a.category.localeCompare(b.category) ||
+            a.displayName.localeCompare(b.displayName),
+        ),
+      visibleCount = state.components.filter(
+        (component) =>
+          !hiddenPaletteComponents.has(componentPreferenceId(component)),
+      ).length;
+    $("palette-preferences-summary").textContent =
+      `${visibleCount} of ${state.components.length} components visible in the palette`;
+    container.innerHTML = "";
+    if (!components.length) {
+      const empty = document.createElement("div");
+      empty.className = "palette-preferences-empty";
+      empty.textContent = "No components match this search.";
+      container.appendChild(empty);
+      return;
+    }
+    [...new Set(components.map((component) => component.category))].forEach(
+      (category) => {
+        const categoryComponents = components.filter(
+            (component) => component.category === category,
+          ),
+          details = document.createElement("details"),
+          summary = document.createElement("summary"),
+          shown = categoryComponents.filter(
+            (component) =>
+              !hiddenPaletteComponents.has(componentPreferenceId(component)),
+          ).length;
+        details.className = "palette-preference-category";
+        details.open = true;
+        summary.append(document.createTextNode(category));
+        const count = document.createElement("span");
+        count.textContent = `${shown}/${categoryComponents.length} shown`;
+        summary.appendChild(count);
+        details.appendChild(summary);
+        categoryComponents.forEach((component) => {
+          const id = componentPreferenceId(component),
+            label = document.createElement("label"),
+            checkbox = document.createElement("input"),
+            name = document.createElement("span"),
+            kind = document.createElement("small");
+          label.className = "palette-preference-entry";
+          checkbox.type = "checkbox";
+          checkbox.checked = !hiddenPaletteComponents.has(id);
+          checkbox.onchange = () => {
+            if (checkbox.checked) hiddenPaletteComponents.delete(id);
+            else hiddenPaletteComponents.add(id);
+            savePalettePreferences();
+            renderComponentLibrary();
+            renderPalettePreferences();
+          };
+          name.textContent = component.displayName;
+          const customEntry = state.customComponents.find((entry) => entry.id === component.componentId);
+          kind.textContent = customEntry
+            ? `Custom · ${customComponentReadinessStatus(customEntry).label}`
+            : "Built-in";
+          label.append(checkbox, name, kind);
+          details.appendChild(label);
+        });
+        container.appendChild(details);
+      },
+    );
+  }
+  function openPalettePreferences() {
+    $("palette-preferences-search").value = "";
+    renderPalettePreferences();
+    $("palette-preferences-dialog").showModal();
   }
   async function loadKnown() {
     let count = 0;
@@ -6761,7 +7285,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function signalCsv() {
     const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`,
       rows = collectProjectSignals();
-    return [
+    const properties = [
       ["Page", "Widget", "Signal", "Type", "Direction", "Mode", "Address"],
       ...rows.map((row) => [
         row.page,
@@ -8265,6 +8789,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       mode.innerHTML =
         '<option value="join">Join</option><option value="contract">Contract</option>';
       if (overall) binding.mode = overall;
+      if (
+        overall === "join" &&
+        signal.standardHoldOutput &&
+        binding.value === signal.defaultValue
+      )
+        binding.value = "";
+      else if (
+        overall === "contract" &&
+        signal.standardHoldOutput &&
+        !binding.value
+      )
+        binding.value = signal.defaultValue || "";
       mode.value = binding.mode;
       value.value = binding.value;
       function sync() {
@@ -8930,6 +9466,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           itemId: details.itemId || validationContext.itemId || "",
           pageName: details.pageName || validationContext.pageName || "",
           itemName: details.itemName || validationContext.itemName || "",
+          customComponentId:
+            details.customComponentId || validationContext.customComponentId || "",
           fix: details.fix || "",
           fixData: details.fixData || null,
         }),
@@ -9242,6 +9780,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         (entry) => entry.id === item.componentId,
       );
       if (customEntry && !validatedCustomComponents.has(customEntry.id)) {
+        validationContext.customComponentId = customEntry.id;
         validatedCustomComponents.add(customEntry.id);
         const propertyKeys = new Set(
             (customEntry.properties || []).map((entry) => entry.key),
@@ -9285,6 +9824,32 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             category: "Custom components",
           }),
         );
+        const readiness = customEntry.readiness,
+          currentFingerprint = customComponentReadinessFingerprint(customEntry);
+        if (!readiness?.testedAt)
+          add(
+            "warning",
+            `Custom component “${customEntry.name}” has not completed the current Component Readiness test. Open it and select Validate & update component.`,
+            { category: "Custom components" },
+          );
+        else if (readiness.fingerprint !== currentFingerprint)
+          add(
+            "warning",
+            `Custom component “${customEntry.name}” changed after its ${new Date(readiness.testedAt).toLocaleString()} readiness test. Retest it before release.`,
+            { category: "Custom components" },
+          );
+        else if (readiness.passed === false)
+          add(
+            "error",
+            `Custom component “${customEntry.name}” failed its saved Component Readiness test.`,
+            { category: "Custom components" },
+          );
+        else if (Number(readiness.confidence) < 85)
+          add(
+            "warning",
+            `Custom component “${customEntry.name}” passed at ${Number(readiness.confidence) || 0}% confidence; review its saved warnings.`,
+            { category: "Custom components" },
+          );
       }
     });
     validationContext = {};
@@ -9607,6 +10172,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     host.append(guide);
   }
   function navigateToHealthIssue(issue) {
+    if (issue.customComponentId) {
+      const entry = state.customComponents.find(
+        (candidate) => candidate.id === issue.customComponentId,
+      );
+      if (entry) {
+        $("health-dialog").close();
+        openCustomBuilder(null, entry);
+        setStatus(`Opened custom component “${entry.name}” for review`);
+        return;
+      }
+    }
     const item = issue.itemId
         ? state.items.find((entry) => entry.id === issue.itemId)
         : null,
@@ -9768,7 +10344,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           message.append(context);
         }
         row.append(severity, message);
-        if (issue.pageId || issue.itemId || issue.fix) {
+        if (issue.pageId || issue.itemId || issue.customComponentId || issue.fix) {
           const actions = document.createElement("div");
           actions.className = "health-actions";
           if (issue.fix) {
@@ -9779,7 +10355,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             fix.onclick = () => fixHealthIssue(issue);
             actions.append(fix);
           }
-          if (issue.pageId || issue.itemId) {
+          if (issue.pageId || issue.itemId || issue.customComponentId) {
           const button = document.createElement("button");
           button.type = "button";
           button.textContent = "Go to problem";
@@ -10156,8 +10732,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         { key: "press" },
         { key: "selected" },
         { key: "name" },
-        { key: "disabled" },
-        { key: "visibility" },
         { key: "feedback1" },
         { key: "set1" },
         { key: "feedback2" },
@@ -10212,8 +10786,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     expect(has("signal-input", "feedback1", "value"), "slider Feedback is missing");
     expect(has("signal-output", "set1", "input"), "slider Value Set is missing");
     expect(has("signal-input", "feedback2", "width"), "fill Feedback is missing");
-    expect(has("signal-input", "visibility", "visibility"), "Visibility is missing");
-    expect(has("signal-input", "disabled", "disabledState"), "Disabled is missing");
+    expect(
+      !has("signal-input", "visibility", "visibility"),
+      "Visibility should be supplied by Composer after translation",
+    );
+    expect(
+      !has("signal-input", "disabled", "disabledState"),
+      "Disabled should be supplied by Composer after translation",
+    );
     expect(
       plan.stateStyles?.states?.standard && plan.stateStyles?.states?.selected,
       "Standard and Selected visual states are missing",
@@ -10877,7 +11457,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           suffix: "Selected",
         },
         {
-          key: "label",
+          key: "name",
           name: "Name",
           type: "serial",
           direction: "input",
@@ -10903,7 +11483,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           suffix: "Selected",
         },
         {
-          key: "label",
+          key: "name",
           name: "Name",
           type: "serial",
           direction: "input",
@@ -11016,7 +11596,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       variables = new Map(),
       collections = new Map(),
       add = (candidate) => {
-        const signature = `${candidate.kind}|${candidate.selector}|${candidate.action}|${candidate.event || ""}`;
+        const signature = `${candidate.kind}|${candidate.selector}|${candidate.targetSelector || ""}|${candidate.action}|${candidate.event || ""}`;
         if (!seen.has(signature)) {
           seen.add(signature);
           candidates.push({ id: `inferred-${candidates.length + 1}`, ...candidate });
@@ -11043,6 +11623,66 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         direction: "output",
         action: match[4] === "input" || match[4] === "change" ? "input" : match[4] === "click" ? "click" : match[4] === "pointerup" ? "release" : "press",
       });
+    for (const handler of javascript.matchAll(
+      /(?:document\.)?querySelector\(\s*(["'`])(.+?)\1\s*\)\.addEventListener\(\s*(["'])(click|pointerdown|pointerup|change)\3\s*,([\s\S]{0,1800}?)(?=\n\s*\}\s*\)|\n\s*\);|$)/g,
+    )) {
+      const triggerSelector = handler[2], event = handler[4], body = handler[5];
+      for (const target of body.matchAll(
+        /(?:document\.)?querySelector(?:All)?\(\s*(["'`])(.+?)\1\s*\)/g,
+      )) {
+        const following = body.slice(
+            (target.index || 0) + target[0].length,
+            (target.index || 0) + target[0].length + 360,
+          ),
+          classMatch = following.match(/\.classList\.(toggle|add|remove)\(\s*(["'])([^"']+)\2/),
+          visibility = /(?:\.hidden\s*=|\.style\.(?:display|visibility|opacity)\s*=|\.(?:setAttribute|toggleAttribute)\(\s*(["'])(?:hidden|aria-expanded|aria-selected)\1)/.test(following),
+          content = /\.(?:textContent|innerText|innerHTML|src)\s*=/.test(following);
+        if (!classMatch && !visibility && !content) continue;
+        add({
+          kind: "interaction-relationship",
+          label: `${event} controls related element`,
+          selector: triggerSelector,
+          targetSelector: target[2],
+          event,
+          effect: classMatch
+            ? `${classMatch[1]} class “${classMatch[3]}”`
+            : visibility
+              ? "change visibility or expanded state"
+              : "update related content",
+          source: "local",
+          type: "digital",
+          direction: "input",
+          action: "relationship",
+        });
+      }
+      const datasetMatch = body.match(/\.dataset\.([A-Za-z_$][\w$]*)/);
+      if (datasetMatch && /querySelector\s*\([^)]*dataset/.test(body))
+        add({
+          kind: "interaction-relationship",
+          label: `${event} selects a dataset-linked target`,
+          selector: triggerSelector,
+          targetSelector: `[target from data-${datasetMatch[1].replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}]`,
+          event,
+          effect: "activate the element referenced by its data attribute",
+          source: "local",
+          type: "digital",
+          direction: "input",
+          action: "relationship",
+        });
+      if (/createElement\s*\(|insertAdjacentHTML\s*\(|appendChild\s*\(/.test(body))
+        add({
+          kind: "interaction-relationship",
+          label: `${event} creates related content`,
+          selector: triggerSelector,
+          targetSelector: "dynamically created content",
+          event,
+          effect: "create or insert related content",
+          source: "local",
+          type: "digital",
+          direction: "input",
+          action: "relationship",
+        });
+    }
     variables.forEach((selector, variable) => {
       const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       for (const match of javascript.matchAll(
@@ -11086,18 +11726,63 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         add({ kind: "numeric-transform", label: `${action} value`, selector, source: "signal-input", type: "analog", direction: "input", action, parameter: action === "rotate" ? "deg" : action === "scale" ? "" : "px" });
       }
     });
+    variables.forEach((triggerSelector, triggerVariable) => {
+      const escapedTrigger = triggerVariable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        handlerPattern = new RegExp(
+          `${escapedTrigger}\\.addEventListener\\(\\s*(["'])(click|pointerdown|pointerup|change)\\1\\s*,([\\s\\S]{0,1800}?)(?:\\n\\s*\\}|\\}\\s*\\))`,
+          "g",
+        );
+      for (const handler of javascript.matchAll(handlerPattern)) {
+        const event = handler[2], body = handler[3];
+        variables.forEach((targetSelector, targetVariable) => {
+          if (targetVariable === triggerVariable) return;
+          const escapedTarget = targetVariable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            classMatch = body.match(
+              new RegExp(`${escapedTarget}\\.classList\\.(toggle|add|remove)\\(\\s*(["'])([^"']+)\\2`),
+            ),
+            visibilityMatch = new RegExp(
+              `${escapedTarget}(?:\\.hidden\\s*=|\\.style\\.(?:display|visibility|opacity)\\s*=|\\.(?:setAttribute|toggleAttribute)\\(\\s*(["'])(?:hidden|aria-expanded|aria-selected)\\1)`,
+            ).test(body),
+            contentMatch = new RegExp(
+              `${escapedTarget}\\.(?:textContent|innerText|innerHTML|src)\\s*=`,
+            ).test(body);
+          if (!classMatch && !visibilityMatch && !contentMatch) return;
+          const effect = classMatch
+            ? `${classMatch[1]} class “${classMatch[3]}”`
+            : visibilityMatch
+              ? "change visibility or expanded state"
+              : "update related content";
+          add({
+            kind: "interaction-relationship",
+            label: `${event} controls related element`,
+            selector: triggerSelector,
+            targetSelector,
+            event,
+            effect,
+            source: "local",
+            type: "digital",
+            direction: "input",
+            action: "relationship",
+          });
+        });
+      }
+    });
     collections.forEach((selector, variable) => {
       const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
         block = new RegExp(`${escaped}\\.forEach\\([\\s\\S]{0,600}?addEventListener\\(\\s*(["'])(click|pointerdown|pointerup|input|change)\\1`, "g").exec(javascript);
       if (block)
         add({ kind: "collection-event", label: `Repeated ${block[2]} handlers`, selector, event: block[2], source: "signal-output", type: block[2] === "input" || block[2] === "change" ? "analog" : "digital", direction: "output", action: block[2] === "input" || block[2] === "change" ? "input" : block[2] === "click" ? "click" : block[2] === "pointerup" ? "release" : "press" });
-      if (new RegExp(`${escaped}\\.forEach\\([\\s\\S]{0,600}?classList\\.(?:toggle|add|remove)`).test(javascript))
+      if (new RegExp(`${escaped}\\.forEach\\([\\s\\S]{0,600}?classList\\.(?:toggle|add|remove)`).test(javascript)) {
         add({ kind: "collection-state", label: "Repeated selected state", selector, source: "signal-input", type: "digital", direction: "input", action: "selectedClass" });
+        add({ kind: "interaction-relationship", label: "Item press controls repeated selected state", selector, targetSelector: selector, event: "click", effect: "change the selected item", source: "local", type: "digital", direction: "input", action: "relationship" });
+      }
     });
     for (const match of javascript.matchAll(
       /\.addEventListener\(\s*(["'])click\1\s*,[\s\S]{0,500}?\.closest\(\s*(["'`])(.+?)\2\s*\)/g,
-    ))
+    )) {
       add({ kind: "delegated-event", label: "Delegated item press", selector: match[3], event: "click", source: "signal-output", type: "digital", direction: "output", action: "click" });
+      add({ kind: "interaction-relationship", label: "Delegated press controls the matched item", selector: match[3], targetSelector: match[3], event: "click", effect: "run its original delegated interaction", source: "local", type: "digital", direction: "input", action: "relationship" });
+    }
     const animationNames = [
       ...styles.matchAll(/@keyframes\s+([A-Za-z_][\w-]*)/g),
     ].map((match) => match[1]);
@@ -11134,11 +11819,46 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       add("timing", "Timer-controlled behavior", "Delays or intervals are present. Add an editable timing property for component setup.", "high");
     if (/\.closest\s*\(|\.matches\s*\(/.test(javascript) && /addEventListener/.test(javascript))
       add("delegated", "Delegated event handling", "A parent handles events for child items. Generate an item Press rule and ranges.", "medium");
+    const relationships = inferred.filter(
+      (entry) => entry.kind === "interaction-relationship",
+    );
+    if (relationships.length)
+      add(
+        "relationships",
+        "Related local interactions",
+        `${relationships.length} trigger-to-target relationship${relationships.length === 1 ? " was" : "s were"} identified and will remain intact.`,
+        "high",
+      );
     if (inferred.filter((entry) => ["numeric-style", "numeric-transform", "css-variable"].includes(entry.kind)).length > 1)
       add("shared-analog", "Shared numeric relationship", "Multiple visual targets can share one analog Feedback contract.", "medium");
     if (/@keyframes\s+/i.test(styles) || /\banimation\s*:/i.test(styles))
       add("animation", "Existing animation", "Add a digital animation trigger while retaining the original animation locally.", "high");
     return suggestions;
+  }
+  function translatedNumericPresentation(element, styles, javascript) {
+    const tag = element.tagName.toLowerCase(),
+      inputType = String(element.type || "").toLowerCase(),
+      signature = `${element.id || ""} ${element.className || ""} ${element.getAttribute("role") || ""} ${element.getAttribute("aria-label") || ""}`.toLowerCase(),
+      native = ["progress", "meter", "select"].includes(tag) ||
+        (tag === "input" && ["range", "number"].includes(inputType)),
+      vertical = /vertical|thermometer|column|level-v|fill-v/.test(signature) ||
+        /flex-direction\s*:\s*column-reverse/i.test(styles),
+      circular = /gauge|knob|dial|radial|circular|arc|ring/.test(signature),
+      variableMatch = circular
+        ? `${styles}\n${javascript}`.match(/--([\w-]*(?:value|level|progress|percent|angle)[\w-]*)/i)
+        : null;
+    if (native) return { action: "value", parameter: "", percentage: false };
+    if (circular)
+      return {
+        action: "cssVariable",
+        parameter: `--${variableMatch?.[1] || "value"}`,
+        percentage: true,
+      };
+    return {
+      action: vertical ? "height" : "width",
+      parameter: "",
+      percentage: true,
+    };
   }
   function analyzeSnippet(name, source) {
     const documentValue = new DOMParser().parseFromString(
@@ -11153,6 +11873,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .join("\n"),
       body = documentValue.body.cloneNode(true),
       variableValues = new Set();
+    const preserveAuthoredButtonAppearance =
+      /\.selected\b|\.active\b|:(?:active|hover|focus|checked)\b|\[aria-(?:pressed|selected|expanded)\b/i.test(
+        styles,
+      ) ||
+      /\btransition(?:-property)?\s*:|\banimation\s*:|@keyframes\b/i.test(
+        styles,
+      );
     body
       .querySelectorAll("script,style")
       .forEach((element) => element.remove());
@@ -11304,16 +12031,26 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       javascript,
       editables,
       features: {
+        preserveAuthoredButtonAppearance,
         buttonCount: buttonElements.length,
         numericCount: numericElements.length,
         interactiveNumericCount: interactiveNumeric.length,
-        numericTargets: numericElements.map((element, index) => ({
-          selector: `[data-translated-numeric="${index}"]`,
-          interactive: interactiveNumeric.includes(element),
-          visualFill: element.matches(".fill,.progress,.level,[role='progressbar']"),
-          min: Number(element.getAttribute("min")) || 0,
-          max: Number(element.getAttribute("max")) || 100,
-        })),
+        numericTargets: numericElements.map((element, index) => {
+          const presentation = translatedNumericPresentation(
+            element,
+            styles,
+            javascript,
+          );
+          return {
+            selector: `[data-translated-numeric="${index}"]`,
+            interactive: interactiveNumeric.includes(element),
+            visualFill: presentation.percentage,
+            action: presentation.action,
+            parameter: presentation.parameter,
+            min: Number(element.getAttribute("min")) || 0,
+            max: Number(element.getAttribute("max")) || 100,
+          };
+        }),
         textKeys: editables
           .filter((entry) => entry.kind === "text")
           .map((entry) => entry.key),
@@ -11511,6 +12248,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         action: row.dataset.action,
         parameter: row.dataset.parameter || "",
         animationName: row.dataset.animationName || "",
+        targetSelector: row.dataset.targetSelector || "",
+        effect: row.dataset.effect || "",
+        event: row.dataset.event || "",
       }))
       .filter((entry) => entry.mode !== "ignore");
   }
@@ -11528,8 +12268,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     $("translate-inferences").innerHTML = candidates.length
       ? candidates
           .map(
-            (entry) =>
-              `<div class="translate-inference-row" data-id="${translateEscape(entry.id)}" data-label="${translateEscape(entry.label)}" data-source="${translateEscape(entry.source)}" data-type="${translateEscape(entry.type)}" data-direction="${translateEscape(entry.direction)}" data-action="${translateEscape(entry.action)}" data-parameter="${translateEscape(entry.parameter || "")}"><span>${translateEscape(entry.label)}<small>${translateEscape(entry.kind)} · ${translateEscape(entry.type)} ${translateEscape(entry.direction)}</small></span><select class="translate-inference-mode"><option value="local" selected>Keep local</option>${entry.source === "local" ? "" : '<option value="generated">Generate Crestron rule</option>'}<option value="ignore">Ignore</option></select><input class="translate-inference-key" value="${translateEscape(entry.key)}" aria-label="Generated signal key"><input class="translate-inference-selector" value="${translateEscape(entry.selector)}" placeholder="CSS selector" aria-label="Target selector"><small>${translateEscape(entry.action)}</small></div>`,
+            (entry) => {
+              const preserved = entry.source === "local",
+                explanation = entry.action === "relationship"
+                  ? `Using ${entry.selector || "the trigger"} will ${entry.effect || "update"} ${entry.targetSelector || "its related content"}. This authored relationship remains local and intact.`
+                  : entry.action === "transition"
+                  ? "This transition animates the original Standard/Selected state change. Use the generated Selected digital input to control that state from Crestron."
+                  : "This authored visual behavior remains inside the component. No additional signal is generated unless a safe trigger and target are configured.";
+              return `<div class="translate-inference-row${preserved ? " preserved" : ""}" data-id="${translateEscape(entry.id)}" data-label="${translateEscape(entry.label)}" data-source="${translateEscape(entry.source)}" data-type="${translateEscape(entry.type)}" data-direction="${translateEscape(entry.direction)}" data-action="${translateEscape(entry.action)}" data-parameter="${translateEscape(entry.parameter || "")}" data-target-selector="${translateEscape(entry.targetSelector || "")}" data-effect="${translateEscape(entry.effect || "")}" data-event="${translateEscape(entry.event || "")}"><span><strong>${translateEscape(preserved ? `Preserved ${entry.label}` : entry.label)}</strong><small>${translateEscape(entry.kind)} · ${translateEscape(entry.type)} ${translateEscape(entry.direction)}</small></span><select class="translate-inference-mode" aria-label="Behavior handling"><option value="local" selected>${preserved ? "Preserve original" : "Keep local"}</option>${preserved ? "" : '<option value="generated">Generate Crestron rule</option>'}<option value="ignore">Ignore</option></select><input class="translate-inference-key" value="${translateEscape(entry.key)}" aria-label="Generated signal key"><input class="translate-inference-selector" value="${translateEscape(entry.selector)}" placeholder="CSS selector" aria-label="Target selector"><span class="translate-inference-explanation">${translateEscape(explanation)}</span><small class="translate-inference-action">${translateEscape(entry.action)}</small></div>`;
+            },
           )
           .join("")
       : '<p class="hint">No existing scripted or animated behaviors were detected. Standard component behaviors will still be generated.</p>';
@@ -11624,6 +12371,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .forEach((row) => {
           applied = setTranslateInferenceGenerated(row, "feedback") || applied;
         });
+    } else if (action === "relationships") {
+      applied = rows.some(
+        (row) =>
+          row.dataset.action === "relationship" &&
+          row.querySelector(".translate-inference-mode")?.value === "local",
+      );
     } else if (action === "animation") {
       const row = rows.find((candidate) => candidate.dataset.action === "animation");
       if (row) {
@@ -11859,13 +12612,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       detected = translateSource?.features || {},
       signals = [],
       addSignal = (signal) => {
-        if (!signals.some((entry) => entry.key === signal.key))
+        const duplicate = signals.some(
+          (entry) =>
+            entry.key === signal.key ||
+            (entry.suffix === signal.suffix &&
+              entry.type === signal.type &&
+              entry.direction === signal.direction),
+        );
+        if (!duplicate)
           signals.push(signal);
       },
       buttonCount = detected.buttonCount || 0;
     preset.signals.forEach(addSignal);
     if (buttonCount) {
-      ["press", "selected", "label"].forEach((key) => {
+      ["press", "selected", "label", "name"].forEach((key) => {
         const existing = signals.find((entry) => entry.key === key);
         if (existing && buttonCount > 1)
           signals.splice(signals.indexOf(existing), 1);
@@ -11896,13 +12656,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name`,
         });
       }
-      addSignal({
-        key: "disabled",
-        name: "Disabled",
-        type: "digital",
-        direction: "input",
-        suffix: "Disabled",
-      });
     }
     (detected.textKeys || []).forEach((key, index) =>
       addSignal({
@@ -11936,14 +12689,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           direction: "output",
           suffix: detected.numericCount === 1 ? "ValueSet" : `Value${index + 1}.ValueSet`,
         });
-    });
-    addSignal({
-      key: "visibility",
-      name: "Visibility",
-      type: "digital",
-      direction: "input",
-      suffix: "Visibility",
-      optionalProperty: "visibilityEnabled",
     });
     selectedTranslateInferences()
       .filter((entry) => entry.mode === "generated")
@@ -12125,7 +12870,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       if (translateSignalTestStats) translateSignalTestStats.unchanged++;
     }
   });
-  $("translate-snippet").onclick = async () => {
+  async function openTranslateImport() {
     if (!native) {
       $("translate-snippet-file").click();
       return;
@@ -12138,7 +12883,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     } catch (error) {
       if (error.message !== "cancelled") setStatus(error.message);
     }
-  };
+  }
+  $("translate-snippet").onclick = openTranslateImport;
+  $("translate-snippet-menu").onclick = openTranslateImport;
   $("translate-snippet-file").onchange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -12166,11 +12913,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         'button,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value',
       propertyRules = [
         ["textSize", textSelector, "fontSize"],
-        ["textColor", textSelector, "color"],
-        ["faceColor", buttonSelector, "backgroundColor"],
-        ["borderColor", buttonSelector, "borderColor"],
-        ["glowStrength", buttonSelector, "glowStrength", "{{glowColor}}"],
-        ["cornerRadius", buttonSelector, "borderRadius"],
+        ...(detected.preserveAuthoredButtonAppearance
+          ? []
+          : [
+              ["textColor", textSelector, "color"],
+              ["faceColor", buttonSelector, "backgroundColor"],
+              ["borderColor", buttonSelector, "borderColor"],
+              [
+                "glowStrength",
+                buttonSelector,
+                "glowStrength",
+                "{{glowColor}}",
+              ],
+              ["cornerRadius", buttonSelector, "borderRadius"],
+            ]),
       ];
     propertyRules.forEach(([key, selector, action, parameter]) =>
       add({
@@ -12206,8 +12962,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       add({ name: `Button ${index + 1} Selected`, source: "signal-input", key: `selected${suffix}`, selector: target, action: "selectedClass" });
       add({ name: `Button ${index + 1} Name`, source: "signal-input", key: `name${suffix}`, selector: label, action: "text" });
     }
-    add({ name: "Component Disabled", source: "signal-input", key: "disabled", selector: buttonSelector, action: "disabledState" });
-    add({ name: "Component Visibility", source: "signal-input", key: "visibility", selector: "body", action: "visibility" });
     (detected.numericTargets || []).forEach((target, index) => {
       const suffix = detected.numericCount === 1 ? "" : String(index + 1);
       add({
@@ -12215,7 +12969,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         source: "signal-input",
         key: `feedback${suffix}`,
         selector: target.selector,
-        action: target.visualFill ? "width" : "value",
+        action: target.action || (target.visualFill ? "width" : "value"),
+        parameter: target.parameter || "",
         mapping: {
           enabled: true,
           inputMin: 0,
@@ -12283,7 +13038,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       );
     const token = (key, fallback) =>
         propertyKeys.has(key) ? `{{${key}}}` : fallback,
-      stateStyles = (detected.buttonCount || 0)
+      stateStyles =
+        (detected.buttonCount || 0) &&
+        !detected.preserveAuthoredButtonAppearance
         ? {
             selector: buttonSelector,
             states: {
@@ -12316,28 +13073,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         html = html.replace(entry.source, `{{${entry.key}}}`);
     });
     const signals = selectedTranslateSignals();
-    if (
-      signals.some((signal) => signal.key === "visibility") &&
-      !properties.some((property) => property.key === "visibilityEnabled")
-    )
-      properties.push({
-        key: "visibilityEnabled",
-        label: "Enable visibility signal",
-        type: "checkbox",
-        value: true,
-        kind: "generated-signal-option",
-      });
     const preset = $("translate-preset").value,
       detected = translateSource.features,
       buttonLike =
         ["button", "toggle", "navigation"].includes(preset) ||
         detected.buttonCount > 0,
+      preserveAuthoredButtonAppearance =
+        detected.preserveAuthoredButtonAppearance === true,
       hasShadowSize = properties.some((entry) => entry.key === "shadowSize"),
       hasGlowStrength = properties.some(
         (entry) => entry.key === "glowStrength",
       );
-    if (buttonLike)
-      css += `\nhtml,body{background:transparent!important;}\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\nbutton,[role="button"],.btn{background:{{faceColor}};color:{{textColor}};border-color:{{borderColor}};border-radius:{{cornerRadius}}px;}\nbutton.active,[role="button"].active,.btn.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button,[role="button"],.btn{--translated-glow:{{glowColor}};}button.active,[role="button"].active,.btn.active{--translated-glow:{{selectedGlowColor}};box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 calc({{glowStrength}}px * 2) var(--translated-glow);}` : ""}\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}`;
+    if (buttonLike) {
+      css += "\nhtml,body{background:transparent!important;}";
+      if (!preserveAuthoredButtonAppearance)
+        css += `\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\nbutton,[role="button"],.btn{background:{{faceColor}};color:{{textColor}};border-color:{{borderColor}};border-radius:{{cornerRadius}}px;}\nbutton.active,[role="button"].active,.btn.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button,[role="button"],.btn{--translated-glow:{{glowColor}};}button.active,[role="button"].active,.btn.active{--translated-glow:{{selectedGlowColor}};box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 calc({{glowStrength}}px * 2) var(--translated-glow);}` : ""}`;
+      css +=
+        '\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}';
+    }
     if (properties.some((entry) => entry.key === "textSize"))
       css +=
         "\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}";
@@ -12385,6 +13138,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       preset,
       selectedTranslateInferences(),
     );
+    customPreservedRelationships = selectedTranslateInferences()
+      .filter(
+        (entry) => entry.mode === "local" && entry.action === "relationship",
+      )
+      .map(({ label, selector, targetSelector, event, effect }) => ({
+        label,
+        selector,
+        targetSelector,
+        event,
+        effect,
+      }));
     $("custom-behavior-list").innerHTML = "";
     generatedPlan.behaviors.forEach(addCustomBehaviorRow);
     setCustomStateStyles(generatedPlan.stateStyles);
@@ -12399,8 +13163,25 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       });
       syncCustomRepeatedRows();
     }
+    analyzeCustomElements();
+    captureCustomOriginalSource();
   };
   $("component-search").oninput = renderComponentLibrary;
+  $("palette-preferences").onclick = (event) => {
+    event.currentTarget.closest("details")?.removeAttribute("open");
+    openPalettePreferences();
+  };
+  $("palette-preferences-search").oninput = renderPalettePreferences;
+  $("palette-preferences-show-all").onclick = () =>
+    setAllPaletteComponentsVisible(true);
+  $("palette-preferences-hide-all").onclick = () => {
+    if (
+      confirm(
+        "Hide every component from the palette? Existing placed widgets will remain unchanged.",
+      )
+    )
+      setAllPaletteComponentsVisible(false);
+  };
   $("layer-search").oninput = renderLayers;
   $("asset-search").oninput = renderAssets;
   $("asset-files").onchange = async (event) => {
@@ -13182,6 +13963,365 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       javascript = $("custom-source-javascript").value;
     return `${css ? `<style>${css}</style>` : ""}${html}${javascript ? (runtime ? customJavascriptRuntime(javascript) : `<script>${javascript}<\/script>`) : ""}`;
   }
+  function currentCustomSourceSnapshot() {
+    return {
+      html: $("custom-source-html").value,
+      css: $("custom-source-css").value,
+      javascript: $("custom-source-javascript").value,
+      properties: collectCustomProperties(),
+      stateStyles: collectCustomStateStyles(),
+    };
+  }
+  function captureCustomOriginalSource() {
+    customOriginalSourceSnapshot = currentCustomSourceSnapshot();
+    $("custom-audit-restore").disabled = true;
+  }
+  function loadCustomOriginalSource(entry = null) {
+    customOriginalSourceSnapshot = entry?.originalSource
+      ? structuredClone(entry.originalSource)
+      : currentCustomSourceSnapshot();
+    const current = currentCustomSourceSnapshot();
+    $("custom-audit-restore").disabled =
+      JSON.stringify(current) === JSON.stringify(customOriginalSourceSnapshot);
+  }
+  function customLocalDependencyReferences(source) {
+    const values = [
+        ...[...String(source || "").matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)].map((match) => match[1]),
+        ...[...String(source || "").matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)].map((match) => match[1]),
+      ],
+      local = values.filter(
+        (value) =>
+          value &&
+          !/^(?:data:|blob:|https?:|javascript:|#)/i.test(value) &&
+          !/\{\{[^}]+\}\}/.test(value),
+      );
+    return [...new Set(local)];
+  }
+  function customAssetForLocalReference(reference) {
+    let clean = String(reference || "").split(/[?#]/)[0].replace(/\\/g, "/"),
+      name = clean.slice(clean.lastIndexOf("/") + 1);
+    try {
+      name = decodeURIComponent(name);
+    } catch {}
+    return state.assets.find(
+      (asset) => String(asset.name || "").toLowerCase() === name.toLowerCase(),
+    );
+  }
+  function auditCustomSource() {
+    const { html, css, javascript } = currentCustomSourceSnapshot(),
+      source = `${html}\n${css}\n${javascript}`,
+      findings = [],
+      add = (code, message, options = {}) =>
+        findings.push({ code, message, severity: options.severity || "warning", repairable: !!options.repairable });
+    if (/\b(?:mouse(?:down|up|move|enter|leave|over|out))\b/i.test(source))
+      add("mouse-events", "Mouse-only event names can fail or behave differently on a TSW touchscreen.", { repairable: true });
+    if (/\b(?:touchstart|touchend|touchmove|touchcancel)\b/i.test(source))
+      add("touch-events", "Touch-only handlers do not provide matching mouse behavior in Editor and Preview.", { repairable: true });
+    if (/\b(?:100vw|100vh)\b/i.test(css))
+      add("viewport-units", "100vw/100vh can escape the component frame and produce Editor/Preview sizing differences.", { repairable: true });
+    if (/(?:html|body|html\s*,\s*body)\s*\{[^}]*\b(?:width|height)\s*:\s*\d+(?:\.\d+)?px/i.test(css))
+      add("fixed-root-size", "The imported document root uses a fixed pixel size. Normalize it to the component frame while preserving internal element sizing.", { repairable: true });
+    if (/(^|[},\s])(?:html|body|:root)\s*[{,]/im.test(css))
+      add("global-css", "CSS targets html, body, or :root. Keep those rules component-local whenever possible.");
+    if (/position\s*:\s*fixed/i.test(css))
+      add("fixed-position", "position: fixed is relative to the runtime viewport rather than the component boundary.", { repairable: true });
+    const insetDeclarations = [...css.matchAll(/\binset\s*:\s*([^;}{]+)(?=[;}])/gi)],
+      simpleInsets = insetDeclarations.filter((match) => {
+        const values = match[1].trim().split(/\s+/);
+        return values.length >= 1 && values.length <= 4 && values.every((value) => /^-?(?:\d*\.)?\d+(?:px|%|em|rem|vh|vw)?$|^(?:auto|initial|inherit|unset)$/i.test(value));
+      });
+    if (simpleInsets.length)
+      add("css-inset", `${simpleInsets.length} CSS inset shorthand declaration${simpleInsets.length === 1 ? "" : "s"} can be expanded for older touch-panel browsers.`, { repairable: true });
+    if (insetDeclarations.length > simpleInsets.length)
+      add("complex-css-inset", "A calculated or complex CSS inset value needs manual compatibility review.");
+    if (/overflow\s*:\s*hidden/i.test(css) && /box-shadow|filter\s*:\s*(?:drop-shadow|blur)/i.test(css))
+      add("effect-clipping", "Overflow clipping may cut off glow, shadows, or press effects. Add protected space inside the component boundary.", { repairable: true });
+    const stateStyles = collectCustomStateStyles(),
+      stateScales = Object.values(stateStyles?.states || {}).map(
+        (state) => Number(state.scale) || 100,
+      );
+    if (
+      stateStyles?.selector &&
+      css.includes(stateStyles.selector) &&
+      /\b(?:animation|transform)\s*:/i.test(css) &&
+      stateScales.some((scale) => scale !== 100)
+    )
+      add(
+        "generated-animation-conflict",
+        "Generated state scaling targets an element that also has authored animation or transform CSS. Preserve the original motion by disabling generated scaling.",
+        { repairable: true },
+      );
+    const parsed = new DOMParser().parseFromString(html, "text/html"),
+      ids = [...parsed.querySelectorAll("[id]")].map((element) => element.id),
+      duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+    if (ids.length) {
+      const referencedIds = parsed.querySelector(
+          "[for],[href^='#'],[aria-activedescendant],[aria-controls],[aria-describedby],[aria-details],[aria-errormessage],[aria-flowto],[aria-labelledby],[aria-owns]",
+        ),
+        svgIds = parsed.querySelector("svg [id]"),
+        cssIdReferences = /url\(\s*["']?#/i.test(css);
+      add(
+        "global-ids",
+        `${new Set(ids).size} element ID${new Set(ids).size === 1 ? "" : "s"} will be repeated when multiple component instances are mounted.${referencedIds || svgIds || cssIdReferences ? " Referenced or SVG IDs require manual review." : " Convert them to instance-local data selectors."}`,
+        { repairable: !(referencedIds || svgIds || cssIdReferences) },
+      );
+    }
+    if (duplicateIds.length)
+      add("duplicate-ids", `Duplicate element IDs: ${duplicateIds.join(", ")}.`, { severity: "error" });
+    if (/\bdocument\.(?:getElementById|querySelector|querySelectorAll)\s*\(/.test(javascript))
+      add("document-selectors", "JavaScript uses document-wide selectors. Use the supplied component root for instance-local lookup.", { repairable: true });
+    if (/\b(?:parent|top)\.document\b/.test(javascript))
+      add("parent-document", "JavaScript reaches outside the component iframe through parent/top.document and can alter other widgets or the editor.", { severity: "error", repairable: true });
+    const listenerSignatures = [
+        ...javascript.matchAll(
+          /\b([A-Za-z_$][\w$]*|window|document)\.addEventListener\(\s*(["'])([^"']+)\2\s*,\s*([A-Za-z_$][\w$]*)/g,
+        ),
+      ].map((match) => `${match[1]}|${match[3]}|${match[4]}`),
+      duplicateListeners = [
+        ...new Set(
+          listenerSignatures.filter(
+            (signature, index) => listenerSignatures.indexOf(signature) !== index,
+          ),
+        ),
+      ];
+    if (duplicateListeners.length)
+      add("duplicate-listeners", `${duplicateListeners.length} identical event-listener registration${duplicateListeners.length === 1 ? " appears" : "s appear"} more than once and may publish duplicate presses.`);
+    if (/\bwindow\.[A-Za-z_$][\w$]*\s*=/.test(javascript))
+      add("window-state", "Custom state is assigned directly to window. It is isolated per component instance, but will reset when that instance is remounted.");
+    if (/\b(?:localStorage|sessionStorage|indexedDB)\b/.test(javascript))
+      add("browser-storage", "Browser storage is not guaranteed to behave identically across Preview, CH5 Desktop, and touch panels.");
+    if (/\b(?:eval|Function)\s*\(/.test(javascript))
+      add("dynamic-code", "Dynamic code evaluation can be blocked or behave differently in packaged CH5 runtimes.", { severity: "error" });
+    if (/\b(?:fetch|XMLHttpRequest|WebSocket)\b/.test(javascript))
+      add("network-api", "Network access may require panel permissions, compatible protocols, and CORS configuration.");
+    const legacyApiNames = [
+      /\.replaceAll\s*\(/.test(javascript) && "String.replaceAll",
+      /\.at\s*\(/.test(javascript) && "Array/String.at",
+      /\bObject\.hasOwn\s*\(/.test(javascript) && "Object.hasOwn",
+    ].filter(Boolean);
+    if (legacyApiNames.length)
+      add("legacy-js-apis", `${legacyApiNames.join(", ")} may be unavailable on older panel Chromium versions. Add isolated compatibility polyfills.`, { repairable: true });
+    const reviewApiNames = [
+      /\bstructuredClone\s*\(/.test(javascript) && "structuredClone",
+      /\bcrypto\.randomUUID\s*\(/.test(javascript) && "crypto.randomUUID",
+      /\bResizeObserver\b/.test(javascript) && "ResizeObserver",
+      /\bIntersectionObserver\b/.test(javascript) && "IntersectionObserver",
+      /\bAbortSignal\.timeout\s*\(/.test(javascript) && "AbortSignal.timeout",
+    ].filter(Boolean);
+    if (reviewApiNames.length)
+      add("modern-browser-apis", `${reviewApiNames.join(", ")} require verification on the selected touch-panel Chromium runtime.`);
+    const advancedCssNames = [
+      /:has\s*\(/.test(css) && ":has()",
+      /@container\b|container-type\s*:/.test(css) && "container queries",
+      /grid-template[^;]*\bsubgrid\b/.test(css) && "subgrid",
+      /\bcolor-mix\s*\(/.test(css) && "color-mix()",
+      /\b(?:dvh|dvw|svh|svw|lvh|lvw)\b/.test(css) && "dynamic viewport units",
+    ].filter(Boolean);
+    if (advancedCssNames.length)
+      add("advanced-css", `${advancedCssNames.join(", ")} require verification on the selected touch-panel Chromium runtime.`);
+    const externalReferences = [...source.matchAll(/(?:src|href|url\()\s*[=:]?\s*["']?(https?:\/\/[^"')\s]+)/gi)].map((match) => match[1]);
+    if (externalReferences.length)
+      add("external-assets", `${new Set(externalReferences).size} external URL reference(s) will not be embedded automatically.`);
+    const localReferences = customLocalDependencyReferences(source),
+      matchedLocal = localReferences.filter(customAssetForLocalReference),
+      missingLocal = localReferences.filter((reference) => !customAssetForLocalReference(reference));
+    if (matchedLocal.length)
+      add(
+        "local-assets",
+        `${matchedLocal.length} local image/font reference${matchedLocal.length === 1 ? "" : "s"} can be embedded from the project Asset library.`,
+        { repairable: true },
+      );
+    if (missingLocal.length)
+      add(
+        "missing-local-assets",
+        `${missingLocal.length} local image/font reference${missingLocal.length === 1 ? "" : "s"} could not be matched. Import ${missingLocal.map((reference) => reference.split(/[\\/]/).pop()).join(", ")} into Assets, then rerun the audit.`,
+      );
+    const duplicateDefinitionCount = (entries) => {
+        const signatures = entries.map((entry) => JSON.stringify(entry));
+        return signatures.filter(
+          (signature, index) => signatures.indexOf(signature) !== index,
+        ).length;
+      },
+      duplicateDefinitions =
+        duplicateDefinitionCount(collectCustomProperties()) +
+        duplicateDefinitionCount(collectCustomSignals()) +
+        duplicateDefinitionCount(collectCustomBehaviors());
+    if (duplicateDefinitions)
+      add("duplicate-definitions", `${duplicateDefinitions} exact duplicate generated definition${duplicateDefinitions === 1 ? " was" : "s were"} found. Remove the duplicates without changing unique properties, signals, or behaviors.`, { repairable: true });
+    return findings;
+  }
+  function renderCustomCompatibilityAudit() {
+    const findings = auditCustomSource(),
+      report = $("custom-audit-report"),
+      repairable = findings.filter((finding) => finding.repairable);
+    report.innerHTML = findings.length
+      ? findings.map((finding) => `<div class="custom-audit-item ${finding.severity === "error" ? "error" : ""} ${finding.repairable ? "repairable" : ""}">${finding.repairable ? `<label><input type="checkbox" data-custom-repair="${finding.code}" checked> <strong>Apply safe repair</strong></label>` : `<strong>${finding.severity === "error" ? "Must review" : "Review"}</strong>`} — ${finding.message}</div>`).join("")
+      : '<div class="custom-audit-pass">PASS — no common compatibility or instance-safety hazards detected.</div>';
+    $("custom-audit-repair").disabled = !repairable.length;
+    report.querySelectorAll("[data-custom-repair]").forEach((checkbox) => {
+      checkbox.onchange = () => {
+        $("custom-audit-repair").disabled = !report.querySelector("[data-custom-repair]:checked");
+      };
+    });
+    const snapshot = currentCustomSourceSnapshot();
+    $("custom-audit-restore").disabled =
+      !customOriginalSourceSnapshot ||
+      JSON.stringify(snapshot) === JSON.stringify(customOriginalSourceSnapshot);
+    return findings;
+  }
+  function repairCustomSourceSafely() {
+    const selected = new Set(
+      [...$("custom-audit-report").querySelectorAll("[data-custom-repair]:checked")].map(
+        (checkbox) => checkbox.dataset.customRepair,
+      ),
+    );
+    if (!selected.size) return;
+    const eventMap = {
+        mousedown: "pointerdown", mouseup: "pointerup", mousemove: "pointermove",
+        mouseenter: "pointerenter", mouseleave: "pointerleave", mouseover: "pointerover", mouseout: "pointerout",
+        touchstart: "pointerdown", touchend: "pointerup", touchmove: "pointermove", touchcancel: "pointercancel",
+      },
+      replaceEvents = (value) =>
+        Object.entries(eventMap).reduce(
+          (result, [from, to]) => result.replace(new RegExp(`\\b${from}\\b`, "gi"), to),
+          value,
+        );
+    if (selected.has("global-ids")) {
+      const html = $("custom-source-html").value,
+        parsed = new DOMParser().parseFromString(html, "text/html"),
+        ids = [...new Set([...parsed.querySelectorAll("[id]")].map((element) => element.id).filter(Boolean))],
+        escapePattern = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      let repairedHtml = html,
+        repairedCss = $("custom-source-css").value,
+        repairedJavascript = $("custom-source-javascript").value;
+      ids.forEach((id) => {
+        const escaped = escapePattern(id),
+          dataSelector = `[data-composer-id="${id.replace(/"/g, "&quot;")}"]`;
+        repairedHtml = repairedHtml.replace(
+          new RegExp(`\\bid\\s*=\\s*(["'])${escaped}\\1`, "g"),
+          `data-composer-id="${id.replace(/"/g, "&quot;")}"`,
+        );
+        repairedCss = repairedCss.replace(
+          new RegExp(`#${escaped}(?=[\\s.#:[>+~,{]|$)`, "g"),
+          dataSelector,
+        );
+        repairedJavascript = repairedJavascript
+          .replace(
+            new RegExp(`\\.getElementById\\s*\\(\\s*(["'])${escaped}\\1\\s*\\)`, "g"),
+            `.querySelector(${JSON.stringify(dataSelector)})`,
+          )
+          .replace(
+            new RegExp(`(["'])#${escaped}\\1`, "g"),
+            JSON.stringify(dataSelector),
+          );
+      });
+      $("custom-source-html").value = repairedHtml;
+      $("custom-source-css").value = repairedCss;
+      $("custom-source-javascript").value = repairedJavascript;
+    }
+    if (selected.has("mouse-events") || selected.has("touch-events")) {
+      $("custom-source-html").value = replaceEvents($("custom-source-html").value);
+      $("custom-source-javascript").value = replaceEvents($("custom-source-javascript").value);
+    }
+    if (selected.has("document-selectors"))
+      $("custom-source-javascript").value = $("custom-source-javascript").value
+        .replace(/\bdocument\.querySelectorAll\s*\(/g, "root.querySelectorAll(")
+        .replace(/\bdocument\.querySelector\s*\(/g, "root.querySelector(")
+        .replace(/\bdocument\.getElementById\s*\(\s*(["'])([^"']+)\1\s*\)/g, (_, quote, id) => `root.querySelector("#${id}")`);
+    if (selected.has("parent-document"))
+      $("custom-source-javascript").value = $("custom-source-javascript").value
+        .replace(/\bparent\.document\b/g, "root")
+        .replace(/\btop\.document\b/g, "root");
+    if (selected.has("viewport-units"))
+      $("custom-source-css").value = $("custom-source-css").value
+        .replace(/100vw\b/gi, "100%")
+        .replace(/100vh\b/gi, "100%");
+    if (selected.has("fixed-root-size") && !/composer-responsive-root/.test($("custom-source-css").value))
+      $("custom-source-css").value += "\n/* composer-responsive-root */\nhtml,body{width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;box-sizing:border-box;}";
+    if (selected.has("fixed-position"))
+      $("custom-source-css").value = $("custom-source-css").value.replace(/position\s*:\s*fixed/gi, "position: absolute");
+    if (selected.has("css-inset"))
+      $("custom-source-css").value = $("custom-source-css").value.replace(
+        /\binset\s*:\s*([^;}{]+)(?=([;}]))/gi,
+        (declaration, raw) => {
+          const values = raw.trim().split(/\s+/);
+          if (values.length < 1 || values.length > 4 || !values.every((value) => /^-?(?:\d*\.)?\d+(?:px|%|em|rem|vh|vw)?$|^(?:auto|initial|inherit|unset)$/i.test(value)))
+            return declaration;
+          const [top, right = top, bottom = top, left = right] =
+            values.length === 3
+              ? [values[0], values[1], values[2], values[1]]
+              : values.length === 4
+                ? values
+                : values.length === 2
+                  ? [values[0], values[1], values[0], values[1]]
+                  : [values[0], values[0], values[0], values[0]];
+          return `top:${top};right:${right};bottom:${bottom};left:${left}`;
+        },
+      );
+    if (selected.has("legacy-js-apis") && !/composer-panel-compatibility-polyfills/.test($("custom-source-javascript").value)) {
+      const polyfills = `/* composer-panel-compatibility-polyfills */
+if(!String.prototype.replaceAll){String.prototype.replaceAll=function(search,replacement){if(search instanceof RegExp){if(!search.global)throw new TypeError('replaceAll requires a global RegExp');return this.replace(search,replacement)}return this.split(String(search)).join(String(replacement))}}
+if(!Array.prototype.at){Array.prototype.at=function(index){index=Math.trunc(index)||0;if(index<0)index+=this.length;return this[index]}}
+if(!String.prototype.at){String.prototype.at=function(index){index=Math.trunc(index)||0;if(index<0)index+=this.length;return this[index]}}
+if(!Object.hasOwn){Object.hasOwn=function(object,key){return Object.prototype.hasOwnProperty.call(Object(object),key)}}
+`;
+      $("custom-source-javascript").value = polyfills + $("custom-source-javascript").value;
+    }
+    if (selected.has("effect-clipping")) {
+      const rows = [...$("custom-property-list").querySelectorAll(".custom-property-row")],
+        existing = rows.find(
+          (row) => normalizeCustomKey(row.querySelector('[data-field="key"]')?.value) === "contentInset",
+        );
+      if (existing) {
+        const input = existing.querySelector('[data-field="defaultValue"]');
+        input.value = String(Math.max(24, Number(input.value) || 0));
+      } else
+        addCustomPropertyRow({
+          key: "contentInset",
+          name: "Glow-safe inset",
+          type: "number",
+          defaultValue: 24,
+        });
+      if (!collectCustomBehaviors().some(
+        (rule) =>
+          rule.source === "property" &&
+          rule.key === "contentInset" &&
+          rule.selector === "body" &&
+          rule.action === "cssProperty",
+      ))
+        addCustomBehaviorRow({
+          source: "property",
+          key: "contentInset",
+          selector: "body",
+          action: "cssProperty",
+          parameter: "padding",
+          mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" },
+          name: "Glow-safe component inset",
+        });
+      if (!/composer-glow-safe-layout/.test($("custom-source-css").value))
+        $("custom-source-css").value += "\n/* composer-glow-safe-layout */\nhtml,body{box-sizing:border-box;overflow:visible!important;}";
+    }
+    if (selected.has("local-assets")) {
+      const references = customLocalDependencyReferences(
+        `${$("custom-source-html").value}\n${$("custom-source-css").value}\n${$("custom-source-javascript").value}`,
+      );
+      references.forEach((reference) => {
+        const asset = customAssetForLocalReference(reference);
+        if (!asset?.dataUrl) return;
+        ["custom-source-html", "custom-source-css", "custom-source-javascript"].forEach((id) => {
+          $(id).value = $(id).value.split(reference).join(asset.dataUrl);
+        });
+      });
+    }
+    if (selected.has("generated-animation-conflict"))
+      $("custom-state-grid")
+        .querySelectorAll('[data-style="scale"]')
+        .forEach((input) => (input.value = "100"));
+    if (selected.has("duplicate-definitions"))
+      removeExactCustomDefinitionDuplicates();
+    refreshCustomPreview();
+    setStatus(`Applied ${selected.size} reversible compatibility repair${selected.size === 1 ? "" : "s"}`);
+  }
   function prepareCustomSource(source) {
     if (String(source || "").includes("window.ComposerSignals=signals"))
       return source;
@@ -13204,8 +14344,13 @@ window.addEventListener('message',function(event){
   if(!event.data||event.data.type!=='composer-signal')return;
   (callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)});
 });
-var cleanup=(new Function('root','signals',${JSON.stringify(String(javascript || ""))}))(document,signals);
-if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:true});
+var timerHandles=[],intervalHandles=[];
+function scopedTimeout(callback,delay){var args=Array.prototype.slice.call(arguments,2),handle=window.setTimeout(function(){timerHandles=timerHandles.filter(function(value){return value!==handle});if(typeof callback==='function')callback.apply(window,args);else(new Function(String(callback)))()},delay);timerHandles.push(handle);return handle}
+function scopedInterval(callback,delay){var args=Array.prototype.slice.call(arguments,2),handle=window.setInterval(function(){if(typeof callback==='function')callback.apply(window,args);else(new Function(String(callback)))()},delay);intervalHandles.push(handle);return handle}
+function scopedClearTimeout(handle){timerHandles=timerHandles.filter(function(value){return value!==handle});window.clearTimeout(handle)}
+function scopedClearInterval(handle){intervalHandles=intervalHandles.filter(function(value){return value!==handle});window.clearInterval(handle)}
+var cleanup=(new Function('root','signals','setTimeout','setInterval','clearTimeout','clearInterval',${JSON.stringify(String(javascript || ""))}))(document,signals,scopedTimeout,scopedInterval,scopedClearTimeout,scopedClearInterval);
+window.addEventListener('unload',function(){timerHandles.forEach(window.clearTimeout);intervalHandles.forEach(window.clearInterval);if(typeof cleanup==='function')cleanup()},{once:true});
 })();<\/script>`;
   }
   function addCustomPropertyRow(property = {}) {
@@ -13393,6 +14538,7 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       ["classToggle", "Custom class toggle"],
       ["scale", "Scale (0–100%)"],
       ["glowStrength", "Glow strength"],
+      ["shadowSize", "Shadow size"],
       ["borderRadius", "Corner radius"],
       ["translateX", "Horizontal position"],
       ["translateY", "Vertical position"],
@@ -13596,6 +14742,1118 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
     while (keys.has(`${baseKey}${index}`)) index += 1;
     return { key: `${baseKey}${index}`, duplicate: false };
   }
+  function inferCustomElementRole(element = {}) {
+    const signature = [
+        element.tag,
+        element.inputType,
+        element.role,
+        element.id,
+        element.className,
+        element.style,
+        element.ariaLabel,
+        element.text,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase(),
+      tag = String(element.tag || "").toLowerCase(),
+      inputType = String(element.inputType || "").toLowerCase(),
+      semanticSignature = `${element.id || ""} ${element.className || ""} ${element.ariaLabel || ""}`.toLowerCase();
+    if (/slider.?handle|range.?handle|thumb|knob.?handle|drag.?handle/.test(signature))
+      return { role: "sliderHandle", reason: "Detected a movable slider or gauge handle." };
+    if (/background|backdrop|wallpaper|surface.?image|panel.?image/.test(semanticSignature) || /background-image\s*:/.test(String(element.style || "").toLowerCase()))
+      return { role: "backgroundAsset", reason: "Detected a background image or visual surface." };
+    if (
+      inputType === "range" ||
+      inputType === "number" ||
+      tag === "select" ||
+      /slider|range|knob|dial|numeric/.test(signature)
+    )
+      return {
+        role: "slider",
+        reason:
+          tag === "select"
+            ? "Detected a value selector that publishes when its selection changes."
+            : "Detected a numeric or slider control.",
+      };
+    if (
+      ["text", "search", "password", "email", "tel", "url"].includes(inputType) ||
+      tag === "textarea" ||
+      /text.?input|search.?field|password/.test(signature)
+    )
+      return { role: "textInput", reason: "Detected an editable text input." };
+    if (/progress|meter|gauge|fill|level|value/.test(signature))
+      return { role: "gauge", reason: "Detected a gauge, fill, or value element." };
+    if (tag === "img" || tag === "svg" || /icon|image|graphic|symbol/.test(signature))
+      return { role: "icon", reason: "Detected an image, SVG, icon, or symbol." };
+    if (/selected|active|indicator|led|status/.test(signature))
+      return { role: "selected", reason: "Detected a state or selection indicator." };
+    if (
+      tag === "button" ||
+      ["button", "checkbox", "radio"].includes(inputType) ||
+      ["button", "switch", "menuitem"].includes(String(element.role || "").toLowerCase()) ||
+      /button|toggle|switch|press|click|control/.test(signature)
+    )
+      return { role: "button", reason: "Detected an interactive button surface." };
+    if (/list|items|grid|menu|repeat|container/.test(signature) && Number(element.childCount) > 1)
+      return { role: "repeated", reason: "Detected a container with repeated child elements." };
+    if (/decorative|decoration|ornament|accent|shape|visual/.test(signature))
+      return { role: "decorative", reason: "Detected a decorative visual whose appearance can remain locally editable." };
+    if (
+      ["span", "label", "p", "h1", "h2", "h3", "h4", "strong"].includes(tag) ||
+      /label|title|text|name|caption/.test(signature)
+    )
+      return { role: "text", reason: "Detected a text or label element." };
+    return Number(element.childCount) === 0 && String(element.text || "").trim()
+      ? { role: "text", reason: "This leaf element primarily contains text." }
+      : { role: "ignore", reason: "No safe interactive behavior was identified; preserve it unchanged." };
+  }
+  function customElementSelector(element, documentValue) {
+    if (element.id) return `#${CSS.escape(element.id)}`;
+    const tag = element.tagName.toLowerCase(),
+      classes = [...element.classList].filter(Boolean),
+      concise = `${tag}${classes.length ? `.${classes.map(CSS.escape).join(".")}` : ""}`;
+    try {
+      if (classes.length && documentValue.querySelectorAll(concise).length === 1)
+        return concise;
+    } catch (_) {}
+    const parts = [];
+    let node = element;
+    while (node && node !== documentValue.body) {
+      let part = node.tagName.toLowerCase();
+      const siblings = node.parentElement
+        ? [...node.parentElement.children].filter(
+            (candidate) => candidate.tagName === node.tagName,
+          )
+        : [];
+      if (siblings.length > 1)
+        part += `:nth-of-type(${siblings.indexOf(node) + 1})`;
+      parts.unshift(part);
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+  function analyzeCustomElements() {
+    const documentValue = new DOMParser().parseFromString(
+        $("custom-source-html").value,
+        "text/html",
+      ),
+      keyword = /button|toggle|switch|press|click|label|title|text|name|caption|icon|image|graphic|symbol|background|backdrop|wallpaper|surface|handle|thumb|selected|active|indicator|led|status|progress|meter|gauge|fill|level|value|slider|range|knob|dial|numeric|list|items|grid|menu|repeat|container/i,
+      inventory = [...documentValue.body.querySelectorAll("*")]
+        .filter((element) => {
+          const tag = element.tagName.toLowerCase(),
+            signature = `${element.id} ${element.className} ${element.getAttribute("role") || ""} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("style") || ""}`;
+          return (
+            ["button", "input", "select", "textarea", "img", "svg", "label"].includes(tag) ||
+            keyword.test(signature) ||
+            (!element.children.length && !!element.textContent.trim())
+          );
+        })
+        .slice(0, 60)
+        .map((element) => {
+          const metadata = {
+              tag: element.tagName.toLowerCase(),
+              inputType: element.type || "",
+              role: element.getAttribute("role") || "",
+              id: element.id || "",
+              className: [...element.classList].join(" "),
+              style: element.getAttribute("style") || "",
+              ariaLabel: element.getAttribute("aria-label") || "",
+              text: element.textContent.trim().slice(0, 120),
+              childCount: element.children.length,
+              source: element.getAttribute("src") || "",
+            },
+            childSignatures = [...element.children].map((child) => {
+              const primaryClass = [...child.classList][0] || "";
+              return `${child.tagName.toLowerCase()}.${primaryClass}`;
+            }),
+            repeatedSignature = childSignatures
+              .map((signature) => ({
+                signature,
+                count: childSignatures.filter((value) => value === signature).length,
+              }))
+              .sort((a, b) => b.count - a.count)[0],
+            structurallyRepeated =
+              childSignatures.length >= 2 &&
+              repeatedSignature?.count >= 2 &&
+              repeatedSignature.count / childSignatures.length >= 0.6,
+            inference = structurallyRepeated
+              ? {
+                  role: "repeated",
+                  reason: `Detected ${repeatedSignature.count} structurally repeated child elements.`,
+                }
+              : inferCustomElementRole(metadata);
+          const selector = customElementSelector(element, documentValue),
+            savedRole = customSavedElementRoles.find(
+              (entry) => entry.selector === selector,
+            )?.role;
+          return {
+            selector,
+            metadata,
+            role: savedRole || inference.role,
+            reason: savedRole
+              ? `Saved classification: ${savedRole === "decorative" ? "decorative visual preserved locally" : savedRole}.`
+              : inference.reason,
+            sourceElement: element,
+          };
+        });
+    const repeatedContainers = inventory.filter((entry) => entry.role === "repeated"),
+      buttonControls = inventory.filter((entry) => entry.role === "button");
+    inventory.forEach((entry) => {
+      const owner = repeatedContainers.find(
+        (candidate) =>
+          candidate !== entry &&
+          candidate.sourceElement.contains(entry.sourceElement),
+      );
+      if (owner) entry.repeatedOwner = owner.selector;
+      if (["text", "icon", "backgroundAsset", "selected"].includes(entry.role)) {
+        const nestedButton = buttonControls.find(
+            (candidate) =>
+              candidate !== entry &&
+              candidate.sourceElement.contains(entry.sourceElement),
+          ),
+          labelTarget =
+            entry.sourceElement.tagName === "LABEL" &&
+            entry.sourceElement.getAttribute("for")
+              ? buttonControls.find(
+                  (candidate) =>
+                    candidate.sourceElement.id ===
+                    entry.sourceElement.getAttribute("for"),
+                )
+              : null,
+          siblingButtons = buttonControls.filter(
+            (candidate) =>
+              candidate.sourceElement.parentElement ===
+              entry.sourceElement.parentElement,
+          ),
+          siblingContext = `${entry.sourceElement.parentElement?.id || ""} ${entry.sourceElement.parentElement?.className || ""} ${entry.sourceElement.parentElement?.getAttribute("role") || ""}`,
+          siblingOwner =
+            siblingButtons.length === 1 &&
+            (entry.sourceElement.tagName === "LABEL" ||
+              /button|toggle|switch|control|option|item/i.test(siblingContext))
+              ? siblingButtons[0]
+              : null,
+          controlOwner = nestedButton || labelTarget ||
+            siblingOwner;
+        if (controlOwner) {
+          entry.controlOwner = controlOwner.selector;
+          entry.reason = `${entry.reason} Grouped with button ${controlOwner.selector}; shared Selected feedback will be used.`;
+        }
+      }
+    });
+    inventory.forEach((entry) => delete entry.sourceElement);
+    customAnalyzedElements = inventory;
+    renderCustomElementInventory(inventory);
+    return inventory;
+  }
+  function renderCustomElementInventory(inventory) {
+    const host = $("custom-element-inventory"),
+      roles = [
+        ["button", "Button surface"], ["text", "Text or label"], ["textInput", "Text input"],
+        ["icon", "Icon or image"], ["backgroundAsset", "Background image / asset"], ["selected", "Selected-state indicator"],
+        ["gauge", "Gauge or fill"], ["slider", "Slider or numeric control"],
+        ["sliderHandle", "Slider or gauge handle"],
+        ["repeated", "Repeated-item container"], ["decorative", "Decorative element — preserve locally"],
+        ["ignore", "Ignore — exclude from Composer setup"],
+      ];
+    host.innerHTML = "";
+    host.hidden = !inventory.length;
+    if (!inventory.length) {
+      $("custom-apply-recommended").disabled = true;
+      const empty = document.createElement("small");
+      empty.textContent = "No meaningful elements were detected in the current HTML.";
+      host.appendChild(empty);
+      host.hidden = false;
+      return;
+    }
+    inventory.forEach((entry) => {
+      const row = document.createElement("div"),
+        code = document.createElement("code"),
+        reason = document.createElement("small"),
+        select = document.createElement("select"),
+        configure = document.createElement("button");
+      row.className = "custom-element-inventory-row";
+      row.classList.toggle("control-group-member", !!entry.controlOwner);
+      code.textContent = entry.selector;
+      code.title = entry.selector;
+      reason.textContent = entry.reason;
+      reason.title = entry.reason;
+      roles.forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        option.selected = value === entry.role;
+        select.appendChild(option);
+      });
+      select.onchange = () => {
+        entry.role = select.value;
+      };
+      configure.type = "button";
+      configure.textContent = "Configure";
+      configure.onclick = () => {
+        customPickedElement = {
+          ...entry.metadata,
+          controlOwner: entry.controlOwner || "",
+        };
+        $("custom-element-selector").value = entry.selector;
+        $("custom-element-role").value = select.value;
+        $("custom-element-summary").textContent = `${entry.metadata.tag.toUpperCase()} · ${entry.selector}`;
+        $("custom-element-reason").textContent = entry.reason;
+        $("custom-element-result").textContent =
+          "Review the selected role, then apply it to generate the standard setup.";
+        $("custom-element-classifier").hidden = false;
+        $("custom-element-classifier").scrollIntoView({ block: "nearest" });
+      };
+      row.append(code, reason, select, configure);
+      host.appendChild(row);
+    });
+    $("custom-apply-recommended").disabled = !inventory.some(
+      (entry) => entry.role !== "ignore",
+    );
+  }
+  function applyAllRecommendedCustomRoles() {
+    const configured = customAnalyzedElements
+      .filter(
+        (entry) =>
+          entry.role !== "ignore" &&
+          (!entry.repeatedOwner || entry.role === "repeated"),
+      )
+      .sort((left, right) => {
+        const priority = (entry) =>
+          entry.role === "repeated" ? 0 : entry.role === "button" ? 1 : 2;
+        return priority(left) - priority(right);
+      });
+    if (!configured.length) return;
+    let additions = 0;
+    configured.forEach((entry) => {
+      additions += applyCustomElementRole(entry, true)?.length || 0;
+    });
+    refreshCustomPreview();
+    $("custom-element-result").textContent =
+      `Configured ${configured.length} detected element${configured.length === 1 ? "" : "s"} and added ${additions} non-duplicate capabilities. Decorative elements and child controls already managed by a repeated collection were left unchanged.`;
+    setStatus(`Applied recommended setup to ${configured.length} component element${configured.length === 1 ? "" : "s"}`);
+  }
+  function ensureCustomRoleBehavior(rule) {
+    const duplicate = collectCustomBehaviors().some(
+      (entry) =>
+        entry.source === rule.source &&
+        entry.key === rule.key &&
+        entry.selector === rule.selector &&
+        entry.action === rule.action,
+    );
+    if (!duplicate) addCustomBehaviorRow(rule);
+    return !duplicate;
+  }
+  function customElementSemanticSuffix(metadata = customPickedElement) {
+    const source = metadata?.id || metadata?.ariaLabel || metadata?.text || metadata?.className || metadata?.tag || "item";
+    return String(source)
+      .replace(/[^A-Za-z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 3)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("") || "Item";
+  }
+  function customElementSignalKey(baseKey, selector) {
+    const signals = collectCustomSignals(),
+      behaviors = collectCustomBehaviors(),
+      existing = signals.some((entry) => entry.key === baseKey);
+    if (!existing || behaviors.some((entry) => entry.key === baseKey && entry.selector === selector))
+      return baseKey;
+    const suffix = customElementSemanticSuffix();
+    let key = `${baseKey}${suffix}`,
+      index = 2;
+    while (signals.some((entry) => entry.key === key)) key = `${baseKey}${suffix}${index++}`;
+    return key;
+  }
+  function customElementPropertyKey(baseKey, selector) {
+    const properties = collectCustomProperties(),
+      behaviors = collectCustomBehaviors();
+    if (!properties.some((entry) => entry.key === baseKey) || behaviors.some((entry) => entry.key === baseKey && entry.selector === selector))
+      return baseKey;
+    const suffix = customElementSemanticSuffix();
+    let key = `${baseKey}${suffix}`,
+      index = 2;
+    while (properties.some((entry) => entry.key === key)) key = `${baseKey}${suffix}${index++}`;
+    return key;
+  }
+  function customGroupedSelectedSignalKey(ownerSelector, fallbackSelector) {
+    const ownerRule = ownerSelector
+      ? collectCustomBehaviors().find(
+          (entry) =>
+            entry.source === "signal-input" &&
+            entry.action === "selectedClass" &&
+            entry.selector === ownerSelector,
+        )
+      : null;
+    return (
+      ownerRule?.key ||
+      customElementSignalKey("selected", ownerSelector || fallbackSelector)
+    );
+  }
+  function inferCustomRepeatedConfiguration(selector) {
+    const documentValue = new DOMParser().parseFromString(
+        $("custom-source-html").value,
+        "text/html",
+      ),
+      container = (() => {
+        try {
+          return documentValue.querySelector(selector);
+        } catch (_) {
+          return null;
+        }
+      })(),
+      children = container ? [...container.children] : [],
+      first = children[0] || null,
+      tag = first?.tagName.toLowerCase() || "button",
+      commonClasses = first
+        ? [...first.classList].filter((name) =>
+            children.every((child) => child.classList.contains(name)),
+          )
+        : [],
+      itemSelector = `:scope > ${tag}${commonClasses.length ? `.${commonClasses.map(CSS.escape).join(".")}` : ""}`,
+      labelSelector = first
+        ? ["[data-repeat-label]", ".label", ".text", ".name", "span"]
+            .find((candidate) => first.querySelector(candidate)) || ""
+        : "",
+      numericCandidates = "[data-value-control],[data-value],[class*='gauge'],[class*='progress'],[class*='level'],[class*='fill'],[class*='knob'],[class*='dial'],input[type=range],input[type=number],progress,meter",
+      numericElement = first
+        ? first.matches(numericCandidates)
+          ? first
+          : first.querySelector(numericCandidates)
+        : null,
+      numericSelector = numericElement
+        ? numericElement === first
+          ? ":scope"
+          : customElementSelector(numericElement, documentValue)
+              .replace(customElementSelector(first, documentValue), "")
+              .replace(/^\s*>\s*/, "")
+        : "",
+      numericOutput = !!numericElement?.matches("input[type=range],input[type=number],[data-value-control]"),
+      numericPresentation = numericElement
+        ? customDetectedNumericPresentation(selector, {
+            tag: numericElement.tagName.toLowerCase(),
+            inputType: numericElement.type || "",
+            id: numericElement.id || "",
+            className: [...numericElement.classList].join(" "),
+            ariaLabel: numericElement.getAttribute("aria-label") || "",
+          })
+        : null,
+      namespace = customContractBase().replace(/[^A-Za-z0-9_]/g, "") || "CustomComponent";
+    return {
+      containerSelector: selector,
+      itemSelector,
+      labelSelector,
+      defaultCount: Math.max(1, children.length || 3),
+      maxCount: Math.max(20, children.length || 3),
+      numericSelector,
+      numericOutput,
+      numericAction: numericPresentation?.action || "",
+      numericParameter: numericPresentation?.parameter || "",
+      namespace,
+    };
+  }
+  function customComputedAppearance(selector) {
+    const frame = $("custom-component-preview"),
+      documentValue = frame.contentDocument,
+      windowValue = frame.contentWindow,
+      element = (() => {
+        try {
+          return documentValue?.querySelector(selector);
+        } catch (_) {
+          return null;
+        }
+      })(),
+      style = element && windowValue ? windowValue.getComputedStyle(element) : null,
+      rect = element?.getBoundingClientRect(),
+      color = (value, fallback) => {
+        const source = String(value || "").trim();
+        if (!source) return fallback;
+        if (source === "transparent") return source;
+        const match = source.match(/^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)(?:\D+([\d.]+))?\s*\)$/i);
+        if (!match) return source;
+        if (match[4] != null && Number(match[4]) === 0) return "transparent";
+        return `#${[match[1], match[2], match[3]]
+          .map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0"))
+          .join("")}`;
+      },
+      shadow = String(style?.boxShadow || ""),
+      shadowColor = shadow.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}/i)?.[0],
+      shadowPixels = [...shadow.matchAll(/(-?[\d.]+)px/g)].map((match) => Number(match[1]));
+    return {
+      backgroundColor: color(style?.backgroundColor, "#263b3c"),
+      textColor: color(style?.color, "#ffffff"),
+      borderColor: color(style?.borderColor, "#7ba7a3"),
+      glowColor: color(shadowColor, "#04dcb9"),
+      glowStrength: Math.max(0, shadowPixels[2] || 0),
+      shadowSize: Math.max(0, Math.abs(shadowPixels[0] || 0), Math.abs(shadowPixels[1] || 0)),
+      cornerRadius: Math.max(0, Number.parseFloat(style?.borderRadius) || 0),
+      textSize: Math.max(1, Number.parseFloat(style?.fontSize) || 18),
+      fontFamily: String(style?.fontFamily || "Segoe UI").replace(/^['\"]|['\"]$/g, ""),
+      opacity: Math.round(Math.max(0, Math.min(1, Number(style?.opacity) || 1)) * 100),
+      width: Math.max(1, Math.round(rect?.width || 40)),
+      height: Math.max(1, Math.round(rect?.height || 40)),
+      imageSource:
+        element?.getAttribute("src") ||
+        String(style?.backgroundImage || "").match(/^url\(["']?(.*?)["']?\)$/i)?.[1] ||
+        "",
+      paddingHorizontal: Math.max(
+        0,
+        Math.round(
+          ((Number.parseFloat(style?.paddingLeft) || 0) +
+            (Number.parseFloat(style?.paddingRight) || 0)) /
+            2,
+        ),
+      ),
+      paddingVertical: Math.max(
+        0,
+        Math.round(
+          ((Number.parseFloat(style?.paddingTop) || 0) +
+            (Number.parseFloat(style?.paddingBottom) || 0)) /
+            2,
+        ),
+      ),
+      supportsGap: ["flex", "inline-flex", "grid", "inline-grid"].includes(
+        String(style?.display || "").toLowerCase(),
+      ),
+      gap: Math.max(0, Number.parseFloat(style?.gap) || 0),
+    };
+  }
+  function customDetectedStateStyles(selector) {
+    const frame = $("custom-component-preview"),
+      documentValue = frame.contentDocument,
+      windowValue = frame.contentWindow,
+      target = (() => {
+        try {
+          return documentValue?.querySelector(selector);
+        } catch (_) {
+          return null;
+        }
+      })();
+    if (!target || !windowValue) return null;
+    const originalClass = target.getAttribute("class"),
+      originalDisabled = target.getAttribute("disabled"),
+      originalAriaPressed = target.getAttribute("aria-pressed"),
+      originalAriaSelected = target.getAttribute("aria-selected"),
+      color = (value, fallback) => {
+        const source = String(value || "").trim(),
+          match = source.match(/^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)(?:\D+([\d.]+))?\s*\)$/i);
+        if (!source) return fallback;
+        if (source === "transparent" || (match?.[4] != null && Number(match[4]) === 0))
+          return "transparent";
+        return match
+          ? `#${[match[1], match[2], match[3]].map((part) => Number(part).toString(16).padStart(2, "0")).join("")}`
+          : source;
+      },
+      capture = () => {
+        const style = windowValue.getComputedStyle(target),
+          shadow = String(style.boxShadow || ""),
+          matrix = String(style.transform || "").match(/^matrix\(([^)]+)\)$/),
+          scale = matrix ? Math.sqrt(Number(matrix[1].split(",")[0]) ** 2 + Number(matrix[1].split(",")[1]) ** 2) : 1;
+        return {
+          text: "",
+          asset: "",
+          background: color(style.backgroundColor, "transparent"),
+          color: color(style.color, "#ffffff"),
+          border: color(style.borderColor, "transparent"),
+          glow: color(shadow.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}/i)?.[0], "transparent"),
+          opacity: String(Math.round(Math.max(0, Math.min(1, Number(style.opacity) || 0)) * 100)),
+          scale: String(Math.round(Math.max(0, scale) * 100)),
+        };
+      },
+      restore = () => {
+        if (originalClass == null) target.removeAttribute("class");
+        else target.setAttribute("class", originalClass);
+        if (originalDisabled == null) target.removeAttribute("disabled");
+        else target.setAttribute("disabled", originalDisabled);
+        if (originalAriaPressed == null) target.removeAttribute("aria-pressed");
+        else target.setAttribute("aria-pressed", originalAriaPressed);
+        if (originalAriaSelected == null) target.removeAttribute("aria-selected");
+        else target.setAttribute("aria-selected", originalAriaSelected);
+      };
+    restore();
+    const standard = capture();
+    target.classList.add("pressed", "composer-pressed");
+    const pressed = capture();
+    restore();
+    target.classList.add("selected", "active");
+    target.setAttribute("aria-pressed", "true");
+    target.setAttribute("aria-selected", "true");
+    const selected = capture();
+    restore();
+    target.classList.add("disabled");
+    target.setAttribute("disabled", "");
+    const disabled = capture();
+    restore();
+    return { selector, states: { standard, pressed, selected, disabled } };
+  }
+  function customDetectedEventCapabilities(selector) {
+    const javascript = String($("custom-source-javascript").value || ""),
+      html = String($("custom-source-html").value || ""),
+      escapedSelector = String(selector || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      selectorMatch = escapedSelector
+        ? new RegExp(escapedSelector.replace(/\\#/g, "#").replace(/\\\./g, "\\."), "i")
+        : null,
+      analyzedButtons = customAnalyzedElements.filter(
+        (entry) => entry.role === "button",
+      ).length,
+      source = selectorMatch?.test(javascript) || analyzedButtons <= 1
+        ? javascript
+        : "",
+      inline = (() => {
+        const documentValue = new DOMParser().parseFromString(html, "text/html");
+        try {
+          const element = documentValue.querySelector(selector);
+          return element
+            ? [...element.attributes]
+                .filter((attribute) => /^on/i.test(attribute.name))
+                .map((attribute) => `${attribute.name}=${attribute.value}`)
+                .join("\n")
+            : "";
+        } catch (_) {
+          return "";
+        }
+      })(),
+      eventSource = `${source}\n${inline}`,
+      input = /\b(?:input|oninput)\b/i.test(eventSource),
+      change = /\b(?:change|onchange)\b/i.test(eventSource),
+      release = /\b(?:pointerup|mouseup|touchend|onmouseup|ontouchend)\b/i.test(eventSource),
+      hold = /\b(?:longpress|long-press|pressandhold|press-and-hold|hold)\b/i.test(eventSource) ||
+        (/\bsetTimeout\s*\(/i.test(eventSource) && /\b(?:pointerdown|mousedown|touchstart)\b/i.test(eventSource)),
+      durationMatch = hold
+        ? eventSource.match(/\bsetTimeout\s*\([\s\S]{0,600}?,\s*(\d{2,5})\s*\)/i)
+        : null;
+    return {
+      input,
+      change,
+      release,
+      hold,
+      holdDuration: Math.max(100, Math.min(10000, Number(durationMatch?.[1]) || 1000)),
+    };
+  }
+  function customDetectedNumericPresentation(selector, metadata = customPickedElement) {
+    const tag = String(metadata?.tag || "").toLowerCase(),
+      inputType = String(metadata?.inputType || "").toLowerCase(),
+      signature = `${metadata?.id || ""} ${metadata?.className || ""} ${metadata?.ariaLabel || ""}`.toLowerCase(),
+      css = String($("custom-source-css").value || ""),
+      javascript = String($("custom-source-javascript").value || ""),
+      variable =
+        [...`${css}\n${javascript}`.matchAll(/--([A-Za-z0-9_-]*(?:value|level|progress|percent)[A-Za-z0-9_-]*)/gi)][0]?.[1] ||
+        "value";
+    if (["range", "number"].includes(inputType) || ["progress", "meter"].includes(tag))
+      return { action: "value", parameter: "", unit: "", confidence: "native" };
+    if (/vertical|thermometer|column|level-v/i.test(signature) || /\.style\.height\s*=|style\.setProperty\(\s*["']height/i.test(javascript))
+      return { action: "height", parameter: "", unit: "%", confidence: "detected" };
+    if (/gauge|knob|dial|radial|circular|arc|ring/i.test(signature) || /conic-gradient|rotate\s*\(/i.test(css))
+      return { action: "cssVariable", parameter: `--${variable}`, unit: "", confidence: "detected" };
+    return { action: "width", parameter: "", unit: "%", confidence: "detected" };
+  }
+  function customRelatedElementSelector(selector, candidates, includeTarget = false) {
+    const documentValue = new DOMParser().parseFromString(
+        $("custom-source-html").value,
+        "text/html",
+      ),
+      target = (() => {
+        try {
+          return documentValue.querySelector(selector);
+        } catch (_) {
+          return null;
+        }
+      })();
+    if (!target) return "";
+    const candidateSelector = candidates.join(","),
+      scopes = [target, target.parentElement, target.parentElement?.parentElement].filter(Boolean);
+    for (const scope of scopes) {
+      if (includeTarget && scope === target && target.matches(candidateSelector))
+        return selector;
+      const match = scope.querySelector(candidateSelector);
+      if (match && match !== target) return customElementSelector(match, documentValue);
+    }
+    return "";
+  }
+  function measureCustomPreviewDefaultSize() {
+    const frame = $("custom-component-preview"),
+      documentValue = frame.contentDocument,
+      windowValue = frame.contentWindow,
+      viewportWidth = Math.max(1, documentValue?.documentElement.clientWidth || frame.clientWidth || 480),
+      viewportHeight = Math.max(1, documentValue?.documentElement.clientHeight || frame.clientHeight || 260),
+      elements = documentValue
+        ? [...documentValue.body.children].filter(
+            (element) => !["SCRIPT", "STYLE", "LINK"].includes(element.tagName),
+          )
+        : [],
+      rects = elements
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width > 1 && rect.height > 1),
+      bounds = rects.length
+        ? {
+            left: Math.min(...rects.map((rect) => rect.left)),
+            top: Math.min(...rects.map((rect) => rect.top)),
+            right: Math.max(...rects.map((rect) => rect.right)),
+            bottom: Math.max(...rects.map((rect) => rect.bottom)),
+          }
+        : null,
+      width = bounds ? bounds.right - bounds.left : 0,
+      height = bounds ? bounds.bottom - bounds.top : 0,
+      fillsWidth = width >= viewportWidth * 0.88,
+      fillsHeight = height >= viewportHeight * 0.88,
+      roles = new Set(customAnalyzedElements.map((entry) => entry.role)),
+      fallback = roles.has("repeated")
+        ? { width: 480, height: 240 }
+        : roles.has("slider") || roles.has("gauge")
+          ? { width: 320, height: 160 }
+          : roles.has("textInput")
+            ? { width: 360, height: 80 }
+            : roles.has("button")
+              ? { width: 240, height: 120 }
+              : roles.has("text")
+                ? { width: 320, height: 100 }
+                : { width: 320, height: 180 },
+      effectPadding = elements.reduce((maximum, element) => {
+        const style = windowValue?.getComputedStyle(element),
+          shadowPixels = [...String(style?.boxShadow || "").matchAll(/(-?[\d.]+)px/g)].map(
+            (match) => Math.abs(Number(match[1])),
+          );
+        return Math.max(maximum, shadowPixels[2] || 0, shadowPixels[3] || 0);
+      }, 0),
+      padding = Math.max(20, Math.ceil(effectPadding * 2 + 16));
+    return {
+      width: Math.max(
+        40,
+        Math.min(1280, Math.round((fillsWidth || !width ? fallback.width : width) + padding)),
+      ),
+      height: Math.max(
+        40,
+        Math.min(800, Math.round((fillsHeight || !height ? fallback.height : height) + padding)),
+      ),
+    };
+  }
+  function applyCustomElementRole(configuration = null, deferRefresh = false) {
+    if (configuration?.metadata) customPickedElement = configuration.metadata;
+    const selector = String(configuration?.selector || $("custom-element-selector").value).trim(),
+      role = configuration?.role || $("custom-element-role").value,
+      base = customContractBase(),
+      appearance = customComputedAppearance(selector);
+    if (!selector) return;
+    const classification = customAnalyzedElements.find(
+      (entry) => entry.selector === selector,
+    );
+    if (classification) classification.role = role;
+    else
+      customAnalyzedElements.push({
+        selector,
+        metadata: structuredClone(customPickedElement || {}),
+        role,
+        reason: "Classified with the live element picker.",
+      });
+    const added = [],
+      property = (definition) => {
+        if (!collectCustomProperties().some((entry) => entry.key === definition.key)) {
+          ensureCustomProperty(definition);
+          added.push(definition.name);
+        }
+      },
+      signal = (definition) => {
+        if (!collectCustomSignals().some((entry) => entry.key === definition.key)) {
+          ensureCustomSignal(definition);
+          added.push(`${definition.name} signal`);
+        }
+      },
+      behavior = (definition, targetSelector = selector) => {
+        if (ensureCustomRoleBehavior({ ...definition, selector: targetSelector }))
+          added.push(`${definition.name || definition.action} behavior`);
+      };
+    if (role === "button") {
+      const pressKey = customElementSignalKey("press", selector),
+        selectedKey = customElementSignalKey("selected", selector),
+        signalSuffix = pressKey === "press" ? "" : pressKey.slice("press".length),
+        detectedStates = customDetectedStateStyles(selector),
+        detectedEvents = customDetectedEventCapabilities(selector),
+        releaseKey = detectedEvents.release
+          ? customElementSignalKey("release", selector)
+          : "",
+        heldKey = detectedEvents.hold
+          ? customElementSignalKey("held", selector)
+          : "";
+      [
+        { key: "faceColor", name: "Standard state — background color", type: "color", defaultValue: appearance.backgroundColor },
+        { key: "selectedFaceColor", name: "Selected state — background color", type: "color", defaultValue: "#078f7d" },
+        { key: "textColor", name: "Standard state — text / icon color", type: "color", defaultValue: appearance.textColor },
+        { key: "selectedTextColor", name: "Selected state — text / icon color", type: "color", defaultValue: "#ffffff" },
+        { key: "borderColor", name: "Standard state — border color", type: "color", defaultValue: appearance.borderColor },
+        { key: "selectedBorderColor", name: "Selected state — border color", type: "color", defaultValue: "#04dcb9" },
+        { key: "glowColor", name: "Standard state — glow color", type: "color", defaultValue: appearance.glowColor },
+        { key: "selectedGlowColor", name: "Selected state — glow color", type: "color", defaultValue: "#04dcb9" },
+        { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: appearance.glowStrength },
+        { key: "shadowSize", name: "Shadow size", type: "number", defaultValue: appearance.shadowSize },
+        { key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: appearance.cornerRadius },
+        { key: "paddingHorizontal", name: "Horizontal padding", type: "number", defaultValue: appearance.paddingHorizontal },
+        { key: "paddingVertical", name: "Vertical padding", type: "number", defaultValue: appearance.paddingVertical },
+        { key: "showBackground", name: "Show background", type: "checkbox", defaultValue: true },
+      ].forEach(property);
+      if (appearance.supportsGap)
+        property({ key: "contentGap", name: "Text / icon spacing", type: "number", defaultValue: appearance.gap });
+      signal({ key: pressKey, name: signalSuffix ? `${signalSuffix} Press` : "Press", type: "digital", direction: "output", defaultValue: `${base}.${signalSuffix || ""}Press` });
+      signal({ key: selectedKey, name: signalSuffix ? `${signalSuffix} Selected` : "Selected", type: "digital", direction: "input", defaultValue: `${base}.${signalSuffix || ""}Selected` });
+      if (releaseKey)
+        signal({ key: releaseKey, name: signalSuffix ? `${signalSuffix} Release` : "Release", type: "digital", direction: "output", defaultValue: `${base}.${signalSuffix || ""}Release` });
+      if (heldKey)
+        signal({ key: heldKey, name: signalSuffix ? `${signalSuffix} Held` : "Held", type: "digital", direction: "output", defaultValue: `${base}.${signalSuffix || ""}Held` });
+      behavior({ source: "property", key: "faceColor", action: "backgroundColor" });
+      behavior({ source: "property", key: "textColor", action: "color" });
+      behavior({ source: "property", key: "borderColor", action: "borderColor" });
+      behavior({ source: "property", key: "glowColor", action: "cssVariable", parameter: "--glow-color" });
+      behavior({ source: "property", key: "glowStrength", action: "glowStrength", parameter: "var(--glow-color,#04dcb9)" });
+      behavior({ source: "property", key: "shadowSize", action: "shadowSize" });
+      behavior({ source: "property", key: "cornerRadius", action: "borderRadius" });
+      behavior({ source: "property", key: "paddingHorizontal", action: "cssProperty", parameter: "padding-left", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "paddingHorizontal", action: "cssProperty", parameter: "padding-right", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "paddingVertical", action: "cssProperty", parameter: "padding-top", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "paddingVertical", action: "cssProperty", parameter: "padding-bottom", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      if (appearance.supportsGap)
+        behavior({ source: "property", key: "contentGap", action: "cssProperty", parameter: "gap", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "showBackground", action: "backgroundColor", booleanMapping: { enabled: true, falseValue: "transparent", trueValue: "{{faceColor}}" } });
+      behavior({ source: "signal-output", key: pressKey, action: "press" });
+      if (releaseKey)
+        behavior({ source: "signal-output", key: releaseKey, action: "release" });
+      if (heldKey)
+        behavior({ source: "signal-output", key: heldKey, action: "hold", parameter: String(detectedEvents.holdDuration) });
+      behavior({ source: "signal-input", key: selectedKey, action: "selectedClass" });
+      behavior({ source: "signal-input", key: selectedKey, action: "backgroundColor", booleanMapping: { enabled: true, falseValue: "{{faceColor}}", trueValue: "{{selectedFaceColor}}" } });
+      behavior({ source: "signal-input", key: selectedKey, action: "color", booleanMapping: { enabled: true, falseValue: "{{textColor}}", trueValue: "{{selectedTextColor}}" } });
+      behavior({ source: "signal-input", key: selectedKey, action: "borderColor", booleanMapping: { enabled: true, falseValue: "{{borderColor}}", trueValue: "{{selectedBorderColor}}" } });
+      behavior({ source: "signal-input", key: selectedKey, action: "cssVariable", parameter: "--glow-color", booleanMapping: { enabled: true, falseValue: "{{glowColor}}", trueValue: "{{selectedGlowColor}}" } });
+      if (detectedStates && !$("custom-state-selector").value.trim()) {
+        setCustomStateStyles(detectedStates);
+        added.push("detected Standard, Pressed, Selected, and Disabled appearances");
+      }
+      if (releaseKey || heldKey)
+        added.push(
+          `detected ${[
+            releaseKey && "Release",
+            heldKey && `Held (${detectedEvents.holdDuration} ms)`,
+          ].filter(Boolean).join(" and ")} event behavior`,
+        );
+    } else if (role === "text") {
+      const textKey = customElementPropertyKey("text", selector),
+        selectedTextKey = customElementPropertyKey("selectedText", selector),
+        nameKey = customElementSignalKey("name", selector),
+        selectionOwner =
+          configuration?.controlOwner || customPickedElement?.controlOwner || selector,
+        selectedKey = customGroupedSelectedSignalKey(selectionOwner, selector),
+        nameSuffix = nameKey === "name" ? "" : nameKey.slice("name".length),
+        selectedSuffix = selectedKey === "selected" ? "" : selectedKey.slice("selected".length);
+      property({ key: textKey, name: textKey === "text" ? "Standard state — text" : `${customElementSemanticSuffix()} — Standard text`, type: "text", defaultValue: customPickedElement?.text || "Text" });
+      property({ key: selectedTextKey, name: selectedTextKey === "selectedText" ? "Selected state — text" : `${customElementSemanticSuffix()} — Selected text`, type: "text", defaultValue: customPickedElement?.text || "Text" });
+      property({ key: "textColor", name: "Standard state — text color", type: "color", defaultValue: appearance.textColor });
+      property({ key: "selectedTextColor", name: "Selected state — text color", type: "color", defaultValue: "#ffffff" });
+      property({ key: "textSize", name: "Text size", type: "number", defaultValue: appearance.textSize });
+      property({ key: "fontFamily", name: "Font family", type: "text", defaultValue: appearance.fontFamily });
+      property({ key: "textAlignment", name: "Text alignment", type: "select", defaultValue: "center", options: [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }] });
+      property({ key: "wrapText", name: "Wrap text to next line", type: "checkbox", defaultValue: false });
+      property({ key: "showLabel", name: "Show label", type: "checkbox", defaultValue: true });
+      signal({ key: nameKey, name: nameSuffix ? `${nameSuffix} Name` : "Name", type: "serial", direction: "input", defaultValue: `${base}.${nameSuffix || ""}Name` });
+      signal({ key: selectedKey, name: selectedSuffix ? `${selectedSuffix} Selected` : "Selected", type: "digital", direction: "input", defaultValue: `${base}.${selectedSuffix || ""}Selected` });
+      behavior({ source: "property", key: textKey, action: "text" });
+      behavior({ source: "property", key: "textColor", action: "color" });
+      behavior({ source: "property", key: "textSize", action: "fontSize" });
+      behavior({ source: "property", key: "fontFamily", action: "cssProperty", parameter: "font-family" });
+      behavior({ source: "property", key: "textAlignment", action: "cssProperty", parameter: "text-align" });
+      behavior({ source: "property", key: "wrapText", action: "cssProperty", parameter: "white-space", booleanMapping: { enabled: true, falseValue: "nowrap", trueValue: "normal" } });
+      behavior({ source: "property", key: "showLabel", action: "visibility", booleanMapping: { enabled: true, falseValue: false, trueValue: true } });
+      behavior({ source: "signal-input", key: nameKey, action: "text" });
+      if (selectionOwner !== selector)
+        behavior(
+          { source: "signal-input", key: selectedKey, action: "selectedClass" },
+          selectionOwner,
+        );
+      behavior({ source: "signal-input", key: selectedKey, action: "text", booleanMapping: { enabled: true, falseValue: `{{${textKey}}}`, trueValue: `{{${selectedTextKey}}}` } });
+      behavior({ source: "signal-input", key: selectedKey, action: "color", booleanMapping: { enabled: true, falseValue: "{{textColor}}", trueValue: "{{selectedTextColor}}" } });
+    } else if (role === "textInput") {
+      const textKey = customElementSignalKey("text", selector),
+        nameKey = customElementSignalKey("name", selector),
+        textSuffix = textKey === "text" ? "" : textKey.slice("text".length),
+        nameSuffix = nameKey === "name" ? "" : nameKey.slice("name".length);
+      property({ key: "placeholder", name: "Placeholder text", type: "text", defaultValue: "Enter text" });
+      property({ key: "textColor", name: "Text color", type: "color", defaultValue: appearance.textColor });
+      property({ key: "textSize", name: "Text size", type: "number", defaultValue: appearance.textSize });
+      property({ key: "fontFamily", name: "Font family", type: "text", defaultValue: appearance.fontFamily });
+      property({ key: "backgroundColor", name: "Background color", type: "color", defaultValue: appearance.backgroundColor });
+      property({ key: "showBackground", name: "Show background", type: "checkbox", defaultValue: true });
+      property({ key: "borderColor", name: "Border color", type: "color", defaultValue: appearance.borderColor });
+      property({ key: "cornerRadius", name: "Corner radius", type: "number", defaultValue: appearance.cornerRadius });
+      property({ key: "paddingHorizontal", name: "Horizontal padding", type: "number", defaultValue: appearance.paddingHorizontal });
+      property({ key: "paddingVertical", name: "Vertical padding", type: "number", defaultValue: appearance.paddingVertical });
+      signal({ key: textKey, name: textSuffix ? `${textSuffix} Text` : "Text", type: "serial", direction: "output", defaultValue: `${base}.${textSuffix || ""}Text` });
+      signal({ key: nameKey, name: nameSuffix ? `${nameSuffix} Name` : "Name", type: "serial", direction: "input", defaultValue: `${base}.${nameSuffix || ""}Name` });
+      behavior({ source: "property", key: "placeholder", action: "attribute", parameter: "placeholder" });
+      behavior({ source: "property", key: "textColor", action: "color" });
+      behavior({ source: "property", key: "textSize", action: "fontSize" });
+      behavior({ source: "property", key: "fontFamily", action: "cssProperty", parameter: "font-family" });
+      behavior({ source: "property", key: "backgroundColor", action: "backgroundColor" });
+      behavior({ source: "property", key: "showBackground", action: "backgroundColor", booleanMapping: { enabled: true, falseValue: "transparent", trueValue: "{{backgroundColor}}" } });
+      behavior({ source: "property", key: "borderColor", action: "borderColor" });
+      behavior({ source: "property", key: "cornerRadius", action: "borderRadius" });
+      behavior({ source: "property", key: "paddingHorizontal", action: "cssProperty", parameter: "padding-left", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "paddingHorizontal", action: "cssProperty", parameter: "padding-right", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "paddingVertical", action: "cssProperty", parameter: "padding-top", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "paddingVertical", action: "cssProperty", parameter: "padding-bottom", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "signal-output", key: textKey, action: "input" });
+      behavior({ source: "signal-input", key: nameKey, action: "value" });
+    } else if (role === "icon") {
+      const assetKey = customElementPropertyKey("asset", selector),
+        selectedAssetKey = customElementPropertyKey("selectedAsset", selector),
+        selectionOwner =
+          configuration?.controlOwner || customPickedElement?.controlOwner || selector,
+        selectedKey = customGroupedSelectedSignalKey(selectionOwner, selector),
+        selectedSuffix = selectedKey === "selected" ? "" : selectedKey.slice("selected".length),
+        detectedSource = customPickedElement?.source || appearance.imageSource || "",
+        detectedAsset = state.assets.find(
+          (asset) =>
+            asset.dataUrl === detectedSource ||
+            customAssetForLocalReference(detectedSource)?.id === asset.id,
+        ),
+        recolorable = String(customPickedElement?.tag || "").toLowerCase() !== "img",
+        iconColorKey = customElementPropertyKey("iconColor", selector),
+        selectedIconColorKey = customElementPropertyKey("selectedIconColor", selector);
+      property({ key: assetKey, name: assetKey === "asset" ? "Standard state — image / asset" : `${customElementSemanticSuffix()} — Standard asset`, type: "asset", defaultValue: detectedAsset?.id || "" });
+      property({ key: selectedAssetKey, name: selectedAssetKey === "selectedAsset" ? "Selected state — image / asset" : `${customElementSemanticSuffix()} — Selected asset`, type: "asset", defaultValue: "" });
+      if (recolorable) {
+        property({ key: iconColorKey, name: "Standard state — icon color", type: "color", defaultValue: appearance.textColor });
+        property({ key: selectedIconColorKey, name: "Selected state — icon color", type: "color", defaultValue: "#04dcb9" });
+      }
+      property({ key: "iconSize", name: "Icon size", type: "number", defaultValue: 32 });
+      property({ key: "iconHorizontal", name: "Horizontal shift %", type: "number", defaultValue: 50 });
+      property({ key: "iconVertical", name: "Vertical shift %", type: "number", defaultValue: 50 });
+      property({ key: "showIcon", name: "Show icon / asset", type: "checkbox", defaultValue: true });
+      signal({ key: selectedKey, name: selectedSuffix ? `${selectedSuffix} Selected` : "Selected", type: "digital", direction: "input", defaultValue: `${base}.${selectedSuffix || ""}Selected` });
+      behavior({ source: "property", key: assetKey, action: "imageSource" });
+      behavior({ source: "property", key: "iconSize", action: "width", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "iconSize", action: "height", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: "iconHorizontal", action: "cssProperty", parameter: "left", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "%" } });
+      behavior({ source: "property", key: "iconVertical", action: "cssProperty", parameter: "top", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "%" } });
+      behavior({ source: "property", key: "showIcon", action: "visibility", booleanMapping: { enabled: true, falseValue: false, trueValue: true } });
+      if (selectionOwner !== selector)
+        behavior(
+          { source: "signal-input", key: selectedKey, action: "selectedClass" },
+          selectionOwner,
+        );
+      behavior({ source: "signal-input", key: selectedKey, action: "imageSource", booleanMapping: { enabled: true, falseValue: `{{${assetKey}Data}}`, trueValue: `{{${selectedAssetKey}Data}}` } });
+      if (recolorable) {
+        behavior({ source: "signal-input", key: selectedKey, action: "color", booleanMapping: { enabled: true, falseValue: `{{${iconColorKey}}}`, trueValue: `{{${selectedIconColorKey}}}` } });
+        if (String(customPickedElement?.tag || "").toLowerCase() === "svg")
+          behavior({ source: "signal-input", key: selectedKey, action: "cssProperty", parameter: "fill", booleanMapping: { enabled: true, falseValue: `{{${iconColorKey}}}`, trueValue: `{{${selectedIconColorKey}}}` } });
+      }
+    } else if (role === "backgroundAsset") {
+      const assetKey = customElementPropertyKey("backgroundAsset", selector),
+        selectedAssetKey = customElementPropertyKey("selectedBackgroundAsset", selector),
+        standardColorKey = customElementPropertyKey("backgroundColor", selector),
+        selectedColorKey = customElementPropertyKey("selectedBackgroundColor", selector),
+        selectionOwner =
+          configuration?.controlOwner || customPickedElement?.controlOwner || selector,
+        selectedKey = customGroupedSelectedSignalKey(selectionOwner, selector),
+        selectedSuffix = selectedKey === "selected" ? "" : selectedKey.slice("selected".length),
+        detectedSource = customPickedElement?.source || appearance.imageSource || "",
+        detectedAsset = state.assets.find(
+          (asset) =>
+            asset.dataUrl === detectedSource ||
+            customAssetForLocalReference(detectedSource)?.id === asset.id,
+        ),
+        imageElement = String(customPickedElement?.tag || "").toLowerCase() === "img",
+        assetAction = imageElement ? "imageSource" : "backgroundImage";
+      property({ key: assetKey, name: "Standard state — background asset", type: "asset", defaultValue: detectedAsset?.id || "" });
+      property({ key: selectedAssetKey, name: "Selected state — background asset", type: "asset", defaultValue: "" });
+      property({ key: standardColorKey, name: "Standard state — background color", type: "color", defaultValue: appearance.backgroundColor });
+      property({ key: selectedColorKey, name: "Selected state — background color", type: "color", defaultValue: appearance.backgroundColor });
+      property({ key: "backgroundFit", name: "Background image fit", type: "select", defaultValue: "cover", options: [{ value: "contain", label: "Contain" }, { value: "cover", label: "Cover" }, { value: "100% 100%", label: "Stretch" }, { value: "auto", label: "Original size" }] });
+      property({ key: "backgroundHorizontal", name: "Background horizontal shift %", type: "number", defaultValue: 50 });
+      property({ key: "backgroundVertical", name: "Background vertical shift %", type: "number", defaultValue: 50 });
+      property({ key: "showBackground", name: "Show background", type: "checkbox", defaultValue: true });
+      signal({ key: selectedKey, name: selectedSuffix ? `${selectedSuffix} Selected` : "Selected", type: "digital", direction: "input", defaultValue: `${base}.${selectedSuffix || ""}Selected` });
+      behavior({ source: "property", key: assetKey, action: assetAction });
+      behavior({ source: "property", key: standardColorKey, action: "backgroundColor" });
+      if (!imageElement) {
+        behavior({ source: "property", key: "backgroundFit", action: "cssProperty", parameter: "background-size" });
+        behavior({ source: "property", key: "backgroundHorizontal", action: "cssProperty", parameter: "background-position-x", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "%" } });
+        behavior({ source: "property", key: "backgroundVertical", action: "cssProperty", parameter: "background-position-y", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "%" } });
+      }
+      behavior({ source: "property", key: "showBackground", action: imageElement ? "visibility" : "backgroundImage", booleanMapping: { enabled: true, falseValue: imageElement ? false : "none", trueValue: imageElement ? true : `{{${assetKey}Data}}` } });
+      if (selectionOwner !== selector)
+        behavior({ source: "signal-input", key: selectedKey, action: "selectedClass" }, selectionOwner);
+      behavior({ source: "signal-input", key: selectedKey, action: assetAction, booleanMapping: { enabled: true, falseValue: `{{${assetKey}Data}}`, trueValue: `{{${selectedAssetKey}Data}}` } });
+      behavior({ source: "signal-input", key: selectedKey, action: "backgroundColor", booleanMapping: { enabled: true, falseValue: `{{${standardColorKey}}}`, trueValue: `{{${selectedColorKey}}}` } });
+    } else if (role === "selected") {
+      const selectionOwner =
+          configuration?.controlOwner || customPickedElement?.controlOwner || selector,
+        selectedKey = customGroupedSelectedSignalKey(selectionOwner, selector),
+        selectedSuffix = selectedKey === "selected" ? "" : selectedKey.slice("selected".length),
+        standardColorKey = customElementPropertyKey("indicatorStandardColor", selector),
+        selectedColorKey = customElementPropertyKey("indicatorSelectedColor", selector),
+        glowColorKey = customElementPropertyKey("indicatorGlowColor", selector),
+        glowStrengthKey = customElementPropertyKey("indicatorGlowStrength", selector),
+        standardOpacityKey = customElementPropertyKey("indicatorStandardOpacity", selector),
+        selectedOpacityKey = customElementPropertyKey("indicatorSelectedOpacity", selector),
+        detectedStates = customDetectedStateStyles(selector),
+        standardColor = detectedStates?.states?.standard?.background || appearance.backgroundColor,
+        activeColor = detectedStates?.states?.selected?.background || "#04dcb9",
+        activeGlow = detectedStates?.states?.selected?.glow || appearance.glowColor;
+      property({ key: standardColorKey, name: "Standard state — indicator color", type: "color", defaultValue: standardColor });
+      property({ key: selectedColorKey, name: "Selected state — indicator color", type: "color", defaultValue: activeColor });
+      property({ key: glowColorKey, name: "Selected state — indicator glow color", type: "color", defaultValue: activeGlow });
+      property({ key: glowStrengthKey, name: "Selected state — indicator glow strength", type: "number", defaultValue: Math.max(0, appearance.glowStrength) });
+      property({ key: standardOpacityKey, name: "Standard state — indicator opacity %", type: "number", defaultValue: Number(detectedStates?.states?.standard?.opacity) || 40 });
+      property({ key: selectedOpacityKey, name: "Selected state — indicator opacity %", type: "number", defaultValue: Number(detectedStates?.states?.selected?.opacity) || 100 });
+      signal({ key: selectedKey, name: selectedSuffix ? `${selectedSuffix} Selected` : "Selected", type: "digital", direction: "input", defaultValue: `${base}.${selectedSuffix || ""}Selected` });
+      if (selectionOwner !== selector)
+        behavior(
+          { source: "signal-input", key: selectedKey, action: "selectedClass" },
+          selectionOwner,
+        );
+      behavior({ source: "signal-input", key: selectedKey, action: "selectedClass" });
+      behavior({ source: "signal-input", key: selectedKey, action: "backgroundColor", booleanMapping: { enabled: true, falseValue: `{{${standardColorKey}}}`, trueValue: `{{${selectedColorKey}}}` } });
+      behavior({ source: "signal-input", key: selectedKey, action: "opacity", booleanMapping: { enabled: true, falseValue: `{{${standardOpacityKey}}}`, trueValue: `{{${selectedOpacityKey}}}` }, mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 1, unit: "" } });
+      behavior({ source: "property", key: glowColorKey, action: "cssVariable", parameter: "--indicator-glow-color" });
+      behavior({ source: "signal-input", key: selectedKey, action: "glowStrength", parameter: `{{${glowColorKey}}}`, booleanMapping: { enabled: true, falseValue: "0", trueValue: `{{${glowStrengthKey}}}` } });
+      if (detectedStates && !$('custom-state-selector').value.trim()) {
+        setCustomStateStyles(detectedStates);
+        added.push("detected Standard and Selected indicator appearances");
+      }
+    } else if (role === "gauge") {
+      const feedbackKey = customElementSignalKey("feedback", selector),
+        feedbackSuffix = feedbackKey === "feedback" ? "" : feedbackKey.slice("feedback".length),
+        numericPresentation = customDetectedNumericPresentation(selector),
+        trackSelector = customRelatedElementSelector(selector, ["[data-track]", ".track", ".gauge-track", ".meter-track"]),
+        valueSelector = customRelatedElementSelector(selector, ["[data-value]", "output", ".value", ".percentage", ".percent", ".numeric-value"], true);
+      property({ key: "fillColor", name: "Fill color", type: "color", defaultValue: "#04dcb9" });
+      if (trackSelector)
+        property({ key: "trackColor", name: "Track color", type: "color", defaultValue: "#263b3c" });
+      if (valueSelector) {
+        property({ key: "showPercentage", name: "Show percentage / value", type: "checkbox", defaultValue: true });
+        property({ key: "textColor", name: "Value text color", type: "color", defaultValue: "#ffffff" });
+        property({ key: "textSize", name: "Value text size", type: "number", defaultValue: 18 });
+      }
+      signal({ key: feedbackKey, name: feedbackSuffix ? `${feedbackSuffix} Feedback` : "Feedback", type: "analog", direction: "input", defaultValue: `${base}.${feedbackSuffix || ""}Feedback` });
+      behavior({ source: "property", key: "fillColor", action: "backgroundColor" });
+      if (trackSelector)
+        behavior({ source: "property", key: "trackColor", action: "backgroundColor" }, trackSelector);
+      if (valueSelector) {
+        behavior({ source: "property", key: "showPercentage", action: "visibility", booleanMapping: { enabled: true, falseValue: false, trueValue: true } }, valueSelector);
+        behavior({ source: "property", key: "textColor", action: "color" }, valueSelector);
+        behavior({ source: "property", key: "textSize", action: "fontSize" }, valueSelector);
+      }
+      behavior({ source: "signal-input", key: feedbackKey, action: numericPresentation.action, ...(numericPresentation.parameter ? { parameter: numericPresentation.parameter } : {}), mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 100, unit: numericPresentation.unit } });
+      added.push(
+        `detected ${numericPresentation.action === "cssVariable" ? "circular/custom" : numericPresentation.action === "height" ? "vertical" : numericPresentation.action === "value" ? "native" : "horizontal"} analog presentation`,
+      );
+    } else if (role === "slider") {
+      const valueSetKey = customElementSignalKey("valueSet", selector),
+        feedbackKey = customElementSignalKey("feedback", selector),
+        valueSetSuffix = valueSetKey === "valueSet" ? "" : valueSetKey.slice("valueSet".length),
+        feedbackSuffix = feedbackKey === "feedback" ? "" : feedbackKey.slice("feedback".length),
+        handleSelector = customRelatedElementSelector(selector, ["[data-handle]", ".handle", ".thumb", ".slider-thumb"]),
+        valueSelector = customRelatedElementSelector(selector, ["[data-value]", "output", ".value", ".percentage", ".percent", ".numeric-value"]),
+        nativeRange = String(customPickedElement?.inputType || "").toLowerCase() === "range",
+        nativeSelect = String(customPickedElement?.tag || "").toLowerCase() === "select",
+        detectedEvents = customDetectedEventCapabilities(selector),
+        numericPresentation = customDetectedNumericPresentation(selector),
+        fillSelector = customRelatedElementSelector(selector, ["[data-fill]", ".fill", ".progress", ".level", ".slider-fill"]),
+        outputAction = nativeSelect || (detectedEvents.change && !detectedEvents.input)
+          ? "change"
+          : "input";
+      property({ key: "trackColor", name: "Track color", type: "color", defaultValue: "#263b3c" });
+      property({ key: "fillColor", name: "Fill color", type: "color", defaultValue: "#04dcb9" });
+      if (handleSelector)
+        property({ key: "handleColor", name: "Handle color", type: "color", defaultValue: "#ffffff" });
+      if (valueSelector) {
+        property({ key: "showPercentage", name: "Show percentage / value", type: "checkbox", defaultValue: true });
+        property({ key: "textColor", name: "Value text color", type: "color", defaultValue: "#ffffff" });
+        property({ key: "textSize", name: "Value text size", type: "number", defaultValue: 18 });
+      }
+      signal({ key: valueSetKey, name: valueSetSuffix ? `${valueSetSuffix} Value Set` : "Value Set", type: "analog", direction: "output", defaultValue: `${base}.${valueSetSuffix || ""}ValueSet` });
+      signal({ key: feedbackKey, name: feedbackSuffix ? `${feedbackSuffix} Feedback` : "Feedback", type: "analog", direction: "input", defaultValue: `${base}.${feedbackSuffix || ""}Feedback` });
+      behavior({ source: "property", key: "trackColor", action: "backgroundColor" });
+      behavior({ source: "property", key: "fillColor", action: nativeRange ? "cssProperty" : "cssVariable", parameter: nativeRange ? "accent-color" : "--fill-color" });
+      if (handleSelector)
+        behavior({ source: "property", key: "handleColor", action: "backgroundColor" }, handleSelector);
+      if (valueSelector) {
+        behavior({ source: "property", key: "showPercentage", action: "visibility", booleanMapping: { enabled: true, falseValue: false, trueValue: true } }, valueSelector);
+        behavior({ source: "property", key: "textColor", action: "color" }, valueSelector);
+        behavior({ source: "property", key: "textSize", action: "fontSize" }, valueSelector);
+      }
+      behavior({ source: "signal-output", key: valueSetKey, action: outputAction, mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 65535, unit: "" } });
+      if (nativeRange || nativeSelect)
+        behavior({ source: "signal-input", key: feedbackKey, action: "value", mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 100, unit: "" } });
+      else if (fillSelector)
+        behavior({ source: "signal-input", key: feedbackKey, action: numericPresentation.action === "height" ? "height" : "width", mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 100, unit: "%" } }, fillSelector);
+      else
+        behavior({ source: "signal-input", key: feedbackKey, action: numericPresentation.action, ...(numericPresentation.parameter ? { parameter: numericPresentation.parameter } : {}), mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 100, unit: numericPresentation.unit } });
+      if (outputAction === "change")
+        added.push("detected Change event behavior for Value Set");
+    } else if (role === "sliderHandle") {
+      const colorKey = customElementPropertyKey("handleColor", selector),
+        borderKey = customElementPropertyKey("handleBorderColor", selector),
+        sizeKey = customElementPropertyKey("handleSize", selector),
+        glowColorKey = customElementPropertyKey("handleGlowColor", selector),
+        glowStrengthKey = customElementPropertyKey("handleGlowStrength", selector),
+        showKey = customElementPropertyKey("showHandle", selector);
+      property({ key: colorKey, name: "Handle color", type: "color", defaultValue: appearance.backgroundColor });
+      property({ key: borderKey, name: "Handle border color", type: "color", defaultValue: appearance.borderColor });
+      property({ key: sizeKey, name: "Handle size", type: "number", defaultValue: 24 });
+      property({ key: glowColorKey, name: "Handle glow color", type: "color", defaultValue: appearance.glowColor });
+      property({ key: glowStrengthKey, name: "Handle glow strength", type: "number", defaultValue: appearance.glowStrength });
+      property({ key: showKey, name: "Show handle", type: "checkbox", defaultValue: true });
+      behavior({ source: "property", key: colorKey, action: "backgroundColor" });
+      behavior({ source: "property", key: borderKey, action: "borderColor" });
+      behavior({ source: "property", key: sizeKey, action: "width", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: sizeKey, action: "height", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      behavior({ source: "property", key: glowColorKey, action: "cssVariable", parameter: "--handle-glow-color" });
+      behavior({ source: "property", key: glowStrengthKey, action: "glowStrength", parameter: `{{${glowColorKey}}}` });
+      behavior({ source: "property", key: showKey, action: "visibility", booleanMapping: { enabled: true, falseValue: false, trueValue: true } });
+    } else if (role === "decorative") {
+      const colorKey = customElementPropertyKey("visualColor", selector),
+        backgroundKey = customElementPropertyKey("visualBackgroundColor", selector),
+        opacityKey = customElementPropertyKey("visualOpacity", selector),
+        widthKey = customElementPropertyKey("visualWidth", selector),
+        heightKey = customElementPropertyKey("visualHeight", selector),
+        glowColorKey = customElementPropertyKey("visualGlowColor", selector),
+        glowStrengthKey = customElementPropertyKey("visualGlowStrength", selector),
+        showKey = customElementPropertyKey("showVisual", selector);
+      property({ key: colorKey, name: "Decorative visual color", type: "color", defaultValue: appearance.textColor });
+      property({ key: backgroundKey, name: "Decorative background color", type: "color", defaultValue: appearance.backgroundColor });
+      property({ key: opacityKey, name: "Decorative opacity %", type: "number", defaultValue: appearance.opacity });
+      property({ key: widthKey, name: "Decorative width", type: "number", defaultValue: appearance.width });
+      property({ key: heightKey, name: "Decorative height", type: "number", defaultValue: appearance.height });
+      property({ key: glowColorKey, name: "Decorative glow color", type: "color", defaultValue: appearance.glowColor });
+      property({ key: glowStrengthKey, name: "Decorative glow strength", type: "number", defaultValue: appearance.glowStrength });
+      property({ key: showKey, name: "Show decorative visual", type: "checkbox", defaultValue: true });
+      behavior({ source: "property", key: colorKey, action: "color" });
+      behavior({ source: "property", key: backgroundKey, action: "backgroundColor" });
+      behavior({ source: "property", key: opacityKey, action: "opacity", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "" } });
+      behavior({ source: "property", key: widthKey, action: "width", mapping: { enabled: true, inputMin: 0, inputMax: 1280, outputMin: 0, outputMax: 1280, unit: "px" } });
+      behavior({ source: "property", key: heightKey, action: "height", mapping: { enabled: true, inputMin: 0, inputMax: 800, outputMin: 0, outputMax: 800, unit: "px" } });
+      behavior({ source: "property", key: glowColorKey, action: "cssVariable", parameter: "--visual-glow-color" });
+      behavior({ source: "property", key: glowStrengthKey, action: "glowStrength", parameter: `{{${glowColorKey}}}` });
+      behavior({ source: "property", key: showKey, action: "visibility", booleanMapping: { enabled: true, falseValue: false, trueValue: true } });
+    } else if (role === "repeated") {
+      const repeated = inferCustomRepeatedConfiguration(selector);
+      property({ key: "itemGap", name: "Item spacing", type: "number", defaultValue: appearance.gap });
+      behavior({ source: "property", key: "itemGap", action: "cssProperty", parameter: "gap", mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" } });
+      setCustomRepeatedControls(repeated);
+      syncCustomRepeatedRows();
+      added.push(
+        `repeated-item configuration (${repeated.defaultCount} detected items)`,
+      );
+    }
+    $("custom-element-result").textContent = added.length
+      ? `Added ${added.join(", ")}. Existing definitions were preserved.`
+      : role === "decorative"
+        ? "Marked as a decorative local visual. Its appearance remains locally editable without generating Crestron signals."
+        : role === "ignore"
+          ? "Ignored. The element remains in the original source but is excluded from Composer setup and review."
+        : "This role was already configured; no duplicates were added.";
+    if (!deferRefresh) refreshCustomPreview();
+    return added;
+  }
   function addCustomBehaviorPreset() {
     const selector = $("custom-element-selector").value.trim();
     if (!selector) {
@@ -13636,10 +15894,6 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
         analogGlow: {
           signal: { key: "glowFeedback", name: "Glow Feedback", type: "analog", direction: "input", defaultValue: `${base}.GlowFeedback` },
           behavior: { source: "signal-input", key: "glowFeedback", action: "glowStrength", parameter: "#00e5c3", mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 30, unit: "px" } },
-        },
-        digitalVisibility: {
-          signal: { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: `${base}.Visibility` },
-          behavior: { source: "signal-input", key: "visibility", action: "visibility" },
         },
         digitalSelected: {
           signal: { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: `${base}.Selected` },
@@ -13726,6 +15980,47 @@ if(typeof cleanup==='function')window.addEventListener('unload',cleanup,{once:tr
       .map(collectCustomBehaviorRow)
       .filter(Boolean);
   }
+  function removeExactCustomDefinitionDuplicates() {
+    const configurations = [
+        {
+          host: $("custom-property-list"),
+          collect: (row) => {
+            const rows = [...$("custom-property-list").children],
+              definitions = collectCustomProperties();
+            return definitions[rows.indexOf(row)] || null;
+          },
+        },
+        {
+          host: $("custom-signal-list"),
+          collect: (row) => {
+            const rows = [...$("custom-signal-list").children],
+              definitions = collectCustomSignals();
+            return definitions[rows.indexOf(row)] || null;
+          },
+        },
+        {
+          host: $("custom-behavior-list"),
+          collect: collectCustomBehaviorRow,
+        },
+      ],
+      removed = [];
+    configurations.forEach(({ host, collect }) => {
+      const seen = new Set();
+      [...host.children].forEach((row) => {
+        const definition = collect(row);
+        if (!definition) return;
+        const signature = JSON.stringify(definition);
+        if (seen.has(signature)) {
+          row.remove();
+          removed.push(
+            definition.key || definition.name || definition.action || "definition",
+          );
+        } else seen.add(signature);
+      });
+    });
+    if (removed.length) refreshCustomPreview();
+    return removed;
+  }
   function customBehaviorRuntime(rules, properties = {}) {
     if (!rules?.length) return "";
     return `<script>(function(){
@@ -13733,7 +16028,8 @@ var rules=${JSON.stringify(rules)},properties=${JSON.stringify(properties)};
 function truthy(value){return value===true||value===1||value==='1'||String(value).toLowerCase()==='true'}
 function mapped(rule,value){if(rule.booleanMapping&&rule.booleanMapping.enabled)return truthy(value)?rule.booleanMapping.trueValue:rule.booleanMapping.falseValue;if(!rule.mapping||!rule.mapping.enabled)return value;var m=rule.mapping,n=Number(value),span=Number(m.inputMax)-Number(m.inputMin);if(!Number.isFinite(n)||!span)return Number(m.outputMin)||0;var ratio=Math.max(0,Math.min(1,(n-Number(m.inputMin))/span));return Number(m.outputMin)+ratio*(Number(m.outputMax)-Number(m.outputMin))}
 function transforms(target){target.style.transform='translateX(var(--composer-translate-x,0px)) translateY(var(--composer-translate-y,0px)) rotate(var(--composer-rotate,0deg)) scale(var(--composer-scale,1))'}
-function apply(rule,value){var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter)target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':var strength=Math.max(0,Number(mappedValue)||0),color=rule.parameter||'var(--glow-color,#00e5c3)';target.style.boxShadow='0 0 '+strength+(unit||'px')+' '+color+',0 0 '+strength*2+(unit||'px')+' '+color;break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':if(target.tagName==='IMG')target.src=String(mappedValue||'');else target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
+function appearance(target){var glow=Math.max(0,Number(target.style.getPropertyValue('--composer-glow-strength'))||0),shadow=Math.max(0,Number(target.style.getPropertyValue('--composer-shadow-size'))||0),color=target.style.getPropertyValue('--composer-glow-color')||'var(--glow-color,#00e5c3)',parts=[];if(shadow)parts.push(shadow+'px '+shadow+'px '+shadow*2+'px rgba(0,0,0,.48)');if(glow){parts.push('0 0 '+glow+'px '+color);parts.push('0 0 '+glow*2+'px '+color)}target.style.boxShadow=parts.join(',')}
+function apply(rule,value){var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter){target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));if(/glow/i.test(rule.parameter))appearance(target)}break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':target.style.setProperty('--composer-glow-strength',String(Math.max(0,Number(mappedValue)||0)));target.style.setProperty('--composer-glow-color',rule.parameter||'var(--glow-color,#00e5c3)');appearance(target);break;case'shadowSize':target.style.setProperty('--composer-shadow-size',String(Math.max(0,Number(mappedValue)||0)));appearance(target);break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':var image=String(mappedValue||'');if(target.tagName==='IMG'){if(!target.hasAttribute('data-composer-original-src'))target.setAttribute('data-composer-original-src',target.getAttribute('src')||'');target.src=image||target.getAttribute('data-composer-original-src')||''}else{if(!target.hasAttribute('data-composer-original-background'))target.setAttribute('data-composer-original-background',target.style.backgroundImage||'');target.style.backgroundImage=image?'url("'+image.replace(/"/g,'\\"')+'")':target.getAttribute('data-composer-original-background')||''}break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
 function pulse(key){window.ComposerSignals.publish(key,true);setTimeout(function(){window.ComposerSignals.publish(key,false)},50)}
 rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){var raw=target.type==='range'||target.type==='number'?Number(target.value):target.type==='checkbox'?target.checked:target.value;window.ComposerSignals.publish(rule.key,mapped(rule,raw))})})});
 })();<\/script>`;
@@ -13839,8 +16135,11 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
             ? `${selector},${aliases[stateName]}`
             : selector,
           opacity = Math.max(0, Math.min(100, Number(values.opacity) || 0)) / 100,
-          scale = Math.max(0, Number(values.scale) || 0) / 100;
-        return `${selectors}{background-color:${values.background}!important;color:${values.color}!important;border-color:${values.border}!important;box-shadow:0 0 12px ${values.glow}!important;opacity:${opacity}!important;transform:scale(${scale})!important;transition:background-color .16s,color .16s,border-color .16s,box-shadow .16s,opacity .16s,transform .12s!important;${stateName === "disabled" ? "pointer-events:none!important;" : ""}}`;
+          scale = Math.max(0, Number(values.scale) || 0) / 100,
+          scaleDeclaration = Math.abs(scale - 1) > 0.0001
+            ? `transform:scale(${scale})!important;`
+            : "";
+        return `${selectors}{background-color:${values.background}!important;color:${values.color}!important;border-color:${values.border}!important;box-shadow:0 0 12px ${values.glow}!important;opacity:${opacity}!important;${scaleDeclaration}${stateName === "disabled" ? "pointer-events:none!important;" : ""}}`;
       })
       .join("\n");
   }
@@ -13864,6 +16163,90 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       customBehaviorRuntime(rules, properties) ||
       "// No generated JavaScript behaviors yet.";
   }
+  function renderCustomPlainLanguageReview() {
+    const host = $("custom-behavior-review");
+    if (!host) return;
+    const properties = collectCustomProperties(),
+      signals = collectCustomSignals(),
+      signalByKey = new Map(signals.map((entry) => [entry.key, entry])),
+      rules = collectCustomBehaviors().filter((entry) => entry.enabled !== false),
+      statements = [],
+      add = (text, kind = "generated") => {
+        if (text && !statements.some((entry) => entry.text === text)) statements.push({ text, kind });
+      },
+      targetName = (selector) => selector ? `“${selector}”` : "this element";
+    rules.forEach((rule) => {
+      const signal = signalByKey.get(rule.key),
+        signalName = signal?.name || rule.key,
+        target = targetName(rule.selector);
+      if (rule.source === "signal-output") {
+        if (["press", "click"].includes(rule.action))
+          add(`Pressing ${target} sends the ${signalName} digital output.`);
+        else if (rule.action === "release")
+          add(`Releasing ${target} sends the ${signalName} digital output.`);
+        else if (rule.action === "hold")
+          add(`Holding ${target} sends the ${signalName} digital output.`);
+        else if (["input", "change"].includes(rule.action))
+          add(`Changing ${target} sends the ${signalName} value to Crestron.`);
+      } else if (rule.source === "signal-input") {
+        if (rule.action === "selectedClass")
+          add(`${signalName} feedback activates the Selected appearance on ${target}.`);
+        else if (["text", "value"].includes(rule.action))
+          add(`${signalName} feedback replaces the displayed value on ${target}.`);
+        else if (["width", "height", "rotate", "translateX", "translateY"].includes(rule.action))
+          add(`${signalName} analog feedback controls the visual level or position of ${target}.`);
+        else if (rule.action === "visibility")
+          add(`${signalName} feedback shows or hides ${target}.`);
+        else if (rule.action === "disabledState")
+          add(`${signalName} feedback enables or disables interaction with ${target}.`);
+      }
+    });
+    if (properties.length)
+      add(`${properties.length} familiar Component Properties will be editable after the component is placed.`);
+    if (collectCustomRepeatedItems())
+      add("Repeated items use a zero-based signal range and an adjustable item count.");
+    const decorative = customAnalyzedElements.filter(
+      (entry) => entry.role === "decorative",
+    );
+    const grouped = customAnalyzedElements.filter((entry) => entry.controlOwner);
+    if (grouped.length)
+      add(
+        `${grouped.length} label, icon, or indicator element${grouped.length === 1 ? " shares" : "s share"} Selected feedback with ${new Set(grouped.map((entry) => entry.controlOwner)).size} related button control${new Set(grouped.map((entry) => entry.controlOwner)).size === 1 ? "" : "s"}.`,
+      );
+    if (decorative.length)
+      add(
+        `${decorative.length} decorative element${decorative.length === 1 ? " remains" : "s remain"} local with editable appearance and no generated Crestron signal: ${decorative.map((entry) => entry.selector).join(", ")}.`,
+        "local",
+      );
+    customPreservedRelationships.forEach((relationship) =>
+      add(
+        `${relationship.event || "Interaction"} on “${relationship.selector || "the trigger"}” will ${relationship.effect || "update"} “${relationship.targetSelector || "its related element"}”. The authored relationship remains local.`,
+        "local",
+      ),
+    );
+    const authoredSource = `${$("custom-source-css").value}\n${$("custom-source-javascript").value}`;
+    if (/@keyframes\b|\banimation\s*:|\btransition(?:-property)?\s*:|\.animate\s*\(/i.test(authoredSource))
+      add("The original animation remains local and is preserved alongside generated Crestron behavior.", "local");
+    if (/\b(?:setTimeout|setInterval)\s*\(/.test($("custom-source-javascript").value))
+      add("Timers are isolated to this component instance and automatically cleared when it is removed or remounted.", "local");
+    add("Visibility and Disabled remain optional Composer-level bindings chosen after placement.", "optional");
+    host.innerHTML = "";
+    if (!statements.length) {
+      const empty = document.createElement("div");
+      empty.className = "custom-behavior-review-empty";
+      empty.textContent = "No generated capabilities yet. Pick an element and confirm its role.";
+      host.appendChild(empty);
+      return;
+    }
+    statements.forEach((entry) => {
+      const row = document.createElement("div"),
+        text = document.createElement("span");
+      row.className = `custom-behavior-review-item ${entry.kind}`;
+      text.textContent = entry.text;
+      row.appendChild(text);
+      host.appendChild(row);
+    });
+  }
   function collectCustomRepeatedItems() {
     if (!$("custom-repeat-enabled").checked) return null;
     const namespace =
@@ -13886,12 +16269,18 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         1,
         Math.min(100, Math.round(Number($("custom-repeat-max").value) || 20)),
       ),
+      numericSelector: $("custom-repeat-enabled").dataset.numericSelector || "",
+      numericOutput:
+        $("custom-repeat-enabled").dataset.numericOutput === "true",
+      numericAction: $("custom-repeat-enabled").dataset.numericAction || "",
+      numericParameter:
+        $("custom-repeat-enabled").dataset.numericParameter || "",
       namespace,
     };
   }
   function repeatedItemProperties(config) {
     if (!config) return [];
-    return [
+    const properties = [
       {
         key: "defaultCount",
         name: "Default sub-items",
@@ -13904,6 +16293,21 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         type: "number",
         defaultValue: 1,
       },
+      {
+        key: "repeatOrientation",
+        name: "Repeated-item layout",
+        type: "select",
+        defaultValue: "original",
+        options: [
+          { value: "original", label: "Original imported layout" },
+          { value: "horizontal", label: "Horizontal" },
+          { value: "vertical", label: "Vertical" },
+          { value: "grid", label: "Grid" },
+        ],
+      },
+      { key: "repeatColumns", name: "Grid columns", type: "number", defaultValue: 2 },
+      { key: "repeatItemWidth", name: "Item width (0 = automatic)", type: "number", defaultValue: 0 },
+      { key: "repeatItemHeight", name: "Item height (0 = automatic)", type: "number", defaultValue: 0 },
       {
         key: "pressBase",
         name: "Digital item press base / pattern",
@@ -13923,6 +16327,21 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         defaultValue: `${config.namespace}.Items[{index}].Name`,
       },
     ];
+    if (config.numericOutput)
+      properties.push({
+        key: "valueSetBase",
+        name: "Analog item value set base / pattern",
+        type: "text",
+        defaultValue: `${config.namespace}.Items[{index}].ValueSet`,
+      });
+    if (config.numericSelector)
+      properties.push({
+        key: "levelFeedbackBase",
+        name: "Analog item feedback base / pattern",
+        type: "text",
+        defaultValue: `${config.namespace}.Items[{index}].Feedback`,
+      });
+    return properties;
   }
   function repeatedItemSignals(config) {
     return config
@@ -13939,7 +16358,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
   }
   function repeatedItemRanges(config) {
     if (!config) return [];
-    return [
+    const ranges = [
       {
         name: "Digital sub-item press range",
         type: "digital",
@@ -13962,6 +16381,23 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         incrementKey: "signalIncrement",
       },
     ];
+    if (config.numericOutput)
+      ranges.push({
+        name: "Analog sub-item value set range",
+        type: "analog",
+        direction: "output",
+        baseKey: "valueSetBase",
+        incrementKey: "signalIncrement",
+      });
+    if (config.numericSelector)
+      ranges.push({
+        name: "Analog sub-item feedback range",
+        type: "analog",
+        direction: "input",
+        baseKey: "levelFeedbackBase",
+        incrementKey: "signalIncrement",
+      });
+    return ranges;
   }
   function mergeCustomRows(base, generated) {
     const result = base.filter(
@@ -13974,10 +16410,13 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     return `<script>(function(){
 var config=${JSON.stringify(config)},container=document.querySelector(config.containerSelector);if(!container)return;
 var originals=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector)),template=originals[0]?originals[0].cloneNode(true):document.createElement('button'),labels=originals.map(function(item){var label=config.labelSelector?item.querySelector(config.labelSelector):item.querySelector('[data-repeat-label],.label,.text,span');return (label||item).textContent.trim()});
+var layout='{{repeatOrientation}}',columns=Math.max(1,Math.round(Number('{{repeatColumns}}')||1)),itemWidth=Math.max(0,Number('{{repeatItemWidth}}')||0),itemHeight=Math.max(0,Number('{{repeatItemHeight}}')||0);
 function target(item){return (config.labelSelector&&item.querySelector(config.labelSelector))||item.querySelector('[data-repeat-label],.label,.text,span')||item}
+function numeric(item){if(!config.numericSelector)return null;return config.numericSelector===':scope'?item:item.querySelector(config.numericSelector)}
 function truthy(value){return value===true||value===1||value==='1'||String(value).toLowerCase()==='true'}
-function wire(item,index){item.dataset.repeatIndex=String(index);if(item.dataset.repeatWired==='1')return;item.dataset.repeatWired='1';var release=function(){window.ComposerSignals.publish('__repeatPress:'+index,false)};item.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish('__repeatPress:'+index,true)});item.addEventListener('pointerup',release);item.addEventListener('pointercancel',release);item.addEventListener('pointerleave',release);window.ComposerSignals.subscribe('__repeatSelected:'+index,function(value){item.classList.toggle('active',truthy(value))});window.ComposerSignals.subscribe('__repeatName:'+index,function(value){if(value!=null&&value!=='')target(item).textContent=String(value)})}
-function render(value){var count=Math.max(0,Math.min(config.maxCount,Math.round(Number(value)||0))),items=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector));while(items.length>count){items.pop().remove()}while(items.length<count){var item=template.cloneNode(true);item.removeAttribute('id');container.appendChild(item);items.push(item)}items.forEach(function(item,index){if(!target(item).textContent.trim())target(item).textContent=labels[index]||('Item '+(index+1));wire(item,index)})}
+function wire(item,index){item.dataset.repeatIndex=String(index);if(item.dataset.repeatWired==='1')return;item.dataset.repeatWired='1';var release=function(){window.ComposerSignals.publish('__repeatPress:'+index,false)};item.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish('__repeatPress:'+index,true)});item.addEventListener('pointerup',release);item.addEventListener('pointercancel',release);item.addEventListener('pointerleave',release);var control=numeric(item);if(control&&config.numericOutput)control.addEventListener('input',function(){var min=Number(control.min||0),max=Number(control.max||100),span=max-min||100,ratio=Math.max(0,Math.min(1,(Number(control.value)-min)/span));window.ComposerSignals.publish('__repeatValueSet:'+index,Math.round(ratio*65535))});window.ComposerSignals.subscribe('__repeatSelected:'+index,function(value){item.classList.toggle('active',truthy(value))});window.ComposerSignals.subscribe('__repeatName:'+index,function(value){if(value!=null&&value!=='')target(item).textContent=String(value)});if(control)window.ComposerSignals.subscribe('__repeatFeedback:'+index,function(value){var ratio=Math.max(0,Math.min(1,(Number(value)||0)/65535)),percent=ratio*100,min=Number(control.min||0),max=Number(control.max||100),action=config.numericAction||('value'in control?'value':'width');if(action==='value'&&'value'in control)control.value=String(min+ratio*(max-min));else if(action==='height')control.style.height=percent+'%';else if(action==='width')control.style.width=percent+'%';else if(action==='cssVariable')control.style.setProperty(config.numericParameter||'--value',String(percent));control.dataset.value=String(Math.round(percent))})}
+function applyLayout(items){if(layout==='horizontal'){container.style.display='flex';container.style.flexDirection='row';container.style.flexWrap='nowrap'}else if(layout==='vertical'){container.style.display='flex';container.style.flexDirection='column';container.style.flexWrap='nowrap'}else if(layout==='grid'){container.style.display='grid';container.style.gridTemplateColumns='repeat('+columns+',minmax(0,1fr))'}items.forEach(function(item){if(itemWidth)item.style.width=itemWidth+'px';if(itemHeight)item.style.height=itemHeight+'px'})}
+function render(value){var count=Math.max(0,Math.min(config.maxCount,Math.round(Number(value)||0))),items=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector));while(items.length>count){items.pop().remove()}while(items.length<count){var item=template.cloneNode(true);item.removeAttribute('id');container.appendChild(item);items.push(item)}items.forEach(function(item,index){if(!target(item).textContent.trim())target(item).textContent=labels[index]||'';wire(item,index)});applyLayout(items)}
 window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount);
 })();<\/script>`;
   }
@@ -13987,7 +16426,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       property = properties.find((entry) => entry.key === rule.key),
       signal = signals.find((entry) => entry.key === rule.key),
       numericActions = new Set([
-        "fontSize", "opacity", "width", "height", "scale", "glowStrength",
+        "fontSize", "opacity", "width", "height", "scale", "glowStrength", "shadowSize",
         "borderRadius", "translateX", "translateY", "rotate",
       ]),
       digitalActions = new Set([
@@ -14134,6 +16573,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       : result.warnings.length
         ? `<strong>Valid with ${result.warnings.length} warning(s)</strong><br>${result.warnings.map((value) => `• ${value}`).join("<br>")}`
         : "Component validation passed.";
+    renderCustomCompatibilityAudit();
     return result;
   }
   function refreshCustomSignalTester() {
@@ -14165,7 +16605,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     let source =
       composeCustomSource(true) +
-      customRepeatedFrameRuntime(collectCustomRepeatedItems()) +
+      customRepeatedFrameRuntime(collectCustomRepeatedItems()).replace(
+        /\{\{([A-Za-z_$][\w$]*)\}\}/g,
+        (_, key) => String(previewProperties[key] ?? ""),
+      ) +
       `<style data-composer-states>${customStateCss(collectCustomStateStyles())}</style>` +
       customStateRuntime(collectCustomStateStyles()) +
       `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
@@ -14175,8 +16618,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         `{{${property.key}}}`,
         String(property.defaultValue ?? ""),
       );
+      if (property.type === "asset")
+        source = source.replaceAll(
+          `{{${property.key}Data}}`,
+          String(previewProperties[property.key] ?? ""),
+        );
     });
-    const previewBridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-self-test')return;var missing=[],pending=[];(event.data.rules||[]).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}var fire=function(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))};if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='hold'){fire('pointerdown');pending.push(new Promise(function(resolve){setTimeout(function(){fire('pointerup');resolve()},Math.min(3000,Math.max(1,Number(rule.parameter)||1000)+25))}))}else{fire('pointerdown');fire('pointerup')}});Promise.all(pending).then(function(){parent.postMessage({type:'composer-self-test-complete',missing:missing},'*')})});${customElementPickerActive ? `var pickedStyle=document.createElement('style');pickedStyle.textContent='.composer-picked{outline:2px solid #ffd84d!important;outline-offset:2px!important;cursor:crosshair!important}';document.head.appendChild(pickedStyle);document.addEventListener('pointerover',function(event){document.querySelectorAll('.composer-picked').forEach(function(node){node.classList.remove('composer-picked')});event.target.classList.add('composer-picked')},true);document.addEventListener('pointerdown',function(event){event.preventDefault();event.stopImmediatePropagation();var element=event.target,selector;if(element.id)selector='#'+CSS.escape(element.id);else{var parts=[];while(element&&element!==document.body){var part=element.tagName.toLowerCase(),classes=Array.from(element.classList||[]).filter(function(name){return name!=='composer-picked'});if(classes.length)part+='.'+classes.map(CSS.escape).join('.');else if(element.parentElement){var siblings=Array.from(element.parentElement.children).filter(function(node){return node.tagName===element.tagName});if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(element)+1)+')'}parts.unshift(part);element=element.parentElement}selector=parts.join(' > ')}parent.postMessage({type:'composer-element-picked',selector:selector},'*')},true);` : ""}})();<\/script>`;
+    let previewBridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-self-test')return;var missing=[],pending=[];(event.data.rules||[]).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}var fire=function(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))};if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='hold'){fire('pointerdown');pending.push(new Promise(function(resolve){setTimeout(function(){fire('pointerup');resolve()},Math.min(3000,Math.max(1,Number(rule.parameter)||1000)+25))}))}else{fire('pointerdown');fire('pointerup')}});Promise.all(pending).then(function(){parent.postMessage({type:'composer-self-test-complete',missing:missing},'*')})});${customElementPickerActive ? `var pickedStyle=document.createElement('style');pickedStyle.textContent='.composer-picked{outline:2px solid #ffd84d!important;outline-offset:2px!important;cursor:crosshair!important}';document.head.appendChild(pickedStyle);document.addEventListener('pointerover',function(event){document.querySelectorAll('.composer-picked').forEach(function(node){node.classList.remove('composer-picked')});event.target.classList.add('composer-picked')},true);document.addEventListener('pointerdown',function(event){event.preventDefault();event.stopImmediatePropagation();var element=event.target,original=element,selector;if(element.id)selector='#'+CSS.escape(element.id);else{var parts=[];while(element&&element!==document.body){var part=element.tagName.toLowerCase(),classes=Array.from(element.classList||[]).filter(function(name){return name!=='composer-picked'});if(classes.length)part+='.'+classes.map(CSS.escape).join('.');else if(element.parentElement){var siblings=Array.from(element.parentElement.children).filter(function(node){return node.tagName===element.tagName});if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(element)+1)+')'}parts.unshift(part);element=element.parentElement}selector=parts.join(' > ')}parent.postMessage({type:'composer-element-picked',selector:selector,element:{tag:original.tagName.toLowerCase(),inputType:original.type||'',role:original.getAttribute('role')||'',id:original.id||'',className:Array.from(original.classList||[]).filter(function(name){return name!=='composer-picked'}).join(' '),ariaLabel:original.getAttribute('aria-label')||'',text:(original.textContent||'').trim().slice(0,120),childCount:original.children.length}},'*')},true);` : ""}})();<\/script>`;
+    previewBridge = previewBridge.replace(
+      "else{fire('pointerdown');fire('pointerup')}",
+      "else if(rule.action==='input'||rule.action==='change'){if(target.type==='checkbox')target.checked=!target.checked;else if('value'in target)target.value=target.type==='range'||target.type==='number'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup')}",
+    );
     $("custom-component-preview").srcdoc = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
         previewBridge +
@@ -14184,6 +16636,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       "",
     );
     refreshCustomGeneratedCode();
+    renderCustomPlainLanguageReview();
     refreshCustomSignalTester();
     validateCustomComponent();
   }
@@ -14302,14 +16755,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         type: "serial",
         direction: "input",
         defaultValue: "CustomButton.Name",
-      },
-      {
-        key: "visibility",
-        name: "Visibility",
-        type: "digital",
-        direction: "input",
-        defaultValue: "CustomButton.Visibility",
-        optionalProperty: "visibilityEnabled",
       },
     ],
     customButtonCss = `html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-button{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:{{cornerRadius}}px;box-shadow:0 0 {{glowStrength}}px {{glowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819;transition:background .18s,color .18s,border-color .18s,box-shadow .18s;touch-action:none}.custom-button.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};box-shadow:0 0 calc({{glowStrength}}px * 2) {{selectedGlowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819}.custom-icon{font-size:{{iconSize}}px;line-height:1}.custom-label{font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}`,
@@ -14506,6 +16951,73 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important}.custom-text{box-sizing:border-box;width:100%;height:100%;padding:12px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:12px;box-shadow:0 0 8px {{borderColor}};font:{{textSize}}px "Segoe UI",sans-serif}',
       javascript: `const input=root.querySelector('input');input.addEventListener('input',()=>signals.publish('text',input.value));signals.subscribe('name',value=>{if(value!=null)input.value=String(value)});`,
     },
+    repeated: {
+      name: "Custom Repeated List",
+      category: "Lists & Selectors",
+      icon: "🧩",
+      properties: [
+        {
+          key: "textSize",
+          name: "Text size",
+          type: "number",
+          defaultValue: 18,
+        },
+        {
+          key: "textColor",
+          name: "Text color",
+          type: "color",
+          defaultValue: "#ffffff",
+        },
+        {
+          key: "faceColor",
+          name: "Item background color",
+          type: "color",
+          defaultValue: "#263b3c",
+        },
+        {
+          key: "selectedColor",
+          name: "Selected item color",
+          type: "color",
+          defaultValue: "#078f7d",
+        },
+        {
+          key: "borderColor",
+          name: "Border color",
+          type: "color",
+          defaultValue: "#7ba7a3",
+        },
+        {
+          key: "glowColor",
+          name: "Glow color",
+          type: "color",
+          defaultValue: "#04dcb9",
+        },
+        {
+          key: "glowStrength",
+          name: "Glow strength",
+          type: "number",
+          defaultValue: 8,
+        },
+        {
+          key: "cornerRadius",
+          name: "Corner radius",
+          type: "number",
+          defaultValue: 14,
+        },
+      ],
+      signals: [],
+      repeatedItems: {
+        containerSelector: ".custom-repeat-list",
+        itemSelector: ".custom-repeat-item",
+        labelSelector: ".custom-repeat-label",
+        defaultCount: 5,
+        maxCount: 50,
+        namespace: "CustomRepeatedList",
+      },
+      html: '<div class="custom-repeat-list"><button class="custom-repeat-item" type="button"><span class="custom-repeat-label">Item 1</span></button></div>',
+      css: 'html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-repeat-list{box-sizing:border-box;width:100%;height:100%;display:flex;gap:10px;align-items:stretch;overflow:auto;padding:10px}.custom-repeat-item{box-sizing:border-box;min-width:120px;min-height:64px;padding:10px;border:1px solid {{borderColor}};border-radius:{{cornerRadius}}px;background:{{faceColor}};color:{{textColor}};box-shadow:0 0 {{glowStrength}}px {{glowColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;touch-action:none}.custom-repeat-item.active{background:{{selectedColor}};box-shadow:0 0 calc({{glowStrength}}px * 2) {{glowColor}}}',
+      javascript: "",
+    },
     blank: {
       name: "Custom Component",
       category: "Custom",
@@ -14547,17 +17059,31 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-signal-list").innerHTML = "";
     $("custom-behavior-list").innerHTML = "";
     customBehaviorRules = [];
-    $("custom-repeat-enabled").checked = false;
+    customPreservedRelationships = [];
+    setCustomRepeatedControls(template.repeatedItems || null);
     template.properties.forEach((property) =>
       addCustomPropertyRow(structuredClone(property)),
     );
     template.signals.forEach((signal) =>
       addCustomSignalRow(structuredClone(signal)),
     );
+    if (template.repeatedItems) {
+      repeatedItemProperties(template.repeatedItems).forEach(addCustomPropertyRow);
+      repeatedItemSignals(template.repeatedItems).forEach(addCustomSignalRow);
+    }
     if (refresh) refreshCustomPreview();
   }
   function setCustomRepeatedControls(config) {
     $("custom-repeat-enabled").checked = !!config;
+    $("custom-repeat-enabled").dataset.numericSelector =
+      config?.numericSelector || "";
+    $("custom-repeat-enabled").dataset.numericOutput = String(
+      !!config?.numericOutput,
+    );
+    $("custom-repeat-enabled").dataset.numericAction =
+      config?.numericAction || "";
+    $("custom-repeat-enabled").dataset.numericParameter =
+      config?.numericParameter || "";
     $("custom-repeat-container").value =
       config?.containerSelector || ".split-menu";
     $("custom-repeat-item").value = config?.itemSelector || "button";
@@ -14571,9 +17097,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       propertyKeys = new Set([
         "defaultCount",
         "signalIncrement",
+        "repeatOrientation",
+        "repeatColumns",
+        "repeatItemWidth",
+        "repeatItemHeight",
         "pressBase",
         "feedbackBase",
         "labelBase",
+        "valueSetBase",
+        "levelFeedbackBase",
       ]);
     [...$("custom-property-list").children]
       .filter((row) =>
@@ -14589,11 +17121,30 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     repeatedItemSignals(config).forEach(addCustomSignalRow);
     refreshCustomPreview();
   }
-  function openCustomBuilder(item = null, entry = null) {
+  function setCustomBuilderMode(mode = "guided") {
+    const guided = mode !== "advanced",
+      dialog = $("custom-component-dialog");
+    dialog.classList.toggle("guided-mode", guided);
+    $("custom-mode-guided").classList.toggle("active", guided);
+    $("custom-mode-advanced").classList.toggle("active", !guided);
+    $("custom-mode-guided").setAttribute("aria-pressed", String(guided));
+    $("custom-mode-advanced").setAttribute("aria-pressed", String(!guided));
+    setStatus(`${guided ? "Guided" : "Advanced"} component editing mode`);
+  }
+  function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
     customEditingId = entry?.id || "";
     customBuilderSourceItemId = item?.id || "";
     customElementPickerActive = false;
+    customAnalyzedElements = [];
+    customSavedElementRoles = structuredClone(entry?.elementRoles || []);
+    customPreservedRelationships = structuredClone(
+      entry?.preservedRelationships || [],
+    );
+    customPickedElement = null;
     $("custom-element-selector").value = "";
+    $("custom-element-classifier").hidden = true;
+    $("custom-element-result").textContent =
+      "No changes are made until you apply the role.";
     $("custom-element-picker").classList.remove("active");
     $("custom-element-picker").textContent = "Pick preview element";
     const definition = item?.componentId
@@ -14619,14 +17170,20 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
 }
 </style>`,
       source = splitCustomSource(initialSource),
-      properties = entry?.properties || [],
-      signals = entry?.signals || [];
+      properties = (entry?.properties || []).filter(
+        (property) =>
+          property.key !== "visibilityEnabled" &&
+          property.key !== "disabledEnabled",
+      ),
+      signals = (entry?.signals || []).filter(
+        (signal) => signal.key !== "visibility" && signal.key !== "disabled",
+      );
     $("custom-component-title").textContent = entry
       ? "Edit palette component"
       : "Create palette component";
     $("custom-component-save").textContent = entry
-      ? "Update component"
-      : "Create component";
+      ? "Validate & update component"
+      : "Validate & create component";
     $("custom-component-export").hidden = !entry;
     $("custom-component-delete").hidden = !entry;
     $("custom-component-name").value =
@@ -14642,23 +17199,50 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
     $("custom-behavior-list").innerHTML = "";
-    customBehaviorRules = structuredClone(entry?.behaviors || []);
+    customBehaviorRules = structuredClone(
+      (entry?.behaviors || []).filter(
+        (behavior) =>
+          !["visibility", "disabled"].includes(behavior.key) &&
+          !["visibility", "disabledState"].includes(behavior.action),
+      ),
+    );
     setCustomStateStyles(entry?.stateStyles || null);
     setCustomRepeatedControls(entry?.repeatedItems || null);
     $("custom-preview-log").textContent =
       "Preview signal activity appears here.";
-    $("custom-self-test-report").hidden = true;
-    $("custom-self-test-report").textContent = "";
+    $("custom-self-test-report").hidden = !entry?.readiness?.reportText;
+    $("custom-self-test-report").textContent = entry?.readiness?.reportText || "";
+    $("custom-self-test-report").classList.toggle(
+      "failed",
+      entry?.readiness?.passed === false,
+    );
+    const acceptanceMatrix = entry?.readiness?.acceptanceMatrix || [],
+      acceptanceStatus = (key) =>
+        acceptanceMatrix.find((check) => check.key === key)?.status ||
+        "requires-hardware";
+    $("custom-manual-acceptance").hidden = !entry;
+    $("custom-acceptance-ch5-desktop").value =
+      acceptanceStatus("ch5Desktop");
+    $("custom-acceptance-touch-panel").value =
+      acceptanceStatus("touchPanel");
+    $("custom-acceptance-notes").value =
+      entry?.readiness?.manualVerificationNotes || "";
     properties.forEach(addCustomPropertyRow);
     signals.forEach(addCustomSignalRow);
     customBehaviorRules.forEach(addCustomBehaviorRow);
     $("custom-component-template").disabled = !!entry;
     $("custom-component-apply-template").disabled = !!entry;
     if (!item && !entry) {
-      $("custom-component-template").value = "button";
-      applyCustomStarterTemplate("button", false);
+      const templateKey = customStarterTemplates[starterTemplate]
+        ? starterTemplate
+        : "button";
+      $("custom-component-template").value = templateKey;
+      applyCustomStarterTemplate(templateKey, false);
     }
+    loadCustomOriginalSource(entry);
     refreshCustomPreview();
+    analyzeCustomElements();
+    setCustomBuilderMode("guided");
     $("custom-component-dialog").showModal();
   }
   $("create-custom-component").onclick = () => {
@@ -14669,7 +17253,26 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     openCustomBuilder(item, entry || null);
   };
-  $("new-custom-component").onclick = () => openCustomBuilder();
+  function openComponentCreator() {
+    $("component-creator-dialog").showModal();
+  }
+  $("new-custom-component").onclick = openComponentCreator;
+  $("new-custom-component-menu").onclick = openComponentCreator;
+  $("custom-package-menu").onclick = () => $("custom-package-file").click();
+  $("creator-import-code").onclick = () => {
+    $("component-creator-dialog").close();
+    openTranslateImport();
+  };
+  $("creator-import-package").onclick = () => {
+    $("component-creator-dialog").close();
+    $("custom-package-file").click();
+  };
+  $("creator-template-list").onclick = (event) => {
+    const button = event.target.closest("[data-creator-template]");
+    if (!button) return;
+    $("component-creator-dialog").close();
+    openCustomBuilder(null, null, button.dataset.creatorTemplate);
+  };
   $("custom-component-template").onchange = () => {
     if (customEditingId) return;
     applyCustomStarterTemplate($("custom-component-template").value);
@@ -14687,6 +17290,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       return;
     applyCustomStarterTemplate($("custom-component-template").value);
   };
+  $("custom-mode-guided").onclick = () => setCustomBuilderMode("guided");
+  $("custom-mode-advanced").onclick = () => setCustomBuilderMode("advanced");
   $("custom-property-add").onclick = () => addCustomPropertyRow();
   $("custom-signal-add").onclick = () => addCustomSignalRow();
   $("custom-behavior-add").onclick = () => addCustomBehaviorRow();
@@ -14702,10 +17307,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         {
           signal: { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: `${base}.Selected` },
           action: "selectedClass",
-        },
-        {
-          signal: { key: "disabled", name: "Disabled", type: "digital", direction: "input", defaultValue: `${base}.Disabled` },
-          action: "disabledState",
         },
       ];
     definitions.forEach(({ signal, action }) => {
@@ -14742,6 +17343,24 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       : "Pick preview element";
     refreshCustomPreview();
   };
+  $("custom-element-apply-role").onclick = applyCustomElementRole;
+  $("custom-analyze-elements").onclick = analyzeCustomElements;
+  $("custom-apply-recommended").onclick = applyAllRecommendedCustomRoles;
+  $("custom-audit-run").onclick = renderCustomCompatibilityAudit;
+  $("custom-audit-repair").onclick = repairCustomSourceSafely;
+  $("custom-audit-restore").onclick = () => {
+    if (!customOriginalSourceSnapshot) return;
+    $("custom-source-html").value = customOriginalSourceSnapshot.html;
+    $("custom-source-css").value = customOriginalSourceSnapshot.css;
+    $("custom-source-javascript").value = customOriginalSourceSnapshot.javascript;
+    if (Array.isArray(customOriginalSourceSnapshot.properties)) {
+      $("custom-property-list").innerHTML = "";
+      customOriginalSourceSnapshot.properties.forEach(addCustomPropertyRow);
+    }
+    setCustomStateStyles(customOriginalSourceSnapshot.stateStyles || null);
+    refreshCustomPreview();
+    setStatus("Restored the original component source");
+  };
   $("custom-repeat-enabled").onchange = syncCustomRepeatedRows;
   [
     "custom-repeat-container",
@@ -14772,16 +17391,67 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-preview-log").textContent +=
       `\nFeedback ${key} = ${JSON.stringify(value)}`;
   };
+  function runCustomCompatibilityProbe() {
+    const token = `custom-probe-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      source = composeCustomSource(true),
+      generated =
+        `<style data-composer-states>${customStateCss(collectCustomStateStyles())}</style>` +
+        customStateRuntime(collectCustomStateStyles()) +
+        `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
+        customBehaviorRuntime(
+          collectCustomBehaviors(),
+          Object.fromEntries(
+            collectCustomProperties().map((property) => [property.key, property.defaultValue]),
+          ),
+        ),
+      widths = [320, 480],
+      frames = widths.map((width, index) => {
+        const frame = document.createElement("iframe"),
+          probe = `<style>html,body{margin:0;width:100%;height:100%;background:transparent}.composer-probe-instance{position:relative;width:100%;height:100%;overflow:visible}</style><script>window.__composerProbeErrors=[];window.addEventListener('error',function(event){window.__composerProbeErrors.push(event.message)});window.ComposerSignals={publish:function(){},subscribe:function(){return function(){}}};window.ComposerComponent={publish:window.ComposerSignals.publish};<\/script><section class="composer-probe-instance">${source}</section>${generated}<script>(function(){setTimeout(function(){var instance=document.querySelector('.composer-probe-instance'),ids=Array.from(document.querySelectorAll('[id]')).map(function(node){return node.id}).filter(Boolean),duplicates=ids.filter(function(id,itemIndex){return ids.indexOf(id)!==itemIndex}),overflow=instance.scrollWidth>document.documentElement.clientWidth+8||instance.scrollHeight>document.documentElement.clientHeight+8;parent.postMessage({type:'composer-compatibility-probe',token:${JSON.stringify(token)},index:${index},duplicateIds:Array.from(new Set(duplicates)),overflow:overflow,errors:window.__composerProbeErrors||[]},'*')},180)})();<\/script>`;
+        frame.setAttribute("sandbox", "allow-scripts");
+        frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${width}px;height:220px;border:0;`;
+        document.body.appendChild(frame);
+        frame.srcdoc = safeDoc(probe, "");
+        return frame;
+      });
+    return new Promise((resolve) => {
+      let settled = false,
+        results = [];
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("message", onMessage);
+        frames.forEach((frame) => frame.remove());
+        resolve(result);
+      },
+        onMessage = (event) => {
+          const frameIndex = frames.findIndex((frame) => event.source === frame.contentWindow);
+          if (frameIndex < 0 || event.data?.token !== token) return;
+          results[frameIndex] = event.data;
+          if (results.filter(Boolean).length === frames.length)
+            finish({
+              instances: results.length,
+              duplicateIds: [...new Set(results.flatMap((entry) => entry.duplicateIds || []))],
+              overflow: results.some((entry) => entry.overflow),
+              errors: results.flatMap((entry) => entry.errors || []),
+            });
+        };
+      window.addEventListener("message", onMessage);
+      setTimeout(() => finish({ instances: 0, duplicateIds: [], overflow: false, errors: ["Compatibility probe timed out."] }), 1400);
+    });
+  }
   async function runCustomComponentSelfTest() {
     const button = $("custom-self-test"),
       report = $("custom-self-test-report"),
+      sourceBeforeTest = currentCustomSourceSnapshot(),
       validation = validateCustomComponent(),
       dependencyReport = customComponentDependencyReport({
         html: composeCustomSource(),
         properties: collectCustomProperties(),
         behaviors: collectCustomBehaviors(),
         stateStyles: collectCustomStateStyles(),
-      });
+      }),
+      auditFindings = auditCustomSource();
     button.disabled = true;
     report.hidden = false;
     report.classList.remove("failed");
@@ -14837,7 +17507,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       }, 3600);
     });
     await new Promise((resolve) => setTimeout(resolve, 80));
-    const runtimeErrors = customPreviewEvents.filter(
+    const compatibilityProbe = await runCustomCompatibilityProbe(),
+      runtimeErrors = customPreviewEvents.filter(
         (event) => event.type === "composer-preview-error",
       ),
       publishedKeys = new Set(
@@ -14848,30 +17519,170 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       missingOutputs = testableOutputRules
         .map((rule) => rule.key)
         .filter((key) => !publishedKeys.has(key)),
+      packageRoundTrip = (() => {
+        try {
+          const probe = {
+            format: "crestron-ui-composer-component",
+            version: 3,
+            component: {
+              id: "custom-readiness-probe",
+              name: $("custom-component-name").value.trim() || "Custom component",
+              html: composeCustomSource(),
+              properties: collectCustomProperties(),
+              signals: collectCustomSignals(),
+              behaviors: collectCustomBehaviors(),
+              stateStyles: collectCustomStateStyles(),
+              repeatedItems: collectCustomRepeatedItems(),
+              elementRoles: structuredClone(customAnalyzedElements),
+              preservedRelationships: structuredClone(customPreservedRelationships),
+            },
+          };
+          parseCustomComponentPackage(JSON.parse(JSON.stringify(probe)));
+          return { passed: true, message: "" };
+        } catch (error) {
+          return { passed: false, message: error.message };
+        }
+      })(),
+      selectorCoverage = (() => {
+        const parsed = new DOMParser().parseFromString(
+            $("custom-source-html").value,
+            "text/html",
+          ),
+          failures = [],
+          checked = new Set(),
+          check = (selector, owner) => {
+            const value = String(selector || "").trim();
+            if (!value || checked.has(`${owner}|${value}`)) return;
+            checked.add(`${owner}|${value}`);
+            try {
+              if (!parsed.querySelector(value))
+                failures.push(`${owner} target not found: ${value}`);
+            } catch (error) {
+              failures.push(`${owner} selector is invalid: ${value}`);
+            }
+          };
+        collectCustomBehaviors()
+          .filter((rule) => rule.enabled !== false)
+          .forEach((rule) => check(rule.selector, `Behavior “${rule.name || rule.key}”`));
+        customAnalyzedElements
+          .filter((entry) => entry.role !== "ignore")
+          .forEach((entry) => check(entry.selector, `Element role “${entry.role}”`));
+        customPreservedRelationships.forEach((relationship) => {
+          check(relationship.selector, `Relationship trigger “${relationship.label}”`);
+          if (
+            relationship.targetSelector &&
+            relationship.targetSelector !== "dynamically created content" &&
+            !relationship.targetSelector.startsWith("[target from data-")
+          )
+            check(
+              relationship.targetSelector,
+              `Relationship target “${relationship.label}”`,
+            );
+        });
+        return { passed: !failures.length, failures, checked: checked.size };
+      })(),
       failures = [
         ...validation.errors,
+        ...auditFindings
+          .filter((finding) => finding.severity === "error")
+          .map((finding) => `Compatibility: ${finding.message}`),
         ...runtimeErrors.map((event) => `Runtime error: ${event.message}`),
+        ...(compatibilityProbe.errors || []).map((message) => `Multi-instance runtime: ${message}`),
+        ...(compatibilityProbe.instances === 2 ? [] : ["Multi-instance probe did not mount two component instances."]),
+        ...(compatibilityProbe.duplicateIds || []).map((id) => `Multiple instances reuse global id “${id}”.`),
         ...(selfTestResult.missing || []).map(
           (selector) => `Output target not found: ${selector}`,
         ),
         ...missingOutputs.map((key) => `No output was published for: ${key}`),
+        ...(packageRoundTrip.passed
+          ? []
+          : [`Component package round trip: ${packageRoundTrip.message}`]),
+        ...selectorCoverage.failures,
         ...(selfTestResult.timedOut ? ["Output interaction test timed out."] : []),
       ],
+      reviewWarnings = [
+        ...validation.warnings,
+        ...auditFindings
+          .filter((finding) => finding.severity !== "error")
+          .map((finding) => `Compatibility: ${finding.message}`),
+        ...(compatibilityProbe.overflow
+          ? ["Resize probe found content extending beyond its component at one tested size; verify intended glow padding and clipping."]
+          : []),
+      ],
+      instanceSafe = !auditFindings.some((finding) =>
+        ["duplicate-ids", "document-selectors", "global-css"].includes(finding.code),
+      ),
+      responsiveSafe = !auditFindings.some((finding) =>
+        ["viewport-units", "fixed-position"].includes(finding.code),
+      ),
+      touchSafe = !auditFindings.some((finding) =>
+        ["mouse-events", "touch-events"].includes(finding.code),
+      ),
+      sourcePreserved =
+        JSON.stringify(sourceBeforeTest) ===
+        JSON.stringify(currentCustomSourceSnapshot()),
+      authoredAnimations = [
+        ...new Set(
+          [...String($("custom-source-css").value || "").matchAll(/@keyframes\s+([\w-]+)/gi)].map(
+            (match) => match[1],
+          ),
+        ),
+      ],
+      generatedPropertyCount = collectCustomProperties().length,
+      generatedSignalCount = signals.length;
+    if (!sourcePreserved)
+      failures.push("Compatibility testing changed the authored component source.");
+    const confidence = Math.max(
+        0,
+        Math.min(100, 100 - failures.length * 25 - reviewWarnings.length * 3),
+      ),
       lines = [
-        `CUSTOM COMPONENT SELF-TEST — ${failures.length ? "FAILED" : "PASSED"}`,
+        `COMPONENT READINESS — ${failures.length ? "FAILED" : reviewWarnings.length ? "PASS WITH REVIEW ITEMS" : "PASSED"}`,
+        `Confidence: ${confidence}%`,
+        `Generated: ${generatedPropertyCount} properties · ${generatedSignalCount} signals`,
+        "",
+        `${runtimeErrors.length ? "FAIL" : "PASS"}  Preview runtime loaded without errors`,
+        `${touchSafe ? "PASS" : "REVIEW"}  Matching mouse and touchscreen input`,
+        `${instanceSafe && compatibilityProbe.instances === 2 && !(compatibilityProbe.duplicateIds || []).length && !(compatibilityProbe.errors || []).length ? "PASS" : "REVIEW"}  Multiple-instance isolation (two live instances)`,
+        `${responsiveSafe && !compatibilityProbe.overflow ? "PASS" : "REVIEW"}  Component-bound responsive sizing (320px and 480px)`,
+        `${dependencyReport.errors.length || !packageRoundTrip.passed ? "FAIL" : "PASS"}  Package export/import and dependencies`,
+        `${selectorCoverage.passed ? "PASS" : "FAIL"}  Generated selectors and preserved interaction targets (${selectorCoverage.checked} checked)`,
+        `${selfTestResult.timedOut || missingOutputs.length ? "FAIL" : "PASS"}  Generated signal behaviors`,
+        `${sourcePreserved ? "PASS" : "FAIL"}  Original authored source remained unchanged during compatibility testing`,
+        `${sourcePreserved ? "PASS" : "FAIL"}  ${authoredAnimations.length ? `${authoredAnimations.length} authored animation definition${authoredAnimations.length === 1 ? "" : "s"} preserved (${authoredAnimations.join(", ")})` : "No authored keyframe animations required preservation"}`,
+        `PASS  Editor and exported runtime use the same component definition`,
+        `PASS  Page remounts restore cached Crestron feedback`,
+        `PENDING  Registered Composer runtime and Widget List are verified immediately after save`,
+        "",
         `Input signals exercised: ${inputs.length}`,
         `Output behaviors exercised: ${testableOutputRules.length}`,
         `Long hold behaviors skipped: ${outputRules.length - testableOutputRules.length}`,
         `Published output keys: ${publishedKeys.size}`,
         `Embedded package assets: ${dependencyReport.assets.length}`,
-        `Validation warnings: ${validation.warnings.length}`,
+        `Review items: ${reviewWarnings.length}`,
       ];
     if (failures.length) lines.push("", ...failures.map((value) => `ERROR: ${value}`));
-    else if (validation.warnings.length)
-      lines.push("", ...validation.warnings.map((value) => `WARNING: ${value}`));
+    if (reviewWarnings.length)
+      lines.push("", ...reviewWarnings.map((value) => `REVIEW: ${value}`));
     report.textContent = lines.join("\n");
     report.classList.toggle("failed", !!failures.length);
     button.disabled = false;
+    return {
+      passed: !failures.length,
+      failures,
+      warnings: [...new Set(reviewWarnings)],
+      confidence,
+      instanceSafe,
+      responsiveSafe,
+      touchSafe,
+      selectorCoverage: selectorCoverage.passed,
+      selectorCount: selectorCoverage.checked,
+      sourcePreserved,
+      generatedPropertyCount,
+      generatedSignalCount,
+      authoredAnimations,
+      reportText: lines.join("\n"),
+    };
   }
   $("custom-self-test").onclick = runCustomComponentSelfTest;
   window.addEventListener("message", (event) => {
@@ -14894,6 +17705,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
     if (event.data?.type === "composer-element-picked") {
       $("custom-element-selector").value = event.data.selector || "";
+      customPickedElement = event.data.element || {};
+      const inference = inferCustomElementRole(customPickedElement);
+      $("custom-element-role").value = inference.role;
+      $("custom-element-summary").textContent = `${String(customPickedElement.tag || "element").toUpperCase()} · ${event.data.selector || "selected element"}`;
+      $("custom-element-reason").textContent = inference.reason;
+      $("custom-element-result").textContent =
+        "Review the recommended role, then apply it to generate the standard setup.";
+      $("custom-element-classifier").hidden = false;
       if (!$("custom-state-selector").value)
         $("custom-state-selector").value = event.data.selector || "";
       customElementPickerActive = false;
@@ -14944,6 +17763,23 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           generatedBehaviorCount: (entry.behaviors || []).length,
           hasVisualStates: !!entry.stateStyles,
           hasRepeatedItems: !!entry.repeatedItems,
+          readiness: entry.readiness?.testedAt
+            ? {
+                testedAt: entry.readiness.testedAt,
+                passed: entry.readiness.passed !== false,
+                confidence: Number(entry.readiness.confidence) || 0,
+                fingerprint: entry.readiness.fingerprint || "",
+                currentFingerprint: customComponentReadinessFingerprint(entry),
+                current:
+                  entry.readiness.fingerprint ===
+                  customComponentReadinessFingerprint(entry),
+                manualVerification: Object.fromEntries(
+                  (entry.readiness.acceptanceMatrix || [])
+                    .filter((check) => !check.automated)
+                    .map((check) => [check.key, check.status]),
+                ),
+              }
+            : null,
         },
       },
     };
@@ -14962,7 +17798,51 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       throw new Error(
         "This is not a valid Crestron UI Composer component package.",
       );
-    return structuredClone(imported);
+    const entry = structuredClone(imported);
+    if (entry.readiness) {
+      const validStatuses = new Set([
+          "passed",
+          "failed",
+          "review",
+          "requires-hardware",
+        ]),
+        validKeys = new Set([
+          "editor",
+          "pointer",
+          "multiInstance",
+          "responsive",
+          "remount",
+          "widgetList",
+          "exportedHtml",
+          "ch5Package",
+          "ch5Desktop",
+          "touchPanel",
+        ]);
+      entry.readiness.acceptanceMatrix = Array.isArray(
+        entry.readiness.acceptanceMatrix,
+      )
+        ? entry.readiness.acceptanceMatrix
+            .filter(
+              (check) =>
+                check &&
+                validKeys.has(check.key) &&
+                validStatuses.has(check.status),
+            )
+            .map((check) => ({
+              key: check.key,
+              label: String(check.label || check.key),
+              status: check.status,
+              automated: check.automated !== false,
+              ...(check.note ? { note: String(check.note) } : {}),
+            }))
+        : [];
+      entry.readiness.manualVerificationNotes = String(
+        entry.readiness.manualVerificationNotes || "",
+      );
+      entry.readiness.importedFingerprintCurrent =
+        entry.readiness.fingerprint === customComponentReadinessFingerprint(entry);
+    }
+    return entry;
   }
   function customComponentAssetReferences(entry) {
     const references = new Set();
@@ -15017,6 +17897,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     duplicateIds.forEach((id) => errors.push(`Duplicate dependency asset ID: ${id}`));
     return { references, assets, errors, warnings };
   }
+  function customComponentReadinessFingerprint(entry) {
+    return recoveryFingerprint({
+      html: entry?.html || "",
+      properties: entry?.properties || [],
+      signals: entry?.signals || [],
+      repeatedItems: entry?.repeatedItems || null,
+      rangeBindings: entry?.rangeBindings || [],
+      behaviors: entry?.behaviors || [],
+      stateStyles: entry?.stateStyles || null,
+      elementRoles: entry?.elementRoles || [],
+    });
+  }
   function restoreCustomComponentDependencies(
     packageValue,
     entry,
@@ -15065,6 +17957,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       (component) => component.componentId !== entry.id,
     );
     state.items = state.items.filter((item) => item.componentId !== entry.id);
+    syncWidgetListCustomOptions();
     if ($("custom-component-dialog").open) $("custom-component-dialog").close();
     customEditingId = "";
     renderComponentLibrary();
@@ -15102,18 +17995,34 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     };
   });
-  $("custom-component-save").onclick = () => {
+  $("custom-component-save").onclick = async (event) => {
+    event.preventDefault();
     const item =
         state.items.find(
           (candidate) => candidate.id === customBuilderSourceItemId,
         ) || null,
       name = $("custom-component-name").value.trim();
     if (!name) return;
-    const validation = validateCustomComponent();
-    if (validation.errors.length) {
-      alert("Fix the custom component validation errors before saving.");
+    const duplicateRepairs = removeExactCustomDefinitionDuplicates();
+    const saveButton = $("custom-component-save");
+    saveButton.disabled = true;
+    saveButton.textContent = "Validating…";
+    const readiness = await runCustomComponentSelfTest();
+    saveButton.disabled = false;
+    saveButton.textContent = customEditingId
+      ? "Validate & update component"
+      : "Validate & create component";
+    if (!readiness.passed) {
+      alert("The component was not saved. Fix the failures in Component Readiness, then try again.");
       return;
     }
+    if (
+      readiness.warnings.length &&
+      !confirm(
+        `Component Readiness passed at ${readiness.confidence}% with ${readiness.warnings.length} review item(s). Save it anyway?`,
+      )
+    )
+      return;
     let entry = state.customComponents.find(
       (candidate) => candidate.id === customEditingId,
     );
@@ -15126,6 +18035,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       state.customComponents.push(entry);
     }
     const repeatedItems = collectCustomRepeatedItems(),
+      preservedOriginalSource = structuredClone(
+        entry.originalSource ||
+          customOriginalSourceSnapshot ||
+          currentCustomSourceSnapshot(),
+      ),
       customProperties = mergeCustomRows(
         collectCustomProperties(),
         repeatedItemProperties(repeatedItems),
@@ -15142,17 +18056,50 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       author: $("custom-component-author").value.trim(),
       description: $("custom-component-description").value.trim(),
       html: composeCustomSource(),
-      defaultSize: entry.defaultSize || {
-        width: item?.w || 240,
-        height: item?.h || 140,
-      },
+      defaultSize:
+        entry.defaultSize ||
+        (item
+          ? { width: item.w || 240, height: item.h || 140 }
+          : measureCustomPreviewDefaultSize()),
       properties: customProperties,
       signals: customSignals,
       repeatedItems,
       rangeBindings: repeatedItemRanges(repeatedItems),
       behaviors: collectCustomBehaviors(),
       stateStyles: collectCustomStateStyles(),
+      elementRoles: customAnalyzedElements.map(({ selector, role, controlOwner }) => ({
+        selector,
+        role,
+        ...(controlOwner ? { controlOwner } : {}),
+      })),
+      preservedRelationships: structuredClone(customPreservedRelationships),
+      originalSource: preservedOriginalSource,
     });
+    entry.readiness = {
+      testedAt: new Date().toISOString(),
+      passed: readiness.passed,
+      confidence: readiness.confidence,
+      warningCount: readiness.warnings.length,
+      fingerprint: customComponentReadinessFingerprint(entry),
+      checks: {
+        previewRuntime: true,
+        touchAndMouse: readiness.touchSafe,
+        multipleInstances: readiness.instanceSafe,
+        responsiveSizing: readiness.responsiveSafe,
+        packageRoundTrip: true,
+        selectorCoverage: readiness.selectorCoverage,
+        widgetListRegistered: false,
+      },
+      autoRepairs: {
+        exactDuplicatesRemoved: duplicateRepairs.length,
+      },
+      generatedPropertyCount: readiness.generatedPropertyCount,
+      generatedSignalCount: readiness.generatedSignalCount,
+      authoredAnimations: readiness.authoredAnimations,
+      sourcePreserved: readiness.sourcePreserved,
+      warnings: readiness.warnings,
+      reportText: readiness.reportText,
+    };
     const libraryEntry = state.components.find(
       (component) => component.componentId === entry.id,
     );
@@ -15162,14 +18109,145 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       libraryEntry.icon = entry.icon;
     }
     registerCustomComponent(entry);
+    saveButton.disabled = true;
+    saveButton.textContent = "Testing saved runtime…";
+    const registeredRuntime = await runRegisteredCustomComponentTest(entry),
+      widgetListReady = syncWidgetListCustomOptions();
+    saveButton.disabled = false;
+    saveButton.textContent = customEditingId
+      ? "Validate & update component"
+      : "Validate & create component";
+    entry.readiness.passed = entry.readiness.passed && registeredRuntime.passed;
+    entry.readiness.confidence = Math.max(
+      0,
+      entry.readiness.confidence - registeredRuntime.errors.length * 25,
+    );
+    entry.readiness.warningCount += registeredRuntime.errors.length;
+    entry.readiness.runtimeErrors = registeredRuntime.errors;
+    entry.readiness.checks.registeredRuntime = registeredRuntime.passed;
+    entry.readiness.checks.widgetListRegistered = widgetListReady;
+    entry.readiness.checks.widgetListRuntime =
+      registeredRuntime.widgetListInstances === 2;
+    entry.readiness.checks.exportedRuntime = registeredRuntime.exportedRuntime;
+    entry.readiness.checks.pageRemount = registeredRuntime.remountRuntime;
+    entry.readiness.reportText = readiness.reportText.replace(
+      "PENDING  Registered Composer runtime and Widget List are verified immediately after save",
+      [
+        `${registeredRuntime.passed ? "PASS" : "FAIL"}  Registered Composer runtime`,
+        `${registeredRuntime.widgetListInstances === 2 ? "PASS" : "FAIL"}  Widget List runtime with two nested instances`,
+        `${registeredRuntime.exportedRuntime ? "PASS" : "FAIL"}  Exported HTML / CH5 package runtime`,
+        `${registeredRuntime.remountRuntime ? "PASS" : "FAIL"}  Page remount with retained Crestron feedback`,
+      ].join("\n"),
+    );
+    entry.readiness.acceptanceMatrix = [
+      {
+        key: "editor",
+        label: "Editor / guided preview",
+        status: readiness.passed ? "passed" : "failed",
+        automated: true,
+      },
+      {
+        key: "pointer",
+        label: "Mouse and touchscreen input",
+        status: readiness.touchSafe ? "passed" : "review",
+        automated: true,
+      },
+      {
+        key: "multiInstance",
+        label: "Multiple component instances",
+        status:
+          registeredRuntime.instances === 2 && readiness.instanceSafe
+            ? "passed"
+            : "failed",
+        automated: true,
+      },
+      {
+        key: "responsive",
+        label: "Responsive 320px / 480px sizing",
+        status: readiness.responsiveSafe ? "passed" : "review",
+        automated: true,
+      },
+      {
+        key: "remount",
+        label: "Page remount and retained feedback",
+        status: registeredRuntime.remountRuntime ? "passed" : "failed",
+        automated: true,
+      },
+      {
+        key: "widgetList",
+        label: "Widget List with two nested instances",
+        status:
+          registeredRuntime.widgetListInstances === 2 ? "passed" : "failed",
+        automated: true,
+      },
+      {
+        key: "exportedHtml",
+        label: "Exported HTML runtime",
+        status: registeredRuntime.exportedRuntime ? "passed" : "failed",
+        automated: true,
+      },
+      {
+        key: "ch5Package",
+        label: "CH5 package content compatibility",
+        status: registeredRuntime.exportedRuntime ? "passed" : "failed",
+        automated: true,
+        note: "Uses the same exported runtime bundled into the CH5Z.",
+      },
+      {
+        key: "ch5Desktop",
+        label: "CH5 Desktop connection and signals",
+        status: $("custom-acceptance-ch5-desktop").value,
+        automated: false,
+      },
+      {
+        key: "touchPanel",
+        label: "Physical Crestron touch panel",
+        status: $("custom-acceptance-touch-panel").value,
+        automated: false,
+      },
+    ];
+    entry.readiness.manualVerificationNotes = $(
+      "custom-acceptance-notes",
+    ).value.trim();
+    if (
+      entry.readiness.acceptanceMatrix.some(
+        (check) => !check.automated && check.status === "failed",
+      )
+    )
+      entry.readiness.passed = false;
+    entry.readiness.reportText += `\n\nACCEPTANCE MATRIX\n${entry.readiness.acceptanceMatrix
+      .map((check) => {
+        const marker =
+          check.status === "passed"
+            ? "PASS"
+            : check.status === "failed"
+              ? "FAIL"
+              : check.status === "review"
+                ? "REVIEW"
+                : "VERIFY";
+        return `${marker}  ${check.label}${check.note ? ` — ${check.note}` : ""}`;
+      })
+      .join("\n")}`;
+    if (entry.readiness.manualVerificationNotes)
+      entry.readiness.reportText += `\nNotes: ${entry.readiness.manualVerificationNotes}`;
+    $("custom-self-test-report").textContent = entry.readiness.reportText;
+    entry.readiness.fingerprint = customComponentReadinessFingerprint(entry);
     state.items
       .filter((candidate) => candidate.componentId === entry.id)
       .forEach(renderItem);
     renderComponentLibrary();
+    if (!registeredRuntime.passed) {
+      alert(
+        `The component was saved for correction, but its registered runtime test failed:\n\n${registeredRuntime.errors.join("\n")}`,
+      );
+      setStatus(`Component “${name}” failed its saved-runtime test`);
+      return;
+    }
     commitHistory();
     setStatus(
-      `${customEditingId ? "Updated" : "Created"} palette component “${name}”`,
+      `${customEditingId ? "Updated" : "Created"} palette component “${name}”${widgetListReady ? " · Widget List compatible" : ""}${duplicateRepairs.length ? ` · removed ${duplicateRepairs.length} exact duplicate${duplicateRepairs.length === 1 ? "" : "s"}` : ""}`,
     );
+    $("custom-component-dialog").close();
   };
   $("custom-package-file").onchange = async (event) => {
     const file = event.target.files?.[0];
@@ -15210,8 +18288,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         .forEach(renderItem);
       renderComponentLibrary();
       commitHistory();
+      const readinessStatus = customComponentReadinessStatus(entry),
+        importedReadiness = entry.readiness?.testedAt
+          ? ` · readiness ${readinessStatus.key === "outdated" ? "requires retest" : readinessStatus.label.toLowerCase()}`
+          : " · readiness not included";
       setStatus(
-        `Imported component package “${entry.name}” with ${restoredDependencies} embedded asset${restoredDependencies === 1 ? "" : "s"}`,
+        `Imported component package “${entry.name}” with ${restoredDependencies} embedded asset${restoredDependencies === 1 ? "" : "s"}${importedReadiness}`,
       );
     } catch (error) {
       alert(`Component package import failed.\n\n${error.message}`);

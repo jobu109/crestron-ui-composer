@@ -111,7 +111,9 @@ for (const [id, definition] of definitions) {
     const method = signal.direction === "input" ? "subscribe" : "publish",
       usage = new RegExp(`signals\\.${method}\\(\\s*["']${signal.key}["']`),
       dynamicUsage = new RegExp(`signals\\.${method}\\(\\s*[A-Za-z_$][\\w$]*`);
-    if (!usage.test(mountSource) && !dynamicUsage.test(mountSource) && !signal.optionalProperty)
+    const sharedHoldSignal =
+      signal.key === definition.standardHoldCapability?.heldKey;
+    if (!usage.test(mountSource) && !dynamicUsage.test(mountSource) && !signal.optionalProperty && !sharedHoldSignal)
       problem(id, `${signal.direction} signal ${signal.key} is declared but never used by the runtime`);
   });
   for (const match of mountSource.matchAll(/signals\.(?:subscribe|publish)\(\s*["']([^"']+)["']/g))
@@ -217,6 +219,10 @@ const allWidgetItems = [...definitions.values()].map((definition, index) => ({
   }),
   runtimeStart = exportedHtml.lastIndexOf("<script>") + 8,
   runtimeEnd = exportedHtml.lastIndexOf("</script>");
+assert.ok(
+  exportedHtml.includes("standardHold=def.hold"),
+  "exported runtime is missing shared Press/Held handling",
+);
 assert.ok(exportedHtml.includes("weather-card"));
 assert.ok(exportedHtml.includes("rolling-menu"));
 assert.ok(exportedHtml.includes('@font-face{font-family:"ComposerFont_audit_font"'));

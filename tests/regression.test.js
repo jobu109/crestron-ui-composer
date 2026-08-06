@@ -547,6 +547,46 @@ run("signal simulator pulses exercise the actual widget press lifecycle", () => 
   assert.ok(styles.includes(".widget.simulator-live-press"));
 });
 
+run("eligible single-surface buttons distinguish Press from Held", () => {
+  ComposerRuntime.register({
+    id: "shared-hold-regression-button",
+    name: "Shared Hold Regression Button",
+    category: "Standard Buttons",
+    template: "<button>Test</button>",
+    styles: "",
+    properties: [],
+    signals: [
+      {
+        key: "press",
+        name: "Press",
+        type: "digital",
+        direction: "output",
+        defaultValue: "SharedHold.Press",
+      },
+    ],
+    mount() {},
+  });
+  const definition = ComposerRuntime.get("shared-hold-regression-button"),
+    runtime = read("component-runtime.js"),
+    exporter = read("exporter.js"),
+    editor = read("editor.js");
+  assert.equal(definition.standardHoldCapability.pressKey, "press");
+  assert.equal(definition.standardHoldCapability.heldKey, "held");
+  assert.equal(
+    definition.properties.find((property) => property.key === "heldDuration")
+      ?.defaultValue,
+    1,
+  );
+  assert.equal(
+    definition.signals.find((signal) => signal.key === "held")
+      ?.standardHoldOutput,
+    true,
+  );
+  assert.ok(runtime.includes("if (standardHold.completed)"));
+  assert.ok(exporter.includes("standardHold=def.hold"));
+  assert.ok(editor.includes("signal.standardHoldOutput"));
+});
+
 run("native touch highlights are disabled in editor runtime and exports", () => {
   const editorStyles = read("editor.css"), runtime = read("component-runtime.js"), exporter = read("exporter.js");
   assert.ok(editorStyles.includes("-webkit-tap-highlight-color: transparent !important"));
@@ -716,6 +756,8 @@ run("custom component creator provides functional starter templates", () => {
     ),
   );
   assert.ok(markup.includes('id="custom-component-template"'));
+  assert.ok(markup.includes('data-creator-template="repeated"'));
+  assert.ok(markup.includes('<option value="repeated">Repeated list</option>'));
   assert.ok(markup.includes('id="custom-component-apply-template"'));
   assert.ok(editor.includes("customStandardSignals"));
   assert.ok(editor.includes("customButtonProperties"));
@@ -1464,6 +1506,362 @@ run("Password Entry preserves icon orientation during slower result morphs", () 
   assert.ok(!runtime.includes('[data-component="password-entry"] .pw-keypad.success .pw-enter,[data-component="password-entry"] .pw-keypad.error .pw-enter{transform:rotate(-180deg)}'));
   assert.strictEqual((component.match(/width="90%" height="90%"/g) || []).length, 2);
   assert.strictEqual((component.match(/enter\.style\.padding = "5%"/g) || []).length, 2);
+});
+
+run("palette preferences hide built-in and custom components non-destructively", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="palette-preferences"'));
+  assert.ok(html.includes('id="palette-preferences-dialog"'));
+  assert.ok(html.includes('id="palette-preferences-search"'));
+  assert.ok(html.includes('id="palette-preferences-show-all"'));
+  assert.ok(html.includes('id="palette-preferences-hide-all"'));
+  assert.ok(editor.includes('crestron-ui-composer-palette-preferences-v1'));
+  assert.ok(editor.includes('function componentPreferenceId(component)'));
+  assert.ok(editor.includes('!hiddenPaletteComponents.has(componentPreferenceId(c))'));
+  assert.ok(editor.includes('state.customComponents.map((entry) => entry.id)'));
+  assert.ok(editor.includes('kind.textContent = customEntry'));
+  assert.ok(editor.includes('savePalettePreferences();'));
+  assert.ok(editor.includes('renderComponentLibrary();'));
+  assert.ok(css.includes('.palette-preferences-dialog'));
+  assert.ok(css.includes('.palette-preference-entry'));
+  assert.ok(!editor.includes('state.components = state.components.filter((component) => !hiddenPaletteComponents'));
+});
+
+run("Import and Translate dialog uses non-overlapping responsive flow", () => {
+  const css = read("editor.css"), html = read("editor.html");
+  assert.ok(html.includes('id="translate-snippet-dialog"'));
+  assert.ok(css.includes('#translate-snippet-dialog form'));
+  assert.ok(css.includes('display: block;'));
+  assert.ok(css.includes('#translate-snippet-dialog .translate-builder-layout'));
+  assert.ok(css.includes('#translate-snippet-dialog .translate-review-layout'));
+  assert.ok(css.includes('#translate-snippet-dialog .dialog-actions'));
+  assert.ok(css.includes('position: static;'));
+  assert.ok(css.includes('@media (max-width: 1050px)'));
+  assert.ok(css.includes('grid-template-columns: minmax(0, 1fr);'));
+});
+
+run("Import and Translate preserves authored morph and interactive appearance", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(editor.includes("preserveAuthoredButtonAppearance"));
+  assert.ok(editor.includes(".selected\\b|\\.active\\b"));
+  assert.ok(editor.includes("transition(?:-property)?"));
+  assert.ok(editor.includes("!detected.preserveAuthoredButtonAppearance"));
+  assert.ok(editor.includes("if (!preserveAuthoredButtonAppearance)"));
+  assert.ok(editor.includes("Preserved ${entry.label}"));
+  assert.ok(editor.includes("Use the generated Selected digital input"));
+  assert.ok(html.includes("A Crestron rule is offered only when a safe trigger and target were identified"));
+  assert.ok(css.includes(".translate-inference-row.preserved"));
+  assert.ok(css.includes(".translate-inference-row.preserved .translate-inference-key"));
+});
+
+run("Import and Translate merges preset and detected Name bindings", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes('["press", "selected", "label", "name"]'));
+  assert.ok(editor.includes("entry.suffix === signal.suffix"));
+  assert.ok(editor.includes("entry.type === signal.type"));
+  assert.ok(editor.includes("entry.direction === signal.direction"));
+});
+
+run("Import and Translate is available from the File menu", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="translate-snippet-menu"'));
+  assert.ok(editor.includes("async function openTranslateImport()"));
+  assert.ok(editor.includes('$("translate-snippet-menu").onclick = openTranslateImport'));
+  assert.ok(editor.includes('$("translate-snippet").onclick = openTranslateImport'));
+});
+
+run("custom component workflows are available from the File menu", () => {
+  const editor = read("editor.js"), html = read("editor.html");
+  assert.ok(html.includes('id="custom-package-menu"'));
+  assert.ok(html.includes('id="new-custom-component-menu"'));
+  assert.ok(editor.includes('$("custom-package-menu").onclick = () => $("custom-package-file").click()'));
+  assert.ok(editor.includes('$("new-custom-component-menu").onclick = openComponentCreator'));
+});
+
+run("Component Creator guides imports and starter templates", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="component-creator-dialog"'));
+  assert.ok(html.includes('id="creator-import-code"'));
+  assert.ok(html.includes('id="creator-import-package"'));
+  ["button", "toggle", "slider", "gauge", "text", "blank"].forEach((template) =>
+    assert.ok(html.includes(`data-creator-template="${template}"`)),
+  );
+  assert.ok(editor.includes("function openComponentCreator()"));
+  assert.ok(editor.includes("openCustomBuilder(null, null, button.dataset.creatorTemplate)"));
+  assert.ok(html.includes('id="custom-mode-guided"'));
+  assert.ok(html.includes('id="custom-mode-advanced"'));
+  assert.ok(editor.includes('function setCustomBuilderMode(mode = "guided")'));
+  assert.ok(editor.includes('setCustomBuilderMode("guided")'));
+  assert.ok(css.includes(".custom-component-dialog.guided-mode .custom-advanced-only"));
+  assert.ok(css.includes(".creator-template-list"));
+});
+
+run("custom element picker classifies elements and generates standard capabilities", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="custom-element-classifier"'));
+  assert.ok(html.includes('id="custom-element-role"'));
+  assert.ok(html.includes('id="custom-element-apply-role"'));
+  ["button", "text", "textInput", "icon", "selected", "gauge", "slider", "repeated", "ignore"].forEach((role) =>
+    assert.ok(html.includes(`value="${role}"`)),
+  );
+  assert.ok(editor.includes("function inferCustomElementRole(element = {})"));
+  assert.ok(editor.includes("function applyCustomElementRole("));
+  assert.ok(editor.includes("Existing definitions were preserved"));
+  assert.ok(editor.includes("function customElementSignalKey(baseKey, selector)"));
+  [
+    "selectedFaceColor", "selectedText", "selectedAsset", "showBackground",
+    "showLabel", "showIcon", "showPercentage", "textAlignment", "wrapText",
+    "shadowSize", "Value Set", "Feedback",
+  ].forEach((capability) => assert.ok(editor.includes(capability)));
+  assert.ok(editor.includes("previewProperties[property.key]"));
+  assert.ok(html.includes('id="custom-apply-recommended"'));
+  assert.ok(editor.includes("function applyAllRecommendedCustomRoles()"));
+  assert.ok(editor.includes("function customElementPropertyKey(baseKey, selector)"));
+  assert.ok(editor.includes("inputType:original.type||''"));
+  assert.ok(css.includes(".custom-element-classifier"));
+});
+
+run("custom component creator summarizes generated behavior in plain language", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes("Plain-language component review"));
+  assert.ok(html.includes('id="custom-behavior-review"'));
+  assert.ok(editor.includes("function renderCustomPlainLanguageReview()"));
+  assert.ok(editor.includes("Pressing ${target} sends the ${signalName} digital output."));
+  assert.ok(editor.includes("The original animation remains local"));
+  assert.ok(editor.includes("Visibility and Disabled remain optional Composer-level bindings"));
+  assert.ok(css.includes(".custom-behavior-review-item"));
+});
+
+run("custom components include reversible compatibility auditing and safe repairs", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="custom-audit-report"'));
+  assert.ok(html.includes('id="custom-audit-repair"'));
+  assert.ok(html.includes('id="custom-audit-restore"'));
+  assert.ok(editor.includes("function auditCustomSource()"));
+  assert.ok(editor.includes("function repairCustomSourceSafely()"));
+  assert.ok(editor.includes('mousedown: "pointerdown"'));
+  assert.ok(editor.includes('.replace(/100vw\\b/gi, "100%")'));
+  assert.ok(editor.includes("captureCustomOriginalSource()"));
+  assert.ok(html.includes("Apply selected safe repairs"));
+  assert.ok(editor.includes('data-custom-repair="${finding.code}"'));
+  assert.ok(editor.includes('"global-ids"'));
+  assert.ok(editor.includes('data-composer-id="${id.replace'));
+  assert.ok(editor.includes("Referenced or SVG IDs require manual review."));
+  assert.ok(editor.includes('selected.has("effect-clipping")'));
+  assert.ok(editor.includes('name: "Glow-safe inset"'));
+  assert.ok(editor.includes("customOriginalSourceSnapshot.properties.forEach(addCustomPropertyRow)"));
+  assert.ok(editor.includes("function customLocalDependencyReferences(source)"));
+  assert.ok(editor.includes("function customAssetForLocalReference(reference)"));
+  assert.ok(editor.includes('selected.has("local-assets")'));
+  assert.ok(editor.includes("Import ${missingLocal.map"));
+  assert.ok(editor.includes("function loadCustomOriginalSource(entry = null)"));
+  assert.ok(editor.includes("entry.originalSource ||"));
+  assert.ok(editor.includes("originalSource: preservedOriginalSource"));
+  assert.ok(editor.includes('add("css-inset"'));
+  assert.ok(editor.includes('selected.has("css-inset")'));
+  assert.ok(editor.includes('add("legacy-js-apis"'));
+  assert.ok(editor.includes("composer-panel-compatibility-polyfills"));
+  assert.ok(editor.includes("Generated: ${generatedPropertyCount} properties · ${generatedSignalCount} signals"));
+  assert.ok(editor.includes("authored animation definition${authoredAnimations.length === 1"));
+  assert.ok(editor.includes("entry?.readiness?.reportText"));
+  assert.ok(editor.includes("Exported HTML / CH5 package runtime"));
+  assert.ok(editor.includes("function customRelatedElementSelector(selector, candidates, includeTarget = false)"));
+  assert.ok(editor.includes("if (trackSelector)"));
+  assert.ok(editor.includes("if (handleSelector)"));
+  assert.ok(editor.includes("if (valueSelector)"));
+  assert.ok(html.includes('value="decorative"'));
+  assert.ok(editor.includes("customSavedElementRoles"));
+  assert.ok(editor.includes("elementRoles: customAnalyzedElements.map"));
+  assert.ok(editor.includes("decorative element${decorative.length === 1"));
+  assert.ok(editor.includes('"generated-animation-conflict"'));
+  assert.ok(editor.includes("scaleDeclaration = Math.abs(scale - 1)"));
+  assert.ok(editor.includes("customOriginalSourceSnapshot.stateStyles"));
+  assert.ok(!editor.includes("transition:background-color .16s,color .16s"));
+  assert.ok(editor.includes("function customDetectedStateStyles(selector)"));
+  assert.ok(editor.includes('target.classList.add("selected", "active")'));
+  assert.ok(editor.includes('target.classList.add("disabled")'));
+  assert.ok(editor.includes("detected Standard, Pressed, Selected, and Disabled appearances"));
+  assert.ok(editor.includes("function customDetectedEventCapabilities(selector)"));
+  assert.ok(editor.includes('tag === "select"'));
+  assert.ok(editor.includes("detectedEvents.change && !detectedEvents.input"));
+  assert.ok(editor.includes('action: outputAction'));
+  assert.ok(editor.includes('name: "Horizontal padding"'));
+  assert.ok(editor.includes('name: "Vertical padding"'));
+  assert.ok(editor.includes('name: "Text / icon spacing"'));
+  assert.ok(editor.includes('name: "Item spacing"'));
+  assert.ok(editor.includes('name: "Standard state — indicator color"'));
+  assert.ok(editor.includes('name: "Selected state — indicator color"'));
+  assert.ok(editor.includes('name: "Selected state — indicator glow strength"'));
+  assert.ok(editor.includes('name: "Standard state — icon color"'));
+  assert.ok(editor.includes('data-composer-original-src'));
+  assert.ok(editor.includes('name: "Repeated-item layout"'));
+  assert.ok(editor.includes('name: "Grid columns"'));
+  assert.ok(editor.includes("function applyLayout(items)"));
+  assert.ok(editor.includes('name: "Analog sub-item value set range"'));
+  assert.ok(editor.includes('name: "Analog sub-item feedback range"'));
+  assert.ok(editor.includes("__repeatValueSet:"));
+  assert.ok(editor.includes("__repeatFeedback:"));
+  assert.ok(editor.includes("rule.action==='input'||rule.action==='change'"));
+  assert.ok(editor.includes("target.type==='checkbox'"));
+  assert.ok(editor.includes("entry.controlOwner = controlOwner.selector"));
+  assert.ok(editor.includes("shared Selected feedback will be used"));
+  assert.ok(editor.includes("control-group-member"));
+  assert.ok(editor.includes("function customGroupedSelectedSignalKey"));
+  assert.ok(editor.includes('entry.role === "button" ? 1 : 2'));
+  assert.ok(editor.includes("function customDetectedNumericPresentation"));
+  assert.ok(editor.includes("function translatedNumericPresentation"));
+  assert.ok(editor.includes('action: target.action || (target.visualFill ? "width" : "value")'));
+  assert.ok(editor.includes("presentation = translatedNumericPresentation"));
+  assert.ok(editor.includes('kind: "interaction-relationship"'));
+  assert.ok(editor.includes("customPreservedRelationships"));
+  assert.ok(editor.includes("preservedRelationships: structuredClone(customPreservedRelationships)"));
+  assert.ok(editor.includes("selectorCoverage: selectorCoverage.passed"));
+  assert.ok(editor.includes("Generated selectors and preserved interaction targets"));
+  assert.ok(editor.includes("entry.readiness.acceptanceMatrix"));
+  assert.ok(html.includes('<option value="requires-hardware">Not tested</option>'));
+  assert.ok(editor.includes("ACCEPTANCE MATRIX"));
+  assert.ok(html.includes('id="custom-manual-acceptance"'));
+  assert.ok(editor.includes('acceptanceStatus("ch5Desktop")'));
+  assert.ok(editor.includes("manualVerificationNotes"));
+  assert.ok(editor.includes("manualVerification: Object.fromEntries"));
+  assert.ok(editor.includes("importedFingerprintCurrent"));
+  assert.ok(editor.includes("validStatuses.has(check.status)"));
+  assert.ok(editor.includes("readiness not included"));
+  assert.ok(editor.includes("The authored relationship remains local"));
+  assert.ok(editor.includes("selects a dataset-linked target"));
+  assert.ok(editor.includes("creates related content"));
+  assert.ok(editor.includes("Delegated press controls the matched item"));
+  assert.ok(editor.includes('action === "relationships"'));
+  assert.ok(editor.includes('role: "sliderHandle"'));
+  assert.ok(editor.includes('role: "backgroundAsset"'));
+  assert.ok(editor.includes('name: "Show handle"'));
+  assert.ok(editor.includes('name: "Standard state — background asset"'));
+  assert.ok(editor.includes('name: "Selected state — background asset"'));
+  assert.ok(editor.includes('name: "Show decorative visual"'));
+  assert.ok(editor.includes("function scopedTimeout"));
+  assert.ok(editor.includes("function scopedInterval"));
+  assert.ok(editor.includes("timerHandles.forEach(window.clearTimeout)"));
+  assert.ok(editor.includes('add("parent-document"'));
+  assert.ok(editor.includes('add("duplicate-listeners"'));
+  assert.ok(editor.includes('selected.has("parent-document")'));
+  assert.ok(editor.includes('add("fixed-root-size"'));
+  assert.ok(editor.includes("composer-responsive-root"));
+  assert.ok(editor.includes("composer-glow-safe-layout"));
+  assert.ok(editor.includes('name: "Glow-safe component inset"'));
+  assert.ok(editor.includes('add("duplicate-definitions"'));
+  assert.ok(editor.includes('selected.has("duplicate-definitions")'));
+  assert.ok(editor.includes('add("modern-browser-apis"'));
+  assert.ok(editor.includes('add("advanced-css"'));
+  assert.ok(editor.includes('/conic-gradient|rotate\\s*\\(/i'));
+  assert.ok(editor.includes('name: "Fill color"'));
+  assert.ok(editor.includes("numericCandidates = \"[data-value-control],[data-value],[class*='gauge']"));
+  assert.ok(editor.includes("numericAction: numericPresentation?.action || \"\""));
+  assert.ok(editor.includes("action=config.numericAction||('value'in control?'value':'width')"));
+  assert.ok(editor.includes("else if(action==='height')control.style.height=percent+'%'"));
+  assert.ok(editor.includes("else if(action==='cssVariable')control.style.setProperty(config.numericParameter||'--value',String(percent))"));
+  assert.ok(editor.includes("detectedEvents.holdDuration"));
+  assert.ok(editor.includes('action: "release"'));
+  assert.ok(editor.includes('action: "hold", parameter: String(detectedEvents.holdDuration)'));
+  assert.ok(editor.includes('selected.has("document-selectors")'));
+  assert.ok(editor.includes('selected.has("fixed-position")'));
+  assert.ok(editor.includes("effect-clipping"));
+  assert.ok(css.includes(".custom-compatibility-audit"));
+});
+
+run("custom component creation is gated by an automated confidence report", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes("Validate &amp; create component"));
+  assert.ok(editor.includes("COMPONENT READINESS —"));
+  assert.ok(editor.includes("Confidence: ${confidence}%"));
+  assert.ok(editor.includes("Multiple-instance isolation"));
+  assert.ok(editor.includes("function customComponentReadinessFingerprint(entry)"));
+  assert.ok(editor.includes("function customComponentReadinessStatus(entry)"));
+  assert.ok(editor.includes("component-readiness ${readiness.key}"));
+  assert.ok(editor.includes("Open component readiness"));
+  assert.ok(editor.includes("if (issue.customComponentId)"));
+  assert.ok(editor.includes("openCustomBuilder(null, entry)"));
+  assert.ok(css.includes(".component-readiness.tested"));
+  assert.ok(editor.includes("testedAt: new Date().toISOString()"));
+  assert.ok(editor.includes("changed after its ${new Date(readiness.testedAt).toLocaleString()} readiness test"));
+  assert.ok(editor.includes("Matching mouse and touchscreen input"));
+  assert.ok(editor.includes("Package export/import and dependencies"));
+  assert.ok(editor.includes("const readiness = await runCustomComponentSelfTest()"));
+  assert.ok(editor.includes("if (!readiness.passed)"));
+  assert.ok(editor.includes("parseCustomComponentPackage(JSON.parse(JSON.stringify(probe)))"));
+});
+
+run("custom component readiness probes resize and multiple live instances", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("function runCustomCompatibilityProbe()"));
+  assert.ok(editor.includes("composer-compatibility-probe"));
+  assert.ok(editor.includes("Multiple-instance isolation (two live instances)"));
+  assert.ok(editor.includes("Component-bound responsive sizing (320px and 480px)"));
+  assert.ok(editor.includes("Page remounts restore cached Crestron feedback"));
+  assert.ok(editor.includes("Registered Composer runtime and Widget List are verified immediately after save"));
+  assert.ok(editor.includes("function syncWidgetListCustomOptions()"));
+  assert.ok(editor.includes("Widget List compatible"));
+});
+
+run("custom component save verifies the registered Composer runtime", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("async function runRegisteredCustomComponentTest(entry)"));
+  assert.ok(editor.includes("window.ComposerRuntime.mount(root, entry.id"));
+  assert.ok(editor.includes("entry.readiness.checks.registeredRuntime = registeredRuntime.passed"));
+  assert.ok(editor.includes("entry.readiness.checks.widgetListRuntime"));
+  assert.ok(editor.includes("Widget List did not create a runtime frame for both nested instances"));
+  assert.ok(editor.includes("composer-export-readiness"));
+  assert.ok(editor.includes("entry.readiness.checks.exportedRuntime"));
+  assert.ok(editor.includes("The exported component did not create its runtime frame"));
+  assert.ok(editor.includes("Page remount did not recreate the component runtime frame"));
+  assert.ok(editor.includes("entry.readiness.checks.pageRemount"));
+  assert.ok(editor.includes("REMOUNT_${index + 1}"));
+  assert.ok(editor.includes("function removeExactCustomDefinitionDuplicates()"));
+  assert.ok(editor.includes("exactDuplicatesRemoved: duplicateRepairs.length"));
+  assert.ok(editor.includes("Testing saved runtime…"));
+});
+
+run("custom component source is automatically inventoried for guided setup", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="custom-analyze-elements"'));
+  assert.ok(html.includes('id="custom-element-inventory"'));
+  assert.ok(editor.includes("function analyzeCustomElements()"));
+  assert.ok(editor.includes("function customElementSelector(element, documentValue)"));
+  assert.ok(editor.includes("renderCustomElementInventory(inventory)"));
+  assert.ok(editor.includes('$("custom-analyze-elements").onclick = analyzeCustomElements'));
+  assert.ok(editor.includes('configure.textContent = "Configure"'));
+  assert.ok(css.includes(".custom-element-inventory-row"));
+  assert.ok(editor.includes("function inferCustomRepeatedConfiguration(selector)"));
+  assert.ok(editor.includes("child controls already managed by a repeated collection"));
+  assert.ok(editor.includes("setCustomRepeatedControls(repeated)"));
+  assert.ok(html.includes("Decorative element — preserve locally"));
+  assert.ok(html.includes("Ignore — exclude from Composer setup"));
+  assert.ok(editor.includes("structurallyRepeated"));
+  assert.ok(editor.includes("Marked as a decorative local visual"));
+  assert.ok(editor.includes("excluded from Composer setup and review"));
+  assert.ok(editor.includes("function customComputedAppearance(selector)"));
+  assert.ok(editor.includes('name: "Font family"'));
+  assert.ok(editor.includes("defaultValue: appearance.backgroundColor"));
+  assert.ok(editor.includes("function measureCustomPreviewDefaultSize()"));
+  assert.ok(editor.includes("effectPadding"));
+  assert.ok(editor.includes("measureCustomPreviewDefaultSize()),"));
+});
+
+run("visibility and disabled are optional Composer capabilities, not translated", () => {
+  const editor = read("editor.js"), html = read("editor.html"), runtime = read("component-runtime.js"), exporter = read("exporter.js");
+  assert.ok(runtime.includes('key: "visibilityEnabled"'));
+  assert.ok(runtime.includes('key: "disabledEnabled"'));
+  assert.ok(runtime.includes('optionalProperty: "visibilityEnabled"'));
+  assert.ok(runtime.includes('disabledSignal.optionalProperty = "disabledEnabled"'));
+  assert.ok(runtime.includes('if (options.properties?.disabledEnabled)'));
+  assert.ok(editor.includes('(signal) => signal.key !== "visibility" && signal.key !== "disabled"'));
+  assert.ok(editor.includes('property.key !== "disabledEnabled"'));
+  assert.ok(!editor.includes('name: "Component Visibility"'));
+  assert.ok(!editor.includes('name: "Component Disabled"'));
+  assert.ok(exporter.includes("item.properties.disabledEnabled"));
+  assert.ok(!html.includes('value="digitalVisibility"'));
+  assert.ok(!html.includes("Add Selected &amp; Disabled signals"));
+  assert.ok(!editor.includes('defaultValue: "CustomButton.Visibility"'));
+  assert.ok(editor.includes('signal.key !== "visibility" && signal.key !== "disabled"'));
 });
 
 if (process.exitCode) process.exit(process.exitCode);
