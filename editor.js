@@ -1037,6 +1037,27 @@
       return { key: "tested", label: "Tested", title: `Readiness passed with non-blocking notes.${manualSummary()}` };
     return { key: "tested", label: "Tested", title: `Passed Component Readiness.${manualSummary()}` };
   }
+  function detectManagedGlow(properties, source) {
+    const definitions = (properties || []).filter(
+      (property) =>
+        /glow/i.test(`${property.key} ${property.name}`) &&
+        new RegExp(
+          `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
+          "i",
+        ).test(source),
+    );
+    return {
+      enabled: definitions.length > 0,
+      colorKey:
+        definitions.find((property) =>
+          /color/i.test(`${property.key} ${property.name}`),
+        )?.key || "",
+      strengthKey:
+        definitions.find((property) =>
+          /strength|size|radius|blur/i.test(`${property.key} ${property.name}`),
+        )?.key || "",
+    };
+  }
   function registerCustomComponent(entry) {
     entry.html = upgradeCustomFrameOverflow(
       upgradeCustomResponsiveFitRuntime(
@@ -1125,25 +1146,7 @@
         ),
       ],
       preparedHtml = prepareCustomSource(entry.html),
-      managedGlowDefinitions = (entry.properties || []).filter(
-        (property) =>
-          /glow/i.test(`${property.key} ${property.name}`) &&
-          new RegExp(
-            `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
-            "i",
-          ).test(preparedHtml),
-      ),
-      managedGlow = {
-        enabled: managedGlowDefinitions.length > 0,
-        colorKey:
-          managedGlowDefinitions.find((property) =>
-            /color/i.test(`${property.key} ${property.name}`),
-          )?.key || "",
-        strengthKey:
-          managedGlowDefinitions.find((property) =>
-            /strength|size|radius|blur/i.test(`${property.key} ${property.name}`),
-          )?.key || "",
-      };
+      managedGlow = detectManagedGlow(entry.properties, preparedHtml);
     window.ComposerRuntime.register({
       id: entry.id,
       name: entry.name,
@@ -11568,6 +11571,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
   };
   let translateSource = null;
+  let customDraftNaturalSize = null;
   const translatePresets = {
     button: {
       category: "Standard Buttons",
@@ -11990,6 +11994,119 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       percentage: true,
     };
   }
+  // Hex covers 3/4/6/8-digit shorthand and alpha forms; rgb()/rgba()/hsl()/hsla()
+  // cover the function syntax AI-generated and CodePen CSS commonly uses,
+  // especially for translucent glow/overlay effects. Named CSS colors are
+  // intentionally excluded: matching bare identifiers like "red" against
+  // arbitrary CSS text risks false positives on unrelated words.
+  // `translatorKey` is taken as a parameter (rather than closed over) so
+  // this stays a pure function of its inputs and can be tested standalone.
+  function detectLiteralColorEditables(styles, variableValues, translatorKey) {
+    const colorValuePattern =
+        /#[0-9a-f]{8}\b|#[0-9a-f]{6}\b|#[0-9a-f]{4}\b|#[0-9a-f]{3}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)/gi,
+      transparentCanvasColors = new Set();
+    for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/(?:^|,)\s*(?:html\s*,\s*)?body\s*(?:,|$)|(?:^|,)\s*html\s*(?:,|$)/i.test(rule[1]))
+        continue;
+      for (const declaration of rule[2].matchAll(/(?:background|background-color)\s*:\s*([^;]+)/gi))
+        for (const color of declaration[1].matchAll(colorValuePattern))
+          transparentCanvasColors.add(color[0].toLowerCase());
+    }
+    const colorMatchesByValue = new Map();
+    for (const match of styles.matchAll(colorValuePattern)) {
+      const lower = match[0].toLowerCase();
+      if (!colorMatchesByValue.has(lower)) colorMatchesByValue.set(lower, match[0]);
+    }
+    const literalColors = [...colorMatchesByValue.entries()].filter(
+      ([lower]) =>
+        !(variableValues || new Set()).has(lower) && !transparentCanvasColors.has(lower),
+    );
+    return literalColors.map(([lower, original], index) => {
+      const before = styles.slice(
+          Math.max(0, styles.toLowerCase().indexOf(lower) - 50),
+          styles.toLowerCase().indexOf(lower),
+        ),
+        property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
+        role = /border/.test(property)
+          ? "Border color"
+          : /background/.test(property)
+            ? "Background color"
+            : /shadow/.test(property)
+              ? "Shadow color"
+              : /stroke|fill|color/.test(property)
+                ? "Text / icon color"
+                : `Additional color ${index + 1}`,
+        key = translatorKey(role) + (index ? index + 1 : ""),
+        isHex3 = /^#[0-9a-f]{3}$/i.test(lower),
+        isHex6 = /^#[0-9a-f]{6}$/i.test(lower),
+        // Only formats a native color-picker can represent exactly (plain
+        // 6-digit hex, or shorthand losslessly expanded to it) get type
+        // "color". Alpha-bearing and function-syntax colors (rgba(), hsl(),
+        // 8-digit hex, ...) get a plain text field instead of being forced
+        // through a lossy conversion that would silently change the
+        // imported component's appearance.
+        pickerSafe = isHex3 || isHex6,
+        displayValue = isHex3
+          ? `#${lower[1]}${lower[1]}${lower[2]}${lower[2]}${lower[3]}${lower[3]}`
+          : pickerSafe
+            ? lower
+            : original;
+      return {
+        key,
+        label: role,
+        type: pickerSafe ? "color" : "text",
+        value: displayValue,
+        kind: "literal",
+        source: original,
+      };
+    });
+  }
+  // Numeric properties get the same literal-scan treatment colors do, but
+  // scoped to a curated, layout-safe allowlist rather than every number in
+  // the stylesheet. Width/height/margin/padding/position/z-index and
+  // similar structural values are deliberately excluded: exposing those as
+  // editable properties invites breaking the component's own internal
+  // layout. Corner radius, icon size, and shadow size already get
+  // suggested separately for button-like components, so they are excluded
+  // here too, to avoid offering the same value through two properties.
+  function detectLiteralNumericEditables(styles, translatorKey) {
+    const numericRoleLabels = {
+        opacity: "Opacity",
+        "letter-spacing": "Letter spacing",
+        "line-height": "Line height",
+      },
+      numericPattern = new RegExp(
+        `\\b(${Object.keys(numericRoleLabels).join("|")})\\s*:\\s*(-?\\d*\\.?\\d+)(px|em|rem|%)?`,
+        "gi",
+      ),
+      numericMatchesByValue = new Map();
+    for (const match of styles.matchAll(numericPattern)) {
+      const property = match[1].toLowerCase(),
+        dedupeKey = `${property}:${match[2]}${match[3] || ""}`;
+      if (!numericMatchesByValue.has(dedupeKey))
+        numericMatchesByValue.set(dedupeKey, {
+          property,
+          rawNumber: match[2],
+          unit: match[3] || "",
+        });
+    }
+    const numericCountByProperty = new Map();
+    return [...numericMatchesByValue.values()].map((entry) => {
+      const role = numericRoleLabels[entry.property],
+        count = (numericCountByProperty.get(entry.property) || 0) + 1;
+      numericCountByProperty.set(entry.property, count);
+      return {
+        key: translatorKey(role) + (count > 1 ? count : ""),
+        label: count > 1 ? `${role} ${count}` : role,
+        type: "number",
+        value: parseFloat(entry.rawNumber),
+        kind: "css-declaration",
+        source: entry.property,
+        sourceValue: entry.rawNumber,
+        unit: entry.unit,
+      };
+    });
+  }
   function analyzeSnippet(name, source) {
     const documentValue = new DOMParser().parseFromString(
         String(source || ""),
@@ -12049,49 +12166,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         source: match[1],
       });
     }
-    const transparentCanvasColors = new Set();
-    for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      if (!/(?:^|,)\s*(?:html\s*,\s*)?body\s*(?:,|$)|(?:^|,)\s*html\s*(?:,|$)/i.test(rule[1]))
-        continue;
-      for (const declaration of rule[2].matchAll(/(?:background|background-color)\s*:\s*([^;]+)/gi))
-        for (const color of declaration[1].matchAll(/#[0-9a-f]{3,8}\b/gi))
-          transparentCanvasColors.add(color[0].toLowerCase());
-    }
-    const literalColors = [
-      ...new Set(
-        [...styles.matchAll(/#[0-9a-f]{6}\b/gi)].map((match) =>
-          match[0].toLowerCase(),
-        ),
-      ),
-    ].filter(
-      (value) =>
-        !variableValues.has(value) && !transparentCanvasColors.has(value),
-    );
-    literalColors.forEach((value, index) => {
-      const before = styles.slice(
-          Math.max(0, styles.toLowerCase().indexOf(value) - 50),
-          styles.toLowerCase().indexOf(value),
-        ),
-        property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
-        role = /border/.test(property)
-          ? "Border color"
-          : /background/.test(property)
-            ? "Background color"
-            : /shadow/.test(property)
-              ? "Shadow color"
-              : /stroke|fill|color/.test(property)
-                ? "Text / icon color"
-                : `Additional color ${index + 1}`,
-        key = translatorKey(role) + (index ? index + 1 : "");
-      add({
-        key,
-        label: role,
-        type: "color",
-        value,
-        kind: "literal",
-        source: value,
-      });
-    });
+    detectLiteralColorEditables(styles, variableValues, translatorKey).forEach(add);
+    detectLiteralNumericEditables(styles, translatorKey).forEach(add);
     const toggleElements = [
         ...body.querySelectorAll(
           'input[type="checkbox"],input[type="radio"],[role="switch"]',
@@ -12770,7 +12846,7 @@ stage.style.position='relative';stage.style.transformOrigin='center center';stag
 body.insertBefore(stage,visualNodes[0]);visualNodes.forEach(function(node){stage.appendChild(node)});
 body.style.display='flex';body.style.flexDirection='row';body.style.flexWrap='nowrap';body.style.alignItems='center';body.style.justifyContent='center';body.style.gap='0';body.style.padding='0';body.style.overflow='hidden';
 var baseWidth=0,baseHeight=0,measuring=false;
-function measure(){if(measuring)return false;measuring=true;var prior=stage.style.transform;stage.style.transform='none';stage.style.width='auto';stage.style.height='auto';var rect=stage.getBoundingClientRect(),children=Array.prototype.slice.call(stage.children),childWidth=children.reduce(function(value,node){return Math.max(value,node.offsetWidth||node.scrollWidth||0)},0),childHeight=children.reduce(function(value,node){return Math.max(value,node.offsetHeight||node.scrollHeight||0)},0),visible=body.clientWidth>1&&body.clientHeight>1&&Math.max(rect.width,childWidth)>1&&Math.max(rect.height,childHeight)>1;if(visible){baseWidth=Math.max(1,stage.scrollWidth,rect.width,childWidth);baseHeight=Math.max(1,stage.scrollHeight,rect.height,childHeight);stage.style.width=baseWidth+'px';stage.style.height=baseHeight+'px'}stage.style.transform=prior;measuring=false;return visible}
+function measure(){if(measuring)return false;measuring=true;var prior=stage.style.transform;stage.style.transform='none';stage.style.width='auto';stage.style.height='auto';var rect=stage.getBoundingClientRect(),children=Array.prototype.slice.call(stage.children),childWidth=children.reduce(function(value,node){return Math.max(value,node.offsetWidth||node.scrollWidth||0)},0),childHeight=children.reduce(function(value,node){return Math.max(value,node.offsetHeight||node.scrollHeight||0)},0),visible=body.clientWidth>1&&body.clientHeight>1&&Math.max(rect.width,childWidth)>1&&Math.max(rect.height,childHeight)>1;if(visible){baseWidth=Math.max(1,stage.scrollWidth,rect.width,childWidth);baseHeight=Math.max(1,stage.scrollHeight,rect.height,childHeight);stage.style.width=baseWidth+'px';stage.style.height=baseHeight+'px';try{parent.postMessage({type:'composer-preview-natural-size',width:baseWidth,height:baseHeight},'*')}catch(error){}}stage.style.transform=prior;measuring=false;return visible}
 function fit(force){if(force){baseWidth=0;baseHeight=0}if((!baseWidth||!baseHeight)&&!measure())return;var safeInset=Math.max(12,Math.min(28,Math.min(window.innerWidth,window.innerHeight)*.1)),availableWidth=Math.max(1,window.innerWidth-safeInset*2),availableHeight=Math.max(1,window.innerHeight-safeInset*2),scale=Math.max(.01,Math.min(availableWidth/baseWidth,availableHeight/baseHeight));stage.style.transform='scale('+scale+')'}
 requestAnimationFrame(function(){fit(true)});
 setTimeout(function(){fit(true)},100);setTimeout(function(){fit(true)},500);
@@ -12778,27 +12854,89 @@ window.addEventListener('resize',function(){fit(true)});
 if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)});observer.observe(body)}
 })();<\/script>`;
   }
-  function sizePreviewFrameToNaturalContent(frame) {
-    const attempt = () => {
+  function applyNaturalPreviewSize(frame, width, height) {
+    if (!(width > 1) || !(height > 1)) return;
+    const clampedWidth = Math.min(640, Math.max(90, width)),
+      clampedHeight = Math.min(400, Math.max(50, height));
+    frame.style.flex = "0 0 auto";
+    frame.style.width = `${clampedWidth}px`;
+    frame.style.height = `${clampedHeight}px`;
+  }
+  function sizePreviewFrameToNaturalContent(frame, hintSize = null) {
+    if (hintSize) applyNaturalPreviewSize(frame, hintSize.width, hintSize.height);
+    const fallbackMeasure = () => {
       const documentValue = frame.contentDocument,
         stage = documentValue?.body?.querySelector(
           "[data-composer-responsive-stage]",
         ),
         target = stage || documentValue?.body;
       if (!target) return;
-      const width = Math.min(640, Math.max(90, target.offsetWidth || 0)),
-        height = Math.min(400, Math.max(50, target.offsetHeight || 0));
-      if (width > 1 && height > 1) {
-        frame.style.flex = "0 0 auto";
-        frame.style.width = `${width}px`;
-        frame.style.height = `${height}px`;
-      }
+      applyNaturalPreviewSize(frame, target.offsetWidth, target.offsetHeight);
     };
     frame.addEventListener(
       "load",
-      () => setTimeout(attempt, 550),
+      () => {
+        let settled = false;
+        const onMessage = (event) => {
+          if (
+            event.source !== frame.contentWindow ||
+            event.data?.type !== "composer-preview-natural-size"
+          )
+            return;
+          settled = true;
+          applyNaturalPreviewSize(frame, event.data.width, event.data.height);
+        };
+        window.addEventListener("message", onMessage);
+        const fallbackTimer = setTimeout(() => {
+          if (!settled) fallbackMeasure();
+        }, 700);
+        setTimeout(() => {
+          window.removeEventListener("message", onMessage);
+          clearTimeout(fallbackTimer);
+        }, 2000);
+      },
       { once: true },
     );
+  }
+  function measureSnippetNaturalSize(html) {
+    return new Promise((resolve) => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      frame.setAttribute("aria-hidden", "true");
+      frame.style.cssText =
+        "position:fixed;left:-9999px;top:-9999px;width:900px;height:600px;border:0;visibility:hidden;pointer-events:none;";
+      let finished = false;
+      const finish = (result) => {
+        if (finished) return;
+        finished = true;
+        frame.remove();
+        resolve(result);
+      };
+      const failTimer = setTimeout(() => finish(null), 1200);
+      frame.addEventListener(
+        "load",
+        () => {
+          requestAnimationFrame(() => {
+            try {
+              const documentValue = frame.contentDocument,
+                rect = documentValue?.body?.getBoundingClientRect();
+              if (!rect || rect.width <= 1 || rect.height <= 1) return finish(null);
+              clearTimeout(failTimer);
+              finish({
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              });
+            } catch (_) {
+              finish(null);
+            }
+          });
+        },
+        { once: true },
+      );
+      frame.srcdoc =
+        `<style>html,body{margin:0;width:max-content;height:max-content;display:inline-block}</style>${html}`;
+      document.body.appendChild(frame);
+    });
   }
   function replaceTranslatedCssDeclaration(css, entry, replacement) {
     const escape = (value) =>
@@ -12887,7 +13025,15 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     Object.entries(propertyValues).forEach(([key, value]) => {
       source = source.replaceAll(`{{${key}}}`, String(value ?? ""));
     });
-    sizePreviewFrameToNaturalContent($("translate-live-preview"));
+    sizePreviewFrameToNaturalContent(
+      $("translate-live-preview"),
+      translateSource.naturalSize
+        ? {
+            width: translateSource.naturalSize.width + 20,
+            height: translateSource.naturalSize.height + 20,
+          }
+        : null,
+    );
     $("translate-live-preview").srcdoc = safeDoc(
       `<style>html,body{margin:0;width:100%;height:100%;box-sizing:border-box;background:#182126;color:#fff}body{padding:10px}body>*{box-sizing:border-box}</style>${source}`,
       "",
@@ -13062,6 +13208,14 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
   }
   function openTranslateWizard(name, source) {
     translateSource = analyzeSnippet(name, source);
+    const analyzedSource = translateSource;
+    measureSnippetNaturalSize(
+      `<style>${analyzedSource.css}</style>${analyzedSource.html}`,
+    ).then((size) => {
+      if (translateSource !== analyzedSource || !size) return;
+      analyzedSource.naturalSize = size;
+      if ($("translate-snippet-dialog").open) refreshTranslateSimulator();
+    });
     $("translate-name").value = name
       .replace(/\.html?$/i, "")
       .replace(/[-_]+/g, " ")
@@ -13459,6 +13613,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       );
     $("translate-snippet-dialog").close();
     openCustomBuilder();
+    customDraftNaturalSize = translateSource?.naturalSize || null;
     $("custom-component-name").value = $("translate-name").value;
     $("custom-component-category").value = $("translate-category").value;
     $("custom-source-html").value = html;
@@ -14502,6 +14657,24 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         duplicateDefinitionCount(collectCustomBehaviors());
     if (duplicateDefinitions)
       add("duplicate-definitions", `${duplicateDefinitions} exact duplicate generated definition${duplicateDefinitions === 1 ? " was" : "s were"} found. Remove the duplicates without changing unique properties, signals, or behaviors.`, { repairable: true });
+    const managedMarkerCounts = new Map();
+    for (const match of source.matchAll(
+      /\/\*\s*COMPOSER MANAGED\s+([A-Za-z0-9_-]+)\s+(START|END)\s*\*\//g,
+    )) {
+      const [, id, kind] = match,
+        counts = managedMarkerCounts.get(id) || { START: 0, END: 0 };
+      counts[kind]++;
+      managedMarkerCounts.set(id, counts);
+    }
+    const brokenManagedMarkers = [...managedMarkerCounts.entries()]
+      .filter(([, counts]) => counts.START !== counts.END)
+      .map(([id]) => id);
+    if (brokenManagedMarkers.length)
+      add(
+        "broken-managed-marker",
+        `Composer-managed code block${brokenManagedMarkers.length === 1 ? "" : "s"} (${brokenManagedMarkers.join(", ")}) ${brokenManagedMarkers.length === 1 ? "has" : "have"} a missing or edited COMPOSER MANAGED marker. The generated property or connection may no longer update. Remove the remaining marker comment and its code, then re-add the capability from "Add capabilities."`,
+        { severity: "error" },
+      );
     return findings;
   }
   function renderCustomCompatibilityAudit() {
@@ -17515,24 +17688,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     const previewFrame = $("custom-component-preview"),
       previewPanel = previewFrame.closest(".custom-source-panel"),
-      managedGlowDefinitions = collectCustomProperties().filter(
-        (property) =>
-          /glow/i.test(`${property.key} ${property.name}`) &&
-          new RegExp(
-            `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
-          ).test(source),
-      ),
-      managedGlow = {
-        enabled: managedGlowDefinitions.length > 0,
-        colorKey:
-          managedGlowDefinitions.find((property) =>
-            /color/i.test(`${property.key} ${property.name}`),
-          )?.key || "",
-        strengthKey:
-          managedGlowDefinitions.find((property) =>
-            /strength|size|radius|blur/i.test(`${property.key} ${property.name}`),
-          )?.key || "",
-      },
+      managedGlow = detectManagedGlow(collectCustomProperties(), source),
       previewColor = (value, fallback) =>
         /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
     if (managedGlow.enabled) {
@@ -17546,7 +17702,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       previewFrame.style.filter = "";
       previewPanel?.classList.remove("custom-preview-glow-active");
     }
-    sizePreviewFrameToNaturalContent(previewFrame);
+    sizePreviewFrameToNaturalContent(
+      previewFrame,
+      customDraftNaturalSize
+        ? {
+            width: customDraftNaturalSize.width + 20,
+            height: customDraftNaturalSize.height + 20,
+          }
+        : null,
+    );
     previewFrame.srcdoc = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
         previewBridge +
@@ -18139,6 +18303,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
     customEditingId = entry?.id || "";
     customBuilderSourceItemId = item?.id || "";
+    customDraftNaturalSize = null;
     customElementPickerActive = false;
     customAnalyzedElements = [];
     customSavedElementRoles = structuredClone(entry?.elementRoles || []);
@@ -19256,7 +19421,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         entry.defaultSize ||
         (item
           ? { width: item.w || 240, height: item.h || 140 }
-          : measureCustomPreviewDefaultSize()),
+          : customDraftNaturalSize
+            ? {
+                width: Math.round(customDraftNaturalSize.width + 20),
+                height: Math.round(customDraftNaturalSize.height + 20),
+              }
+            : measureCustomPreviewDefaultSize()),
       properties: customProperties,
       signals: customSignals,
       repeatedItems,

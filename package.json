@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.5.0",
   "scripts": {
-    "test": "node tests/regression.test.js && node tests/widget-audit.test.js && node tests/component-continuity.test.js"
+    "test": "node tests/regression.test.js && node tests/preview-runtime.test.js && node tests/widget-audit.test.js && node tests/component-continuity.test.js"
   },
   "dependencies": {
     "@crestron/ch5-webxpanel": "^2.8.0"
