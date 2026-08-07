@@ -15312,6 +15312,25 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (row) => row.querySelector('[data-field="key"]')?.value === key,
     );
   }
+  // Import & Translate's own toggle detection and this file's detected-
+  // visual-parts shortcut are two independent heuristics that can both
+  // fire on the same toggle-shaped component, under different property
+  // key names (e.g. translate's separate knobWidth/knobHeight vs. this
+  // panel's combined knobSize). Matching by key name alone would miss
+  // that overlap and let the panel create a second, redundant property
+  // controlling the same element. Matching by the actual (selector,
+  // action, parameter) a behavior is bound to catches the overlap
+  // regardless of which key name either heuristic chose.
+  function existingCustomPropertyForBinding(selector, action, parameter) {
+    const match = collectCustomBehaviors().find(
+      (rule) =>
+        rule.source === "property" &&
+        rule.selector === selector &&
+        rule.action === action &&
+        (rule.parameter || "") === (parameter || ""),
+    );
+    return match ? customDefinitionRow("custom-property-list", match.key) : null;
+  }
   function applyCustomVisualOption(option, enabled, value) {
     const existingProperty = customDefinitionRow("custom-property-list", option.key);
     if (!enabled) {
@@ -15375,19 +15394,52 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       const options = card.querySelector(".custom-visual-part-options");
       part.options.forEach((option) => {
         const label = document.createElement("label"),
-          active = !!customDefinitionRow("custom-property-list", option.key);
+          ownRow = customDefinitionRow("custom-property-list", option.key),
+          foreignRow = ownRow
+            ? null
+            : existingCustomPropertyForBinding(
+                option.selector,
+                option.action,
+                option.parameter,
+              ),
+          // A paired-parameter option (e.g. one "Size" property driving
+          // both width and height) can only safely adopt a foreign
+          // existing property if that same property already covers the
+          // paired side too — otherwise adopting it would silently make
+          // an unrelated existing property start controlling a second
+          // CSS declaration it was never meant to own.
+          foreignCoversPair =
+            !option.pairedParameter ||
+            (foreignRow &&
+              existingCustomPropertyForBinding(
+                option.selector,
+                option.action,
+                option.pairedParameter,
+              )?.querySelector('[data-field="key"]')?.value ===
+                foreignRow.querySelector('[data-field="key"]')?.value),
+          boundRow = ownRow || (foreignCoversPair ? foreignRow : null),
+          active = !!boundRow,
+          boundKey =
+            boundRow?.querySelector('[data-field="key"]')?.value || option.key,
+          boundOption = boundRow && boundRow !== ownRow
+            ? { ...option, key: boundKey }
+            : option,
+          sharedNote =
+            boundRow && boundRow !== ownRow
+              ? ` <small>(already set by "${boundRow.querySelector('[data-field="name"]')?.value || boundKey}")</small>`
+              : "";
         label.className = "custom-visual-part-option";
-        label.innerHTML = `<input type="checkbox"${active ? " checked" : ""}><span>${option.label}</span><input data-value type="${option.type === "color" ? "color" : "number"}" value="${String(customDefinitionRow("custom-property-list", option.key)?.querySelector('[data-field="defaultValue"]')?.value ?? option.value).replace(/"/g, "&quot;")}">`;
+        label.innerHTML = `<input type="checkbox"${active ? " checked" : ""}><span>${option.label}${sharedNote}</span><input data-value type="${option.type === "color" ? "color" : "number"}" value="${String(boundRow?.querySelector('[data-field="defaultValue"]')?.value ?? option.value).replace(/"/g, "&quot;")}">`;
         const checkbox = label.querySelector('input[type="checkbox"]'),
           input = label.querySelector("[data-value]");
         input.disabled = !checkbox.checked;
         checkbox.onchange = () => {
           input.disabled = !checkbox.checked;
-          applyCustomVisualOption(option, checkbox.checked, input.value);
+          applyCustomVisualOption(boundOption, checkbox.checked, input.value);
         };
         input.oninput = () => {
           if (checkbox.checked)
-            applyCustomVisualOption(option, true, input.value);
+            applyCustomVisualOption(boundOption, true, input.value);
         };
         options.appendChild(label);
       });
