@@ -724,7 +724,7 @@
           min: 0.1,
           max: 10,
           step: 0.1,
-          defaultValue: 1,
+          defaultValue: 3,
         });
       if (!definition.signals.some((signal) => signal.key === "held"))
         definition.signals.push({
@@ -1351,7 +1351,7 @@
               100,
               Math.min(
                 10000,
-                (Number(options.properties.heldDuration) || 1) * 1000,
+                (Number(options.properties.heldDuration) || 3) * 1000,
               ),
             ),
           }

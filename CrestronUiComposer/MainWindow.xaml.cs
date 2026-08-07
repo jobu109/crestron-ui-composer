@@ -44,6 +44,11 @@ public partial class MainWindow : Window
                 "WebView2");
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userData);
             await EditorView.EnsureCoreWebView2Async(environment);
+            // The editor is shipped beside the executable and changes between
+            // builds. Do not let WebView2 silently reuse an older editor.js or
+            // editor.css after an application update/rebuild.
+            await EditorView.CoreWebView2.Profile.ClearBrowsingDataAsync(
+                CoreWebView2BrowsingDataKinds.DiskCache);
 
             var webRoot = Path.Combine(AppContext.BaseDirectory, "Web");
             if (!File.Exists(Path.Combine(webRoot, "editor.html")))

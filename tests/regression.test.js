@@ -575,7 +575,7 @@ run("eligible single-surface buttons distinguish Press from Held", () => {
   assert.equal(
     definition.properties.find((property) => property.key === "heldDuration")
       ?.defaultValue,
-    1,
+    3,
   );
   assert.equal(
     definition.signals.find((signal) => signal.key === "held")
@@ -585,6 +585,13 @@ run("eligible single-surface buttons distinguish Press from Held", () => {
   assert.ok(runtime.includes("if (standardHold.completed)"));
   assert.ok(exporter.includes("standardHold=def.hold"));
   assert.ok(editor.includes("signal.standardHoldOutput"));
+});
+
+run("standard button hold duration defaults to three seconds", () => {
+  const runtime = read("component-runtime.js");
+  assert.ok(runtime.includes('name: "Held duration (seconds)"'));
+  assert.ok(runtime.includes("defaultValue: 3"));
+  assert.ok(runtime.includes("(Number(options.properties.heldDuration) || 3) * 1000"));
 });
 
 run("native touch highlights are disabled in editor runtime and exports", () => {
@@ -746,6 +753,101 @@ run(
   },
 );
 
+run("Import & Translate treats checkbox switches as digital responsive toggles", () => {
+  const editor = read("editor.js");
+  assert.ok(
+    editor.includes('input[type="checkbox"],input[type="radio"],[role="switch"]'),
+  );
+  assert.ok(editor.includes("!isToggleTrack(element)"));
+  assert.ok(
+    editor.includes(
+      "action: (detected.toggleButtonIndexes || []).includes(index)",
+    ),
+  );
+  assert.ok(editor.includes('? "checkedState"'));
+  assert.ok(
+    editor.includes(
+      "function translatedToggleCss(properties, tokenized = false)",
+    ),
+  );
+  assert.ok(editor.includes("function translatedResponsiveFitRuntime()"));
+  assert.ok(editor.includes("function upgradeCustomResponsiveFitRuntime(source)"));
+  assert.ok(editor.includes("upgradeCustomResponsiveFitRuntime("));
+});
+
+run("Import & Translate exposes selector-aware toggle appearance", () => {
+  const editor = read("editor.js");
+  for (const key of [
+    "trackColor",
+    "selectedTrackColor",
+    "knobColor",
+    "trackWidth",
+    "trackHeight",
+    "knobWidth",
+    "knobHeight",
+    "trackRadius",
+    "knobRadius",
+    "knobTravel",
+  ])
+    assert.ok(editor.includes(`\"${key}\"`), `missing ${key}`);
+  assert.ok(editor.includes('kind: "css-declaration"'));
+  assert.ok(editor.includes("function replaceTranslatedCssDeclaration"));
+  assert.ok(editor.includes("selectorAwareToggle"));
+  assert.ok(editor.includes("transparentCanvasColors"));
+  assert.ok(editor.includes("renderTranslateSignals(false);"));
+  assert.ok(editor.includes('properties.some((entry) => entry.key === "iconSize")'));
+});
+
+run("component readiness findings explain and directly repair orphan tokens", () => {
+  const editor = read("editor.js"), css = read("editor.css");
+  assert.ok(editor.includes("Composer found {{${token}}}, but no matching property exists."));
+  assert.ok(editor.includes('"Remove unused rule"'));
+  assert.ok(editor.includes('"Add missing property"'));
+  assert.ok(editor.includes('"Show location"'));
+  assert.ok(css.includes(".custom-readiness-finding .finding-message small"));
+});
+
+run("isolated custom component documents retain local ids and document selectors", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("var runtimeDocument=window.document"));
+  assert.ok(editor.includes("data-composer-responsive-stage"));
+  assert.ok(
+    editor.includes(
+      "filter(function(node){return node.tagName!=='SCRIPT'&&node.tagName!=='STYLE'})",
+    ),
+  );
+  assert.ok(editor.includes("body.style.flexDirection='row'"));
+  assert.ok(editor.includes("stage.scrollWidth,rect.width,childWidth"));
+  assert.ok(editor.includes("sourceDisplay==='flex'?'inline-flex'"));
+  assert.ok(editor.includes("body.clientWidth>1&&body.clientHeight>1"));
+  assert.ok(editor.includes("observer.observe(body)"));
+  assert.ok(editor.includes("window.addEventListener('resize',function(){fit(true)})"));
+  assert.ok(editor.includes("window.innerWidth-safeInset*2"));
+  assert.ok(editor.includes("window.innerHeight-safeInset*2"));
+  assert.ok(editor.includes("Math.min(window.innerWidth,window.innerHeight)*.1"));
+  assert.ok(!editor.includes("event.preventDefault();window.ComposerSignals.publish(rule.key,true)"));
+  assert.ok(editor.includes('generatedLabel.textContent = "Toggle"'));
+  assert.ok(editor.includes("[data-translated-generated-label]{position:absolute"));
+  assert.ok(editor.includes("[data-translated-text],[data-translated-generated-label]"));
+  assert.ok(editor.includes("!(detected.toggleButtonIndexes || []).includes(index)"));
+  assert.ok(!editor.includes("new ResizeObserver(fit)"));
+  assert.ok(!editor.includes('add("document-selectors", "JavaScript uses document-wide selectors.'));
+  assert.ok(!editor.includes('if (selected.has("document-selectors"))'));
+  assert.ok(!editor.includes('if (selected.has("global-ids"))'));
+  assert.ok(editor.includes("function repairDanglingCustomRoot(javascript = \"\")"));
+  assert.ok(editor.includes('"document.$1("'));
+});
+
+run("translated components discard unused generated properties and safe iframe root warnings", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes("const translatedSource = `${html}\\n${css}\\n${javascript}`"));
+  assert.ok(editor.includes("generatedPropertyKeys.has(key)"));
+  assert.ok(!editor.includes('add("global-css", "CSS targets html, body, or :root.'));
+  assert.ok(editor.includes('finding.code === "duplicate-ids"'));
+  assert.ok(editor.includes("translatedComponent = /data-translated-/i.test"));
+  assert.ok(editor.includes('property.key === "contentInset"'));
+});
+
 run("custom component creator provides functional starter templates", () => {
   const editor = read("editor.js"),
     markup = read("editor.html");
@@ -761,6 +863,11 @@ run("custom component creator provides functional starter templates", () => {
   assert.ok(markup.includes('id="custom-component-apply-template"'));
   assert.ok(editor.includes("customStandardSignals"));
   assert.ok(editor.includes("customButtonProperties"));
+  assert.ok(editor.includes("customToggleProperties"));
+  assert.ok(editor.includes('class="custom-toggle-track"'));
+  assert.ok(editor.includes('class="custom-toggle-knob"'));
+  assert.ok(editor.includes(".custom-toggle.active .custom-toggle-knob"));
+  assert.ok(editor.includes("transform:translateX(108%)"));
   assert.ok(editor.includes("applyCustomStarterTemplate"));
 });
 
@@ -842,6 +949,16 @@ run(
     );
   },
 );
+
+run("visual state overrides are explicit and preserve imported CSS by default", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="custom-state-enabled"'));
+  assert.ok(html.includes("the original visual states with Composer states"));
+  assert.ok(html.includes('id="custom-state-controls" hidden'));
+  assert.ok(editor.includes("if (!$('custom-state-enabled').checked) return null;"));
+  assert.ok(editor.includes('$("custom-state-controls").hidden = !enabled;'));
+  assert.ok(css.includes("#custom-state-controls[hidden]"));
+});
 
 run("recovery snapshots are verified and crash-aware", () => {
   const editor = read("editor.js"),
@@ -1543,15 +1660,18 @@ run("Import and Translate dialog uses non-overlapping responsive flow", () => {
 run("Import and Translate preserves authored morph and interactive appearance", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
   assert.ok(editor.includes("preserveAuthoredButtonAppearance"));
-  assert.ok(editor.includes(".selected\\b|\\.active\\b"));
-  assert.ok(editor.includes("transition(?:-property)?"));
-  assert.ok(editor.includes("!detected.preserveAuthoredButtonAppearance"));
+  assert.ok(editor.includes("const preserveAuthoredButtonAppearance = true"));
   assert.ok(editor.includes("if (!preserveAuthoredButtonAppearance)"));
+  assert.ok(!editor.includes("[data-translated-toggle-track]{background-color:"));
   assert.ok(editor.includes("Preserved ${entry.label}"));
   assert.ok(editor.includes("Use the generated Selected digital input"));
-  assert.ok(html.includes("A Crestron rule is offered only when a safe trigger and target were identified"));
+  assert.ok(html.includes("Manual details — detected code, inferred behavior, and generated rules"));
   assert.ok(css.includes(".translate-inference-row.preserved"));
   assert.ok(css.includes(".translate-inference-row.preserved .translate-inference-key"));
+  assert.ok(editor.includes('["button-style", "standard-style"].includes(entry.kind)'));
+  assert.ok(editor.includes('? "__preserve__"'));
+  assert.ok(editor.includes("const stateStyles = null;"));
+  assert.ok(editor.includes("Imported source owns its authored Standard/Pressed/Selected states"));
 });
 
 run("Import and Translate merges preset and detected Name bindings", () => {
@@ -1562,23 +1682,26 @@ run("Import and Translate merges preset and detected Name bindings", () => {
   assert.ok(editor.includes("entry.direction === signal.direction"));
 });
 
-run("Import and Translate is available from the File menu", () => {
+run("Import and Translate is consolidated into Component Creator", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
-  assert.ok(html.includes('id="translate-snippet-menu"'));
+  assert.ok(!html.includes('id="translate-snippet-menu"'));
+  assert.ok(!html.includes('id="translate-snippet"'));
+  assert.ok(html.includes('id="creator-import-code"'));
   assert.ok(editor.includes("async function openTranslateImport()"));
-  assert.ok(editor.includes('$("translate-snippet-menu").onclick = openTranslateImport'));
-  assert.ok(editor.includes('$("translate-snippet").onclick = openTranslateImport'));
+  assert.ok(editor.includes('$("creator-import-code").onclick'));
 });
 
 run("custom component workflows are available from the File menu", () => {
   const editor = read("editor.js"), html = read("editor.html");
   assert.ok(html.includes('id="custom-package-menu"'));
   assert.ok(html.includes('id="new-custom-component-menu"'));
+  assert.ok(html.includes('id="custom-package-menu">Install Component Package</button>'));
+  assert.ok(html.includes('id="new-custom-component-menu">Create Component</button>'));
   assert.ok(editor.includes('$("custom-package-menu").onclick = () => $("custom-package-file").click()'));
   assert.ok(editor.includes('$("new-custom-component-menu").onclick = openComponentCreator'));
 });
 
-run("Component Creator guides imports and starter templates", () => {
+run("Component Creator provides one unified import and starter workflow", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
   assert.ok(html.includes('id="component-creator-dialog"'));
   assert.ok(html.includes('id="creator-import-code"'));
@@ -1588,11 +1711,13 @@ run("Component Creator guides imports and starter templates", () => {
   );
   assert.ok(editor.includes("function openComponentCreator()"));
   assert.ok(editor.includes("openCustomBuilder(null, null, button.dataset.creatorTemplate)"));
-  assert.ok(html.includes('id="custom-mode-guided"'));
-  assert.ok(html.includes('id="custom-mode-advanced"'));
-  assert.ok(editor.includes('function setCustomBuilderMode(mode = "guided")'));
-  assert.ok(editor.includes('setCustomBuilderMode("guided")'));
-  assert.ok(css.includes(".custom-component-dialog.guided-mode .custom-advanced-only"));
+  assert.ok(!html.includes('id="custom-mode-guided"'));
+  assert.ok(!html.includes('id="custom-mode-advanced"'));
+  assert.ok(html.includes("Imported setup</span>"));
+  assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
+  assert.ok(html.includes('id="custom-capability-panel"'));
+  assert.ok(html.includes('id="custom-repeat-held-signal"'));
+  assert.ok(editor.includes("function renderCustomCapabilityQuestions"));
   assert.ok(css.includes(".creator-template-list"));
 });
 
@@ -1628,7 +1753,7 @@ run("custom component creator summarizes generated behavior in plain language", 
   assert.ok(editor.includes("function renderCustomPlainLanguageReview()"));
   assert.ok(editor.includes("Pressing ${target} sends the ${signalName} digital output."));
   assert.ok(editor.includes("The original animation remains local"));
-  assert.ok(editor.includes("Visibility and Disabled remain optional Composer-level bindings"));
+  assert.ok(!editor.includes("Visibility and Disabled remain optional Composer-level bindings"));
   assert.ok(css.includes(".custom-behavior-review-item"));
 });
 
@@ -1644,9 +1769,8 @@ run("custom components include reversible compatibility auditing and safe repair
   assert.ok(editor.includes("captureCustomOriginalSource()"));
   assert.ok(html.includes("Apply selected safe repairs"));
   assert.ok(editor.includes('data-custom-repair="${finding.code}"'));
-  assert.ok(editor.includes('"global-ids"'));
-  assert.ok(editor.includes('data-composer-id="${id.replace'));
-  assert.ok(editor.includes("Referenced or SVG IDs require manual review."));
+  assert.ok(editor.includes('add("duplicate-ids"'));
+  assert.ok(!editor.includes('selected.has("global-ids")'));
   assert.ok(editor.includes('selected.has("effect-clipping")'));
   assert.ok(editor.includes('name: "Glow-safe inset"'));
   assert.ok(editor.includes("customOriginalSourceSnapshot.properties.forEach(addCustomPropertyRow)"));
@@ -1762,21 +1886,23 @@ run("custom components include reversible compatibility auditing and safe repair
   assert.ok(editor.includes("detectedEvents.holdDuration"));
   assert.ok(editor.includes('action: "release"'));
   assert.ok(editor.includes('action: "hold", parameter: String(detectedEvents.holdDuration)'));
-  assert.ok(editor.includes('selected.has("document-selectors")'));
+  assert.ok(editor.includes("repairDanglingCustomRoot"));
   assert.ok(editor.includes('selected.has("fixed-position")'));
   assert.ok(editor.includes("effect-clipping"));
   assert.ok(css.includes(".custom-compatibility-audit"));
 });
 
-run("custom component creation is gated by an automated confidence report", () => {
+run("custom component creation is gated by blocking automated errors", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
   assert.ok(html.includes("Validate &amp; create component"));
   assert.ok(editor.includes("COMPONENT READINESS —"));
-  assert.ok(editor.includes("Confidence: ${confidence}%"));
+  assert.ok(!editor.includes("Confidence: ${confidence}%"));
   assert.ok(editor.includes("Multiple-instance isolation"));
   assert.ok(editor.includes("function customComponentReadinessFingerprint(entry)"));
   assert.ok(editor.includes("function customComponentReadinessStatus(entry)"));
   assert.ok(editor.includes("component-readiness ${readiness.key}"));
+  assert.ok(editor.includes('if (readiness.key !== "tested")'));
+  assert.ok(!editor.includes('key: "review", label: "Review"'));
   assert.ok(editor.includes("Open component readiness"));
   assert.ok(editor.includes("if (issue.customComponentId)"));
   assert.ok(editor.includes("openCustomBuilder(null, entry)"));
@@ -1788,6 +1914,81 @@ run("custom component creation is gated by an automated confidence report", () =
   assert.ok(editor.includes("const readiness = await runCustomComponentSelfTest()"));
   assert.ok(editor.includes("if (!readiness.passed)"));
   assert.ok(editor.includes("parseCustomComponentPackage(JSON.parse(JSON.stringify(probe)))"));
+});
+
+run("component creation uses one three-step workflow with source editing in step two", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.equal((html.match(/data-custom-wizard-step=/g) || []).length, 3);
+  assert.ok(html.includes("Imported setup</span>"));
+  assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
+  assert.ok(html.includes("Test &amp; create</span>"));
+  assert.ok(html.includes('class="custom-source-code custom-step-capabilities"'));
+  assert.ok(html.includes("Composer-generated CSS / JavaScript (live)"));
+  assert.ok(editor.includes("function setCustomWizardStep(step = 0)"));
+  assert.ok(editor.includes("if (customWizardStep === 1) analyzeCustomElements()"));
+  assert.ok(editor.includes("if (customWizardStep === 2)"));
+  assert.ok(css.includes("custom-wizard-step-1 .custom-step-imported"));
+  assert.ok(css.includes("custom-wizard-step-2 .custom-builder-controls"));
+});
+
+run("component scoping creates real Composer properties and Crestron connections", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(!html.includes('id="custom-property-add"'));
+  assert.ok(!html.includes('id="custom-signal-add"'));
+  assert.ok(html.includes('id="custom-scope-add-property"'));
+  assert.ok(html.includes('id="custom-scope-add-signal"'));
+  assert.ok(html.includes('id="custom-property-creator"'));
+  assert.ok(html.includes('id="custom-signal-creator"'));
+  assert.ok(html.includes("Add an editable Composer property or a Crestron connection"));
+  assert.ok(html.includes("What it controls<select id=\"custom-signal-capability-action\""));
+  assert.ok(editor.includes("function createScopedCustomProperty()"));
+  assert.ok(editor.includes("function preferredCustomPropertyTarget(definition, select)"));
+  assert.ok(editor.includes('part.title === "Track"'));
+  assert.ok(editor.includes("__COMPOSER_PROPERTY_TOKEN_"));
+  assert.ok(editor.includes("restoreTokens(entry[2].trim())"));
+  assert.ok(editor.includes("function createScopedCustomSignal()"));
+  assert.ok(editor.includes("addCustomPropertyRow({ key, name, type: definition.type, defaultValue })"));
+  assert.ok(editor.includes("addCustomSignalRow({ key, name, type, direction, defaultValue })"));
+  assert.ok(editor.includes("COMPOSER MANAGED ${safeId} START"));
+  assert.ok(editor.includes("window.ComposerSignals.subscribe"));
+  assert.ok(editor.includes("window.ComposerSignals.publish"));
+  assert.ok(editor.includes("target.style.opacity=String(ratio)"));
+  assert.ok(editor.includes("node.style.transitionDuration=scaleDurations(transitionBase)"));
+  assert.ok(editor.includes("node.style.animationDuration=scaleDurations(animationBase)"));
+  assert.ok(editor.includes("durationScale=4-(ratio*3.8)"));
+  assert.ok(editor.includes("function upgradeCustomAnimationSpeedRuntime(source)"));
+  assert.ok(editor.includes("upgradeCustomAnimationSpeedRuntime(entry.html)"));
+  assert.ok(editor.includes("function upgradeCustomFrameOverflow(source)"));
+  assert.ok(editor.includes('frame.setAttribute("scrolling", "no")'));
+  assert.ok(editor.includes("overflow:hidden!important;box-sizing:border-box;background:transparent!important"));
+  assert.ok(editor.includes("filter: drop-shadow(0 0 var(--composer-scope-glow-strength"));
+  assert.ok(editor.includes("target.style.filter='drop-shadow(0 0 '"));
+  assert.ok(editor.includes('defaultValue: 6, help: "Adds an editable glow radius'));
+  assert.ok(editor.includes("host.dataset.composerGlowOverflow = \"true\""));
+  assert.ok(editor.includes("host.style.filter = `drop-shadow"));
+  assert.ok(editor.includes("managedGlow = context.options.definitionData.managedGlow || {}"));
+  assert.ok(editor.includes("managedGlow,"));
+  const customMount = editor.slice(
+    editor.indexOf("mount(root, context) {", editor.indexOf("function registerCustomComponent(entry)")),
+    editor.indexOf("return () =>", editor.indexOf("mount(root, context) {", editor.indexOf("function registerCustomComponent(entry)"))),
+  );
+  assert.ok(!customMount.includes("entry.properties"));
+  assert.ok(css.includes(".custom-scope-creator"));
+});
+
+run("component creator exposes detected toggle parts without manual selectors", () => {
+  const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
+  assert.ok(html.includes('id="custom-visual-parts"'));
+  assert.ok(html.includes("Detected visual parts"));
+  assert.ok(editor.includes("function detectedCustomVisualParts()"));
+  assert.ok(editor.includes('title: "Track"'));
+  assert.ok(editor.includes('title: "Knob"'));
+  assert.ok(editor.includes('key: "selectedTrackColor"'));
+  assert.ok(editor.includes('key: "selectedKnobColor"'));
+  assert.ok(editor.includes('key: "glowStrength"'));
+  assert.ok(editor.includes('option.pairedParameter'));
+  assert.ok(editor.includes('replace(/::?(?:before|after)\\b/gi, "")'));
+  assert.ok(css.includes(".custom-visual-part-card"));
 });
 
 run("custom component readiness probes resize and multiple live instances", () => {
@@ -1818,6 +2019,8 @@ run("custom component save verifies the registered Composer runtime", () => {
   assert.ok(editor.includes("function removeExactCustomDefinitionDuplicates()"));
   assert.ok(editor.includes("exactDuplicatesRemoved: duplicateRepairs.length"));
   assert.ok(editor.includes("Testing saved runtime…"));
+  assert.ok(editor.includes("The saved-runtime test exceeded 10 seconds and was stopped."));
+  assert.ok(editor.includes("let exportedRuntime = { passed: false, errors: [] }"));
 });
 
 run("custom component source is automatically inventoried for guided setup", () => {
@@ -1828,7 +2031,7 @@ run("custom component source is automatically inventoried for guided setup", () 
   assert.ok(editor.includes("function customElementSelector(element, documentValue)"));
   assert.ok(editor.includes("renderCustomElementInventory(inventory)"));
   assert.ok(editor.includes('$("custom-analyze-elements").onclick = analyzeCustomElements'));
-  assert.ok(editor.includes('configure.textContent = "Configure"'));
+  assert.ok(editor.includes('configure.textContent = "Edit setup"'));
   assert.ok(css.includes(".custom-element-inventory-row"));
   assert.ok(editor.includes("function inferCustomRepeatedConfiguration(selector)"));
   assert.ok(editor.includes("child controls already managed by a repeated collection"));

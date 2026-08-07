@@ -77,6 +77,7 @@
   let panelZoom = 1;
   let lastRenderedPageId = "";
   let customEditingId = "";
+  let customWizardStep = 0;
   let editingSubpagePagesId = "";
   let editingSubpagePropertiesId = "";
   let creatingSubpageMode = "";
@@ -1032,11 +1033,16 @@
       return { key: "outdated", label: "Outdated", title: "This component changed after its last readiness test." };
     if (readiness.passed === false)
       return { key: "failed", label: "Failed", title: "The saved Component Readiness result failed." };
-    if (Number(readiness.confidence) < 85 || Number(readiness.warningCount) > 0)
-      return { key: "review", label: `${Number(readiness.confidence) || 0}% Review`, title: `Readiness passed with review items.${manualSummary()}` };
-    return { key: "tested", label: "Tested", title: `Passed Component Readiness at ${Number(readiness.confidence) || 100}% confidence.${manualSummary()}` };
+    if (Number(readiness.warningCount) > 0)
+      return { key: "tested", label: "Tested", title: `Readiness passed with non-blocking notes.${manualSummary()}` };
+    return { key: "tested", label: "Tested", title: `Passed Component Readiness.${manualSummary()}` };
   }
   function registerCustomComponent(entry) {
+    entry.html = upgradeCustomFrameOverflow(
+      upgradeCustomResponsiveFitRuntime(
+        upgradeCustomAnimationSpeedRuntime(entry.html),
+      ),
+    );
     const appearanceProperties = [
         {
           key: "appearanceEnabled",
@@ -1102,16 +1108,42 @@
       declaredKeys = new Set(
         (entry.properties || []).map((property) => property.key),
       ),
+      translatedComponent = /data-translated-/i.test(
+        `${entry.html || ""}\n${entry.originalSource?.html || ""}`,
+      ),
+      fallbackAppearanceProperties = translatedComponent
+        ? appearanceProperties.filter((property) => property.key === "contentInset")
+        : appearanceProperties,
       properties = [
         ...(entry.properties || []).filter(
           (property) =>
             property.key !== "visibilityEnabled" &&
             property.key !== "disabledEnabled",
         ),
-        ...appearanceProperties.filter(
+        ...fallbackAppearanceProperties.filter(
           (property) => !declaredKeys.has(property.key),
         ),
-      ];
+      ],
+      preparedHtml = prepareCustomSource(entry.html),
+      managedGlowDefinitions = (entry.properties || []).filter(
+        (property) =>
+          /glow/i.test(`${property.key} ${property.name}`) &&
+          new RegExp(
+            `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
+            "i",
+          ).test(preparedHtml),
+      ),
+      managedGlow = {
+        enabled: managedGlowDefinitions.length > 0,
+        colorKey:
+          managedGlowDefinitions.find((property) =>
+            /color/i.test(`${property.key} ${property.name}`),
+          )?.key || "",
+        strengthKey:
+          managedGlowDefinitions.find((property) =>
+            /strength|size|radius|blur/i.test(`${property.key} ${property.name}`),
+          )?.key || "",
+      };
     window.ComposerRuntime.register({
       id: entry.id,
       name: entry.name,
@@ -1126,9 +1158,10 @@
         entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
       template: '<div class="custom-component-host"></div>',
       styles:
-        "[data-component] .custom-component-host,[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0}",
+        "[data-component] .custom-component-host{display:block;width:100%;height:100%;overflow:visible}[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0;background:transparent;overflow:visible}",
       data: {
-        html: prepareCustomSource(entry.html),
+        html: preparedHtml,
+        managedGlow,
         signals: (entry.signals || []).filter(
           (signal) => signal.key !== "visibility" && signal.key !== "disabled",
         ),
@@ -1170,9 +1203,12 @@
               : fallback,
           signals = context.options.definitionData.signals || [],
           raw = String(context.options.definitionData.html || ""),
-          resolved = raw.replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
-            String(properties[key] ?? ""),
-          ),
+          managedGlow = context.options.definitionData.managedGlow || {},
+          resolved = raw.replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) => {
+            if (key.endsWith("Json"))
+              return JSON.stringify(properties[key.slice(0, -4)] ?? "");
+            return String(properties[key] ?? "");
+          }),
           appearanceEnabled =
             properties.appearanceEnabled === true ||
             properties.appearanceEnabled === 1 ||
@@ -1194,9 +1230,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             : "",
           localText = String(properties.localText || ""),
           localTextScript = localText
-            ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
+            ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],[data-translated-text],[data-translated-generated-label],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
             : "",
-          frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:${properties.contentInset == null || properties.contentInset === "" ? 10 : Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
+          frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden!important;box-sizing:border-box;background:transparent!important}body{position:relative;padding:${properties.contentInset == null || properties.contentInset === "" ? 10 : Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
           bridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback);return function(){callbacks[key]=(callbacks[key]||[]).filter(function(entry){return entry!==callback)}}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')})})();<\/script>`,
           repeatRuntime = String(
             context.options.definitionData.repeatRuntime || "",
@@ -1254,6 +1290,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               stateRuntime +
               behaviorStyle +
               behaviorRuntime;
+        if (managedGlow.enabled) {
+          const outerGlowColor = color(properties[managedGlow.colorKey], "#04aa8e"),
+            outerGlowStrength = Math.max(
+              0,
+              Number(properties[managedGlow.strengthKey]) || 6,
+            );
+          host.style.overflow = "visible";
+          host.style.filter = `drop-shadow(0 0 ${outerGlowStrength}px ${outerGlowColor})`;
+          host.dataset.composerGlowOverflow = "true";
+        }
         let frameReady = false;
         function sendFeedback(key, value) {
           latestFeedback.set(key, value);
@@ -1273,6 +1319,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           );
         }
         frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        frame.setAttribute("scrolling", "no");
+        frame.style.overflow = "hidden";
         frame.addEventListener("load", replayFeedback);
         frame.srcdoc = documentText;
         host.appendChild(frame);
@@ -1292,14 +1340,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               match =
                 repeated &&
                 String(event.data.key || "").match(/^__repeatPress:(\d+)$/),
+              heldMatch =
+                repeated &&
+                String(event.data.key || "").match(/^__repeatHeld:(\d+)$/),
               valueMatch =
                 repeated &&
                 String(event.data.key || "").match(/^__repeatValueSet:(\d+)$/);
-            if (match) {
-              const index = Number(match[1]),
+            if (match || heldMatch) {
+              const index = Number((match || heldMatch)[1]),
                 base =
-                  properties.pressBase ||
-                  `${repeated.namespace}.Items[{index}].Press`,
+                  (heldMatch ? properties.heldBase : properties.pressBase) ||
+                  `${repeated.namespace}.Items[{index}].${heldMatch ? "Held" : "Press"}`,
                 increment = Math.max(
                   1,
                   Number(properties.signalIncrement) || 1,
@@ -1444,8 +1495,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       mounts = [],
       errors = [],
       widgetListDefinition = window.ComposerRuntime.get("widget-list"),
-      widgetListProbe = { holder: null, root: null, dispose: null },
-      exportedRuntime = { passed: false, errors: [] };
+      widgetListProbe = { holder: null, root: null, dispose: null };
+    let exportedRuntime = { passed: false, errors: [] };
     retainedInputs.forEach(({ signal, address, value }) =>
       window.ComposerRuntime.simulator.set(
         window.ComposerRuntime.typeCode(signal.type),
@@ -1755,25 +1806,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
         if (customEntry) {
           const readiness = customComponentReadinessStatus(customEntry),
-            badge = document.createElement("span"),
             remove = document.createElement("button");
           el.classList.add("custom-component");
-          badge.className = `component-readiness ${readiness.key}`;
-          badge.textContent = readiness.label;
-          badge.title = readiness.title;
-          badge.tabIndex = 0;
-          badge.setAttribute("role", "button");
-          badge.setAttribute("aria-label", `${customEntry.name}: ${readiness.label}. Open component readiness.`);
-          const openReadiness = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openCustomBuilder(null, customEntry);
-          };
-          badge.onclick = openReadiness;
-          badge.onkeydown = (event) => {
-            if (event.key === "Enter" || event.key === " ") openReadiness(event);
-          };
-          badge.onpointerdown = (event) => event.stopPropagation();
+          if (readiness.key !== "tested") {
+            const badge = document.createElement("span"),
+              openReadiness = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openCustomBuilder(null, customEntry);
+              };
+            badge.className = `component-readiness ${readiness.key}`;
+            badge.textContent = readiness.label;
+            badge.title = readiness.title;
+            badge.tabIndex = 0;
+            badge.setAttribute("role", "button");
+            badge.setAttribute("aria-label", `${customEntry.name}: ${readiness.label}. Open component readiness.`);
+            badge.onclick = openReadiness;
+            badge.onkeydown = (event) => {
+              if (event.key === "Enter" || event.key === " ") openReadiness(event);
+            };
+            badge.onpointerdown = (event) => event.stopPropagation();
+            el.appendChild(badge);
+          }
           remove.type = "button";
           remove.className = "component-remove";
           remove.title = `Delete ${customEntry.name}`;
@@ -1785,7 +1839,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             deleteCustomComponent(customEntry);
           };
           remove.onpointerdown = (event) => event.stopPropagation();
-          el.append(badge, remove);
+          el.appendChild(remove);
         }
         el.draggable = true;
         el.addEventListener("dragstart", (e) =>
@@ -5892,10 +5946,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         if (property.max != null) input.max = String(property.max);
         if (property.step != null) input.step = String(property.step);
       }
-      const propertyValue =
-        (item.properties && item.properties[property.key]) ??
-        property.defaultValue ??
-        "";
+      const storedPropertyValue = item.properties && item.properties[property.key],
+        preservesImportedValue = property.preserveDefault === true,
+        hasAppearanceOverride =
+          !preservesImportedValue ||
+          (storedPropertyValue != null && storedPropertyValue !== "__preserve__"),
+        propertyValue = preservesImportedValue && !hasAppearanceOverride
+          ? property.suggestedValue ?? ""
+          : storedPropertyValue ?? property.defaultValue ?? "";
       if (property.type === "checkbox")
         input.checked =
           propertyValue === true ||
@@ -5903,6 +5961,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           propertyValue === "1" ||
           String(propertyValue).toLowerCase() === "true";
       else input.value = propertyValue;
+      if (preservesImportedValue) {
+        const override = document.createElement("label"),
+          enabled = document.createElement("input"),
+          caption = document.createElement("span");
+        override.className = "custom-property-override-toggle";
+        enabled.type = "checkbox";
+        enabled.checked = hasAppearanceOverride;
+        caption.textContent = "Override imported value";
+        input.disabled = !enabled.checked;
+        enabled.onchange = () => {
+          item.properties = item.properties || {};
+          if (enabled.checked) {
+            let value = property.suggestedValue ?? "";
+            if (property.type === "number") value = Number(value) || 0;
+            item.properties[property.key] = value;
+            input.value = String(value);
+            input.disabled = false;
+            input.focus();
+          } else {
+            item.properties[property.key] = "__preserve__";
+            input.disabled = true;
+          }
+          renderItem(item);
+        };
+        override.append(enabled, caption);
+        label.appendChild(override);
+      }
       if (property.type === "asset" || property.type === "font") {
         const selectedAsset = state.assets.find(
           (asset) => property.type === "font"
@@ -10795,13 +10880,58 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       "Disabled should be supplied by Composer after translation",
     );
     expect(
-      plan.stateStyles?.states?.standard && plan.stateStyles?.states?.selected,
-      "Standard and Selected visual states are missing",
+      plan.stateStyles === null,
+      "Imported source should remain authoritative for visual states",
     );
     expect(
       analyzed.html.includes("data-translated-repeat-container") &&
         analyzed.html.includes('data-translated-numeric="0"'),
       "translated selectors were not written to the component markup",
+    );
+    const toggleFixture = `<!doctype html><style>
+      body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+      .switch{position:relative;display:inline-block;width:60px;height:32px}
+      .switch input{opacity:0;width:0;height:0}
+      .slider{position:absolute;inset:0;background:#ccc;border-radius:32px;transition:background-color .2s}
+      .slider:before{position:absolute;content:"";height:26px;width:26px;left:3px;bottom:3px;background:white;border-radius:50%;transition:transform .2s}
+      input:checked + .slider{background:#4caf50}
+      input:checked + .slider:before{transform:translateX(28px)}
+    </style><label class="switch"><input type="checkbox" id="toggle"><span class="slider"></span></label>
+    <script>const toggle=document.getElementById('toggle');toggle.addEventListener('change',function(){console.log(this.checked)})<\/script>`,
+      toggleAnalyzed = analyzeSnippet("toggle-switch-standard.html", toggleFixture),
+      togglePlan = translatedBehaviorPlan(
+        [{ key: "faceColor" }, { key: "selectedFaceColor" }],
+        [{ key: "press" }, { key: "selected" }, { key: "name" }],
+        toggleAnalyzed.features,
+        "toggle",
+      );
+    expect(
+      toggleAnalyzed.features.buttonCount === 1,
+      "checkbox toggle was not classified as one button",
+    );
+    expect(
+      toggleAnalyzed.features.numericCount === 0,
+      "toggle track was incorrectly classified as an analog slider",
+    );
+    expect(
+      togglePlan.behaviors.some(
+        (rule) =>
+          rule.key === "selected" &&
+          rule.source === "signal-input" &&
+          rule.action === "checkedState",
+      ),
+      "toggle Selected feedback does not control the checkbox state",
+    );
+    expect(
+      toggleAnalyzed.html.includes("data-translated-toggle-root") &&
+        toggleAnalyzed.html.includes("data-translated-toggle-track"),
+      "toggle sizing and appearance targets were not generated",
+    );
+    ["trackColor", "selectedTrackColor", "knobColor", "trackWidth", "trackHeight", "knobWidth", "knobHeight", "trackRadius", "knobRadius", "knobTravel"].forEach((key) =>
+      expect(
+        toggleAnalyzed.editables.some((entry) => entry.key === key),
+        `toggle editable ${key} was not generated`,
+      ),
     );
     const packageAsset = {
         id: "translator-acceptance-asset",
@@ -11873,13 +12003,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .join("\n"),
       body = documentValue.body.cloneNode(true),
       variableValues = new Set();
-    const preserveAuthoredButtonAppearance =
-      /\.selected\b|\.active\b|:(?:active|hover|focus|checked)\b|\[aria-(?:pressed|selected|expanded)\b/i.test(
-        styles,
-      ) ||
-      /\btransition(?:-property)?\s*:|\banimation\s*:|@keyframes\b/i.test(
-        styles,
-      );
+    // Imported source is authoritative. Composer adds capabilities around it;
+    // it never substitutes its own pill/button styling unless the user selects
+    // an explicit appearance override.
+    const preserveAuthoredButtonAppearance = true;
     body
       .querySelectorAll("script,style")
       .forEach((element) => element.remove());
@@ -11922,13 +12049,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         source: match[1],
       });
     }
+    const transparentCanvasColors = new Set();
+    for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/(?:^|,)\s*(?:html\s*,\s*)?body\s*(?:,|$)|(?:^|,)\s*html\s*(?:,|$)/i.test(rule[1]))
+        continue;
+      for (const declaration of rule[2].matchAll(/(?:background|background-color)\s*:\s*([^;]+)/gi))
+        for (const color of declaration[1].matchAll(/#[0-9a-f]{3,8}\b/gi))
+          transparentCanvasColors.add(color[0].toLowerCase());
+    }
     const literalColors = [
       ...new Set(
         [...styles.matchAll(/#[0-9a-f]{6}\b/gi)].map((match) =>
           match[0].toLowerCase(),
         ),
       ),
-    ].filter((value) => !variableValues.has(value));
+    ].filter(
+      (value) =>
+        !variableValues.has(value) && !transparentCanvasColors.has(value),
+    );
     literalColors.forEach((value, index) => {
       const before = styles.slice(
           Math.max(0, styles.toLowerCase().indexOf(value) - 50),
@@ -11954,10 +12092,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         source: value,
       });
     });
-    const allButtonElements = [
+    const toggleElements = [
         ...body.querySelectorAll(
-          'button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],.btn,.button',
+          'input[type="checkbox"],input[type="radio"],[role="switch"]',
         ),
+      ],
+      toggleSet = new Set(toggleElements),
+      allButtonElements = [
+        ...new Set([
+          ...body.querySelectorAll(
+            'button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],.btn,.button',
+          ),
+          ...toggleElements,
+        ]),
       ],
       repeatedGroups = [...body.querySelectorAll("*")]
         .map((container) => ({
@@ -11973,11 +12120,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       buttonElements = allButtonElements.filter(
         (element) => !repeatedSet.has(element),
       ),
+      isToggleTrack = (element) =>
+        element.matches(".slider") &&
+        !!(
+          element.previousElementSibling?.matches(
+            'input[type="checkbox"],input[type="radio"],[role="switch"]',
+          ) ||
+          element.parentElement?.querySelector(
+            ':scope > input[type="checkbox"],:scope > input[type="radio"],:scope > [role="switch"]',
+          )
+        ),
       numericElements = [
         ...body.querySelectorAll(
           'input[type="range"],input[type="number"],meter,progress,[role="slider"],[role="progressbar"],.gauge,.meter,.level,.fill,.progress,.slider',
         ),
-      ].filter((element, index, all) => all.indexOf(element) === index),
+      ].filter(
+        (element, index, all) =>
+          all.indexOf(element) === index && !isToggleTrack(element),
+      ),
       interactiveNumeric = numericElements.filter((element) =>
         element.matches('input,[role="slider"],.slider'),
       );
@@ -11993,6 +12153,96 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     buttonElements.forEach(
       (element, index) => (element.dataset.translatedButton = String(index)),
     );
+    toggleElements.forEach((element) => {
+      element.setAttribute("data-translated-toggle", "");
+      const root = element.closest("label") || element.parentElement,
+        track = element.nextElementSibling;
+      root?.setAttribute("data-translated-toggle-root", "");
+      if (track) track.setAttribute("data-translated-toggle-track", "");
+      if (root && !root.textContent.trim()) {
+        const generatedLabel = documentValue.createElement("span");
+        generatedLabel.setAttribute("data-translated-generated-label", "");
+        generatedLabel.textContent = "Toggle";
+        root.insertAdjacentElement("afterend", generatedLabel);
+      }
+    });
+    if (toggleElements.length) {
+      const toggleDeclarations = [],
+        addToggleDeclaration = (key, label, property, value, type = "text") => {
+          const raw = String(value || "").trim(),
+            unit = type === "number" ? raw.match(/[a-z%]+$/i)?.[0] || "" : "",
+            colorValue = type === "color"
+              ? /^#[0-9a-f]{3}$/i.test(raw)
+                ? "#" + raw.slice(1).split("").map((character) => character + character).join("")
+                : /^white$/i.test(raw)
+                  ? "#ffffff"
+                  : /^black$/i.test(raw)
+                    ? "#000000"
+                    : raw
+              : raw;
+          toggleDeclarations.push(raw.toLowerCase());
+          add({
+            key,
+            label,
+            type,
+            value: type === "number" ? parseFloat(raw) || 0 : colorValue,
+            unit,
+            kind: "css-declaration",
+            source: property,
+            sourceValue: raw,
+          });
+        };
+      for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selector = rule[1].trim(),
+          declarations = Object.fromEntries(
+            [...rule[2].matchAll(/([a-z-]+)\s*:\s*([^;]+)\s*;?/gi)].map(
+              (match) => [match[1].toLowerCase(), match[2].trim()],
+            ),
+          ),
+          isTrack = /(?:\.slider|\.track|\.switch-track|\.toggle-track)(?![\w-])/i.test(selector),
+          isToggleRoot = /(?:^|,)\s*(?:label)?\.(?:switch|toggle)(?:\s*$|\s*,)/i.test(selector),
+          isKnob = /(?::before|::before|\.thumb|\.knob|\.handle)/i.test(selector),
+          isSelected = /:checked|\[aria-checked\s*=\s*["']?true|\.selected|\.active/i.test(selector);
+        if (!isTrack && !isToggleRoot) continue;
+        const background = declarations["background-color"] || declarations.background;
+        if (background)
+          addToggleDeclaration(
+            isKnob ? "knobColor" : isSelected ? "selectedTrackColor" : "trackColor",
+            isKnob ? "Knob color" : isSelected ? "Selected track color" : "Standard track color",
+            declarations["background-color"] ? "background-color" : "background",
+            background,
+            "color",
+          );
+        if (!isSelected && declarations.width)
+          addToggleDeclaration(isKnob ? "knobWidth" : "trackWidth", isKnob ? "Knob width" : "Toggle width", "width", declarations.width, "number");
+        if (!isSelected && declarations.height)
+          addToggleDeclaration(isKnob ? "knobHeight" : "trackHeight", isKnob ? "Knob height" : "Toggle height", "height", declarations.height, "number");
+        if (!isSelected && declarations["border-radius"])
+          addToggleDeclaration(isKnob ? "knobRadius" : "trackRadius", isKnob ? "Knob corner radius" : "Track corner radius", "border-radius", declarations["border-radius"], "number");
+        const travel = declarations.transform?.match(/translateX\(([-\d.]+)([a-z%]*)\)/i);
+        if (isSelected && isKnob && travel) {
+          add({
+            key: "knobTravel",
+            label: "Knob travel",
+            type: "number",
+            value: Number(travel[1]) || 0,
+            unit: travel[2] || "px",
+            kind: "css-declaration",
+            source: "translateX",
+            sourceValue: travel[1] + (travel[2] || ""),
+          });
+        }
+      }
+      if (toggleDeclarations.length) {
+        const semanticValues = new Set(toggleDeclarations);
+        for (let index = editables.length - 1; index >= 0; index--)
+          if (
+            editables[index].kind === "literal" &&
+            semanticValues.has(String(editables[index].source || "").toLowerCase())
+          )
+            editables.splice(index, 1);
+      }
+    }
     numericElements.forEach(
       (element, index) => (element.dataset.translatedNumeric = String(index)),
     );
@@ -12033,6 +12283,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       features: {
         preserveAuthoredButtonAppearance,
         buttonCount: buttonElements.length,
+        toggleButtonIndexes: buttonElements
+          .map((element, index) => (toggleSet.has(element) ? index : -1))
+          .filter((index) => index >= 0),
         numericCount: numericElements.length,
         interactiveNumericCount: interactiveNumeric.length,
         numericTargets: numericElements.map((element, index) => {
@@ -12086,7 +12339,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             /shadow[-_ ]?(dark|light)/i.test(`${entry.key} ${entry.label}`)
           ),
       );
-    if (buttonLike || translateSource.features.buttonCount)
+    const selectorAwareToggle =
+      (translateSource.features.toggleButtonIndexes || []).length > 0 &&
+      editables.some((entry) => entry.key === "trackColor");
+    if ((buttonLike || translateSource.features.buttonCount) && !selectorAwareToggle)
       editables.push(
         {
           key: "shadowSize",
@@ -12400,7 +12656,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     translateSource.appliedSuggestions.add(action);
     if (["dynamic-count", "timing", "animation"].includes(action))
       renderTranslateEditables();
-    renderTranslateSignals();
+    renderTranslateSignals(false);
     renderTranslateReview();
     button.disabled = true;
     button.textContent = "Applied";
@@ -12488,13 +12744,93 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       );
     return { properties, signals, inferences, plan };
   }
+  function translatedToggleCss(properties, tokenized = false) {
+    const value = (key, fallback) => {
+      const property = properties.find((entry) => entry.key === key);
+      return property
+        ? tokenized
+          ? `{{${key}}}`
+          : String(property.value ?? fallback)
+        : fallback;
+    };
+    return `
+[data-translated-toggle-root]{transform-origin:center center;will-change:transform;}
+[data-translated-generated-label]{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${value("textColor", "inherit")};font-size:${value("textSize", "inherit")}${properties.some((entry)=>entry.key==="textSize") ? "px" : ""};text-align:center;}`;
+  }
+  function translatedResponsiveFitRuntime() {
+    return `<script>(function(){
+var runtimeDocument=window.document,body=runtimeDocument.body;
+if(!body||body.querySelector('[data-composer-responsive-stage]'))return;
+var visualNodes=Array.prototype.slice.call(body.children).filter(function(node){return node.tagName!=='SCRIPT'&&node.tagName!=='STYLE'});
+if(!visualNodes.length)return;
+var bodyStyle=getComputedStyle(body),stage=runtimeDocument.createElement('div'),sourceDisplay=bodyStyle.display;stage.setAttribute('data-composer-responsive-stage','');
+['flexDirection','flexWrap','alignItems','alignContent','justifyContent','justifyItems','gap','columnGap','rowGap','gridTemplateColumns','gridTemplateRows'].forEach(function(key){var value=bodyStyle[key];if(value&&value!=='normal'&&value!=='none')stage.style[key]=value});
+stage.style.display=sourceDisplay==='grid'?'inline-grid':sourceDisplay==='flex'?'inline-flex':sourceDisplay==='none'?'block':sourceDisplay;
+stage.style.position='relative';stage.style.transformOrigin='center center';stage.style.flex='0 0 auto';stage.style.boxSizing='border-box';
+body.insertBefore(stage,visualNodes[0]);visualNodes.forEach(function(node){stage.appendChild(node)});
+body.style.display='flex';body.style.flexDirection='row';body.style.flexWrap='nowrap';body.style.alignItems='center';body.style.justifyContent='center';body.style.gap='0';body.style.padding='0';body.style.overflow='hidden';
+var baseWidth=0,baseHeight=0,measuring=false;
+function measure(){if(measuring)return false;measuring=true;var prior=stage.style.transform;stage.style.transform='none';stage.style.width='auto';stage.style.height='auto';var rect=stage.getBoundingClientRect(),children=Array.prototype.slice.call(stage.children),childWidth=children.reduce(function(value,node){return Math.max(value,node.offsetWidth||node.scrollWidth||0)},0),childHeight=children.reduce(function(value,node){return Math.max(value,node.offsetHeight||node.scrollHeight||0)},0),visible=body.clientWidth>1&&body.clientHeight>1&&Math.max(rect.width,childWidth)>1&&Math.max(rect.height,childHeight)>1;if(visible){baseWidth=Math.max(1,stage.scrollWidth,rect.width,childWidth);baseHeight=Math.max(1,stage.scrollHeight,rect.height,childHeight);stage.style.width=baseWidth+'px';stage.style.height=baseHeight+'px'}stage.style.transform=prior;measuring=false;return visible}
+function fit(force){if(force){baseWidth=0;baseHeight=0}if((!baseWidth||!baseHeight)&&!measure())return;var safeInset=Math.max(12,Math.min(28,Math.min(window.innerWidth,window.innerHeight)*.1)),availableWidth=Math.max(1,window.innerWidth-safeInset*2),availableHeight=Math.max(1,window.innerHeight-safeInset*2),scale=Math.max(.01,Math.min(availableWidth/baseWidth,availableHeight/baseHeight));stage.style.transform='scale('+scale+')'}
+requestAnimationFrame(function(){fit(true)});
+setTimeout(function(){fit(true)},100);setTimeout(function(){fit(true)},500);
+window.addEventListener('resize',function(){fit(true)});
+if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)});observer.observe(body)}
+})();<\/script>`;
+  }
+  function sizePreviewFrameToNaturalContent(frame) {
+    const attempt = () => {
+      const documentValue = frame.contentDocument,
+        stage = documentValue?.body?.querySelector(
+          "[data-composer-responsive-stage]",
+        ),
+        target = stage || documentValue?.body;
+      if (!target) return;
+      const width = Math.min(640, Math.max(90, target.offsetWidth || 0)),
+        height = Math.min(400, Math.max(50, target.offsetHeight || 0));
+      if (width > 1 && height > 1) {
+        frame.style.flex = "0 0 auto";
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
+      }
+    };
+    frame.addEventListener(
+      "load",
+      () => setTimeout(attempt, 550),
+      { once: true },
+    );
+  }
+  function replaceTranslatedCssDeclaration(css, entry, replacement) {
+    const escape = (value) =>
+        String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      unit = entry.unit || "";
+    if (entry.source === "translateX")
+      return css.replace(
+        new RegExp(
+          `(translateX\\(\\s*)${escape(entry.sourceValue)}(\\s*\\))`,
+          "g",
+        ),
+        `$1${replacement}${unit}$2`,
+      );
+    return css.replace(
+      new RegExp(
+        `(${escape(entry.source)}\\s*:\\s*)${escape(entry.sourceValue)}(?=\\s*(?:;|}))`,
+        "g",
+      ),
+      `$1${replacement}${unit}`,
+    );
+  }
   function refreshTranslateSimulator() {
     if (!translateSource) return;
     const { properties, signals, plan } = translatePreviewConfiguration(),
       propertyValues = Object.fromEntries(
         properties.map((entry) => [
           entry.key,
-          entry.type === "number" ? Number(entry.value) || 0 : entry.value,
+          ["button-style", "standard-style"].includes(entry.kind)
+            ? "__preserve__"
+            : entry.type === "number"
+              ? Number(entry.value) || 0
+              : entry.value,
         ]),
       );
     let html = translateSource.html,
@@ -12509,9 +12845,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         );
       else if (entry.kind === "literal")
         css = css.replaceAll(entry.source, String(entry.value));
+      else if (entry.kind === "css-declaration")
+        css = replaceTranslatedCssDeclaration(css, entry, String(entry.value));
       else if (entry.kind === "text")
         html = html.replace(entry.source, String(entry.value));
     });
+    if ((translateSource.features.toggleButtonIndexes || []).length)
+      css += translatedToggleCss(properties);
     const repeated = translateSource.features.repeatedItems,
       repeatedConfig = repeated
         ? {
@@ -12533,19 +12873,21 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           : []),
       ],
       rules = plan.behaviors,
-      bridge = `<script>(function(){var callbacks={},rules=${JSON.stringify(rules)};function signature(rule){var nodes;try{nodes=document.querySelectorAll(rule.selector)}catch(error){return 'missing'}return Array.from(nodes).map(function(node){return node.outerHTML+'|'+node.getAttribute('style')+'|'+node.className}).join('||')}function repeatSignature(key){var item=document.querySelector('[data-repeat-index="0"]');return key==='itemCount'?(item?.parentElement?.outerHTML||''):(item?.outerHTML||'')}window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-translate-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.ComposerComponent={publish:window.ComposerSignals.publish};function deliver(key,value){(callbacks[key]||[]).slice().forEach(function(callback){callback(value)})}window.addEventListener('message',function(event){var data=event.data||{};if(data.type==='composer-signal')deliver(data.key,data.value);if(data.type==='composer-translate-test-input'){var related=rules.filter(function(rule){return rule.source==='signal-input'&&rule.key===data.key}),before=related.map(signature),repeatBefore=repeatSignature(data.key);deliver(data.key,data.value);requestAnimationFrame(function(){var changed=related.filter(function(rule,index){return signature(rule)!==before[index]}).length,repeatAfter=repeatSignature(data.key);if(data.key.indexOf('__repeat')===0||data.key==='itemCount')changed+=repeatBefore!==repeatAfter?1:0;parent.postMessage({type:'composer-translate-input-result',key:data.key,value:data.value,targets:related.length+(data.key.indexOf('__repeat')===0||data.key==='itemCount'?1:0),changed:changed},'*')})}if(data.type==='composer-translate-test-outputs'){var missing=[];rules.filter(function(rule){return rule.source==='signal-output'}).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}function fire(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))}if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='input'||rule.action==='change'){if('value'in target)target.value=target.type==='range'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup')}});var repeated=document.querySelector('[data-repeat-index="0"]');if(repeated){repeated.dispatchEvent(new Event('pointerdown',{bubbles:true,cancelable:true}));repeated.dispatchEvent(new Event('pointerup',{bubbles:true,cancelable:true}))}parent.postMessage({type:'composer-translate-output-result',missing:missing},'*')}});window.addEventListener('error',function(event){parent.postMessage({type:'composer-translate-error',message:event.message},'*')})})();<\/script>`,
+      bridge = `<script>(function(){var callbacks={},rules=${JSON.stringify(rules)};function signature(rule){var nodes;try{nodes=document.querySelectorAll(rule.selector)}catch(error){return 'missing'}return Array.from(nodes).map(function(node){return node.outerHTML+'|'+node.getAttribute('style')+'|'+node.className+'|checked:'+(('checked'in node)?node.checked:'')+'|value:'+(('value'in node)?node.value:'')}).join('||')}function repeatSignature(key){var item=document.querySelector('[data-repeat-index="0"]');return key==='itemCount'?(item?.parentElement?.outerHTML||''):(item?.outerHTML||'')}window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-translate-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.ComposerComponent={publish:window.ComposerSignals.publish};function deliver(key,value){(callbacks[key]||[]).slice().forEach(function(callback){callback(value)})}window.addEventListener('message',function(event){var data=event.data||{};if(data.type==='composer-signal')deliver(data.key,data.value);if(data.type==='composer-translate-test-input'){var related=rules.filter(function(rule){return rule.source==='signal-input'&&rule.key===data.key}),before=related.map(signature),repeatBefore=repeatSignature(data.key);deliver(data.key,data.value);requestAnimationFrame(function(){var changed=related.filter(function(rule,index){return signature(rule)!==before[index]}).length,repeatAfter=repeatSignature(data.key);if(data.key.indexOf('__repeat')===0||data.key==='itemCount')changed+=repeatBefore!==repeatAfter?1:0;parent.postMessage({type:'composer-translate-input-result',key:data.key,value:data.value,targets:related.length+(data.key.indexOf('__repeat')===0||data.key==='itemCount'?1:0),changed:changed},'*')})}if(data.type==='composer-translate-test-outputs'){var missing=[];rules.filter(function(rule){return rule.source==='signal-output'}).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}function fire(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))}if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='input'||rule.action==='change'){if('value'in target)target.value=target.type==='range'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup')}});var repeated=document.querySelector('[data-repeat-index="0"]');if(repeated){repeated.dispatchEvent(new Event('pointerdown',{bubbles:true,cancelable:true}));repeated.dispatchEvent(new Event('pointerup',{bubbles:true,cancelable:true}))}parent.postMessage({type:'composer-translate-output-result',missing:missing},'*')}});window.addEventListener('error',function(event){parent.postMessage({type:'composer-translate-error',message:event.message},'*')})})();<\/script>`,
       stateCss = customStateCss(plan.stateStyles);
     let source =
         `<style>${css}\n${stateCss}</style>` +
         bridge +
         html +
         `<script>${translateSource.javascript}<\/script>` +
+        translatedResponsiveFitRuntime() +
         customRepeatedFrameRuntime(repeatedConfig) +
         customStateRuntime(plan.stateStyles) +
         customBehaviorRuntime(rules, propertyValues);
     Object.entries(propertyValues).forEach(([key, value]) => {
       source = source.replaceAll(`{{${key}}}`, String(value ?? ""));
     });
+    sizePreviewFrameToNaturalContent($("translate-live-preview"));
     $("translate-live-preview").srcdoc = safeDoc(
       `<style>html,body{margin:0;width:100%;height:100%;box-sizing:border-box;background:#182126;color:#fff}body{padding:10px}body>*{box-sizing:border-box}</style>${source}`,
       "",
@@ -12622,7 +12964,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         if (!duplicate)
           signals.push(signal);
       },
-      buttonCount = detected.buttonCount || 0;
+      buttonCount = detected.buttonCount || 0,
+      hasVisibleText = (detected.textKeys || []).length > 0;
     preset.signals.forEach(addSignal);
     if (buttonCount) {
       ["press", "selected", "label", "name"].forEach((key) => {
@@ -12648,13 +12991,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           suffix:
             buttonCount === 1 ? "Selected" : `Button${index + 1}.Selected`,
         });
-        addSignal({
-          key: `name${suffix}`,
-          name: `Name${title}`,
-          type: "serial",
-          direction: "input",
-          suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name`,
-        });
+        if (hasVisibleText)
+          addSignal({
+            key: `name${suffix}`,
+            name: `Name${title}`,
+            type: "serial",
+            direction: "input",
+            suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name`,
+          });
       }
     }
     (detected.textKeys || []).forEach((key, index) =>
@@ -12884,8 +13228,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       if (error.message !== "cancelled") setStatus(error.message);
     }
   }
-  $("translate-snippet").onclick = openTranslateImport;
-  $("translate-snippet-menu").onclick = openTranslateImport;
   $("translate-snippet-file").onchange = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -12913,20 +13255,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         'button,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value',
       propertyRules = [
         ["textSize", textSelector, "fontSize"],
-        ...(detected.preserveAuthoredButtonAppearance
-          ? []
-          : [
-              ["textColor", textSelector, "color"],
-              ["faceColor", buttonSelector, "backgroundColor"],
-              ["borderColor", buttonSelector, "borderColor"],
-              [
-                "glowStrength",
-                buttonSelector,
-                "glowStrength",
-                "{{glowColor}}",
-              ],
-              ["cornerRadius", buttonSelector, "borderRadius"],
-            ]),
+        ["textColor", textSelector, "color"],
+        ["faceColor", buttonSelector, "backgroundColor"],
+        ["borderColor", buttonSelector, "borderColor"],
+        ["glowStrength", buttonSelector, "glowStrength", "{{glowColor}}"],
+        ["cornerRadius", buttonSelector, "borderRadius"],
       ];
     propertyRules.forEach(([key, selector, action, parameter]) =>
       add({
@@ -12959,8 +13292,20 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         target = `[data-translated-button="${index}"]`,
         label = `${target} [data-translated-text],${target}[data-translated-text],${target} [data-custom-text],${target} .label,${target} span`;
       add({ name: `Button ${index + 1} Press`, source: "signal-output", key: `press${suffix}`, selector: target, action: "press" });
-      add({ name: `Button ${index + 1} Selected`, source: "signal-input", key: `selected${suffix}`, selector: target, action: "selectedClass" });
-      add({ name: `Button ${index + 1} Name`, source: "signal-input", key: `name${suffix}`, selector: label, action: "text" });
+      add({
+        name: `Button ${index + 1} Selected`,
+        source: "signal-input",
+        key: `selected${suffix}`,
+        selector: target,
+        action: (detected.toggleButtonIndexes || []).includes(index)
+          ? "checkedState"
+          : "selectedClass",
+      });
+      if (
+        (detected.textKeys || []).length &&
+        !(detected.toggleButtonIndexes || []).includes(index)
+      )
+        add({ name: `Button ${index + 1} Name`, source: "signal-input", key: `name${suffix}`, selector: label, action: "text" });
     }
     (detected.numericTargets || []).forEach((target, index) => {
       const suffix = detected.numericCount === 1 ? "" : String(index + 1);
@@ -13036,21 +13381,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             : {}),
         }),
       );
-    const token = (key, fallback) =>
-        propertyKeys.has(key) ? `{{${key}}}` : fallback,
-      stateStyles =
-        (detected.buttonCount || 0) &&
-        !detected.preserveAuthoredButtonAppearance
-        ? {
-            selector: buttonSelector,
-            states: {
-              standard: { text: "", asset: "", assetData: "", background: token("faceColor", "#263b3c"), color: token("textColor", "#ffffff"), border: token("borderColor", "#7ba7a3"), glow: token("glowColor", "#04dcb9"), opacity: "100", scale: "100" },
-              pressed: { text: "", asset: "", assetData: "", background: token("faceColor", "#1b2b2c"), color: token("textColor", "#ffffff"), border: token("borderColor", "#04dcb9"), glow: token("glowColor", "#04dcb9"), opacity: "100", scale: "96" },
-              selected: { text: "", asset: "", assetData: "", background: token("selectedFaceColor", "#078f7d"), color: token("selectedTextColor", "#ffffff"), border: token("selectedBorderColor", "#04dcb9"), glow: token("selectedGlowColor", "#04dcb9"), opacity: "100", scale: "100" },
-              disabled: { text: "", asset: "", assetData: "", background: "#303838", color: "#888888", border: "#555555", glow: "#000000", opacity: "55", scale: "100" },
-            },
-          }
-        : null;
+    // Imported source owns its authored Standard/Pressed/Selected states. Merely
+    // exposing an appearance value as editable must not install Composer's
+    // generic state sheet, whose !important declarations would mask authored
+    // class transitions (for example square-to-circle morphs). Explicit
+    // property rules can still override individual values after placement.
+    const stateStyles = null;
     return { behaviors, stateStyles };
   }
   $("translate-continue").onclick = () => {
@@ -13069,6 +13405,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         );
       else if (entry.kind === "literal")
         css = css.replaceAll(entry.source, `{{${entry.key}}}`);
+      else if (entry.kind === "css-declaration")
+        css = replaceTranslatedCssDeclaration(css, entry, `{{${entry.key}}}`);
       else if (entry.kind === "text")
         html = html.replace(entry.source, `{{${entry.key}}}`);
     });
@@ -13088,9 +13426,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       css += "\nhtml,body{background:transparent!important;}";
       if (!preserveAuthoredButtonAppearance)
         css += `\n${hasShadowSize ? `:root{--translated-shadow-size:{{shadowSize}}px;}` : ""}\nbutton,[role="button"],.btn{background:{{faceColor}};color:{{textColor}};border-color:{{borderColor}};border-radius:{{cornerRadius}}px;}\nbutton.active,[role="button"].active,.btn.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};}\n${hasShadowSize ? `button,[role="button"],.btn{box-shadow:var(--translated-shadow-size) var(--translated-shadow-size) calc(var(--translated-shadow-size) * 2) var(--shadow-dark,#1a1c21),calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * -1) calc(var(--translated-shadow-size) * 2) var(--shadow-light,#3e444f);}` : ""}\n${hasGlowStrength ? `button,[role="button"],.btn{--translated-glow:{{glowColor}};}button.active,[role="button"].active,.btn.active{--translated-glow:{{selectedGlowColor}};box-shadow:inset 4px 4px 10px var(--shadow-dark,#1a1c21),inset -4px -4px 10px var(--shadow-light,#3e444f),0 0 calc({{glowStrength}}px * 2) var(--translated-glow);}` : ""}`;
-      css +=
-        '\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}';
+      if (properties.some((entry) => entry.key === "iconSize"))
+        css +=
+          '\nbutton svg,button img,[role="button"] svg,[role="button"] img,.btn svg,.btn img{width:{{iconSize}}px;height:{{iconSize}}px;}';
     }
+    if ((detected.toggleButtonIndexes || []).length) {
+      css += translatedToggleCss(properties, true);
+    }
+    javascript += translatedResponsiveFitRuntime()
+      .replace(/^<script>/, "\n")
+      .replace(/<\/script>$/, "");
     if (properties.some((entry) => entry.key === "textSize"))
       css +=
         "\nbutton,input,textarea,[data-translated-text],[data-custom-text],.label,.text,.value{font-size:{{textSize}}px;}";
@@ -13125,8 +13470,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         key: entry.key,
         name: entry.label,
         type: entry.type,
-        defaultValue:
-          entry.type === "number" ? parseFloat(entry.value) || 0 : entry.value,
+        defaultValue: ["button-style", "standard-style"].includes(entry.kind)
+          ? entry.value
+          : entry.type === "number"
+            ? parseFloat(entry.value) || 0
+            : entry.value,
+        ...(["button-style", "standard-style"].includes(entry.kind)
+          ? {
+              preserveDefault: true,
+              suggestedValue: entry.value,
+            }
+          : {}),
       }),
     );
     $("custom-signal-list").innerHTML = "";
@@ -13149,8 +13503,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         event,
         effect,
       }));
+    setCustomWizardStep(0);
     $("custom-behavior-list").innerHTML = "";
     generatedPlan.behaviors.forEach(addCustomBehaviorRow);
+    const translatedSource = `${html}\n${css}\n${javascript}`,
+      generatedPropertyKeys = new Set(
+        generatedPlan.behaviors
+          .filter((behavior) => behavior.source === "property")
+          .map((behavior) => behavior.key),
+      );
+    [...$("custom-property-list").children].forEach((row) => {
+      const key = row.querySelector('[data-field="key"]')?.value.trim();
+      if (
+        key &&
+        !generatedPropertyKeys.has(key) &&
+        !translatedSource.includes(`{{${key}}}`)
+      )
+        row.remove();
+    });
     setCustomStateStyles(generatedPlan.stateStyles);
     refreshCustomPreview();
     if (translateSource.features.repeatedItems) {
@@ -14021,8 +14391,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       add("viewport-units", "100vw/100vh can escape the component frame and produce Editor/Preview sizing differences.", { repairable: true });
     if (/(?:html|body|html\s*,\s*body)\s*\{[^}]*\b(?:width|height)\s*:\s*\d+(?:\.\d+)?px/i.test(css))
       add("fixed-root-size", "The imported document root uses a fixed pixel size. Normalize it to the component frame while preserving internal element sizing.", { repairable: true });
-    if (/(^|[},\s])(?:html|body|:root)\s*[{,]/im.test(css))
-      add("global-css", "CSS targets html, body, or :root. Keep those rules component-local whenever possible.");
     if (/position\s*:\s*fixed/i.test(css))
       add("fixed-position", "position: fixed is relative to the runtime viewport rather than the component boundary.", { repairable: true });
     const insetDeclarations = [...css.matchAll(/\binset\s*:\s*([^;}{]+)(?=[;}])/gi)],
@@ -14054,22 +14422,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const parsed = new DOMParser().parseFromString(html, "text/html"),
       ids = [...parsed.querySelectorAll("[id]")].map((element) => element.id),
       duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
-    if (ids.length) {
-      const referencedIds = parsed.querySelector(
-          "[for],[href^='#'],[aria-activedescendant],[aria-controls],[aria-describedby],[aria-details],[aria-errormessage],[aria-flowto],[aria-labelledby],[aria-owns]",
-        ),
-        svgIds = parsed.querySelector("svg [id]"),
-        cssIdReferences = /url\(\s*["']?#/i.test(css);
-      add(
-        "global-ids",
-        `${new Set(ids).size} element ID${new Set(ids).size === 1 ? "" : "s"} will be repeated when multiple component instances are mounted.${referencedIds || svgIds || cssIdReferences ? " Referenced or SVG IDs require manual review." : " Convert them to instance-local data selectors."}`,
-        { repairable: !(referencedIds || svgIds || cssIdReferences) },
-      );
-    }
     if (duplicateIds.length)
       add("duplicate-ids", `Duplicate element IDs: ${duplicateIds.join(", ")}.`, { severity: "error" });
-    if (/\bdocument\.(?:getElementById|querySelector|querySelectorAll)\s*\(/.test(javascript))
-      add("document-selectors", "JavaScript uses document-wide selectors. Use the supplied component root for instance-local lookup.", { repairable: true });
     if (/\b(?:parent|top)\.document\b/.test(javascript))
       add("parent-document", "JavaScript reaches outside the component iframe through parent/top.document and can alter other widgets or the editor.", { severity: "error", repairable: true });
     const listenerSignatures = [
@@ -14186,48 +14540,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           (result, [from, to]) => result.replace(new RegExp(`\\b${from}\\b`, "gi"), to),
           value,
         );
-    if (selected.has("global-ids")) {
-      const html = $("custom-source-html").value,
-        parsed = new DOMParser().parseFromString(html, "text/html"),
-        ids = [...new Set([...parsed.querySelectorAll("[id]")].map((element) => element.id).filter(Boolean))],
-        escapePattern = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      let repairedHtml = html,
-        repairedCss = $("custom-source-css").value,
-        repairedJavascript = $("custom-source-javascript").value;
-      ids.forEach((id) => {
-        const escaped = escapePattern(id),
-          dataSelector = `[data-composer-id="${id.replace(/"/g, "&quot;")}"]`;
-        repairedHtml = repairedHtml.replace(
-          new RegExp(`\\bid\\s*=\\s*(["'])${escaped}\\1`, "g"),
-          `data-composer-id="${id.replace(/"/g, "&quot;")}"`,
-        );
-        repairedCss = repairedCss.replace(
-          new RegExp(`#${escaped}(?=[\\s.#:[>+~,{]|$)`, "g"),
-          dataSelector,
-        );
-        repairedJavascript = repairedJavascript
-          .replace(
-            new RegExp(`\\.getElementById\\s*\\(\\s*(["'])${escaped}\\1\\s*\\)`, "g"),
-            `.querySelector(${JSON.stringify(dataSelector)})`,
-          )
-          .replace(
-            new RegExp(`(["'])#${escaped}\\1`, "g"),
-            JSON.stringify(dataSelector),
-          );
-      });
-      $("custom-source-html").value = repairedHtml;
-      $("custom-source-css").value = repairedCss;
-      $("custom-source-javascript").value = repairedJavascript;
-    }
     if (selected.has("mouse-events") || selected.has("touch-events")) {
       $("custom-source-html").value = replaceEvents($("custom-source-html").value);
       $("custom-source-javascript").value = replaceEvents($("custom-source-javascript").value);
     }
-    if (selected.has("document-selectors"))
-      $("custom-source-javascript").value = $("custom-source-javascript").value
-        .replace(/\bdocument\.querySelectorAll\s*\(/g, "root.querySelectorAll(")
-        .replace(/\bdocument\.querySelector\s*\(/g, "root.querySelector(")
-        .replace(/\bdocument\.getElementById\s*\(\s*(["'])([^"']+)\1\s*\)/g, (_, quote, id) => `root.querySelector("#${id}")`);
     if (selected.has("parent-document"))
       $("custom-source-javascript").value = $("custom-source-javascript").value
         .replace(/\bparent\.document\b/g, "root")
@@ -14299,7 +14615,7 @@ if(!Object.hasOwn){Object.hasOwn=function(object,key){return Object.prototype.ha
           name: "Glow-safe component inset",
         });
       if (!/composer-glow-safe-layout/.test($("custom-source-css").value))
-        $("custom-source-css").value += "\n/* composer-glow-safe-layout */\nhtml,body{box-sizing:border-box;overflow:visible!important;}";
+        $("custom-source-css").value += "\n/* composer-glow-safe-layout */\nhtml,body{box-sizing:border-box;overflow:hidden!important;}";
     }
     if (selected.has("local-assets")) {
       const references = customLocalDependencyReferences(
@@ -14356,6 +14672,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function addCustomPropertyRow(property = {}) {
     const row = document.createElement("div");
     row.className = "custom-property-row";
+    row.dataset.preserveDefault = String(!!property.preserveDefault);
+    row.dataset.suggestedValue = String(property.suggestedValue ?? property.defaultValue ?? "");
     row.innerHTML =
       '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option><option>checkbox</option><option>asset</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
     row.querySelector('[data-field="key"]').value = property.key || "";
@@ -14450,13 +14768,21 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           name: value("name") || key,
           type,
           defaultValue:
-            type === "number"
+            row.dataset.preserveDefault === "true"
+              ? "__preserve__"
+              : type === "number"
               ? Number(rawDefault) || 0
               : type === "checkbox"
                 ? /^(true|1|yes|on)$/i.test(rawDefault)
                 : type === "select"
                   ? rawDefault.split(",")[0] || ""
                   : rawDefault,
+          ...(row.dataset.preserveDefault === "true"
+            ? {
+                preserveDefault: true,
+                suggestedValue: row.dataset.suggestedValue || rawDefault,
+              }
+            : {}),
           ...(type === "select"
             ? {
                 options: rawDefault
@@ -14530,6 +14856,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       ["height", "Height (%)"],
       ["visibility", "Visibility"],
       ["selectedClass", "Selected class"],
+      ["checkedState", "Checked / toggle state"],
       ["disabledState", "Disabled state"],
       ["value", "Form value"],
       ["cssProperty", "Custom CSS property"],
@@ -14722,6 +15049,495 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (entry) => entry.key === signal.key,
     );
     if (!existing) addCustomSignalRow(signal);
+  }
+  function customCssRuleInventory(css = "") {
+    const rules = [], tokens = [],
+      maskedCss = String(css).replace(/\{\{[A-Za-z_$][\w$]*\}\}/g, (token) => {
+        const marker = `__COMPOSER_PROPERTY_TOKEN_${tokens.length}__`;
+        tokens.push(token);
+        return marker;
+      }),
+      restoreTokens = (value) =>
+        String(value).replace(/__COMPOSER_PROPERTY_TOKEN_(\d+)__/g, (_, index) => tokens[Number(index)] || "");
+    for (const match of maskedCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const declarations = Object.fromEntries(
+        [...match[2].matchAll(/([\w-]+)\s*:\s*([^;]+);?/g)].map((entry) => [
+          entry[1].trim().toLowerCase(),
+          restoreTokens(entry[2].trim()),
+        ]),
+      );
+      match[1]
+        .split(",")
+        .map((selector) => selector.trim())
+        .filter(Boolean)
+        .forEach((selector) => rules.push({ selector: restoreTokens(selector), declarations }));
+    }
+    return rules;
+  }
+  function customCssNumber(value, fallback = 0) {
+    const number = Number.parseFloat(String(value || ""));
+    return Number.isFinite(number) ? number : fallback;
+  }
+  function customCssColor(value, fallback) {
+    const match = String(value || "").match(/#[\da-f]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)/i);
+    return match?.[0] || fallback;
+  }
+  function detectedCustomVisualParts() {
+    const html = String($("custom-source-html").value || ""),
+      rules = customCssRuleInventory($("custom-source-css").value),
+      checkboxToggle = /<input\b[^>]*type\s*=\s*["']?checkbox/i.test(html),
+      track = rules.find((rule) => /(?:^|[\s>+~])\.slider(?=$|[\s.:>+~#\[])/.test(rule.selector) && !/checked|::?before|::?after/.test(rule.selector)),
+      selectedTrack = rules.find((rule) => /checked/.test(rule.selector) && /\.slider/.test(rule.selector) && !/::?before|::?after/.test(rule.selector)),
+      knob = rules.find((rule) => /\.slider::?before/.test(rule.selector) && !/checked/.test(rule.selector)),
+      selectedKnob = rules.find((rule) => /checked/.test(rule.selector) && /\.slider::?before/.test(rule.selector)),
+      shell = rules.find((rule) => /(?:^|[\s>+~])\.switch(?=$|[\s.:>+~#\[])/.test(rule.selector));
+    if (!checkboxToggle || !track || !knob) return [];
+    const trackSelector = track.selector,
+      knobSelector = knob.selector.replace(/:before\b/, "::before"),
+      checkedTrackSelector = selectedTrack?.selector || `input:checked + ${trackSelector}`,
+      checkedKnobSelector = (selectedKnob?.selector || `input:checked + ${knobSelector}`).replace(/:before\b/, "::before"),
+      trackColor = customCssColor(track.declarations["background-color"] || track.declarations.background, "#cccccc"),
+      selectedColor = customCssColor(selectedTrack?.declarations["background-color"] || selectedTrack?.declarations.background, "#4caf50"),
+      knobColor = customCssColor(knob.declarations["background-color"] || knob.declarations.background, "#ffffff"),
+      glowColor = customCssColor(
+        rules.find((rule) => /focus/.test(rule.selector) && /\.slider/.test(rule.selector))?.declarations["box-shadow"],
+        selectedColor,
+      );
+    return [
+      {
+        title: "Track",
+        selector: trackSelector,
+        options: [
+          { key: "trackColor", label: "Standard color", type: "color", value: trackColor, selector: trackSelector, action: "backgroundColor" },
+          { key: "selectedTrackColor", label: "Selected color", type: "color", value: selectedColor, selector: checkedTrackSelector, action: "backgroundColor" },
+          { key: "glowColor", label: "Glow color", type: "color", value: glowColor, selector: trackSelector, action: "cssVariable", parameter: "--composer-glow-color" },
+          { key: "glowStrength", label: "Glow strength", type: "number", value: 6, selector: trackSelector, action: "glowStrength", parameter: "{{glowColor}}" },
+        ],
+      },
+      {
+        title: "Knob",
+        selector: knobSelector,
+        options: [
+          { key: "knobColor", label: "Standard color", type: "color", value: knobColor, selector: knobSelector, action: "backgroundColor" },
+          { key: "selectedKnobColor", label: "Selected color", type: "color", value: knobColor, selector: checkedKnobSelector, action: "backgroundColor" },
+          { key: "knobSize", label: "Size", type: "number", value: customCssNumber(knob.declarations.width || knob.declarations.height, 26), selector: knobSelector, action: "cssProperty", parameter: "width", pairedParameter: "height", unit: "px" },
+        ],
+      },
+      {
+        title: "Sizing",
+        selector: shell?.selector || ".switch",
+        options: [
+          { key: "trackWidth", label: "Track width", type: "number", value: customCssNumber(shell?.declarations.width, 60), selector: shell?.selector || ".switch", action: "cssProperty", parameter: "width", unit: "px" },
+          { key: "trackHeight", label: "Track height", type: "number", value: customCssNumber(shell?.declarations.height, 32), selector: shell?.selector || ".switch", action: "cssProperty", parameter: "height", unit: "px" },
+          { key: "cornerRadius", label: "Corner radius", type: "number", value: customCssNumber(track.declarations["border-radius"], 32), selector: trackSelector, action: "borderRadius" },
+        ],
+      },
+    ];
+  }
+  function customDefinitionRow(hostId, key) {
+    return [...$(hostId).children].find(
+      (row) => row.querySelector('[data-field="key"]')?.value === key,
+    );
+  }
+  function applyCustomVisualOption(option, enabled, value) {
+    const existingProperty = customDefinitionRow("custom-property-list", option.key);
+    if (!enabled) {
+      removeCustomBehaviorReferences("property", option.key);
+      existingProperty?.remove();
+      refreshCustomPreview();
+      return;
+    }
+    if (!existingProperty)
+      addCustomPropertyRow({
+        key: option.key,
+        name: option.label,
+        type: option.type,
+        defaultValue: value,
+      });
+    else existingProperty.querySelector('[data-field="defaultValue"]').value = value;
+    const addRule = (parameter = option.parameter) => {
+      const duplicate = collectCustomBehaviors().some(
+        (rule) =>
+          rule.source === "property" &&
+          rule.key === option.key &&
+          rule.selector === option.selector &&
+          rule.action === option.action &&
+          (rule.parameter || "") === (parameter || ""),
+      );
+      if (!duplicate)
+        addCustomBehaviorRow({
+          source: "property",
+          key: option.key,
+          selector: option.selector,
+          action: option.action,
+          ...(parameter ? { parameter } : {}),
+          ...(option.unit
+            ? {
+                mapping: {
+                  enabled: true,
+                  inputMin: 0,
+                  inputMax: 500,
+                  outputMin: 0,
+                  outputMax: 500,
+                  unit: option.unit,
+                },
+              }
+            : {}),
+        });
+    };
+    addRule();
+    if (option.pairedParameter) addRule(option.pairedParameter);
+    refreshCustomPreview();
+  }
+  function renderCustomVisualParts() {
+    const parts = detectedCustomVisualParts(),
+      panel = $("custom-visual-parts"),
+      list = $("custom-visual-parts-list");
+    panel.hidden = !parts.length;
+    list.innerHTML = "";
+    parts.forEach((part) => {
+      const card = document.createElement("section");
+      card.className = "custom-visual-part-card";
+      card.innerHTML = `<strong>${part.title}</strong><small>${part.selector}</small><div class="custom-visual-part-options"></div>`;
+      const options = card.querySelector(".custom-visual-part-options");
+      part.options.forEach((option) => {
+        const label = document.createElement("label"),
+          active = !!customDefinitionRow("custom-property-list", option.key);
+        label.className = "custom-visual-part-option";
+        label.innerHTML = `<input type="checkbox"${active ? " checked" : ""}><span>${option.label}</span><input data-value type="${option.type === "color" ? "color" : "number"}" value="${String(customDefinitionRow("custom-property-list", option.key)?.querySelector('[data-field="defaultValue"]')?.value ?? option.value).replace(/"/g, "&quot;")}">`;
+        const checkbox = label.querySelector('input[type="checkbox"]'),
+          input = label.querySelector("[data-value]");
+        input.disabled = !checkbox.checked;
+        checkbox.onchange = () => {
+          input.disabled = !checkbox.checked;
+          applyCustomVisualOption(option, checkbox.checked, input.value);
+        };
+        input.oninput = () => {
+          if (checkbox.checked)
+            applyCustomVisualOption(option, true, input.value);
+        };
+        options.appendChild(label);
+      });
+      list.appendChild(card);
+    });
+  }
+  const customScopedPropertyTypes = [
+    { value: "backgroundColor", label: "Background color", type: "color", defaultValue: "#263b3c", css: "background-color", help: "Changes the selected part's background color." },
+    { value: "textColor", label: "Text / icon color", type: "color", defaultValue: "#ffffff", css: "color", help: "Changes text or font-based icon color." },
+    { value: "borderColor", label: "Border color", type: "color", defaultValue: "#7ba7a3", css: "border-color", help: "Changes the selected part's border color." },
+    { value: "glowColor", label: "Glow color", type: "color", defaultValue: "#00e5c3", help: "Adds a restrained six-pixel shape-following glow by default without replacing the component's background." },
+    { value: "glowStrength", label: "Glow strength", type: "number", defaultValue: 6, help: "Adds an editable glow radius in pixels. New glow starts at a restrained six pixels." },
+    { value: "width", label: "Width", type: "number", defaultValue: 100, css: "width", unit: "px", help: "Changes the selected part's width in pixels." },
+    { value: "height", label: "Height", type: "number", defaultValue: 50, css: "height", unit: "px", help: "Changes the selected part's height in pixels." },
+    { value: "fontSize", label: "Text / icon size", type: "number", defaultValue: 18, css: "font-size", unit: "px", help: "Changes font-based text and icon size." },
+    { value: "cornerRadius", label: "Corner radius", type: "number", defaultValue: 8, css: "border-radius", unit: "px", help: "Changes the selected part's corner radius." },
+    { value: "opacity", label: "Opacity", type: "number", defaultValue: 100, css: "opacity", transform: "percent", help: "Changes opacity from 0 to 100 percent." },
+    { value: "text", label: "Displayed text", type: "text", defaultValue: "Text", javascript: "text", help: "Replaces the selected part's displayed text." },
+    { value: "asset", label: "Image / asset", type: "asset", defaultValue: "", css: "background-image", transform: "asset", help: "Uses a Composer asset as the selected part's image." },
+  ];
+  const customScopedSignalActions = {
+    "digital:input": [
+      ["selected", "Selected feedback", "Sets checked/Selected state."],
+      ["visibility", "Visibility feedback", "Shows or hides the selected part."],
+      ["disabled", "Disabled feedback", "Enables or disables interaction."],
+    ],
+    "digital:output": [
+      ["press", "Press", "Publishes true while pressed and false on release."],
+      ["release", "Release", "Publishes a pulse when released."],
+      ["held", "Held", "Publishes a pulse after a three-second hold."],
+    ],
+    "analog:input": [
+      ["value", "Value / feedback", "Applies incoming 0–65535 feedback to the control value."],
+      ["glowStrength", "Glow strength", "Maps 0–65535 to a 0–30 pixel glow."],
+      ["width", "Width", "Maps 0–65535 to 0–100 percent width."],
+      ["height", "Height", "Maps 0–65535 to 0–100 percent height."],
+      ["opacity", "Opacity", "Maps 0–65535 to 0–100 percent opacity."],
+      ["speed", "Animation speed", "Maps 0–65535 from slowest to fastest and directly scales authored CSS transitions and animations."],
+      ["itemCount", "Number of items", "Sets the repeated item-count value."],
+    ],
+    "analog:output": [["valueSet", "Value Set", "Publishes the selected numeric value."]],
+    "serial:input": [
+      ["text", "Text / name", "Replaces the selected part's displayed text."],
+      ["asset", "Image / asset source", "Applies incoming image data or URL."],
+      ["url", "URL / media source", "Applies an incoming URL to a source-capable element."],
+    ],
+    "serial:output": [["text", "Text / value", "Publishes text entered or selected by the user."]],
+  };
+  function customScopeTargets(includePseudo = true) {
+    const targets = [], seen = new Set(),
+      add = (label, selector) => {
+        const value = String(selector || "").trim();
+        if (!value || seen.has(value) || (!includePseudo && /::?(?:before|after)\b/i.test(value))) return;
+        seen.add(value);
+        targets.push({ label, selector: value });
+      },
+      parsed = new DOMParser().parseFromString($("custom-source-html").value, "text/html"),
+      root = parsed.body.firstElementChild;
+    if (root) {
+      const rootSelector = root.id
+        ? `#${CSS.escape(root.id)}`
+        : root.classList.length
+          ? `.${CSS.escape(root.classList[0])}`
+          : root.tagName.toLowerCase();
+      add("Whole component", rootSelector);
+    }
+    detectedCustomVisualParts().forEach((part) => {
+      add(part.title, part.selector);
+      part.options.forEach((option) => {
+        const selected = /selected/i.test(option.label) || /checked/.test(option.selector);
+        add(`${selected ? "Selected " : ""}${part.title}`, option.selector);
+      });
+    });
+    parsed.body.querySelectorAll("[id],[class],button,input,label,span,img,svg").forEach((element) => {
+      const selector = element.id
+        ? `#${CSS.escape(element.id)}`
+        : element.classList.length
+          ? `.${CSS.escape(element.classList[0])}`
+          : element.tagName.toLowerCase();
+      const description =
+        element.getAttribute("aria-label") ||
+        element.textContent?.trim().slice(0, 30) ||
+        element.id ||
+        element.classList[0] ||
+        element.tagName.toLowerCase();
+      add(description, selector);
+    });
+    if (!targets.length) add("Whole component", "body > *:first-child");
+    return targets;
+  }
+  function fillCustomScopeTarget(select, includePseudo = true) {
+    const previous = select.value;
+    select.innerHTML = customScopeTargets(includePseudo)
+      .map(({ label, selector }) => `<option value="${translateEscape(selector)}">${translateEscape(label)} — ${translateEscape(selector)}</option>`)
+      .join("");
+    if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  }
+  function preferredCustomPropertyTarget(definition, select) {
+    const options = [...select.options],
+      visualParts = detectedCustomVisualParts(),
+      trackSelector = visualParts.find((part) => part.title === "Track")?.selector,
+      byValue = (value) => options.find((option) => option.value === value),
+      byLabel = (pattern) => options.find((option) => pattern.test(option.textContent || ""));
+    if (
+      ["backgroundColor", "borderColor", "glowColor", "glowStrength", "cornerRadius"].includes(
+        definition.value,
+      )
+    )
+      return byValue(trackSelector) || byLabel(/^(?:track|button|control surface)\b/i) || options[0];
+    if (["text", "textColor", "fontSize"].includes(definition.value))
+      return byLabel(/(?:text|label|name|title|caption)/i) || options[0];
+    if (definition.value === "asset")
+      return byLabel(/(?:icon|image|graphic|track|button)/i) || options[0];
+    return byLabel(/^whole component\b/i) || options[0];
+  }
+  function scopedCustomKey(value, fallback = "property") {
+    const key = normalizeCustomKey(String(value || "").replace(/^[^A-Za-z_$]+/, ""));
+    return key || fallback;
+  }
+  function upsertCustomManagedSource(language, id, content) {
+    const editor = $(`custom-source-${language}`),
+      safeId = String(id).replace(/[^A-Za-z0-9_-]/g, "-"),
+      start = `/* COMPOSER MANAGED ${safeId} START */`,
+      end = `/* COMPOSER MANAGED ${safeId} END */`,
+      escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      block = `${start}\n${content.trim()}\n${end}`,
+      pattern = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}`, "g");
+    editor.value = pattern.test(editor.value)
+      ? editor.value.replace(pattern, block)
+      : `${editor.value.trimEnd()}\n\n${block}\n`;
+  }
+  function customScopedPropertyCss(definition, selector, key) {
+    if (definition.value === "glowColor")
+      return `${selector} { --composer-scope-glow-color: {{${key}}}; filter: drop-shadow(0 0 var(--composer-scope-glow-strength, 6px) var(--composer-scope-glow-color)); }`;
+    if (definition.value === "glowStrength")
+      return `${selector} { --composer-scope-glow-strength: {{${key}}}px; filter: drop-shadow(0 0 var(--composer-scope-glow-strength) var(--composer-scope-glow-color, #00e5c3)); }`;
+    if (definition.transform === "asset")
+      return `${selector} { background-image: url("{{${key}Data}}"); background-repeat: no-repeat; background-position: center; background-size: contain; }`;
+    const value = definition.transform === "percent"
+      ? `calc({{${key}}} / 100)`
+      : `{{${key}}}${definition.unit || ""}`;
+    return `${selector} { ${definition.css}: ${value}; }`;
+  }
+  function customScopedPropertyJavascript(definition, selector, key) {
+    if (definition.javascript === "text")
+      return `window.addEventListener('DOMContentLoaded',function(){var target=document.querySelector(${JSON.stringify(selector)});if(target)target.textContent={{${key}Json}};},{once:true});`;
+    return "";
+  }
+  function customAnimationSpeedRuntimeBody() {
+    return "var durationScale=4-(ratio*3.8),nodes=[target].concat(Array.prototype.slice.call(target.querySelectorAll('*'))),scaleDurations=function(value){return String(value||'0s').split(',').map(function(part){var match=String(part).trim().match(/^([0-9.]+)(ms|s)$/i);if(!match)return part;var milliseconds=Number(match[1])*(match[2].toLowerCase()==='s'?1000:1);return milliseconds<=0?'0ms':Math.max(10,Math.round(milliseconds*durationScale))+'ms'}).join(', ')};target.style.setProperty('--speed',String(ratio*100));target.style.setProperty('--animation-speed',String(ratio*100));target.style.setProperty('--composer-speed-ratio',String(ratio));nodes.forEach(function(node){var computed=window.getComputedStyle(node),transitionBase=node.getAttribute('data-composer-transition-duration')||computed.transitionDuration,animationBase=node.getAttribute('data-composer-animation-duration')||computed.animationDuration;if(!node.hasAttribute('data-composer-transition-duration'))node.setAttribute('data-composer-transition-duration',transitionBase);if(!node.hasAttribute('data-composer-animation-duration'))node.setAttribute('data-composer-animation-duration',animationBase);node.style.transitionDuration=scaleDurations(transitionBase);node.style.animationDuration=scaleDurations(animationBase)});";
+  }
+  function upgradeCustomAnimationSpeedRuntime(source) {
+    const oldRuntime = "target.style.setProperty('--speed',String(ratio*100));target.style.setProperty('--animation-speed',String(ratio*100));";
+    return String(source || "").split(oldRuntime).join(customAnimationSpeedRuntimeBody());
+  }
+  function upgradeCustomFrameOverflow(source) {
+    return String(source || "").replace(
+      /(\/\*\s*composer-glow-safe-layout\s*\*\/\s*html\s*,\s*body\s*\{[^{}]*?overflow\s*:\s*)visible(\s*!important\s*;?[^{}]*\})/gi,
+      "$1hidden$2",
+    );
+  }
+  function upgradeCustomResponsiveFitRuntime(source) {
+    const value = String(source || "");
+    if (!value.includes("data-composer-responsive-stage")) return value;
+    const replacement = translatedResponsiveFitRuntime()
+      .replace(/^<script>/i, "")
+      .replace(/<\/script>$/i, "");
+    return value.replace(
+      /\(function\(\)\{\s*var runtimeDocument=window\.document,body=runtimeDocument\.body;[\s\S]*?window\.addEventListener\('resize',fit\);\s*\}\)\(\);/i,
+      replacement,
+    );
+  }
+  function refreshCustomPropertyCreator() {
+    const select = $("custom-property-capability"), current = select.value;
+    select.innerHTML = customScopedPropertyTypes
+      .map((entry) => `<option value="${entry.value}">${entry.label}</option>`)
+      .join("");
+    if (customScopedPropertyTypes.some((entry) => entry.value === current)) select.value = current;
+    fillCustomScopeTarget($("custom-property-target"), true);
+    const definition = customScopedPropertyTypes.find((entry) => entry.value === select.value) || customScopedPropertyTypes[0];
+    if (!$("custom-property-target").dataset.edited) {
+      const preferred = preferredCustomPropertyTarget(definition, $("custom-property-target"));
+      if (preferred) $("custom-property-target").value = preferred.value;
+    }
+    const
+      targetLabel = $("custom-property-target").selectedOptions[0]?.textContent.split(" — ")[0] || "Component",
+      suggestedKey = scopedCustomKey(`${targetLabel} ${definition.value}`, definition.value);
+    if (!$("custom-property-key").dataset.edited) $("custom-property-key").value = suggestedKey;
+    if (!$("custom-property-label").dataset.edited) $("custom-property-label").value = `${targetLabel} ${definition.label}`;
+    if (!$("custom-property-default").dataset.edited) $("custom-property-default").value = definition.defaultValue;
+    $("custom-property-capability-help").textContent = definition.help;
+  }
+  function refreshCustomSignalCreator() {
+    const type = $("custom-signal-capability-type").value,
+      direction = $("custom-signal-capability-direction").value,
+      actions = customScopedSignalActions[`${type}:${direction}`] || [],
+      actionSelect = $("custom-signal-capability-action"), previous = actionSelect.value;
+    actionSelect.innerHTML = actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    if (actions.some(([value]) => value === previous)) actionSelect.value = previous;
+    fillCustomScopeTarget($("custom-signal-target"), false);
+    const action = actions.find(([value]) => value === actionSelect.value) || actions[0] || ["signal", "Signal", ""],
+      targetLabel = $("custom-signal-target").selectedOptions[0]?.textContent.split(" — ")[0] || "Component",
+      key = scopedCustomKey(`${targetLabel} ${action[0]}`, action[0]),
+      contractBase = scopedCustomKey($("custom-component-name").value, "CustomComponent");
+    if (!$("custom-signal-capability-key").dataset.edited) $("custom-signal-capability-key").value = key;
+    if (!$("custom-signal-capability-label").dataset.edited) $("custom-signal-capability-label").value = `${targetLabel} ${action[1]}`;
+    if (!$("custom-signal-capability-address").dataset.edited)
+      $("custom-signal-capability-address").value = `${contractBase}.${action[0].replace(/^./, (letter) => letter.toUpperCase())}`;
+    $("custom-signal-capability-help").textContent = action[2];
+  }
+  function customScopedSignalJavascript(type, direction, action, selector, key) {
+    const target = `document.querySelector(${JSON.stringify(selector)})`,
+      ready = (body) =>
+        `window.addEventListener('DOMContentLoaded',function(){${body}},{once:true});`,
+      subscribe = (body) =>
+        ready(`var target=${target};if(!target)return;window.ComposerSignals.subscribe(${JSON.stringify(key)},function(value){${body}});`);
+    if (direction === "input") {
+      if (type === "digital" && action === "selected")
+        return subscribe("var active=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';if('checked'in target)target.checked=active;target.classList.toggle('selected',active);target.classList.toggle('active',active);target.setAttribute('aria-checked',String(active));target.dispatchEvent(new Event('change',{bubbles:true}));");
+      if (type === "digital" && action === "visibility")
+        return subscribe("var visible=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';target.style.display=visible?'':'none';");
+      if (type === "digital" && action === "disabled")
+        return subscribe("var disabled=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';if('disabled'in target)target.disabled=disabled;target.classList.toggle('disabled',disabled);target.setAttribute('aria-disabled',String(disabled));");
+      if (type === "serial" && action === "text")
+        return subscribe("target.textContent=value==null?'':String(value);");
+      if (type === "serial" && action === "asset")
+        return subscribe("var source=String(value||'');if(target.tagName==='IMG')target.src=source;else{target.style.backgroundImage=source?'url(\\\"'+source.replace(/\\\"/g,'\\\\\\\"')+'\\\")':'none';target.style.backgroundPosition='center';target.style.backgroundRepeat='no-repeat';target.style.backgroundSize='contain';}");
+      if (type === "serial" && action === "url")
+        return subscribe("var source=String(value||'');if('src'in target)target.src=source;else target.setAttribute('data-source-url',source);");
+      if (type === "analog") {
+        const normalized = "var raw=Math.max(0,Math.min(65535,Number(value)||0)),ratio=raw/65535;";
+        if (action === "value")
+          return subscribe(`${normalized}if('value'in target){var min=Number(target.min||0),max=Number(target.max||100);target.value=String(min+ratio*(max-min));target.dispatchEvent(new Event('input',{bubbles:true}));}else target.style.setProperty('--value',String(raw));`);
+        if (action === "glowStrength")
+          return subscribe(`${normalized}var amount=ratio*30;target.style.filter='drop-shadow(0 0 '+amount+'px var(--composer-scope-glow-color,#00e5c3))';`);
+        if (["width", "height"].includes(action))
+          return subscribe(`${normalized}target.style.${action}=(ratio*100)+'%';`);
+        if (action === "opacity")
+          return subscribe(`${normalized}target.style.opacity=String(ratio);`);
+        if (action === "speed")
+          return subscribe(`${normalized}${customAnimationSpeedRuntimeBody()}`);
+        if (action === "itemCount")
+          return subscribe("var count=Math.max(0,Math.round(Number(value)||0));target.dataset.itemCount=String(count);target.style.setProperty('--item-count',String(count));target.dispatchEvent(new CustomEvent('composer-item-count',{detail:{count:count},bubbles:true}));");
+      }
+    }
+    if (direction === "output") {
+      if (type === "digital" && action === "press")
+        return ready(`var target=${target};if(!target)return;var release=function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)};target.addEventListener('pointerdown',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release);`);
+      if (type === "digital" && action === "release")
+        return ready(`var target=${target};if(!target)return;target.addEventListener('pointerup',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},50)});`);
+      if (type === "digital" && action === "held")
+        return ready(`var target=${target};if(!target)return;var timer=0,cancel=function(){clearTimeout(timer);timer=0};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},50)},3000)});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel);`);
+      if (type === "analog" && action === "valueSet")
+        return ready(`var target=${target};if(!target)return;var publish=function(){var min=Number(target.min||0),max=Number(target.max||100),value=Number(target.value)||0,ratio=max===min?0:(value-min)/(max-min);window.ComposerSignals.publish(${JSON.stringify(key)},Math.round(Math.max(0,Math.min(1,ratio))*65535))};target.addEventListener('input',publish);target.addEventListener('change',publish);`);
+      if (type === "serial" && action === "text")
+        return ready(`var target=${target};if(!target)return;var publish=function(){window.ComposerSignals.publish(${JSON.stringify(key)},'value'in target?String(target.value||''):String(target.textContent||''))};target.addEventListener('input',publish);target.addEventListener('change',publish);`);
+    }
+    return "";
+  }
+  function resetCustomScopeCreatorEdits(prefix) {
+    document.querySelectorAll(`[id^="${prefix}"]`).forEach((element) => {
+      delete element.dataset.edited;
+    });
+  }
+  function openCustomScopeCreator(kind) {
+    const property = kind === "property";
+    $("custom-property-creator").hidden = !property;
+    $("custom-signal-creator").hidden = property;
+    resetCustomScopeCreatorEdits(property ? "custom-property-" : "custom-signal-capability-");
+    if (property) refreshCustomPropertyCreator();
+    else refreshCustomSignalCreator();
+    (property ? $("custom-property-creator") : $("custom-signal-creator")).scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function createScopedCustomProperty() {
+    const definition = customScopedPropertyTypes.find(
+        (entry) => entry.value === $("custom-property-capability").value,
+      ),
+      selector = $("custom-property-target").value,
+      key = scopedCustomKey($("custom-property-key").value, definition.value),
+      name = $("custom-property-label").value.trim() || definition.label,
+      rawDefault = $("custom-property-default").value,
+      defaultValue = definition.type === "number" ? Number(rawDefault) || 0 : rawDefault;
+    if (!definition || !selector) return;
+    const existing = customDefinitionRow("custom-property-list", key);
+    if (!existing)
+      addCustomPropertyRow({ key, name, type: definition.type, defaultValue });
+    else {
+      existing.querySelector('[data-field="name"]').value = name;
+      existing.querySelector('[data-field="type"]').value = definition.type;
+      existing.querySelector('[data-field="defaultValue"]').value = defaultValue;
+    }
+    const css = customScopedPropertyCss(definition, selector, key),
+      javascript = customScopedPropertyJavascript(definition, selector, key);
+    if (css) upsertCustomManagedSource("css", `property-${key}`, css);
+    if (javascript) upsertCustomManagedSource("javascript", `property-${key}`, javascript);
+    refreshCustomPreview();
+    setStatus(`Added editable Composer property “${name}”`);
+  }
+  function createScopedCustomSignal() {
+    const type = $("custom-signal-capability-type").value,
+      direction = $("custom-signal-capability-direction").value,
+      action = $("custom-signal-capability-action").value,
+      selector = $("custom-signal-target").value,
+      key = scopedCustomKey($("custom-signal-capability-key").value, action),
+      name = $("custom-signal-capability-label").value.trim() || key,
+      defaultValue = $("custom-signal-capability-address").value.trim(),
+      javascript = customScopedSignalJavascript(type, direction, action, selector, key);
+    if (!action || !selector || !defaultValue || !javascript) {
+      alert("Choose a target, action, and contract name or join before adding the connection.");
+      return;
+    }
+    const existing = customDefinitionRow("custom-signal-list", key);
+    if (!existing)
+      addCustomSignalRow({ key, name, type, direction, defaultValue });
+    else {
+      ["name", "type", "direction", "defaultValue"].forEach((field) => {
+        existing.querySelector(`[data-field="${field}"]`).value = { name, type, direction, defaultValue }[field];
+      });
+    }
+    upsertCustomManagedSource("javascript", `signal-${key}`, javascript);
+    refreshCustomPreview();
+    setStatus(`Added Crestron ${type} ${direction} “${name}”`);
   }
   function uniqueCustomBehaviorKey(baseKey, source, selector, action) {
     const behaviors = collectCustomBehaviors(),
@@ -14989,7 +15805,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         entry.role = select.value;
       };
       configure.type = "button";
-      configure.textContent = "Configure";
+      configure.textContent = "Edit setup";
       configure.onclick = () => {
         customPickedElement = {
           ...entry.metadata,
@@ -15000,7 +15816,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         $("custom-element-summary").textContent = `${entry.metadata.tag.toUpperCase()} · ${entry.selector}`;
         $("custom-element-reason").textContent = entry.reason;
         $("custom-element-result").textContent =
-          "Review the selected role, then apply it to generate the standard setup.";
+          `This element is treated as ${select.options[select.selectedIndex].text}. Review the role below, then apply it to add the corresponding editable properties and Crestron connections.`;
         $("custom-element-classifier").hidden = false;
         $("custom-element-classifier").scrollIntoView({ block: "nearest" });
       };
@@ -15010,6 +15826,35 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-apply-recommended").disabled = !inventory.some(
       (entry) => entry.role !== "ignore",
     );
+    renderCustomCapabilityQuestions(inventory);
+  }
+  function renderCustomCapabilityQuestions(inventory = customAnalyzedElements) {
+    const roles = new Set((inventory || []).map((entry) => entry.role)),
+      repeated = roles.has("repeated") || $("custom-repeat-enabled").checked,
+      controls = repeated || roles.has("button") || roles.has("slider") || roles.has("textInput"),
+      text = repeated || roles.has("text") || roles.has("button") || roles.has("textInput"),
+      numeric = roles.has("slider") || roles.has("gauge"),
+      show = (name, visible) => {
+        const row = document.querySelector(`[data-capability-for="${name}"]`);
+        if (row) row.hidden = !visible;
+      };
+    show("repeated", repeated);
+    document.querySelectorAll('[data-capability-for="controls"]').forEach((row) => row.hidden = !controls);
+    show("text", text);
+    show("numeric", numeric || repeated);
+    show("numeric-output", numeric || repeated);
+    $("custom-capability-summary").textContent = inventory?.length
+      ? `${inventory.length} element${inventory.length === 1 ? "" : "s"} detected. ${repeated ? "Repeated-item controls are available; choose exactly which per-item contracts to generate." : "Choose the signals you want, then review their exact names in Appearance & signals."}`
+      : "No elements analyzed yet. Analyze the component to receive recommended choices.";
+    if (repeated) {
+      $("custom-cap-item-count").checked = $("custom-repeat-count-signal").checked;
+      $("custom-cap-press").checked = $("custom-repeat-press-signal").checked;
+      $("custom-cap-held").checked = $("custom-repeat-held-signal").checked;
+      $("custom-cap-selected").checked = $("custom-repeat-selected-signal").checked;
+      $("custom-cap-label").checked = $("custom-repeat-label-signal").checked;
+      $("custom-cap-analog-feedback").checked = $("custom-repeat-feedback-signal").checked;
+      $("custom-cap-analog-set").checked = $("custom-repeat-value-set-signal").checked;
+    }
   }
   function applyAllRecommendedCustomRoles() {
     const configured = customAnalyzedElements
@@ -15382,17 +16227,31 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
             (element) => !["SCRIPT", "STYLE", "LINK"].includes(element.tagName),
           )
         : [],
-      rects = elements
-        .map((element) => element.getBoundingClientRect())
-        .filter((rect) => rect.width > 1 && rect.height > 1),
-      bounds = rects.length
-        ? {
-            left: Math.min(...rects.map((rect) => rect.left)),
-            top: Math.min(...rects.map((rect) => rect.top)),
-            right: Math.max(...rects.map((rect) => rect.right)),
-            bottom: Math.max(...rects.map((rect) => rect.bottom)),
-          }
-        : null,
+      responsiveStage = documentValue?.body?.querySelector(
+        "[data-composer-responsive-stage]",
+      ),
+      rects = responsiveStage
+        ? []
+        : elements
+            .map((element) => element.getBoundingClientRect())
+            .filter((rect) => rect.width > 1 && rect.height > 1),
+      bounds = responsiveStage
+        ? responsiveStage.offsetWidth > 1 && responsiveStage.offsetHeight > 1
+          ? {
+              left: 0,
+              top: 0,
+              right: responsiveStage.offsetWidth,
+              bottom: responsiveStage.offsetHeight,
+            }
+          : null
+        : rects.length
+          ? {
+              left: Math.min(...rects.map((rect) => rect.left)),
+              top: Math.min(...rects.map((rect) => rect.top)),
+              right: Math.max(...rects.map((rect) => rect.right)),
+              bottom: Math.max(...rects.map((rect) => rect.bottom)),
+            }
+          : null,
       width = bounds ? bounds.right - bounds.left : 0,
       height = bounds ? bounds.bottom - bounds.top : 0,
       fillsWidth = width >= viewportWidth * 0.88,
@@ -15409,7 +16268,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
               : roles.has("text")
                 ? { width: 320, height: 100 }
                 : { width: 320, height: 180 },
-      effectPadding = elements.reduce((maximum, element) => {
+      effectPadding = [
+        ...(documentValue ? documentValue.body.querySelectorAll("*") : []),
+      ].reduce((maximum, element) => {
         const style = windowValue?.getComputedStyle(element),
           shadowPixels = [...String(style?.boxShadow || "").matchAll(/(-?[\d.]+)px/g)].map(
             (match) => Math.abs(Number(match[1])),
@@ -16029,9 +16890,9 @@ function truthy(value){return value===true||value===1||value==='1'||String(value
 function mapped(rule,value){if(rule.booleanMapping&&rule.booleanMapping.enabled)return truthy(value)?rule.booleanMapping.trueValue:rule.booleanMapping.falseValue;if(!rule.mapping||!rule.mapping.enabled)return value;var m=rule.mapping,n=Number(value),span=Number(m.inputMax)-Number(m.inputMin);if(!Number.isFinite(n)||!span)return Number(m.outputMin)||0;var ratio=Math.max(0,Math.min(1,(n-Number(m.inputMin))/span));return Number(m.outputMin)+ratio*(Number(m.outputMax)-Number(m.outputMin))}
 function transforms(target){target.style.transform='translateX(var(--composer-translate-x,0px)) translateY(var(--composer-translate-y,0px)) rotate(var(--composer-rotate,0deg)) scale(var(--composer-scale,1))'}
 function appearance(target){var glow=Math.max(0,Number(target.style.getPropertyValue('--composer-glow-strength'))||0),shadow=Math.max(0,Number(target.style.getPropertyValue('--composer-shadow-size'))||0),color=target.style.getPropertyValue('--composer-glow-color')||'var(--glow-color,#00e5c3)',parts=[];if(shadow)parts.push(shadow+'px '+shadow+'px '+shadow*2+'px rgba(0,0,0,.48)');if(glow){parts.push('0 0 '+glow+'px '+color);parts.push('0 0 '+glow*2+'px '+color)}target.style.boxShadow=parts.join(',')}
-function apply(rule,value){var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter){target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));if(/glow/i.test(rule.parameter))appearance(target)}break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':target.style.setProperty('--composer-glow-strength',String(Math.max(0,Number(mappedValue)||0)));target.style.setProperty('--composer-glow-color',rule.parameter||'var(--glow-color,#00e5c3)');appearance(target);break;case'shadowSize':target.style.setProperty('--composer-shadow-size',String(Math.max(0,Number(mappedValue)||0)));appearance(target);break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':var image=String(mappedValue||'');if(target.tagName==='IMG'){if(!target.hasAttribute('data-composer-original-src'))target.setAttribute('data-composer-original-src',target.getAttribute('src')||'');target.src=image||target.getAttribute('data-composer-original-src')||''}else{if(!target.hasAttribute('data-composer-original-background'))target.setAttribute('data-composer-original-background',target.style.backgroundImage||'');target.style.backgroundImage=image?'url("'+image.replace(/"/g,'\\"')+'")':target.getAttribute('data-composer-original-background')||''}break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
+function apply(rule,value){if(value==='__preserve__')return;var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'checkedState':var checked=truthy(mappedValue);if('checked'in target)target.checked=checked;target.classList.toggle('selected',checked);target.classList.toggle('active',checked);target.setAttribute('aria-checked',String(checked));target.dispatchEvent(new Event('change',{bubbles:true}));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter){target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));if(/glow/i.test(rule.parameter))appearance(target)}break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':target.style.setProperty('--composer-glow-strength',String(Math.max(0,Number(mappedValue)||0)));target.style.setProperty('--composer-glow-color',rule.parameter||'var(--glow-color,#00e5c3)');appearance(target);break;case'shadowSize':target.style.setProperty('--composer-shadow-size',String(Math.max(0,Number(mappedValue)||0)));appearance(target);break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':var image=String(mappedValue||'');if(target.tagName==='IMG'){if(!target.hasAttribute('data-composer-original-src'))target.setAttribute('data-composer-original-src',target.getAttribute('src')||'');target.src=image||target.getAttribute('data-composer-original-src')||''}else{if(!target.hasAttribute('data-composer-original-background'))target.setAttribute('data-composer-original-background',target.style.backgroundImage||'');target.style.backgroundImage=image?'url("'+image.replace(/"/g,'\\"')+'")':target.getAttribute('data-composer-original-background')||''}break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
 function pulse(key){window.ComposerSignals.publish(key,true);setTimeout(function(){window.ComposerSignals.publish(key,false)},50)}
-rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){var raw=target.type==='range'||target.type==='number'?Number(target.value):target.type==='checkbox'?target.checked:target.value;window.ComposerSignals.publish(rule.key,mapped(rule,raw))})})});
+rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(){window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){var raw=target.type==='range'||target.type==='number'?Number(target.value):target.type==='checkbox'?target.checked:target.value;window.ComposerSignals.publish(rule.key,mapped(rule,raw))})})});
 })();<\/script>`;
   }
   function customBehaviorCss(rules) {
@@ -16045,18 +16906,27 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       height: "height",
     };
     return (rules || [])
-      .filter((rule) => rule.enabled !== false && rule.source === "property" && declarations[rule.action])
+      .filter(
+        (rule) =>
+          rule.enabled !== false &&
+          rule.source === "property" &&
+          (declarations[rule.action] ||
+            (rule.action === "cssProperty" && rule.parameter)),
+      )
       .map((rule) => {
         const suffix = ["fontSize"].includes(rule.action)
           ? "px"
           : ["width", "height"].includes(rule.action)
             ? "%"
             : "";
-        return `${rule.selector} { ${declarations[rule.action]}: {{${rule.key}}}${suffix}; }`;
+        const declaration = declarations[rule.action] || rule.parameter,
+          mappedUnit = rule.mapping?.enabled ? rule.mapping.unit || "" : suffix;
+        return `${rule.selector} { ${declaration}: {{${rule.key}}}${mappedUnit}; }`;
       })
       .join("\n");
   }
   function collectCustomStateStyles() {
+    if (!$('custom-state-enabled').checked) return null;
     const selector = $("custom-state-selector").value.trim();
     if (!selector) return null;
     const states = {};
@@ -16082,6 +16952,8 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       selected: { text: "", asset: "", background: "#078f7d", color: "#ffffff", border: "#04dcb9", glow: "#00e5c3", opacity: "100", scale: "100" },
       disabled: { text: "", asset: "", background: "#303838", color: "#888888", border: "#555555", glow: "#000000", opacity: "55", scale: "100" },
     };
+    $("custom-state-enabled").checked = !!config?.selector;
+    $("custom-state-controls").hidden = !config?.selector;
     $("custom-state-selector").value = config?.selector || "";
     $("custom-state-grid")
       .querySelectorAll(".custom-state-row")
@@ -16189,7 +17061,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         else if (["input", "change"].includes(rule.action))
           add(`Changing ${target} sends the ${signalName} value to Crestron.`);
       } else if (rule.source === "signal-input") {
-        if (rule.action === "selectedClass")
+        if (["selectedClass", "checkedState"].includes(rule.action))
           add(`${signalName} feedback activates the Selected appearance on ${target}.`);
         else if (["text", "value"].includes(rule.action))
           add(`${signalName} feedback replaces the displayed value on ${target}.`);
@@ -16229,7 +17101,6 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       add("The original animation remains local and is preserved alongside generated Crestron behavior.", "local");
     if (/\b(?:setTimeout|setInterval)\s*\(/.test($("custom-source-javascript").value))
       add("Timers are isolated to this component instance and automatically cleared when it is removed or remounted.", "local");
-    add("Visibility and Disabled remain optional Composer-level bindings chosen after placement.", "optional");
     host.innerHTML = "";
     if (!statements.length) {
       const empty = document.createElement("div");
@@ -16275,6 +17146,13 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       numericAction: $("custom-repeat-enabled").dataset.numericAction || "",
       numericParameter:
         $("custom-repeat-enabled").dataset.numericParameter || "",
+      itemCountSignal: $("custom-repeat-count-signal").checked,
+      pressSignal: $("custom-repeat-press-signal").checked,
+      heldSignal: $("custom-repeat-held-signal").checked,
+      selectedSignal: $("custom-repeat-selected-signal").checked,
+      labelSignal: $("custom-repeat-label-signal").checked,
+      feedbackSignal: $("custom-repeat-feedback-signal").checked,
+      valueSetSignal: $("custom-repeat-value-set-signal").checked,
       namespace,
     };
   }
@@ -16308,33 +17186,34 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       { key: "repeatColumns", name: "Grid columns", type: "number", defaultValue: 2 },
       { key: "repeatItemWidth", name: "Item width (0 = automatic)", type: "number", defaultValue: 0 },
       { key: "repeatItemHeight", name: "Item height (0 = automatic)", type: "number", defaultValue: 0 },
-      {
+      ...(config.pressSignal === false ? [] : [{
         key: "pressBase",
         name: "Digital item press base / pattern",
         type: "text",
         defaultValue: `${config.namespace}.Items[{index}].Press`,
-      },
-      {
+      }]),
+      ...(config.heldSignal ? [{ key: "heldBase", name: "Digital item held base / pattern", type: "text", defaultValue: `${config.namespace}.Items[{index}].Held` }] : []),
+      ...(config.selectedSignal === false ? [] : [{
         key: "feedbackBase",
         name: "Digital item selected base / pattern",
         type: "text",
         defaultValue: `${config.namespace}.Items[{index}].Selected`,
-      },
-      {
+      }]),
+      ...(config.labelSignal === false ? [] : [{
         key: "labelBase",
         name: "Serial item name base / pattern",
         type: "text",
         defaultValue: `${config.namespace}.Items[{index}].Name`,
-      },
+      }]),
     ];
-    if (config.numericOutput)
+    if (config.numericOutput && config.valueSetSignal !== false)
       properties.push({
         key: "valueSetBase",
         name: "Analog item value set base / pattern",
         type: "text",
         defaultValue: `${config.namespace}.Items[{index}].ValueSet`,
       });
-    if (config.numericSelector)
+    if (config.numericSelector && config.feedbackSignal !== false)
       properties.push({
         key: "levelFeedbackBase",
         name: "Analog item feedback base / pattern",
@@ -16344,7 +17223,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     return properties;
   }
   function repeatedItemSignals(config) {
-    return config
+    return config && config.itemCountSignal !== false
       ? [
           {
             key: "itemCount",
@@ -16359,29 +17238,30 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
   function repeatedItemRanges(config) {
     if (!config) return [];
     const ranges = [
-      {
+      ...(config.pressSignal === false ? [] : [{
         name: "Digital sub-item press range",
         type: "digital",
         direction: "output",
         baseKey: "pressBase",
         incrementKey: "signalIncrement",
-      },
-      {
+      }]),
+      ...(config.heldSignal ? [{ name: "Digital sub-item held range", type: "digital", direction: "output", baseKey: "heldBase", incrementKey: "signalIncrement" }] : []),
+      ...(config.selectedSignal === false ? [] : [{
         name: "Digital sub-item selected range",
         type: "digital",
         direction: "input",
         baseKey: "feedbackBase",
         incrementKey: "signalIncrement",
-      },
-      {
+      }]),
+      ...(config.labelSignal === false ? [] : [{
         name: "Serial sub-item name range",
         type: "serial",
         direction: "input",
         baseKey: "labelBase",
         incrementKey: "signalIncrement",
-      },
+      }]),
     ];
-    if (config.numericOutput)
+    if (config.numericOutput && config.valueSetSignal !== false)
       ranges.push({
         name: "Analog sub-item value set range",
         type: "analog",
@@ -16389,7 +17269,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         baseKey: "valueSetBase",
         incrementKey: "signalIncrement",
       });
-    if (config.numericSelector)
+    if (config.numericSelector && config.feedbackSignal !== false)
       ranges.push({
         name: "Analog sub-item feedback range",
         type: "analog",
@@ -16414,7 +17294,7 @@ var layout='{{repeatOrientation}}',columns=Math.max(1,Math.round(Number('{{repea
 function target(item){return (config.labelSelector&&item.querySelector(config.labelSelector))||item.querySelector('[data-repeat-label],.label,.text,span')||item}
 function numeric(item){if(!config.numericSelector)return null;return config.numericSelector===':scope'?item:item.querySelector(config.numericSelector)}
 function truthy(value){return value===true||value===1||value==='1'||String(value).toLowerCase()==='true'}
-function wire(item,index){item.dataset.repeatIndex=String(index);if(item.dataset.repeatWired==='1')return;item.dataset.repeatWired='1';var release=function(){window.ComposerSignals.publish('__repeatPress:'+index,false)};item.addEventListener('pointerdown',function(event){event.preventDefault();window.ComposerSignals.publish('__repeatPress:'+index,true)});item.addEventListener('pointerup',release);item.addEventListener('pointercancel',release);item.addEventListener('pointerleave',release);var control=numeric(item);if(control&&config.numericOutput)control.addEventListener('input',function(){var min=Number(control.min||0),max=Number(control.max||100),span=max-min||100,ratio=Math.max(0,Math.min(1,(Number(control.value)-min)/span));window.ComposerSignals.publish('__repeatValueSet:'+index,Math.round(ratio*65535))});window.ComposerSignals.subscribe('__repeatSelected:'+index,function(value){item.classList.toggle('active',truthy(value))});window.ComposerSignals.subscribe('__repeatName:'+index,function(value){if(value!=null&&value!=='')target(item).textContent=String(value)});if(control)window.ComposerSignals.subscribe('__repeatFeedback:'+index,function(value){var ratio=Math.max(0,Math.min(1,(Number(value)||0)/65535)),percent=ratio*100,min=Number(control.min||0),max=Number(control.max||100),action=config.numericAction||('value'in control?'value':'width');if(action==='value'&&'value'in control)control.value=String(min+ratio*(max-min));else if(action==='height')control.style.height=percent+'%';else if(action==='width')control.style.width=percent+'%';else if(action==='cssVariable')control.style.setProperty(config.numericParameter||'--value',String(percent));control.dataset.value=String(Math.round(percent))})}
+function wire(item,index){item.dataset.repeatIndex=String(index);if(item.dataset.repeatWired==='1')return;item.dataset.repeatWired='1';var timer=0,held=false,active=false;var release=function(){if(!active)return;active=false;if(timer){clearTimeout(timer);timer=0}if(held){window.ComposerSignals.publish('__repeatHeld:'+index,false)}else{window.ComposerSignals.publish('__repeatPress:'+index,true);setTimeout(function(){window.ComposerSignals.publish('__repeatPress:'+index,false)},80)}held=false};item.addEventListener('pointerdown',function(){active=true;held=false;if(config.heldSignal)timer=setTimeout(function(){timer=0;if(!active)return;held=true;window.ComposerSignals.publish('__repeatHeld:'+index,true)},3000)});item.addEventListener('pointerup',release);item.addEventListener('pointercancel',release);item.addEventListener('pointerleave',release);var control=numeric(item);if(control&&config.numericOutput&&config.valueSetSignal!==false)control.addEventListener('input',function(){var min=Number(control.min||0),max=Number(control.max||100),span=max-min||100,ratio=Math.max(0,Math.min(1,(Number(control.value)-min)/span));window.ComposerSignals.publish('__repeatValueSet:'+index,Math.round(ratio*65535))});if(config.selectedSignal!==false)window.ComposerSignals.subscribe('__repeatSelected:'+index,function(value){item.classList.toggle('active',truthy(value))});if(config.labelSignal!==false)window.ComposerSignals.subscribe('__repeatName:'+index,function(value){if(value!=null&&value!=='')target(item).textContent=String(value)});if(control&&config.feedbackSignal!==false)window.ComposerSignals.subscribe('__repeatFeedback:'+index,function(value){var ratio=Math.max(0,Math.min(1,(Number(value)||0)/65535)),percent=ratio*100,min=Number(control.min||0),max=Number(control.max||100),action=config.numericAction||('value'in control?'value':'width');if(action==='value'&&'value'in control)control.value=String(min+ratio*(max-min));else if(action==='height')control.style.height=percent+'%';else if(action==='width')control.style.width=percent+'%';else if(action==='cssVariable')control.style.setProperty(config.numericParameter||'--value',String(percent));control.dataset.value=String(Math.round(percent))})}
 function applyLayout(items){if(layout==='horizontal'){container.style.display='flex';container.style.flexDirection='row';container.style.flexWrap='nowrap'}else if(layout==='vertical'){container.style.display='flex';container.style.flexDirection='column';container.style.flexWrap='nowrap'}else if(layout==='grid'){container.style.display='grid';container.style.gridTemplateColumns='repeat('+columns+',minmax(0,1fr))'}items.forEach(function(item){if(itemWidth)item.style.width=itemWidth+'px';if(itemHeight)item.style.height=itemHeight+'px'})}
 function render(value){var count=Math.max(0,Math.min(config.maxCount,Math.round(Number(value)||0))),items=Array.prototype.slice.call(container.querySelectorAll(config.itemSelector));while(items.length>count){items.pop().remove()}while(items.length<count){var item=template.cloneNode(true);item.removeAttribute('id');container.appendChild(item);items.push(item)}items.forEach(function(item,index){if(!target(item).textContent.trim())target(item).textContent=labels[index]||'';wire(item,index)});applyLayout(items)}
 window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount);
@@ -16430,7 +17310,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         "borderRadius", "translateX", "translateY", "rotate",
       ]),
       digitalActions = new Set([
-        "visibility", "selectedClass", "disabledState", "classToggle",
+        "visibility", "selectedClass", "checkedState", "disabledState", "classToggle",
       ]),
       assetActions = new Set(["imageSource", "backgroundImage"]),
       pulseActions = new Set(["press", "click", "release", "hold"]);
@@ -16530,7 +17410,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     warnings.push(...dependencyReport.warnings);
     const knownProperties = new Set(properties.map((entry) => entry.key));
     [...completeSource.matchAll(/\{\{([^}]+)\}\}/g)].forEach((match) => {
-      if (!knownProperties.has(match[1]))
+      const tokenKey = match[1].endsWith("Json") ? match[1].slice(0, -4) : match[1];
+      if (!knownProperties.has(tokenKey))
         errors.push(`HTML uses undefined property token {{${match[1]}}}.`);
     });
     const behaviorPropertyKeys = new Set(
@@ -16551,7 +17432,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       if (
         !runtimeProperties.has(property.key) &&
         !behaviorPropertyKeys.has(property.key) &&
-        !completeSource.includes(`{{${property.key}}}`)
+        !completeSource.includes(`{{${property.key}}}`) &&
+        !completeSource.includes(`{{${property.key}Json}}`)
       )
         warnings.push(
           `Property “${property.key}” is not used in the component source.`,
@@ -16569,10 +17451,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       panel = $("custom-validation");
     panel.classList.toggle("invalid", !!result.errors.length);
     panel.innerHTML = result.errors.length
-      ? `<strong>${result.errors.length} error(s)</strong><br>${result.errors.map((value) => `• ${value}`).join("<br>")}`
-      : result.warnings.length
-        ? `<strong>Valid with ${result.warnings.length} warning(s)</strong><br>${result.warnings.map((value) => `• ${value}`).join("<br>")}`
-        : "Component validation passed.";
+      ? `<strong>${result.errors.length} blocking error(s)</strong><br>${result.errors.map((value) => `• ${value}`).join("<br>")}`
+      : "Component validation passed. No blocking errors.";
     renderCustomCompatibilityAudit();
     return result;
   }
@@ -16615,6 +17495,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       customBehaviorRuntime(collectCustomBehaviors(), previewProperties);
     collectCustomProperties().forEach((property) => {
       source = source.replaceAll(
+        `{{${property.key}Json}}`,
+        JSON.stringify(property.defaultValue ?? ""),
+      );
+      source = source.replaceAll(
         `{{${property.key}}}`,
         String(property.defaultValue ?? ""),
       );
@@ -16629,7 +17513,41 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       "else{fire('pointerdown');fire('pointerup')}",
       "else if(rule.action==='input'||rule.action==='change'){if(target.type==='checkbox')target.checked=!target.checked;else if('value'in target)target.value=target.type==='range'||target.type==='number'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup')}",
     );
-    $("custom-component-preview").srcdoc = safeDoc(
+    const previewFrame = $("custom-component-preview"),
+      previewPanel = previewFrame.closest(".custom-source-panel"),
+      managedGlowDefinitions = collectCustomProperties().filter(
+        (property) =>
+          /glow/i.test(`${property.key} ${property.name}`) &&
+          new RegExp(
+            `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
+          ).test(source),
+      ),
+      managedGlow = {
+        enabled: managedGlowDefinitions.length > 0,
+        colorKey:
+          managedGlowDefinitions.find((property) =>
+            /color/i.test(`${property.key} ${property.name}`),
+          )?.key || "",
+        strengthKey:
+          managedGlowDefinitions.find((property) =>
+            /strength|size|radius|blur/i.test(`${property.key} ${property.name}`),
+          )?.key || "",
+      },
+      previewColor = (value, fallback) =>
+        /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
+    if (managedGlow.enabled) {
+      const glowColor = previewColor(previewProperties[managedGlow.colorKey], "#04aa8e"),
+        glowStrength = Math.max(0, Number(previewProperties[managedGlow.strengthKey]) || 6);
+      previewFrame.style.overflow = "visible";
+      previewFrame.style.filter = `drop-shadow(0 0 ${glowStrength}px ${glowColor})`;
+      previewPanel?.classList.add("custom-preview-glow-active");
+    } else {
+      previewFrame.style.overflow = "";
+      previewFrame.style.filter = "";
+      previewPanel?.classList.remove("custom-preview-glow-active");
+    }
+    sizePreviewFrameToNaturalContent(previewFrame);
+    previewFrame.srcdoc = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
         previewBridge +
         source,
@@ -16758,7 +17676,31 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       },
     ],
     customButtonCss = `html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-button{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:{{cornerRadius}}px;box-shadow:0 0 {{glowStrength}}px {{glowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819;transition:background .18s,color .18s,border-color .18s,box-shadow .18s;touch-action:none}.custom-button.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};box-shadow:0 0 calc({{glowStrength}}px * 2) {{selectedGlowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819}.custom-icon{font-size:{{iconSize}}px;line-height:1}.custom-label{font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}`,
-    customButtonJavascript = `const button=root.querySelector('.custom-button'),label=root.querySelector('.custom-label'),icon=root.querySelector('.custom-icon');let selected=false,localName='{{text}}';const truthy=value=>value===true||value===1||value==='1'||String(value).toLowerCase()==='true';const render=()=>{button.classList.toggle('active',selected);label.textContent=selected?'{{selectedText}}':localName;icon.textContent=selected?'{{selectedIcon}}':'{{icon}}'};const release=()=>signals.publish('press',false);button.addEventListener('pointerdown',event=>{event.preventDefault();signals.publish('press',true)});button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('pointerleave',release);signals.subscribe('selected',value=>{selected=truthy(value);render()});signals.subscribe('name',value=>{if(value!=null&&value!==''){localName=String(value);if(!selected)render()}});render();`;
+    customButtonJavascript = `const button=root.querySelector('.custom-button'),label=root.querySelector('.custom-label'),icon=root.querySelector('.custom-icon');let selected=false,localName='{{text}}';const truthy=value=>value===true||value===1||value==='1'||String(value).toLowerCase()==='true';const render=()=>{button.classList.toggle('active',selected);label.textContent=selected?'{{selectedText}}':localName;icon.textContent=selected?'{{selectedIcon}}':'{{icon}}'};const release=()=>signals.publish('press',false);button.addEventListener('pointerdown',event=>{event.preventDefault();signals.publish('press',true)});button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('pointerleave',release);signals.subscribe('selected',value=>{selected=truthy(value);render()});signals.subscribe('name',value=>{if(value!=null&&value!==''){localName=String(value);if(!selected)render()}});render();`,
+    customToggleProperties = [
+      { key: "text", name: "Standard state — text", type: "text", defaultValue: "Off" },
+      { key: "selectedText", name: "Selected state — text", type: "text", defaultValue: "On" },
+      { key: "textSize", name: "Text size", type: "number", defaultValue: 16 },
+      { key: "textColor", name: "Standard state — text color", type: "color", defaultValue: "#ffffff" },
+      { key: "selectedTextColor", name: "Selected state — text color", type: "color", defaultValue: "#ffffff" },
+      { key: "trackColor", name: "Standard state — track color", type: "color", defaultValue: "#263b3c" },
+      { key: "selectedTrackColor", name: "Selected state — track color", type: "color", defaultValue: "#078f7d" },
+      { key: "knobColor", name: "Standard state — knob color", type: "color", defaultValue: "#ffffff" },
+      { key: "selectedKnobColor", name: "Selected state — knob color", type: "color", defaultValue: "#ffffff" },
+      { key: "borderColor", name: "Standard state — border color", type: "color", defaultValue: "#7ba7a3" },
+      { key: "selectedBorderColor", name: "Selected state — border color", type: "color", defaultValue: "#04dcb9" },
+      { key: "glowColor", name: "Standard state — glow color", type: "color", defaultValue: "#04dcb9" },
+      { key: "selectedGlowColor", name: "Selected state — glow color", type: "color", defaultValue: "#04dcb9" },
+      { key: "glowStrength", name: "Glow strength", type: "number", defaultValue: 6 },
+      { key: "trackRadius", name: "Track corner radius", type: "number", defaultValue: 18 },
+      { key: "knobRadius", name: "Knob corner radius", type: "number", defaultValue: 10 },
+    ],
+    customToggleSignals = customStandardSignals.map((signal) => ({
+      ...signal,
+      defaultValue: signal.defaultValue.replace("CustomButton", "CustomToggle"),
+    })),
+    customToggleCss = `html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-toggle{box-sizing:border-box;width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px;border:0;background:transparent;color:{{textColor}};font:700 {{textSize}}px "Segoe UI",sans-serif;touch-action:none}.custom-toggle-track{box-sizing:border-box;position:relative;display:block;width:min(68%,180px);height:min(58%,72px);min-width:72px;min-height:38px;border:1px solid {{borderColor}};border-radius:{{trackRadius}}px;background:{{trackColor}};box-shadow:0 0 {{glowStrength}}px {{glowColor}};transition:background .25s,border-color .25s,box-shadow .25s}.custom-toggle-knob{position:absolute;top:8%;bottom:8%;left:4%;width:44%;border-radius:{{knobRadius}}px;background:{{knobColor}};box-shadow:0 3px 7px rgba(0,0,0,.42);transform:translateX(0);transition:transform .3s cubic-bezier(.45,.05,.55,.95),background .25s}.custom-toggle-label{min-width:2.5em;text-align:center}.custom-toggle.active{color:{{selectedTextColor}}}.custom-toggle.active .custom-toggle-track{background:{{selectedTrackColor}};border-color:{{selectedBorderColor}};box-shadow:0 0 calc({{glowStrength}}px * 1.6) {{selectedGlowColor}}}.custom-toggle.active .custom-toggle-knob{background:{{selectedKnobColor}};transform:translateX(108%)}`,
+    customToggleJavascript = `const button=root.querySelector('.custom-toggle'),label=root.querySelector('.custom-toggle-label');let selected=false,localName='{{text}}';const truthy=value=>value===true||value===1||value==='1'||String(value).toLowerCase()==='true';const render=()=>{button.classList.toggle('active',selected);button.setAttribute('aria-checked',String(selected));label.textContent=selected?'{{selectedText}}':localName};const release=()=>signals.publish('press',false);button.addEventListener('pointerdown',event=>{event.preventDefault();signals.publish('press',true)});button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('pointerleave',release);signals.subscribe('selected',value=>{selected=truthy(value);render()});signals.subscribe('name',value=>{if(value!=null&&value!==''){localName=String(value);if(!selected)render()}});render();`;
   const customStarterTemplates = {
     button: {
       name: "Custom Button",
@@ -16773,12 +17715,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     toggle: {
       name: "Custom Toggle",
       category: "Toggle Buttons",
-      icon: "🔘",
-      properties: customButtonProperties,
-      signals: customStandardSignals,
-      html: '<button class="custom-button" type="button"><span class="custom-icon"></span><span class="custom-label"></span></button>',
-      css: customButtonCss,
-      javascript: customButtonJavascript,
+      icon: "◉",
+      properties: customToggleProperties,
+      signals: customToggleSignals,
+      html: '<button class="custom-toggle" type="button" role="switch" aria-checked="false"><span class="custom-toggle-track"><span class="custom-toggle-knob"></span></span><span class="custom-toggle-label"></span></button>',
+      css: customToggleCss,
+      javascript: customToggleJavascript,
     },
     slider: {
       name: "Custom Slider",
@@ -17091,6 +18033,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-repeat-default").value = config?.defaultCount ?? 3;
     $("custom-repeat-max").value = config?.maxCount ?? 20;
     $("custom-repeat-namespace").value = config?.namespace || "CustomComponent";
+    $("custom-repeat-count-signal").checked = config?.itemCountSignal !== false;
+    $("custom-repeat-press-signal").checked = config?.pressSignal !== false;
+    $("custom-repeat-held-signal").checked = !!config?.heldSignal;
+    $("custom-repeat-selected-signal").checked = config?.selectedSignal !== false;
+    $("custom-repeat-label-signal").checked = config?.labelSignal !== false;
+    $("custom-repeat-feedback-signal").checked = config?.feedbackSignal !== false;
+    $("custom-repeat-value-set-signal").checked = config?.valueSetSignal !== false;
+    renderCustomCapabilityQuestions();
   }
   function syncCustomRepeatedRows() {
     const config = collectCustomRepeatedItems(),
@@ -17102,6 +18052,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         "repeatItemWidth",
         "repeatItemHeight",
         "pressBase",
+        "heldBase",
         "feedbackBase",
         "labelBase",
         "valueSetBase",
@@ -17119,17 +18070,71 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       .forEach((row) => row.remove());
     repeatedItemProperties(config).forEach(addCustomPropertyRow);
     repeatedItemSignals(config).forEach(addCustomSignalRow);
+    renderCustomCapabilityQuestions();
     refreshCustomPreview();
   }
-  function setCustomBuilderMode(mode = "guided") {
-    const guided = mode !== "advanced",
-      dialog = $("custom-component-dialog");
-    dialog.classList.toggle("guided-mode", guided);
-    $("custom-mode-guided").classList.toggle("active", guided);
-    $("custom-mode-advanced").classList.toggle("active", !guided);
-    $("custom-mode-guided").setAttribute("aria-pressed", String(guided));
-    $("custom-mode-advanced").setAttribute("aria-pressed", String(!guided));
-    setStatus(`${guided ? "Guided" : "Advanced"} component editing mode`);
+  function syncCapabilityChoiceToRepeated(sourceId, targetId) {
+    const source = $(sourceId), target = $(targetId);
+    if (!source || !target) return;
+    source.onchange = () => {
+      if (!$("custom-repeat-enabled").checked) {
+        $("custom-capability-summary").textContent =
+          "This choice will be applied when a repeated-item container is enabled or detected.";
+        return;
+      }
+      target.checked = source.checked;
+      syncCustomRepeatedRows();
+      $("custom-capability-summary").textContent =
+        `${source.parentElement.textContent.trim()} is now ${source.checked ? "included" : "excluded"}. Review the generated definition in Appearance & signals.`;
+    };
+  }
+  function repairDanglingCustomRoot(javascript = "") {
+    const source = String(javascript || "");
+    if (
+      /\broot\.(?:querySelector|querySelectorAll)\s*\(/.test(source) &&
+      !/\b(?:const|let|var)\s+root\b|\bfunction\s*\([^)]*\broot\b|\([^)]*\broot\b[^)]*\)\s*=>/.test(
+        source,
+      )
+    )
+      return source.replace(
+        /\broot\.(querySelector(?:All)?)\s*\(/g,
+        "document.$1(",
+      );
+    return source;
+  }
+  function setCustomWizardStep(step = 0) {
+    const dialog = $("custom-component-dialog");
+    customWizardStep = Math.max(0, Math.min(2, Number(step) || 0));
+    [0, 1, 2, 3].forEach((index) =>
+      dialog.classList.toggle(
+        `custom-wizard-step-${index}`,
+        index === customWizardStep,
+      ),
+    );
+    dialog.querySelectorAll("[data-custom-wizard-step]").forEach((button) => {
+      const index = Number(button.dataset.customWizardStep);
+      button.classList.toggle("active", index === customWizardStep);
+      button.classList.toggle("complete", index < customWizardStep);
+      button.setAttribute(
+        "aria-current",
+        index === customWizardStep ? "step" : "false",
+      );
+    });
+    $("custom-wizard-back").disabled = customWizardStep === 0;
+    $("custom-wizard-next").hidden = customWizardStep === 2;
+    if (customWizardStep === 1) analyzeCustomElements();
+    if (customWizardStep === 1) {
+      refreshCustomPropertyCreator();
+      refreshCustomSignalCreator();
+      renderCustomVisualParts();
+      refreshCustomGeneratedCode();
+    }
+    if (customWizardStep === 2) {
+      refreshCustomGeneratedCode();
+      refreshCustomSignalTester();
+      validateCustomComponent();
+    }
+    dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
   function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
     customEditingId = entry?.id || "";
@@ -17195,7 +18200,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-component-description").value = entry?.description || "";
     $("custom-source-html").value = source.html;
     $("custom-source-css").value = source.css;
-    $("custom-source-javascript").value = source.javascript;
+    $("custom-source-javascript").value = repairDanglingCustomRoot(
+      source.javascript,
+    );
     $("custom-property-list").innerHTML = "";
     $("custom-signal-list").innerHTML = "";
     $("custom-behavior-list").innerHTML = "";
@@ -17242,7 +18249,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     loadCustomOriginalSource(entry);
     refreshCustomPreview();
     analyzeCustomElements();
-    setCustomBuilderMode("guided");
+    customWizardStep = 0;
+    setCustomWizardStep(0);
     $("custom-component-dialog").showModal();
   }
   $("create-custom-component").onclick = () => {
@@ -17290,12 +18298,68 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       return;
     applyCustomStarterTemplate($("custom-component-template").value);
   };
-  $("custom-mode-guided").onclick = () => setCustomBuilderMode("guided");
-  $("custom-mode-advanced").onclick = () => setCustomBuilderMode("advanced");
-  $("custom-property-add").onclick = () => addCustomPropertyRow();
-  $("custom-signal-add").onclick = () => addCustomSignalRow();
+  $("custom-wizard-back").onclick = () =>
+    setCustomWizardStep(customWizardStep - 1);
+  $("custom-wizard-next").onclick = () => {
+    if (
+      customWizardStep === 0 &&
+      !$("custom-component-name").value.trim()
+    ) {
+      alert("Enter a component name before continuing.");
+      $("custom-component-name").focus();
+      return;
+    }
+    setCustomWizardStep(customWizardStep + 1);
+  };
+  document.querySelectorAll("[data-custom-wizard-step]").forEach((button) => {
+    button.onclick = () => setCustomWizardStep(button.dataset.customWizardStep);
+  });
   $("custom-behavior-add").onclick = () => addCustomBehaviorRow();
   $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
+  $("custom-scope-add-property").onclick = () => openCustomScopeCreator("property");
+  $("custom-scope-add-signal").onclick = () => openCustomScopeCreator("signal");
+  document.querySelectorAll("[data-close-scope-creator]").forEach((button) => {
+    button.onclick = () => {
+      $("custom-property-creator").hidden = true;
+      $("custom-signal-creator").hidden = true;
+    };
+  });
+  $("custom-property-capability").onchange = () => {
+    resetCustomScopeCreatorEdits("custom-property-");
+    refreshCustomPropertyCreator();
+  };
+  $("custom-property-target").onchange = () => {
+    $("custom-property-target").dataset.edited = "true";
+    delete $("custom-property-key").dataset.edited;
+    delete $("custom-property-label").dataset.edited;
+    refreshCustomPropertyCreator();
+  };
+  ["custom-property-key", "custom-property-label", "custom-property-default"].forEach(
+    (id) => ($(id).oninput = () => ($(id).dataset.edited = "true")),
+  );
+  $("custom-property-create").onclick = createScopedCustomProperty;
+  ["custom-signal-capability-type", "custom-signal-capability-direction"].forEach(
+    (id) =>
+      ($(id).onchange = () => {
+        resetCustomScopeCreatorEdits("custom-signal-capability-");
+        refreshCustomSignalCreator();
+      }),
+  );
+  ["custom-signal-capability-action", "custom-signal-target"].forEach(
+    (id) =>
+      ($(id).onchange = () => {
+        delete $("custom-signal-capability-key").dataset.edited;
+        delete $("custom-signal-capability-label").dataset.edited;
+        delete $("custom-signal-capability-address").dataset.edited;
+        refreshCustomSignalCreator();
+      }),
+  );
+  [
+    "custom-signal-capability-key",
+    "custom-signal-capability-label",
+    "custom-signal-capability-address",
+  ].forEach((id) => ($(id).oninput = () => ($(id).dataset.edited = "true")));
+  $("custom-signal-create").onclick = createScopedCustomSignal;
   $("custom-state-signals").onclick = () => {
     const selector = $("custom-state-selector").value.trim();
     if (!selector) {
@@ -17326,6 +18390,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           action,
         });
     });
+    refreshCustomPreview();
+  };
+  $("custom-state-enabled").onchange = () => {
+    const enabled = $("custom-state-enabled").checked;
+    $("custom-state-controls").hidden = !enabled;
     refreshCustomPreview();
   };
   $("custom-state-selector").oninput = refreshCustomPreview;
@@ -17363,12 +18432,28 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("custom-repeat-enabled").onchange = syncCustomRepeatedRows;
   [
+    ["custom-cap-item-count", "custom-repeat-count-signal"],
+    ["custom-cap-press", "custom-repeat-press-signal"],
+    ["custom-cap-held", "custom-repeat-held-signal"],
+    ["custom-cap-selected", "custom-repeat-selected-signal"],
+    ["custom-cap-label", "custom-repeat-label-signal"],
+    ["custom-cap-analog-feedback", "custom-repeat-feedback-signal"],
+    ["custom-cap-analog-set", "custom-repeat-value-set-signal"],
+  ].forEach(([sourceId, targetId]) => syncCapabilityChoiceToRepeated(sourceId, targetId));
+  [
     "custom-repeat-container",
     "custom-repeat-item",
     "custom-repeat-label",
     "custom-repeat-default",
     "custom-repeat-max",
     "custom-repeat-namespace",
+    "custom-repeat-count-signal",
+    "custom-repeat-press-signal",
+    "custom-repeat-held-signal",
+    "custom-repeat-selected-signal",
+    "custom-repeat-label-signal",
+    "custom-repeat-feedback-signal",
+    "custom-repeat-value-set-signal",
   ].forEach((id) => {
     $(id).onchange = syncCustomRepeatedRows;
   });
@@ -17439,6 +18524,111 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       window.addEventListener("message", onMessage);
       setTimeout(() => finish({ instances: 0, duplicateIds: [], overflow: false, errors: ["Compatibility probe timed out."] }), 1400);
     });
+  }
+  function clearCustomReadinessHighlights() {
+    document
+      .querySelectorAll(".custom-readiness-highlight")
+      .forEach((element) => element.classList.remove("custom-readiness-highlight"));
+  }
+  function goToCustomReadinessFinding(message) {
+    clearCustomReadinessHighlights();
+    const propertyMatch = String(message).match(/Property [“\"]([^”\"]+)[”\"]/i),
+      behaviorMatch = String(message).match(/Behavior [“\"]([^”\"]+)[”\"]/i);
+    if (propertyMatch) {
+      setCustomWizardStep(0);
+      const row = [...$("custom-property-list").children].find(
+        (candidate) => candidate.querySelector('[data-field="key"]')?.value === propertyMatch[1],
+      );
+      if (row) {
+        row.classList.add("custom-readiness-highlight");
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.querySelector('[data-field="defaultValue"]')?.focus();
+      }
+      return;
+    }
+    if (/compatibility|viewport|resize|touch|mouse|instance|global id/i.test(message)) {
+      setCustomWizardStep(2);
+      const audit = document.querySelector(".custom-compatibility-audit");
+      audit?.setAttribute("open", "");
+      audit?.classList.add("custom-readiness-highlight");
+      audit?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setCustomWizardStep(1);
+    const details = document.querySelector(".custom-detection-details");
+    details?.setAttribute("open", "");
+    details?.classList.add("custom-readiness-highlight");
+    if (behaviorMatch) {
+      const row = [...$("custom-behavior-list").children].find(
+        (candidate) => candidate.querySelector('[data-field="name"]')?.value === behaviorMatch[1],
+      );
+      row?.classList.add("custom-readiness-highlight");
+    }
+    details?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function renderCustomReadinessFindings(readiness) {
+    const host = $("custom-readiness-findings"),
+      list = $("custom-readiness-finding-list"),
+      findings = (readiness?.failures || []).map((message) => ({
+        message,
+        error: true,
+      }));
+    host.hidden = !findings.length;
+    list.innerHTML = "";
+    findings.forEach((finding) => {
+      const row = document.createElement("div"), kind = document.createElement("span"),
+        message = document.createElement("div"), title = document.createElement("strong"),
+        help = document.createElement("small"), button = document.createElement("button"),
+        undefinedToken = finding.message.match(/undefined property token \{\{([^}]+)\}\}/i),
+        token = undefinedToken?.[1] || "",
+        tokenInCss = token && $("custom-source-css").value.includes(`{{${token}}}`);
+      row.className = `custom-readiness-finding${finding.error ? " error" : ""}`;
+      kind.className = "finding-kind";
+      kind.textContent = "FIX";
+      message.className = "finding-message";
+      title.textContent = undefinedToken
+        ? `Composer found {{${token}}}, but no matching property exists.`
+        : finding.message;
+      help.textContent = undefinedToken
+        ? tokenInCss
+          ? "This is an unresolved CSS placeholder. Remove its unused CSS rule, or go back and add a matching editable property if the component really needs it."
+          : "Add a matching editable property or remove the placeholder from the imported source."
+        : "Use Show location to open the exact section containing the blocking problem.";
+      message.append(title, help);
+      button.type = "button";
+      button.textContent = undefinedToken
+        ? tokenInCss
+          ? "Remove unused rule"
+          : "Add missing property"
+        : "Show location";
+      button.onclick = () => {
+        if (undefinedToken && tokenInCss) {
+          const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            rule = new RegExp(`[^{}]*\\{[^{}]*\\{\\{${escaped}\\}\\}[^{}]*\\}`, "g");
+          $("custom-source-css").value = $("custom-source-css").value.replace(rule, "");
+          refreshCustomPreview();
+          validateCustomComponent();
+          return;
+        }
+        if (undefinedToken) {
+          const numeric = /(?:size|width|height|radius|duration|delay|speed|count|opacity|strength)$/i.test(token);
+          addCustomPropertyRow({
+            key: token,
+            name: token.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase()),
+            type: numeric ? "number" : /color$/i.test(token) ? "color" : "text",
+            defaultValue: numeric ? 0 : /color$/i.test(token) ? "#ffffff" : "",
+          });
+          setCustomWizardStep(0);
+          refreshCustomPreview();
+          validateCustomComponent();
+          return;
+        }
+        goToCustomReadinessFinding(finding.message);
+      };
+      row.append(kind, message, button);
+      list.appendChild(row);
+    });
+    if (findings.length) host.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
   async function runCustomComponentSelfTest() {
     const button = $("custom-self-test"),
@@ -17555,7 +18745,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             if (!value || checked.has(`${owner}|${value}`)) return;
             checked.add(`${owner}|${value}`);
             try {
-              if (!parsed.querySelector(value))
+              const queryableValue = value.replace(/::?(?:before|after)\b/gi, "");
+              if (!parsed.querySelector(queryableValue))
                 failures.push(`${owner} target not found: ${value}`);
             } catch (error) {
               failures.push(`${owner} selector is invalid: ${value}`);
@@ -17610,7 +18801,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           : []),
       ],
       instanceSafe = !auditFindings.some((finding) =>
-        ["duplicate-ids", "document-selectors", "global-css"].includes(finding.code),
+        finding.code === "duplicate-ids",
       ),
       responsiveSafe = !auditFindings.some((finding) =>
         ["viewport-units", "fixed-position"].includes(finding.code),
@@ -17638,7 +18829,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ),
       lines = [
         `COMPONENT READINESS — ${failures.length ? "FAILED" : reviewWarnings.length ? "PASS WITH REVIEW ITEMS" : "PASSED"}`,
-        `Confidence: ${confidence}%`,
         `Generated: ${generatedPropertyCount} properties · ${generatedSignalCount} signals`,
         "",
         `${runtimeErrors.length ? "FAIL" : "PASS"}  Preview runtime loaded without errors`,
@@ -17667,7 +18857,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     report.textContent = lines.join("\n");
     report.classList.toggle("failed", !!failures.length);
     button.disabled = false;
-    return {
+    const readiness = {
       passed: !failures.length,
       failures,
       warnings: [...new Set(reviewWarnings)],
@@ -17683,6 +18873,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       authoredAnimations,
       reportText: lines.join("\n"),
     };
+    renderCustomReadinessFindings(readiness);
+    return readiness;
   }
   $("custom-self-test").onclick = runCustomComponentSelfTest;
   window.addEventListener("message", (event) => {
@@ -17975,7 +19167,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     "custom-source-html",
     "custom-source-css",
     "custom-source-javascript",
-  ].forEach((id) => ($(id).oninput = refreshCustomPreview));
+  ].forEach(
+    (id) =>
+      ($(id).oninput = () => {
+        refreshCustomPreview();
+        if (customWizardStep === 1) {
+          renderCustomVisualParts();
+          refreshCustomPropertyCreator();
+          refreshCustomSignalCreator();
+        }
+      }),
+  );
   [
     "custom-component-name",
     "custom-component-category",
@@ -18013,16 +19215,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ? "Validate & update component"
       : "Validate & create component";
     if (!readiness.passed) {
+      setCustomWizardStep(2);
       alert("The component was not saved. Fix the failures in Component Readiness, then try again.");
       return;
     }
-    if (
-      readiness.warnings.length &&
-      !confirm(
-        `Component Readiness passed at ${readiness.confidence}% with ${readiness.warnings.length} review item(s). Save it anyway?`,
-      )
-    )
-      return;
     let entry = state.customComponents.find(
       (candidate) => candidate.id === customEditingId,
     );
@@ -18111,8 +19307,38 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     registerCustomComponent(entry);
     saveButton.disabled = true;
     saveButton.textContent = "Testing saved runtime…";
-    const registeredRuntime = await runRegisteredCustomComponentTest(entry),
-      widgetListReady = syncWidgetListCustomOptions();
+    let registeredRuntime;
+    try {
+      registeredRuntime = await Promise.race([
+        runRegisteredCustomComponentTest(entry),
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                passed: false,
+                errors: [
+                  "The saved-runtime test exceeded 10 seconds and was stopped.",
+                ],
+                instances: 0,
+                widgetListInstances: 0,
+                exportedRuntime: false,
+                remountRuntime: false,
+              }),
+            10000,
+          ),
+        ),
+      ]);
+    } catch (error) {
+      registeredRuntime = {
+        passed: false,
+        errors: [`Saved-runtime test: ${error.message || error}`],
+        instances: 0,
+        widgetListInstances: 0,
+        exportedRuntime: false,
+        remountRuntime: false,
+      };
+    }
+    const widgetListReady = syncWidgetListCustomOptions();
     saveButton.disabled = false;
     saveButton.textContent = customEditingId
       ? "Validate & update component"
