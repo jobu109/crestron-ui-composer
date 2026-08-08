@@ -1038,24 +1038,89 @@
     return { key: "tested", label: "Tested", title: `Passed Component Readiness.${manualSummary()}` };
   }
   function detectManagedGlow(properties, source) {
-    const definitions = (properties || []).filter(
-      (property) =>
-        /glow/i.test(`${property.key} ${property.name}`) &&
-        new RegExp(
-          `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
-          "i",
-        ).test(source),
-    );
+    // A property counts as "managed glow" either because the "Add
+    // capabilities" builder wired it up manually (marked with a
+    // COMPOSER MANAGED comment in the source), or because it's one of
+    // the exact keys the button-style preset always adds to every
+    // translated button-like widget (translatedBehaviorPlan's
+    // glowStrength/glowColor property+behavior pair, synthesized as a
+    // real box-shadow via CSS custom properties) — that pair is never
+    // marker-wrapped, since it comes from Import & Translate rather than
+    // the manual builder, but it's just as real a glow and needs the
+    // same escape-the-bounding-box treatment.
+    const managedButtonStyleKeys = new Set([
+        "glowColor",
+        "glowStrength",
+        "selectedGlowColor",
+        "selectedGlowStrength",
+      ]),
+      definitions = (properties || []).filter(
+        (property) =>
+          /glow/i.test(`${property.key} ${property.name}`) &&
+          (managedButtonStyleKeys.has(property.key) ||
+            new RegExp(
+              `COMPOSER MANAGED property-${String(property.key).replace(/[^A-Za-z0-9_-]/g, "-")}`,
+              "i",
+            ).test(source)),
+      );
+    // "Selected" is matched by key prefix, not just role, so the standard
+    // and selected pairs never cross-match each other (a key literally
+    // named "selectedGlowColor" would otherwise satisfy both the "color"
+    // and "not-selected" tests).
+    const isSelectedKey = (property) => /^selected/i.test(property.key),
+      colorProperty = definitions.find(
+        (property) => /color/i.test(`${property.key} ${property.name}`) && !isSelectedKey(property),
+      ),
+      selectedColorProperty = definitions.find(
+        (property) => /color/i.test(`${property.key} ${property.name}`) && isSelectedKey(property),
+      ),
+      strengthProperty = definitions.find(
+        (property) =>
+          /strength|size|radius|blur/i.test(`${property.key} ${property.name}`) && !isSelectedKey(property),
+      ),
+      selectedStrengthProperty = definitions.find(
+        (property) =>
+          /strength|size|radius|blur/i.test(`${property.key} ${property.name}`) && isSelectedKey(property),
+      ),
+      // "button-style" properties (glowColor/glowStrength among them) are
+      // saved with preserveDefault:true so the imported widget's own
+      // appearance isn't silently overridden — their real value lives in
+      // suggestedValue, while defaultValue is left as the literal
+      // sentinel string "__preserve__" until the user opts in via
+      // "Override imported value". Reading defaultValue directly (as if
+      // it were always a usable value) turned every glowStrength into
+      // Number("__preserve__") === NaN, silently falling through to the
+      // unrelated hardcoded fallback instead of the widget's real 3px.
+      effectiveDefault = (property) =>
+        property?.preserveDefault === true
+          ? property.suggestedValue
+          : property?.defaultValue;
     return {
       enabled: definitions.length > 0,
-      colorKey:
-        definitions.find((property) =>
-          /color/i.test(`${property.key} ${property.name}`),
-        )?.key || "",
-      strengthKey:
-        definitions.find((property) =>
-          /strength|size|radius|blur/i.test(`${property.key} ${property.name}`),
-        )?.key || "",
+      colorKey: colorProperty?.key || "",
+      // A freshly-placed widget's saved properties start out completely
+      // empty (component-runtime.js's shared mount() never merges a
+      // component's own declared defaults in — each mount() is
+      // responsible for its own fallbacks), so properties[colorKey] is
+      // undefined until the user explicitly edits it. Carrying the
+      // component's own declared default through here means the glow
+      // escape's approximated color/strength actually matches what the
+      // widget looks like, instead of an unrelated hardcoded fallback.
+      colorDefault: effectiveDefault(colorProperty) ?? "",
+      strengthKey: strengthProperty?.key || "",
+      strengthDefault: effectiveDefault(strengthProperty) ?? "",
+      // A widget's selected/pressed state commonly has a noticeably
+      // different (often larger) glow than standard — many imported
+      // buttons morph or bloom on selection. Falls back to the standard
+      // pair when the widget only has one glow definition, so the
+      // escape still works (just without a selected-specific size) for
+      // widgets that never got a dedicated selected glow property.
+      selectedColorKey: selectedColorProperty?.key || colorProperty?.key || "",
+      selectedColorDefault:
+        effectiveDefault(selectedColorProperty) ?? effectiveDefault(colorProperty) ?? "",
+      selectedStrengthKey: selectedStrengthProperty?.key || strengthProperty?.key || "",
+      selectedStrengthDefault:
+        effectiveDefault(selectedStrengthProperty) ?? effectiveDefault(strengthProperty) ?? "",
     };
   }
   function registerCustomComponent(entry) {
@@ -1146,6 +1211,10 @@
         ),
       ],
       preparedHtml = prepareCustomSource(entry.html),
+      // An iframe cannot paint outside its own rectangular viewport, even
+      // when every ancestor uses overflow:visible. Managed glow is therefore
+      // rendered by a transparent, shape-sized proxy beside the iframe (see
+      // mount()) instead of on the full widget host or inside the frame.
       managedGlow = detectManagedGlow(entry.properties, preparedHtml),
       optionalContent = {
         ...(entry.optionalContent || {}),
@@ -1166,7 +1235,7 @@
         entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
       template: '<div class="custom-component-host"></div>',
       styles:
-        "[data-component] .custom-component-host{display:block;width:100%;height:100%;overflow:visible}[data-component] .custom-component-host iframe{display:block;width:100%;height:100%;border:0;background:transparent;overflow:visible}",
+        "[data-component] .custom-component-host{display:block;position:relative;width:100%;height:100%;overflow:visible}[data-component] .custom-component-host iframe{display:block;position:relative;z-index:1;width:100%;height:100%;border:0;background:transparent;overflow:hidden}[data-component] .custom-component-glow-proxy{position:absolute;z-index:2;pointer-events:none;background:transparent}",
       data: {
         html: preparedHtml,
         managedGlow,
@@ -1203,6 +1272,8 @@
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
           frame = document.createElement("iframe"),
+          glowProxy = document.createElement("div"),
+          glowProxyParent = root.closest(".widget,.scoped-widget") || root,
           latestFeedback = new Map(),
           properties = context.options.properties || {},
           color = (value, fallback) =>
@@ -1241,7 +1312,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             ? `<script>document.addEventListener('DOMContentLoaded',function(){var target=document.querySelector('[data-custom-text],[data-translated-text],[data-translated-generated-label],.button-label');if(target)target.textContent=${JSON.stringify(localText)}});<\/script>`
             : "",
           frameBaseStyle = `<style>html,body{margin:0;width:100%;height:100%;overflow:hidden!important;box-sizing:border-box;background:transparent!important}body{position:relative;padding:${properties.contentInset == null || properties.contentInset === "" ? 10 : Math.max(0, Number(properties.contentInset) || 0)}px}body>*{box-sizing:border-box}</style>`,
-          bridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback);return function(){callbacks[key]=(callbacks[key]||[]).filter(function(entry){return entry!==callback)}}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')})})();<\/script>`,
+          bridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback);return function(){callbacks[key]=(callbacks[key]||[]).filter(function(entry){return entry!==callback})}}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-custom-error',message:e.message},'*')});document.addEventListener('pointerdown',function(){parent.postMessage({type:'composer-interaction',phase:'press'},'*')});document.addEventListener('pointerup',function(){parent.postMessage({type:'composer-interaction',phase:'release'},'*')})})();<\/script>`,
           repeatRuntime = String(
             context.options.definitionData.repeatRuntime || "",
           ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
@@ -1272,6 +1343,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
             String(properties[key] ?? ""),
           ),
+          // The widget's own behaviorRuntime paints a real, live glow via
+          // inline box-shadow (customBehaviorRuntime's appearance() helper)
+          // whenever a glowStrength/glowColor-driven behavior fires - that's
+          // the correctly-shaped glow, just clipped by the iframe. Once
+          // managedGlow is escaping an approximation of it externally on
+          // host, appearance() needs to skip its own glow portion, or the
+          // two stack into a visible double halo. This flag is read by
+          // appearance() itself (see customBehaviorRuntime).
+          managedGlowFlagScript = managedGlow.enabled
+            ? "<script>window.__composerManagedGlowExternal=true;<\/script>"
+            : "",
           documentText = /<\/body>/i.test(resolved)
             ? resolved.replace(
                 /<\/body>/i,
@@ -1280,6 +1362,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                   appearance +
                   localTextScript +
                   bridge +
+                  managedGlowFlagScript +
                   repeatRuntime +
                   stateStyle +
                   stateRuntime +
@@ -1293,21 +1376,162 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               appearance +
               localTextScript +
               bridge +
+              managedGlowFlagScript +
               repeatRuntime +
               stateStyle +
               stateRuntime +
               behaviorStyle +
               behaviorRuntime;
-        if (managedGlow.enabled) {
-          const outerGlowColor = color(properties[managedGlow.colorKey], "#04aa8e"),
-            outerGlowStrength = Math.max(
-              0,
-              Number(properties[managedGlow.strengthKey]) || 6,
-            );
-          host.style.overflow = "visible";
-          host.style.filter = `drop-shadow(0 0 ${outerGlowStrength}px ${outerGlowColor})`;
-          host.dataset.composerGlowOverflow = "true";
-        }
+        // "__preserve__" is a real stored value here, not a missing one —
+        // a property with preserveDefault:true that the user has never
+        // explicitly overridden is saved with exactly this string, so ??
+        // alone (which only falls through on null/undefined) never
+        // reaches managedGlow's resolved default.
+        const authoredGlowStyles = new Map(),
+          splitShadowLayers = (value) => {
+            const layers = [];
+            let start = 0,
+              depth = 0;
+            String(value || "").split("").forEach((character, index) => {
+              if (character === "(") depth++;
+              else if (character === ")") depth = Math.max(0, depth - 1);
+              else if (character === "," && depth === 0) {
+                layers.push(String(value).slice(start, index).trim());
+                start = index + 1;
+              }
+            });
+            layers.push(String(value || "").slice(start).trim());
+            return layers.filter((layer) => layer && layer !== "none");
+          },
+          isUnsetGlowValue = (value) =>
+            value === undefined || value === null || value === "__preserve__",
+          resolveGlowValue = (key, fallbackDefault) =>
+            isUnsetGlowValue(properties[key]) ? fallbackDefault : properties[key],
+          measureGlowShape = () => {
+            try {
+              const doc = frame.contentDocument;
+              if (!doc?.body) return null;
+              const candidates = [...doc.body.querySelectorAll("*")].filter(
+                (element) =>
+                  !["SCRIPT", "STYLE", "LINK", "META"].includes(element.tagName) &&
+                  getComputedStyle(element).display !== "none" &&
+                  getComputedStyle(element).visibility !== "hidden",
+              ),
+                preferred = candidates.filter((element) =>
+                  element.matches(
+                    'button,[role="button"],[data-translated-button],label,.switch,.toggle,[class*="switch"],[class*="toggle"]',
+                  ),
+                ),
+                measuredCandidates = preferred.some((element) => {
+                  const rect = element.getBoundingClientRect();
+                  return rect.width > 0 && rect.height > 0;
+                })
+                  ? preferred
+                  : candidates;
+              let largest = null,
+                largestArea = 0,
+                largestDepth = -1;
+              measuredCandidates.forEach((element) => {
+                const rect = element.getBoundingClientRect(),
+                  area = rect.width * rect.height;
+                if (area <= 0) return;
+                let depth = 0;
+                for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement)
+                  depth++;
+                // On an area tie (e.g. a layout wrapper that exactly hugs its
+                // only child), prefer the deeper/more specific element - it's
+                // far more likely to be the actual painted shape than a
+                // generic container, which typically has no border-radius.
+                if (area > largestArea || (area === largestArea && depth > largestDepth)) {
+                  largestArea = area;
+                  largestDepth = depth;
+                  largest = element;
+                }
+              });
+              if (!largest) return null;
+              if (!authoredGlowStyles.has(largest))
+                authoredGlowStyles.set(largest, {
+                  value: largest.style.getPropertyValue("box-shadow"),
+                  priority: largest.style.getPropertyPriority("box-shadow"),
+                });
+              const authored = authoredGlowStyles.get(largest);
+              if (authored.value)
+                largest.style.setProperty("box-shadow", authored.value, authored.priority);
+              else largest.style.removeProperty("box-shadow");
+              const rect = largest.getBoundingClientRect(),
+                style = getComputedStyle(largest),
+                shadowLayers = splitShadowLayers(style.boxShadow),
+                insetShadows = shadowLayers.filter((layer) => /\binset\b/i.test(layer)),
+                outerShadows = shadowLayers.filter((layer) => !/\binset\b/i.test(layer)),
+                radius = style.borderRadius || "0px";
+              largest.style.setProperty(
+                "box-shadow",
+                insetShadows.length ? insetShadows.join(", ") : "none",
+                "important",
+              );
+              return {
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                radius,
+                outerShadows,
+              };
+            } catch (error) {
+              return null;
+            }
+          },
+          applyManagedGlow = (isSelected) => {
+            if (!managedGlow.enabled) return;
+            const colorKey = isSelected ? managedGlow.selectedColorKey : managedGlow.colorKey,
+              colorDefault = isSelected ? managedGlow.selectedColorDefault : managedGlow.colorDefault,
+              strengthKey = isSelected ? managedGlow.selectedStrengthKey : managedGlow.strengthKey,
+              strengthDefault = isSelected ? managedGlow.selectedStrengthDefault : managedGlow.strengthDefault,
+              outerGlowColor = color(resolveGlowValue(colorKey, colorDefault), "#04aa8e"),
+              outerGlowStrength = Math.max(0, Number(resolveGlowValue(strengthKey, strengthDefault)) || 3),
+              shape = measureGlowShape();
+            if (!shape || shape.width <= 0 || shape.height <= 0) return;
+            host.style.overflow = "visible";
+            Object.assign(glowProxy.style, {
+              left: `${shape.left}px`,
+              top: `${shape.top}px`,
+              width: `${shape.width}px`,
+              height: `${shape.height}px`,
+              position: "absolute",
+              zIndex: "2",
+              pointerEvents: "none",
+              background: "transparent",
+              overflow: "visible",
+              borderRadius: shape.radius,
+              boxShadow: [
+                ...(shape.outerShadows || []),
+                ...(outerGlowStrength
+                  ? [
+                      `0 0 ${outerGlowStrength}px ${outerGlowColor}`,
+                      `0 0 ${outerGlowStrength * 2}px ${outerGlowColor}`,
+                    ]
+                  : []),
+              ].join(", ") || "none",
+            });
+            host.dataset.composerGlowOverflow = "true";
+          };
+        let managedGlowSelected = false,
+          glowResizeObserver = null,
+          glowRefreshTimers = [],
+          glowAnimationFrame = 0,
+          glowTrackUntil = 0;
+        const trackManagedGlowShape = (duration = 1800) => {
+          if (!managedGlow.enabled) return;
+          glowTrackUntil = Math.max(glowTrackUntil, performance.now() + duration);
+          if (glowAnimationFrame) return;
+          const track = () => {
+            glowAnimationFrame = 0;
+            applyManagedGlow(managedGlowSelected);
+            if (performance.now() < glowTrackUntil)
+              glowAnimationFrame = requestAnimationFrame(track);
+          };
+          glowAnimationFrame = requestAnimationFrame(track);
+        };
         let frameReady = false;
         function sendFeedback(key, value) {
           latestFeedback.set(key, value);
@@ -1329,8 +1553,26 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
         frame.setAttribute("scrolling", "no");
         frame.style.overflow = "hidden";
-        frame.addEventListener("load", replayFeedback);
+        frame.addEventListener("load", () => {
+          replayFeedback();
+          if (managedGlow.enabled) {
+            applyManagedGlow(managedGlowSelected);
+            const refresh = () => applyManagedGlow(managedGlowSelected);
+            if (typeof ResizeObserver === "function" && frame.contentDocument?.body) {
+              glowResizeObserver?.disconnect();
+              glowResizeObserver = new ResizeObserver(refresh);
+              glowResizeObserver.observe(frame.contentDocument.body);
+            }
+            glowRefreshTimers = [50, 200, 600].map((delay) => setTimeout(refresh, delay));
+          }
+        });
         frame.srcdoc = documentText;
+        glowProxy.className = "custom-component-glow-proxy";
+        glowProxy.setAttribute("aria-hidden", "true");
+        if (managedGlow.enabled) {
+          glowProxyParent.style.overflow = "visible";
+          glowProxyParent.appendChild(glowProxy);
+        }
         host.appendChild(frame);
         function receive(event) {
           if (
@@ -1403,6 +1645,28 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               sendFeedback(signal.key, value),
             ),
           );
+        // A widget's selected/pressed state commonly gets a bigger glow
+        // than standard (a morph-and-bloom effect, per Rule 2's Selected
+        // digital input) — the escape approximation needs to track that
+        // live, not just at mount time, or the standard-state glow size
+        // stays wrong the moment the widget is actually selected.
+        if (managedGlow.enabled) {
+          const truthy = (value) =>
+              value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true",
+            selectedSignal = signals.find(
+              (signal) => signal.direction === "input" && /^selected\d*$/.test(signal.key),
+            );
+          if (selectedSignal)
+            context.signals.subscribe(selectedSignal.key, (value) => {
+              managedGlowSelected = truthy(value);
+              // The signal bridge updates the iframe asynchronously and the
+              // imported CSS may morph width, height, or border-radius over
+              // several frames. Follow that transition in both directions so
+              // the external glow cannot retain Selected-state geometry after
+              // feedback returns to Standard.
+              trackManagedGlowShape();
+            });
+        }
         const repeated = context.options.definitionData.repeatedItems;
         if (repeated) {
           const increment = Math.max(
@@ -1447,6 +1711,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           }
         }
         return () => {
+          glowResizeObserver?.disconnect();
+          glowRefreshTimers.forEach(clearTimeout);
+          if (glowAnimationFrame) cancelAnimationFrame(glowAnimationFrame);
+          glowProxy.remove();
+          authoredGlowStyles.forEach((authored, element) => {
+            if (!element?.style) return;
+            if (authored.value)
+              element.style.setProperty("box-shadow", authored.value, authored.priority);
+            else element.style.removeProperty("box-shadow");
+          });
           frame.removeEventListener("load", replayFeedback);
           removeEventListener("message", receive);
         };
@@ -5583,6 +5857,52 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       host.appendChild(row);
     });
   }
+  // A native <input type="color"> can only ever hold opaque 6-digit hex —
+  // it has no concept of alpha, and silently ignores/blanks out any other
+  // format. rgba()/hsla()/8-digit-hex literals (common in AI-generated and
+  // CodePen glow/overlay CSS) need their alpha channel to stay editable
+  // too, so "color-alpha" properties pair a plain color swatch for the RGB
+  // portion with a separate alpha slider, recombined into one rgba() value.
+  // Parsing is delegated to the browser itself (via getComputedStyle)
+  // rather than hand-rolled per-format, so it transparently accepts any
+  // valid CSS color syntax.
+  function parseCssColorToRgba(value) {
+    const probe = document.createElement("span");
+    probe.style.color = "";
+    probe.style.color = String(value || "");
+    if (!probe.style.color) return null;
+    document.body.appendChild(probe);
+    const computed = getComputedStyle(probe).color;
+    document.body.removeChild(probe);
+    const match = computed.match(
+      /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/,
+    );
+    if (!match) return null;
+    return {
+      r: Math.round(Number(match[1])),
+      g: Math.round(Number(match[2])),
+      b: Math.round(Number(match[3])),
+      a: match[4] != null ? Number(match[4]) : 1,
+    };
+  }
+  function rgbToHex(r, g, b) {
+    const clamp = (value) =>
+      Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+    return `#${clamp(r)}${clamp(g)}${clamp(b)}`;
+  }
+  function hexToRgb(hex) {
+    const match = String(hex || "").match(/^#([0-9a-f]{6})$/i),
+      value = match ? match[1] : "000000";
+    return {
+      r: parseInt(value.slice(0, 2), 16),
+      g: parseInt(value.slice(2, 4), 16),
+      b: parseInt(value.slice(4, 6), 16),
+    };
+  }
+  function formatRgba(hex, alpha) {
+    const { r, g, b } = hexToRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${Math.round(Math.max(0, Math.min(1, alpha)) * 100) / 100})`;
+  }
   function renderProperties(item) {
     const section = $("component-properties-section"),
       host = $("component-properties"),
@@ -5944,7 +6264,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         input.type =
           property.type === "number"
             ? "number"
-            : property.type === "color"
+            : property.type === "color" || property.type === "color-alpha"
               ? "color"
               : property.type === "checkbox"
                 ? "checkbox"
@@ -5962,13 +6282,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         propertyValue = preservesImportedValue && !hasAppearanceOverride
           ? property.suggestedValue ?? ""
           : storedPropertyValue ?? property.defaultValue ?? "";
+      let alphaInput = null,
+        currentAlpha = 1;
       if (property.type === "checkbox")
         input.checked =
           propertyValue === true ||
           propertyValue === 1 ||
           propertyValue === "1" ||
           String(propertyValue).toLowerCase() === "true";
-      else input.value = propertyValue;
+      else if (property.type === "color-alpha") {
+        const parsed = parseCssColorToRgba(propertyValue) || { r: 0, g: 0, b: 0, a: 1 };
+        input.value = rgbToHex(parsed.r, parsed.g, parsed.b);
+        currentAlpha = parsed.a;
+        alphaInput = document.createElement("input");
+        alphaInput.type = "range";
+        alphaInput.min = "0";
+        alphaInput.max = "100";
+        alphaInput.value = String(Math.round(currentAlpha * 100));
+        alphaInput.className = "component-property-alpha";
+        alphaInput.title = `Opacity: ${Math.round(currentAlpha * 100)}%`;
+        alphaInput.setAttribute("aria-label", `${property.name} opacity`);
+      } else input.value = propertyValue;
       if (preservesImportedValue) {
         const override = document.createElement("label"),
           enabled = document.createElement("input"),
@@ -6012,7 +6346,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             ? input.checked
             : property.type === "number"
               ? Number(input.value)
-              : input.value;
+              : property.type === "color-alpha"
+                ? formatRgba(input.value, currentAlpha)
+                : input.value;
         if (property.type === "number") {
           if (!Number.isFinite(nextValue))
             nextValue = Number(property.defaultValue) || 0;
@@ -6037,8 +6373,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         if (property.affectsProperties) renderProperties(item);
         if (property.affectsBindings) renderBindings(item);
       };
-      wireReusableOverride(label, [input], property);
+      if (alphaInput)
+        alphaInput.oninput = () => {
+          currentAlpha = Math.max(0, Math.min(100, Number(alphaInput.value) || 0)) / 100;
+          alphaInput.title = `Opacity: ${Math.round(currentAlpha * 100)}%`;
+          input.oninput();
+        };
+      wireReusableOverride(label, alphaInput ? [input, alphaInput] : [input], property);
       label.appendChild(input);
+      if (alphaInput) label.appendChild(alphaInput);
       propertyHost.appendChild(label);
     });
   }
@@ -12109,11 +12452,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ([lower]) =>
         !(variableValues || new Set()).has(lower) && !transparentCanvasColors.has(lower),
     );
-    const roleUsageCount = new Map();
+    const roleUsageCount = new Map(),
+      // A single visual state can legitimately touch a dozen literal
+      // colors — a multi-stop gradient, a layered glow, a separate status
+      // pill, its own shadow — all real, all distinct. That's still too
+      // many independent checkboxes to make sense of at a glance, so only
+      // the first color found for a given state (or the first
+      // state-independent one) is pre-checked; the rest stay available
+      // but unchecked, rather than pre-selecting all of them.
+      stateGroupUsageCount = new Map();
     return literalColors.map(([lower, original], index) => {
       const firstIndex = styles.toLowerCase().indexOf(lower),
-        before = styles.slice(Math.max(0, firstIndex - 50), firstIndex),
-        property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
+        // The owning property can be arbitrarily far before the color
+        // itself — a multi-stop gradient or a multi-layer box-shadow can
+        // easily push a later color stop's distance from its own
+        // "background:"/"box-shadow:" past any fixed lookback window,
+        // which would otherwise misclassify every stop after the first as
+        // a generic "Text / icon color". Finding the nearest preceding
+        // `;` or `{` locates the true start of the current declaration
+        // regardless of its length, so every stop in the same
+        // declaration resolves to the same (correct) property name.
+        declarationStart =
+          Math.max(
+            styles.lastIndexOf(";", firstIndex),
+            styles.lastIndexOf("{", firstIndex),
+          ) + 1,
+        before = styles.slice(declarationStart, firstIndex),
+        property = before.match(/^\s*([a-z-]+)\s*:/i)?.[1] || "color",
         stateRole = describeSelectorStateRole(enclosingSelectorAt(styles, firstIndex)),
         baseRole = /border/.test(property)
           ? "Border color"
@@ -12133,25 +12498,32 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         isHex3 = /^#[0-9a-f]{3}$/i.test(lower),
         isHex6 = /^#[0-9a-f]{6}$/i.test(lower),
         // Only formats a native color-picker can represent exactly (plain
-        // 6-digit hex, or shorthand losslessly expanded to it) get type
-        // "color". Alpha-bearing and function-syntax colors (rgba(), hsl(),
-        // 8-digit hex, ...) get a plain text field instead of being forced
-        // through a lossy conversion that would silently change the
-        // imported component's appearance.
+        // 6-digit hex, or shorthand losslessly expanded to it) get the
+        // plain "color" type. Alpha-bearing and function-syntax colors
+        // (rgba(), hsl(), 8-digit hex, ...) get "color-alpha" instead — a
+        // color swatch paired with a separate alpha slider (see
+        // renderProperties) — rather than either forcing a lossy
+        // conversion to opaque hex, or falling back to a plain text field
+        // (which historically meant these values rendered as an
+        // unrelated multi-line CIP-text editor, since "text" is the
+        // catch-all property type).
         pickerSafe = isHex3 || isHex6,
         displayValue = isHex3
           ? `#${lower[1]}${lower[1]}${lower[2]}${lower[2]}${lower[3]}${lower[3]}`
           : pickerSafe
             ? lower
-            : original;
+            : original,
+        stateGroupUsage = (stateGroupUsageCount.get(stateRole) || 0) + 1;
       roleUsageCount.set(role, usageIndex);
+      stateGroupUsageCount.set(stateRole, stateGroupUsage);
       return {
         key,
         label,
-        type: pickerSafe ? "color" : "text",
+        type: pickerSafe ? "color" : "color-alpha",
         value: displayValue,
         kind: "literal",
         source: original,
+        checkedByDefault: stateGroupUsage === 1,
       };
     });
   }
@@ -12726,7 +13098,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           key: "glowStrength",
           label: "Glow strength",
           type: "number",
-          value: 3,
+          // Matches the same default used for this exact concept
+          // elsewhere in Composer (e.g. the hand-built "Override custom
+          // appearance" glow property). 3px reads as barely-there once
+          // it's the ONLY thing standing in for the widget's authored
+          // glow effect — this is what the mount()-time managed-glow
+          // escape falls back to when the user hasn't explicitly set a
+          // value, so it needs to look like an actual glow on its own.
+          value: 12,
           kind: "button-style",
         },
         {
@@ -12786,6 +13165,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           kind: "button-style",
         },
         {
+          key: "selectedGlowStrength",
+          label: "Selected state — glow strength",
+          type: "number",
+          // A widget commonly makes its selected/pressed state's glow
+          // noticeably bigger than standard (a morph-and-bloom effect is
+          // common in AI-generated/CodePen buttons) — a single static
+          // escape size can't represent both, so this gets its own,
+          // larger default rather than reusing glowStrength's.
+          value: 24,
+          kind: "button-style",
+        },
+        {
           key: "cornerRadius",
           label: "Corner radius",
           type: "number",
@@ -12828,7 +13219,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ? editables
           .map(
             (entry, index) =>
-              `<label><input type="checkbox" checked data-index="${index}"><span>${entry.label}<small>${entry.type} · ${String(entry.value).replace(/</g, "&lt;")}</small></span></label>`,
+              `<label><input type="checkbox"${entry.checkedByDefault === false ? "" : " checked"} data-index="${index}"><span>${entry.label}<small>${entry.type} · ${String(entry.value).replace(/</g, "&lt;")}</small></span></label>`,
           )
           .join("")
       : '<p class="hint">No editable values were detected. You can add properties manually in the component editor.</p>';
@@ -13154,7 +13545,7 @@ if(index===currentIndex)textTarget.textContent=value;
 });
 });`
         : "\nvar textTarget=null;";
-    return `<script>(function(){
+    return `<script>/* composer-generated-runtime */(function(){
 var root=window.document.querySelector(${JSON.stringify(selector)});
 if(!root)return;
 var states=${JSON.stringify(stateFamily.states)};
@@ -13169,10 +13560,10 @@ if(window.ComposerSignals)window.ComposerSignals.publish('stateFeedback',current
 }
 if(window.ComposerSignals)window.ComposerSignals.subscribe('state',applyState);
 applyState(0);
-})();<\/script>`;
+})();/* /composer-generated-runtime */<\/script>`;
   }
   function translatedResponsiveFitRuntime() {
-    return `<script>(function(){
+    return `<script>/* composer-generated-runtime */(function(){
 var runtimeDocument=window.document,body=runtimeDocument.body;
 if(!body||body.querySelector('[data-composer-responsive-stage]'))return;
 var visualNodes=Array.prototype.slice.call(body.children).filter(function(node){return node.tagName!=='SCRIPT'&&node.tagName!=='STYLE'});
@@ -13190,7 +13581,7 @@ requestAnimationFrame(function(){fit(true)});
 setTimeout(function(){fit(true)},100);setTimeout(function(){fit(true)},500);
 window.addEventListener('resize',function(){fit(true)});
 if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)});observer.observe(body)}
-})();<\/script>`;
+})();/* /composer-generated-runtime */<\/script>`;
   }
   function applyNaturalPreviewSize(frame, width, height) {
     if (!(width > 1) || !(height > 1)) return;
@@ -15070,6 +15461,17 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
   function auditCustomSource() {
     const { html, css, javascript } = currentCustomSourceSnapshot(),
       source = `${html}\n${css}\n${javascript}`,
+      // translatedStateFamilyRuntime/translatedResponsiveFitRuntime wrap
+      // their own generated JS in this marker on every translated
+      // component, unconditionally — including it in these checks would
+      // mean e.g. "modern-browser-apis" (ResizeObserver) fires on every
+      // single import regardless of what the widget's own code does,
+      // which is not a finding the user can act on or fix. Compatibility
+      // checks below run against the widget's own authored code only.
+      authoredJavascript = javascript.replace(
+        /\/\* composer-generated-runtime \*\/[\s\S]*?\/\* \/composer-generated-runtime \*\//g,
+        "",
+      ),
       findings = [],
       add = (code, message, options = {}) =>
         findings.push({ code, message, severity: options.severity || "warning", repairable: !!options.repairable });
@@ -15141,10 +15543,10 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     evaluateComponentRequirementRules(requirementContext).forEach((finding) =>
       add(finding.code, finding.message, { severity: finding.severity }),
     );
-    if (/\b(?:parent|top)\.document\b/.test(javascript))
+    if (/\b(?:parent|top)\.document\b/.test(authoredJavascript))
       add("parent-document", "JavaScript reaches outside the component iframe through parent/top.document and can alter other widgets or the editor.", { severity: "error", repairable: true });
     const listenerSignatures = [
-        ...javascript.matchAll(
+        ...authoredJavascript.matchAll(
           /\b([A-Za-z_$][\w$]*|window|document)\.addEventListener\(\s*(["'])([^"']+)\2\s*,\s*([A-Za-z_$][\w$]*)/g,
         ),
       ].map((match) => `${match[1]}|${match[3]}|${match[4]}`),
@@ -15157,27 +15559,27 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       ];
     if (duplicateListeners.length)
       add("duplicate-listeners", `${duplicateListeners.length} identical event-listener registration${duplicateListeners.length === 1 ? " appears" : "s appear"} more than once and may publish duplicate presses.`);
-    if (/\bwindow\.[A-Za-z_$][\w$]*\s*=/.test(javascript))
+    if (/\bwindow\.[A-Za-z_$][\w$]*\s*=/.test(authoredJavascript))
       add("window-state", "Custom state is assigned directly to window. It is isolated per component instance, but will reset when that instance is remounted.");
-    if (/\b(?:localStorage|sessionStorage|indexedDB)\b/.test(javascript))
+    if (/\b(?:localStorage|sessionStorage|indexedDB)\b/.test(authoredJavascript))
       add("browser-storage", "Browser storage is not guaranteed to behave identically across Preview, CH5 Desktop, and touch panels.");
-    if (/\b(?:eval|Function)\s*\(/.test(javascript))
+    if (/\b(?:eval|Function)\s*\(/.test(authoredJavascript))
       add("dynamic-code", "Dynamic code evaluation can be blocked or behave differently in packaged CH5 runtimes.", { severity: "error" });
-    if (/\b(?:fetch|XMLHttpRequest|WebSocket)\b/.test(javascript))
+    if (/\b(?:fetch|XMLHttpRequest|WebSocket)\b/.test(authoredJavascript))
       add("network-api", "Network access may require panel permissions, compatible protocols, and CORS configuration.");
     const legacyApiNames = [
-      /\.replaceAll\s*\(/.test(javascript) && "String.replaceAll",
-      /\.at\s*\(/.test(javascript) && "Array/String.at",
-      /\bObject\.hasOwn\s*\(/.test(javascript) && "Object.hasOwn",
+      /\.replaceAll\s*\(/.test(authoredJavascript) && "String.replaceAll",
+      /\.at\s*\(/.test(authoredJavascript) && "Array/String.at",
+      /\bObject\.hasOwn\s*\(/.test(authoredJavascript) && "Object.hasOwn",
     ].filter(Boolean);
     if (legacyApiNames.length)
       add("legacy-js-apis", `${legacyApiNames.join(", ")} may be unavailable on older panel Chromium versions. Add isolated compatibility polyfills.`, { repairable: true });
     const reviewApiNames = [
-      /\bstructuredClone\s*\(/.test(javascript) && "structuredClone",
-      /\bcrypto\.randomUUID\s*\(/.test(javascript) && "crypto.randomUUID",
-      /\bResizeObserver\b/.test(javascript) && "ResizeObserver",
-      /\bIntersectionObserver\b/.test(javascript) && "IntersectionObserver",
-      /\bAbortSignal\.timeout\s*\(/.test(javascript) && "AbortSignal.timeout",
+      /\bstructuredClone\s*\(/.test(authoredJavascript) && "structuredClone",
+      /\bcrypto\.randomUUID\s*\(/.test(authoredJavascript) && "crypto.randomUUID",
+      /\bResizeObserver\b/.test(authoredJavascript) && "ResizeObserver",
+      /\bIntersectionObserver\b/.test(authoredJavascript) && "IntersectionObserver",
+      /\bAbortSignal\.timeout\s*\(/.test(authoredJavascript) && "AbortSignal.timeout",
     ].filter(Boolean);
     if (reviewApiNames.length)
       add("modern-browser-apis", `${reviewApiNames.join(", ")} require verification on the selected touch-panel Chromium runtime.`);
@@ -15239,18 +15641,75 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       );
     return findings;
   }
+  // Findings that aren't auto-repairable still deserve a concrete next
+  // step rather than a dead-end message — this maps a finding's code to
+  // where (and what) to search for so "Show location" can jump straight
+  // to it, the same way readiness findings already do for properties and
+  // behaviors. Repairable findings already have their own action (the
+  // "Apply safe repair" checkbox), so they're deliberately not included.
+  const customAuditFindingSearch = {
+    "parent-document": { field: "javascript", pattern: /\b(?:parent|top)\.document\b/ },
+    "window-state": { field: "javascript", pattern: /\bwindow\.[A-Za-z_$][\w$]*\s*=/ },
+    "browser-storage": { field: "javascript", pattern: /\b(?:localStorage|sessionStorage|indexedDB)\b/ },
+    "dynamic-code": { field: "javascript", pattern: /\b(?:eval|Function)\s*\(/ },
+    "network-api": { field: "javascript", pattern: /\b(?:fetch|XMLHttpRequest|WebSocket)\b/ },
+    "modern-browser-apis": {
+      field: "javascript",
+      pattern: /\b(?:structuredClone|crypto\.randomUUID|ResizeObserver|IntersectionObserver|AbortSignal\.timeout)\b/,
+    },
+    "advanced-css": {
+      field: "css",
+      pattern: /:has\s*\(|@container\b|container-type\s*:|grid-template[^;]*\bsubgrid\b|color-mix\s*\(|\b(?:dvh|dvw|svh|svw|lvh|lvw)\b/,
+    },
+    "complex-css-inset": { field: "css", pattern: /\binset\s*:\s*[^;}{]+(?=[;}])/ },
+    "duplicate-listeners": { field: "javascript", pattern: /\.addEventListener\(/ },
+  };
+  function switchCustomSourceTab(name) {
+    document
+      .querySelectorAll("[data-custom-tab]")
+      .forEach((entry) => entry.classList.toggle("active", entry.dataset.customTab === name));
+    ["html", "css", "javascript"].forEach(
+      (field) => ($("custom-source-" + field).hidden = field !== name),
+    );
+  }
+  function goToCustomAuditFindingSource(code) {
+    const search = customAuditFindingSearch[code];
+    if (!search) return;
+    setCustomWizardStep(1);
+    switchCustomSourceTab(search.field);
+    const textarea = $(`custom-source-${search.field}`),
+      match = textarea.value.match(search.pattern);
+    textarea.focus();
+    if (match) {
+      const start = textarea.value.indexOf(match[0]);
+      textarea.setSelectionRange(start, start + match[0].length);
+      textarea.scrollTop = Math.max(
+        0,
+        (start / textarea.value.length) * textarea.scrollHeight - 60,
+      );
+    }
+    document.querySelector(".custom-detection-details")?.setAttribute("open", "");
+  }
   function renderCustomCompatibilityAudit() {
     const findings = auditCustomSource(),
       report = $("custom-audit-report"),
       repairable = findings.filter((finding) => finding.repairable);
     report.innerHTML = findings.length
-      ? findings.map((finding) => `<div class="custom-audit-item ${finding.severity === "error" ? "error" : ""} ${finding.repairable ? "repairable" : ""}">${finding.repairable ? `<label><input type="checkbox" data-custom-repair="${finding.code}" checked> <strong>Apply safe repair</strong></label>` : `<strong>${finding.severity === "error" ? "Must review" : "Review"}</strong>`} — ${finding.message}</div>`).join("")
+      ? findings
+          .map((finding) => {
+            const hasLocation = !finding.repairable && customAuditFindingSearch[finding.code];
+            return `<div class="custom-audit-item ${finding.severity === "error" ? "error" : ""} ${finding.repairable ? "repairable" : ""}">${finding.repairable ? `<label><input type="checkbox" data-custom-repair="${finding.code}" checked> <strong>Apply safe repair</strong></label>` : `<strong>${finding.severity === "error" ? "Must review" : "Review"}</strong>`} — ${finding.message}${hasLocation ? ` <button type="button" data-custom-audit-location="${finding.code}">Show location</button>` : ""}</div>`;
+          })
+          .join("")
       : '<div class="custom-audit-pass">PASS — no common compatibility or instance-safety hazards detected.</div>';
     $("custom-audit-repair").disabled = !repairable.length;
     report.querySelectorAll("[data-custom-repair]").forEach((checkbox) => {
       checkbox.onchange = () => {
         $("custom-audit-repair").disabled = !report.querySelector("[data-custom-repair]:checked");
       };
+    });
+    report.querySelectorAll("[data-custom-audit-location]").forEach((button) => {
+      button.onclick = () => goToCustomAuditFindingSource(button.dataset.customAuditLocation);
     });
     const snapshot = currentCustomSourceSnapshot();
     $("custom-audit-restore").disabled =
@@ -15410,7 +15869,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     row.dataset.preserveDefault = String(!!property.preserveDefault);
     row.dataset.suggestedValue = String(property.suggestedValue ?? property.defaultValue ?? "");
     row.innerHTML =
-      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>select</option><option>checkbox</option><option>asset</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
+      '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>color-alpha</option><option>select</option><option>checkbox</option><option>asset</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
     row.querySelector('[data-field="key"]').value = property.key || "";
     row.querySelector('[data-field="name"]').value = property.name || "";
     row.querySelector('[data-field="type"]').value = property.type || "text";
@@ -15607,6 +16066,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       ["rotate", "Rotation"],
       ["imageSource", "Image / asset source"],
       ["backgroundImage", "Background asset"],
+      ["speed", "Animation speed"],
     ],
     output: [
       ["press", "Pointer press / release"],
@@ -17676,7 +18136,7 @@ var rules=${JSON.stringify(rules)},properties=${JSON.stringify(properties)};
 function truthy(value){return value===true||value===1||value==='1'||String(value).toLowerCase()==='true'}
 function mapped(rule,value){if(rule.booleanMapping&&rule.booleanMapping.enabled)return truthy(value)?rule.booleanMapping.trueValue:rule.booleanMapping.falseValue;if(!rule.mapping||!rule.mapping.enabled)return value;var m=rule.mapping,n=Number(value),span=Number(m.inputMax)-Number(m.inputMin);if(!Number.isFinite(n)||!span)return Number(m.outputMin)||0;var ratio=Math.max(0,Math.min(1,(n-Number(m.inputMin))/span));return Number(m.outputMin)+ratio*(Number(m.outputMax)-Number(m.outputMin))}
 function transforms(target){target.style.transform='translateX(var(--composer-translate-x,0px)) translateY(var(--composer-translate-y,0px)) rotate(var(--composer-rotate,0deg)) scale(var(--composer-scale,1))'}
-function appearance(target){var glow=Math.max(0,Number(target.style.getPropertyValue('--composer-glow-strength'))||0),shadow=Math.max(0,Number(target.style.getPropertyValue('--composer-shadow-size'))||0),color=target.style.getPropertyValue('--composer-glow-color')||'var(--glow-color,#00e5c3)',parts=[];if(shadow)parts.push(shadow+'px '+shadow+'px '+shadow*2+'px rgba(0,0,0,.48)');if(glow){parts.push('0 0 '+glow+'px '+color);parts.push('0 0 '+glow*2+'px '+color)}target.style.boxShadow=parts.join(',')}
+function appearance(target){var glow=Math.max(0,Number(target.style.getPropertyValue('--composer-glow-strength'))||0),shadow=Math.max(0,Number(target.style.getPropertyValue('--composer-shadow-size'))||0),color=target.style.getPropertyValue('--composer-glow-color')||'var(--glow-color,#00e5c3)',parts=[];if(shadow)parts.push(shadow+'px '+shadow+'px '+shadow*2+'px rgba(0,0,0,.48)');if(glow&&!window.__composerManagedGlowExternal){parts.push('0 0 '+glow+'px '+color);parts.push('0 0 '+glow*2+'px '+color)}target.style.boxShadow=parts.join(',')}
 function apply(rule,value){if(value==='__preserve__')return;var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'checkedState':var checked=truthy(mappedValue);if('checked'in target)target.checked=checked;target.classList.toggle('selected',checked);target.classList.toggle('active',checked);target.setAttribute('aria-checked',String(checked));target.dispatchEvent(new Event('change',{bubbles:true}));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter){target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));if(/glow/i.test(rule.parameter))appearance(target)}break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':target.style.setProperty('--composer-glow-strength',String(Math.max(0,Number(mappedValue)||0)));target.style.setProperty('--composer-glow-color',rule.parameter||'var(--glow-color,#00e5c3)');appearance(target);break;case'shadowSize':target.style.setProperty('--composer-shadow-size',String(Math.max(0,Number(mappedValue)||0)));appearance(target);break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':var image=String(mappedValue||'');if(target.tagName==='IMG'){if(!target.hasAttribute('data-composer-original-src'))target.setAttribute('data-composer-original-src',target.getAttribute('src')||'');target.src=image||target.getAttribute('data-composer-original-src')||''}else{if(!target.hasAttribute('data-composer-original-background'))target.setAttribute('data-composer-original-background',target.style.backgroundImage||'');target.style.backgroundImage=image?'url("'+image.replace(/"/g,'\\"')+'")':target.getAttribute('data-composer-original-background')||''}break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;case'speed':var durationScale=4-(Math.max(0,Math.min(1,Number(mappedValue)/100))*3.8),nodes=[target].concat(Array.prototype.slice.call(target.querySelectorAll('*'))),scaleDurations=function(value){return String(value||'0s').split(',').map(function(part){var match=String(part).trim().match(/^([0-9.]+)(ms|s)$/i);if(!match)return part;var milliseconds=Number(match[1])*(match[2].toLowerCase()==='s'?1000:1);return milliseconds<=0?'0ms':Math.max(10,Math.round(milliseconds*durationScale))+'ms'}).join(', ')};nodes.forEach(function(node){var computed=window.getComputedStyle(node),transitionBase=node.getAttribute('data-composer-transition-duration')||computed.transitionDuration,animationBase=node.getAttribute('data-composer-animation-duration')||computed.animationDuration;if(!node.hasAttribute('data-composer-transition-duration'))node.setAttribute('data-composer-transition-duration',transitionBase);if(!node.hasAttribute('data-composer-animation-duration'))node.setAttribute('data-composer-animation-duration',animationBase);node.style.transitionDuration=scaleDurations(transitionBase);node.style.animationDuration=scaleDurations(animationBase)});break;}})}
 function pulse(key){window.ComposerSignals.publish(key,true);setTimeout(function(){window.ComposerSignals.publish(key,false)},50)}
 rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(){window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){var raw=target.type==='range'||target.type==='number'?Number(target.value):target.type==='checkbox'?target.checked:target.value;window.ComposerSignals.publish(rule.key,mapped(rule,raw))})})});
@@ -18302,14 +18762,30 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     const previewFrame = $("custom-component-preview"),
       previewPanel = previewFrame.closest(".custom-source-panel"),
-      managedGlow = detectManagedGlow(collectCustomProperties(), source),
+      // Disabled alongside the placed-widget escape in registerCustomComponent -
+      // see the comment there for why.
+      managedGlow = { ...detectManagedGlow(collectCustomProperties(), source), enabled: false },
       previewColor = (value, fallback) =>
         /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
     if (managedGlow.enabled) {
-      const glowColor = previewColor(previewProperties[managedGlow.colorKey], "#04aa8e"),
-        glowStrength = Math.max(0, Number(previewProperties[managedGlow.strengthKey]) || 6);
+      const isUnsetGlowValue = (value) =>
+          value === undefined || value === null || value === "__preserve__",
+        glowColor = previewColor(
+          isUnsetGlowValue(previewProperties[managedGlow.colorKey])
+            ? managedGlow.colorDefault
+            : previewProperties[managedGlow.colorKey],
+          "#04aa8e",
+        ),
+        glowStrength = Math.max(
+          0,
+          Number(
+            isUnsetGlowValue(previewProperties[managedGlow.strengthKey])
+              ? managedGlow.strengthDefault
+              : previewProperties[managedGlow.strengthKey],
+          ) || 6,
+        );
       previewFrame.style.overflow = "visible";
-      previewFrame.style.filter = `drop-shadow(0 0 ${glowStrength}px ${glowColor})`;
+      previewFrame.style.filter = `drop-shadow(0 0 ${glowStrength}px ${glowColor}) drop-shadow(0 0 ${glowStrength * 2}px ${glowColor})`;
       previewPanel?.classList.add("custom-preview-glow-active");
     } else {
       previewFrame.style.overflow = "";

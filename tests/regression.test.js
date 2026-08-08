@@ -1682,6 +1682,225 @@ run("Import and Translate merges preset and detected Name bindings", () => {
   assert.ok(editor.includes("entry.direction === signal.direction"));
 });
 
+run("the managed-glow escape uses the component's own declared color/strength defaults, not an unrelated hardcoded fallback", () => {
+  const editor = read("editor.js");
+  // Real bug (two layers, both confirmed via a live placed widget):
+  // (1) a freshly-placed widget's saved properties start out empty, so
+  // properties[colorKey]/[strengthKey] are undefined until the user
+  // explicitly edits them; (2) "button-style" properties are saved with
+  // preserveDefault:true, so an UNedited one isn't actually undefined —
+  // it's the literal string "__preserve__" (both on the placed widget's
+  // own properties AND on collectCustomProperties()'s defaultValue,
+  // which previewProperties is built from), which plain ?? does NOT
+  // fall through on, since ?? only triggers for null/undefined. Both
+  // consumers of managedGlow (the real placed-widget mount() and the
+  // wizard's own live preview) must treat "__preserve__" as unset too,
+  // or the approximated escape glow keeps using the unrelated hardcoded
+  // #04aa8e/6px fallback instead of the widget's real declared glow.
+  assert.ok(
+    editor.includes(
+      'value === undefined || value === null || value === "__preserve__"',
+    ),
+    "isUnsetGlowValue must treat the literal preserveDefault sentinel as unset, not just null/undefined",
+  );
+  assert.ok(
+    editor.includes("resolveGlowValue = (key, fallbackDefault) =>") &&
+      editor.includes("isUnsetGlowValue(properties[key]) ? fallbackDefault : properties[key]"),
+    "mount()'s glow color/strength resolution must route through the same __preserve__-aware fallback",
+  );
+  assert.ok(
+    editor.includes("isUnsetGlowValue(previewProperties[managedGlow.colorKey])") &&
+      editor.includes("isUnsetGlowValue(previewProperties[managedGlow.strengthKey])"),
+    "the wizard's own live preview must apply the same __preserve__-aware fallback",
+  );
+  assert.ok(editor.includes("managedGlow.colorDefault") && editor.includes("managedGlow.strengthDefault"));
+});
+
+run("the managed-glow escape dynamically switches to a bigger/different glow for the widget's own Selected signal, not just at mount time", () => {
+  // Confirmed via a live screenshot: a widget can morph shape AND
+  // noticeably enlarge its own glow specifically in the selected state
+  // (e.g. a square-to-circle button) — a glow size computed once at
+  // mount time and never revisited stays wrong the moment the widget is
+  // actually selected, even though the escape mechanism itself (shape,
+  // fallback resolution) is otherwise working correctly.
+  const editor = read("editor.js");
+  assert.ok(
+    editor.includes("applyManagedGlow = (isSelected) => {"),
+    "the glow application must be a reusable function, callable both at mount time and on live signal changes",
+  );
+  assert.ok(
+    editor.includes("selectedSignal = signals.find(") &&
+      editor.includes('signal.direction === "input" && /^selected'),
+    "must find the widget's own Selected input signal (accounting for per-button suffixes like selected1/selected2) to subscribe to",
+  );
+  assert.ok(
+    editor.includes("managedGlowSelected = truthy(value);") &&
+      editor.includes("applyManagedGlow(managedGlowSelected);"),
+    "must re-apply the glow live whenever the Selected signal changes, using the same truthy-parsing convention used elsewhere for digital signals",
+  );
+  assert.ok(
+    editor.includes("selectedColorKey: selectedColorProperty?.key || colorProperty?.key || \"\"") &&
+      editor.includes("selectedStrengthKey: selectedStrengthProperty?.key || strengthProperty?.key || \"\""),
+    "detectManagedGlow must resolve a selected-specific color/strength, falling back to the standard pair when the widget has no dedicated selected glow property",
+  );
+});
+
+run("the managed-glow escape stacks two glow layers (matching Composer's own glow synthesis elsewhere), not a single flat one", () => {
+  // Confirmed via a live screenshot: even with the correct color/
+  // strength and correct alpha-following shape, a single shadow layer
+  // still read as boxy/hard-edged rather than a soft glow —
+  // customBehaviorRuntime's own appearance() function (used for
+  // hand-built components' glowStrength behavior) already solves this
+  // by stacking a second layer at double the blur radius, so the escape
+  // approximation should render the same way, not differently.
+  const editor = read("editor.js");
+  assert.ok(
+    editor.includes("`0 0 ${outerGlowStrength}px ${outerGlowColor}`") &&
+      editor.includes("`0 0 ${outerGlowStrength * 2}px ${outerGlowColor}`"),
+    "mount()'s host-level glow must stack a second, wider layer",
+  );
+  assert.ok(
+    editor.includes(
+      "`drop-shadow(0 0 ${glowStrength}px ${glowColor}) drop-shadow(0 0 ${glowStrength * 2}px ${glowColor})`",
+    ),
+    "the wizard preview's glow filter must apply the same two-layer treatment",
+  );
+});
+
+run("the managed-glow escape uses a shape-sized proxy outside the iframe", () => {
+  // Confirmed via a live screenshot + DOM inspection: none of host's
+  // ancestors have their own background/border/box-shadow, yet the glow
+  // still visibly took on a rectangular shape rather than following the
+  // widget's rounded/circular button — because filter:drop-shadow shapes
+  // itself from the source element's rendered alpha, and browsers
+  // commonly treat an <iframe> as opaque for that purpose regardless of
+  // how transparent its own document's background is. box-shadow is
+  // drawn purely from the element's own box geometry (its border-radius),
+  // never its content's pixels — sidestepping the iframe issue entirely,
+  // as long as host's own border-radius is kept in sync with the
+  // widget's real shape.
+  const editor = read("editor.js");
+  assert.ok(
+    editor.includes("measureGlowShape = () => {"),
+    "must measure the widget's actual rendered shape rather than assuming a fixed radius",
+  );
+  assert.ok(
+    editor.includes(".custom-component-glow-proxy{position:absolute;z-index:2;pointer-events:none;background:transparent}"),
+    "the transparent proxy must paint above the iframe compositing surface so Chromium cannot clip it to the iframe edge",
+  );
+  assert.ok(
+    editor.includes('glowProxyParent = root.closest(".widget,.scoped-widget") || root') &&
+      editor.includes("glowProxyParent.appendChild(glowProxy)"),
+    "the proxy must live outside the scoped component subtree so no iframe/host wrapper can clip it",
+  );
+  assert.ok(
+    editor.includes('radius = style.borderRadius || "0px"') &&
+      editor.includes("radius,"),
+    "must read the real border-radius off the widget's own largest visual element",
+  );
+  assert.ok(
+    editor.includes("borderRadius: shape.radius") &&
+      editor.includes("glowProxy.style"),
+    "the external glow proxy must mirror the measured shape before its box-shadow is applied",
+  );
+  assert.ok(
+    !editor.includes("host.style.filter = `drop-shadow"),
+    "the host-level escape must no longer use filter:drop-shadow, since that's the mechanism that broke the shape",
+  );
+  assert.ok(
+    editor.includes(
+      "applyManagedGlow(managedGlowSelected);",
+    ),
+    "the first glow application must run after the iframe's load event, not synchronously at mount time, since shape measurement needs the iframe's document to actually exist",
+  );
+});
+
+run("measureShapeRadius breaks area ties in favor of the deeper/more specific element, not document order", () => {
+  // Confirmed live: a layout wrapper <div> that exactly hugs its only
+  // child <button> ties with it for largest area. querySelectorAll
+  // returns the wrapper first (document order), so a plain `>` comparison
+  // kept the wrapper - which has no border-radius - instead of the button,
+  // which is the widget's real visual shape. Depth must break the tie.
+  const editor = read("editor.js");
+  assert.ok(
+    editor.includes("largestDepth = -1"),
+    "must track the depth of the current best candidate to break area ties",
+  );
+  assert.ok(
+    editor.includes("area > largestArea || (area === largestArea && depth > largestDepth)"),
+    "an area tie must be broken in favor of the deeper element, not whichever came first in document order",
+  );
+});
+
+run("mount() suppresses the widget's own internal glow when the escape is externally painting it, so they don't stack into a double halo", () => {
+  // Confirmed live via DevTools: btn.style.boxShadow was set inline (by the
+  // widget's own behaviorRuntime, via appearance()'s glowStrength handling)
+  // to the exact same two-layer glow our external host-level escape also
+  // paints - producing a visible "halo around a halo" instead of one glow
+  // that's allowed to bleed past the bounding box. The widget's own
+  // appearance() is the shared, general mechanism for ALL custom/translated
+  // widgets, so it must be the one to skip painting the glow, driven by a
+  // flag the parent sets before behaviorRuntime's script ever runs.
+  const editor = read("editor.js");
+  assert.ok(
+    editor.includes(
+      'managedGlowFlagScript = managedGlow.enabled\n            ? "<script>window.__composerManagedGlowExternal=true;<\\/script>"',
+    ),
+    "mount() must flag the iframe when managedGlow is escaping externally, before behaviorRuntime's script runs",
+  );
+  assert.ok(
+    editor.includes("bridge +\n                  managedGlowFlagScript +"),
+    "the flag script must be inserted into documentText ahead of behaviorRuntime (both the </body>-present and fallback assembly branches)",
+  );
+  assert.ok(
+    editor.includes(
+      "if(glow&&!window.__composerManagedGlowExternal){parts.push('0 0 '+glow+'px '+color);parts.push('0 0 '+glow*2+'px '+color)}",
+    ),
+    "appearance()'s shared glow-painting helper must skip its own glow portion (but keep the unrelated drop-shadow part) once the flag is set",
+  );
+});
+
+run("the translated button-style preset's glowStrength default is substantial enough to actually read as a glow once escaped, not the old barely-visible 3px", () => {
+  // Confirmed via a live screenshot: with the managed-glow escape fully
+  // working (correct shape, correct fallback resolution), a widget's
+  // glow was STILL visually "cut off" — because 3px is such a small
+  // blur radius that it barely registers as a glow at all once it's the
+  // ONLY thing standing in for the widget's authored effect. 12 matches
+  // the default already used for this exact concept elsewhere in
+  // Composer (the hand-built "Override custom appearance" glow
+  // property), rather than being a smaller, inconsistent one-off.
+  const editor = read("editor.js"),
+    marker = 'key: "glowStrength",\n          label: "Glow strength",',
+    markerStart = editor.indexOf(marker);
+  assert.notEqual(markerStart, -1, "the translate button-style glowStrength property definition was not found — has it moved?");
+  const nearby = editor.slice(markerStart, markerStart + 900);
+  assert.ok(/value:\s*12,/.test(nearby), `expected the button-style glowStrength default to be 12, found: ${nearby.match(/value:\s*\d+,/)?.[0]}`);
+});
+
+run("the placed-widget signal bridge script embedded in registerCustomComponent's mount() is syntactically valid", () => {
+  // Real bug: a misplaced ')' inside subscribe's unsubscribe closure
+  // (`...callback)}}};` instead of `...callback})}}};`) made this whole
+  // <script> tag throw "Unexpected token ')'" at parse time in every
+  // placed custom/translated component — meaning window.ComposerSignals
+  // never got defined at all, breaking signal communication (including
+  // the properties a mounted component reads) for every such widget.
+  // Being embedded in a template literal, this had no static type
+  // checking to catch it; only actually parsing the extracted script
+  // text would.
+  const editor = read("editor.js"),
+    marker = "bridge = `<script>(function(){if(!window.ComposerSignals)",
+    markerStart = editor.indexOf(marker);
+  assert.notEqual(markerStart, -1, "the mount() signal bridge script was not found — has it moved or been renamed?");
+  const scriptOpen = editor.indexOf("<script>", markerStart) + "<script>".length,
+    scriptClose = editor.indexOf("<\\/script>", scriptOpen),
+    js = editor.slice(scriptOpen, scriptClose);
+  try {
+    new Function(js);
+  } catch (error) {
+    throw new Error(`mount()'s bridge script has a syntax error: ${error.message}`);
+  }
+});
+
 run("Import and Translate skips the redundant Selected signal for a detected multi-state widget, since Selected is essentially state index 1", () => {
   const editor = read("editor.js");
   // Two separate places must both exclude it: the preset's own baseline
@@ -1706,6 +1925,48 @@ run("Import and Translate skips the redundant Selected signal for a detected mul
     ),
     "an inferred class-toggle candidate keyed 'selected' must also be suppressed once a state family is detected, even though it comes from a different detector",
   );
+});
+
+run("Build Component's compatibility audit ignores Composer's own generated runtime code, not just the widget's own JavaScript", () => {
+  const editor = read("editor.js");
+  // Real bug: translatedResponsiveFitRuntime()'s own unconditional
+  // ResizeObserver usage made "modern-browser-apis" fire on every single
+  // translated component regardless of what the widget's own code did —
+  // a finding the user could never act on, since it wasn't about their
+  // code at all. auditCustomSource() must scan the marker-stripped
+  // authoredJavascript, not the raw javascript, for every JS-content
+  // compatibility check.
+  assert.ok(
+    editor.includes(
+      "authoredJavascript = javascript.replace(",
+    ) &&
+      editor.includes(
+        "/\\/\\* composer-generated-runtime \\*\\/[\\s\\S]*?\\/\\* \\/composer-generated-runtime \\*\\//g",
+      ),
+  );
+  [
+    '.test(authoredJavascript))\n      add("parent-document"',
+    "...authoredJavascript.matchAll(",
+    '.test(authoredJavascript))\n      add("window-state"',
+    '.test(authoredJavascript))\n      add("browser-storage"',
+    '.test(authoredJavascript))\n      add("dynamic-code"',
+    '.test(authoredJavascript))\n      add("network-api"',
+    '.test(authoredJavascript) && "String.replaceAll"',
+    '.test(authoredJavascript) && "structuredClone"',
+    '.test(authoredJavascript) && "ResizeObserver"',
+  ].forEach((snippet) => assert.ok(editor.includes(snippet), `missing: ${snippet}`));
+});
+
+run("Build Component's non-repairable compatibility findings offer a 'Show location' action instead of being inert text", () => {
+  const editor = read("editor.js"), css = read("editor.css");
+  assert.ok(editor.includes("const customAuditFindingSearch = {"));
+  assert.ok(editor.includes("function goToCustomAuditFindingSource(code)"));
+  assert.ok(editor.includes("function switchCustomSourceTab(name)"));
+  assert.ok(
+    editor.includes('data-custom-audit-location="${finding.code}"') &&
+      editor.includes("goToCustomAuditFindingSource(button.dataset.customAuditLocation)"),
+  );
+  assert.ok(css.includes("[data-custom-audit-location]"));
 });
 
 run("Import and Translate is consolidated into Component Creator", () => {
@@ -1991,7 +2252,7 @@ run("component scoping creates real Composer properties and Crestron connections
   assert.ok(editor.includes("target.style.filter='drop-shadow(0 0 '"));
   assert.ok(editor.includes('defaultValue: 6, help: "Adds an editable glow radius'));
   assert.ok(editor.includes("host.dataset.composerGlowOverflow = \"true\""));
-  assert.ok(editor.includes("host.style.filter = `drop-shadow"));
+  assert.ok(editor.includes("glowProxy.style") && editor.includes("custom-component-glow-proxy"));
   assert.ok(editor.includes("managedGlow = context.options.definitionData.managedGlow || {}"));
   assert.ok(editor.includes("managedGlow,"));
   const customMount = editor.slice(

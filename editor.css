@@ -862,6 +862,7 @@ h2 {
 .custom-readiness-highlight { outline:2px solid #ffc94d !important;outline-offset:3px; }
 .custom-property-override-toggle { display:flex!important;align-items:center;gap:7px;margin:5px 0;color:#a9bfbd;font-size:11px; }
 .custom-property-override-toggle input { width:auto!important;margin:0!important; }
+.component-property-alpha { display:block;width:100%;margin-top:6px; }
 .custom-builder-mode {
   display: flex;
   align-items: center;
@@ -1439,6 +1440,7 @@ h2 {
 .custom-audit-item input[type="checkbox"] { width: 15px; height: 15px; accent-color: #04dcb9; }
 .custom-audit-item.error { border-color: #dc5555; }
 .custom-audit-item.repairable { border-color: #04dcb9; }
+.custom-audit-item [data-custom-audit-location] { margin-left: 8px; font-size: 11px; padding: 2px 8px; }
 .custom-audit-pass { color: #79e5bd; }
 .custom-behavior-review {
   margin-top: 12px;

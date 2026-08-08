@@ -130,6 +130,16 @@ function extractFunction(source, name) {
   // eslint-disable-next-line no-new-func
   return new Function(`"use strict";return (${source.slice(match.index, end)});`)();
 }
+// Extracts a standalone `const NAME = {...}` object literal's evaluated
+// value, independent of any function.
+function extractConst(source, name) {
+  const start = source.indexOf(`const ${name} = {`);
+  if (start === -1) throw new Error(`${name} not found in source`);
+  const braceStart = source.indexOf("{", start),
+    end = scanBalancedBraces(source, braceStart);
+  // eslint-disable-next-line no-new-func
+  return new Function(`"use strict";return (${source.slice(braceStart, end)});`)();
+}
 // For a `const NAME = [...]` immediately followed (later in the same
 // closure) by a `function FN(...) {...}` that references it as a free
 // variable — extracts both together and returns them as named exports, so
@@ -166,6 +176,10 @@ const editorSource = read("editor.js"),
     "detectLoopingAnimation",
   ),
   customBehaviorRuntime = extractFunction(editorSource, "customBehaviorRuntime"),
+  customBehaviorActions = extractConst(editorSource, "customBehaviorActions"),
+  rgbToHex = extractFunction(editorSource, "rgbToHex"),
+  hexToRgb = extractFunction(editorSource, "hexToRgb"),
+  formatRgba = extractFunction(editorSource, "formatRgba"),
   detectLiteralColorEditables = extractFunction(
     editorSource,
     "detectLiteralColorEditables",
@@ -188,6 +202,7 @@ global.translatorKey = translatorKey;
 global.domLookupToSelector = domLookupToSelector;
 global.describeSelectorStateRole = describeSelectorStateRole;
 global.enclosingSelectorAt = enclosingSelectorAt;
+global.hexToRgb = hexToRgb;
 const inferSnippetBehaviors = extractFunction(editorSource, "inferSnippetBehaviors");
 const { evaluateComponentRequirementRules } = extractConstThroughFunction(
   editorSource,
@@ -198,6 +213,10 @@ const detectStateFamilies = extractFunction(editorSource, "detectStateFamilies")
 const translatedStateFamilyRuntime = extractFunction(
   editorSource,
   "translatedStateFamilyRuntime",
+);
+const translatedResponsiveFitRuntime = extractFunction(
+  editorSource,
+  "translatedResponsiveFitRuntime",
 );
 const filterNaturalContentRects = extractFunction(
   editorSource,
@@ -259,6 +278,125 @@ run("detectManagedGlow ignores markers for keys that are not the current propert
   assert.equal(result.enabled, false);
 });
 
+run("detectManagedGlow recognizes the button-style preset's glowColor/glowStrength pair without needing a COMPOSER MANAGED marker", () => {
+  // translatedBehaviorPlan adds this exact key pair to every translated
+  // button-like widget, wired via a real box-shadow-synthesizing
+  // behavior — but since it comes from Import & Translate rather than
+  // the manual "Add capabilities" builder, the source never gets marker-
+  // wrapped. Real bug: without this, the glow-escape-the-bounding-box
+  // mechanism never activated for ANY translated widget, so glow/shadow
+  // effects were always hard-clipped to the component's rectangular
+  // iframe edge.
+  const properties = [
+      { key: "glowColor", name: "Standard state — glow color" },
+      { key: "glowStrength", name: "Glow strength" },
+      { key: "selectedGlowColor", name: "Selected state — glow color" },
+    ],
+    result = detectManagedGlow(properties, "no COMPOSER MANAGED markers anywhere in this source");
+  assert.equal(result.enabled, true);
+  assert.equal(result.colorKey, "glowColor");
+  assert.equal(result.strengthKey, "glowStrength");
+});
+
+run("detectManagedGlow carries the component's own declared default color/strength through, not just the keys", () => {
+  // Real bug: a freshly-placed widget's saved properties start out
+  // completely empty (component-runtime.js's shared mount() never
+  // merges a component's own declared defaults in), so
+  // properties[colorKey] is undefined until the user explicitly edits
+  // it — the mount()-time glow escape fell back to an unrelated
+  // hardcoded color/strength instead of the widget's own declared
+  // "#04dcb9"/3 defaults, so the approximated glow never matched what
+  // the widget actually looked like.
+  const properties = [
+      { key: "glowColor", name: "Standard state — glow color", defaultValue: "#04dcb9" },
+      { key: "glowStrength", name: "Glow strength", defaultValue: 3 },
+    ],
+    result = detectManagedGlow(properties, "");
+  assert.equal(result.colorDefault, "#04dcb9");
+  assert.equal(result.strengthDefault, 3);
+});
+
+run("detectManagedGlow resolves an independent selected-state color/strength, distinct from the standard pair", () => {
+  // A widget's selected/pressed state can have a noticeably different
+  // (often larger) glow than standard — e.g. a square-to-circle button
+  // that blooms bigger specifically when selected. "Selected" is matched
+  // by key PREFIX so "selectedGlowColor" doesn't also satisfy the
+  // standard (non-selected) color test.
+  const properties = [
+      { key: "glowColor", name: "Standard state — glow color", defaultValue: "#04dcb9" },
+      { key: "glowStrength", name: "Glow strength", defaultValue: 12 },
+      { key: "selectedGlowColor", name: "Selected state — glow color", defaultValue: "#00e5c3" },
+      { key: "selectedGlowStrength", name: "Selected state — glow strength", defaultValue: 24 },
+    ],
+    result = detectManagedGlow(properties, "");
+  assert.equal(result.colorKey, "glowColor");
+  assert.equal(result.colorDefault, "#04dcb9");
+  assert.equal(result.strengthKey, "glowStrength");
+  assert.equal(result.strengthDefault, 12);
+  assert.equal(result.selectedColorKey, "selectedGlowColor");
+  assert.equal(result.selectedColorDefault, "#00e5c3");
+  assert.equal(result.selectedStrengthKey, "selectedGlowStrength");
+  assert.equal(result.selectedStrengthDefault, 24);
+});
+
+run("detectManagedGlow falls back to the standard color/strength for widgets with no dedicated selected glow property", () => {
+  // Not every imported widget defines a separate selected glow (this
+  // widget only had glowStrength, per an earlier real bug) — the escape
+  // must still work, just without a selected-specific size, rather than
+  // resolving to nothing.
+  const properties = [
+      { key: "glowColor", name: "Standard state — glow color", defaultValue: "#04dcb9" },
+      { key: "glowStrength", name: "Glow strength", defaultValue: 12 },
+    ],
+    result = detectManagedGlow(properties, "");
+  assert.equal(result.selectedColorKey, "glowColor");
+  assert.equal(result.selectedColorDefault, "#04dcb9");
+  assert.equal(result.selectedStrengthKey, "glowStrength");
+  assert.equal(result.selectedStrengthDefault, 12);
+});
+
+run("detectManagedGlow resolves the real value through the preserveDefault/suggestedValue sentinel, not the literal '__preserve__' placeholder (real bug, confirmed via a live placed widget)", () => {
+  // Button-style properties are saved with preserveDefault:true so the
+  // imported widget's own appearance isn't silently overridden until the
+  // user opts in via "Override imported value" — their real value lives
+  // in suggestedValue, while defaultValue is left as the literal string
+  // "__preserve__". A live placed widget confirmed this exact shape:
+  // glowStrength had defaultValue "__preserve__" and suggestedValue "3",
+  // and (before this fix) Number("__preserve__") silently became NaN,
+  // falling through to an unrelated hardcoded 6px instead of the
+  // widget's real 3px — and this widget had no glowColor property at
+  // all, so colorKey/colorDefault correctly stay empty here too.
+  const properties = [
+      {
+        key: "glowStrength",
+        name: "Glow strength",
+        type: "number",
+        defaultValue: "__preserve__",
+        preserveDefault: true,
+        suggestedValue: "3",
+      },
+      {
+        key: "contentInset",
+        name: "Glow-safe inset",
+        type: "number",
+        defaultValue: 10,
+      },
+    ],
+    result = detectManagedGlow(properties, "");
+  assert.equal(result.enabled, true);
+  assert.equal(result.colorKey, "", "this widget genuinely has no glowColor property");
+  assert.equal(result.colorDefault, "");
+  assert.equal(result.strengthKey, "glowStrength");
+  assert.equal(result.strengthDefault, "3");
+  assert.equal(Number(result.strengthDefault), 3, "must resolve to a real usable number, not NaN from the literal sentinel string");
+});
+
+run("detectManagedGlow still requires a marker for a glow-named property that merely resembles, but isn't, the button-style preset's own keys", () => {
+  const properties = [{ key: "glowColorway", name: "Glow colorway" }],
+    result = detectManagedGlow(properties, "no markers here");
+  assert.equal(result.enabled, false);
+});
+
 run("detectManagedGlow handles an empty property list without throwing", () => {
   const result = detectManagedGlow([], "");
   assert.equal(result.enabled, false);
@@ -292,7 +430,7 @@ run("applyNaturalPreviewSize leaves the frame untouched for a zero or missing me
   assert.equal(frame.style.height, undefined);
 });
 
-run("detectLiteralColorEditables suggests rgba(), hsl(), and hex-shorthand colors as text, not just 6-digit hex", () => {
+run("detectLiteralColorEditables suggests rgba(), hsl(), and hex-shorthand colors as color-alpha, not just 6-digit hex", () => {
   const styles = `
     .glow-button {
       background: #ff6b6b;
@@ -308,12 +446,98 @@ run("detectLiteralColorEditables suggests rgba(), hsl(), and hex-shorthand color
   assert.equal(byValue("#ff6b6b").value, "#ff6b6b");
   assert.equal(byValue("#0af").type, "color");
   assert.equal(byValue("#0af").value, "#00aaff", "3-digit hex should losslessly expand for the color picker");
+  // Alpha-bearing/function-syntax colors get "color-alpha" — a real color
+  // picker (swatch + alpha slider, see renderProperties in editor.js) —
+  // rather than either a lossy hex conversion or a plain "text" field
+  // (which historically rendered as an unrelated CIP-text editor, since
+  // "text" is the catch-all property type).
   const glow = byValue("rgba(20, 212, 180, 0.6)");
-  assert.equal(glow.type, "text", "alpha-bearing colors must not be forced through a lossy hex conversion");
+  assert.equal(glow.type, "color-alpha", "alpha-bearing colors must get a real (alpha-aware) picker, not a lossy hex conversion or a plain text field");
   assert.equal(glow.value, "rgba(20, 212, 180, 0.6)");
   const hsl = byValue("hsl(180, 60%, 50%)");
-  assert.equal(hsl.type, "text");
+  assert.equal(hsl.type, "color-alpha");
   assert.equal(hsl.value, "hsl(180, 60%, 50%)");
+});
+
+run("rgbToHex converts and clamps RGB components into a 6-digit hex swatch value", () => {
+  assert.equal(rgbToHex(37, 99, 235), "#2563eb");
+  assert.equal(rgbToHex(0, 0, 0), "#000000");
+  assert.equal(rgbToHex(255, 255, 255), "#ffffff");
+  assert.equal(rgbToHex(-10, 300, 128.6), "#00ff81", "out-of-range/fractional components must clamp and round rather than produce an invalid hex string");
+});
+
+run("hexToRgb parses a 6-digit hex swatch value back into RGB components", () => {
+  assert.deepEqual(hexToRgb("#2563eb"), { r: 37, g: 99, b: 235 });
+  assert.deepEqual(hexToRgb("#FFFFFF"), { r: 255, g: 255, b: 255 });
+  assert.deepEqual(hexToRgb("not-a-color"), { r: 0, g: 0, b: 0 }, "an invalid value must fall back safely rather than throw");
+});
+
+run("formatRgba recombines a color swatch and a separately-tracked alpha into one rgba() string", () => {
+  assert.equal(formatRgba("#2563eb", 0.46), "rgba(37, 99, 235, 0.46)");
+  assert.equal(formatRgba("#ffffff", 1), "rgba(255, 255, 255, 1)");
+  assert.equal(formatRgba("#000000", -0.5), "rgba(0, 0, 0, 0)", "alpha must clamp into 0..1");
+  assert.equal(formatRgba("#000000", 1.5), "rgba(0, 0, 0, 1)");
+});
+
+run("detectLiteralColorEditables correctly roles every stop of a multi-stop gradient, not just the first (real bluetooth-button-face shape)", () => {
+  // A later stop can sit well past any fixed lookback window from its own
+  // "background:" — this real declaration puts the 2nd/3rd stops over 50
+  // characters away, which used to make them fall through to the generic
+  // "Text / icon color" bucket instead of "Background color".
+  const styles = `
+    .bluetooth-button-face {
+      background: radial-gradient(ellipse at 45% 38%, #242424 0%, #111111 58%, #020202 100%);
+    }
+  `,
+    entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
+    byValue = (value) => entries.find((entry) => entry.source.toLowerCase() === value);
+  assert.equal(byValue("#242424").label, "Background color");
+  assert.equal(byValue("#111111").label, "Background color 2");
+  assert.equal(byValue("#020202").label, "Background color 3");
+});
+
+run("detectLiteralColorEditables correctly roles every layer of a multi-layer box-shadow, not just the first", () => {
+  const styles = `
+    .bluetooth-button-face {
+      box-shadow:
+        inset 0 5px 10px rgba(255, 255, 255, 0.06),
+        inset 0 -12px 20px rgba(0, 0, 0, 0.95),
+        0 5px 18px rgba(0, 0, 0, 0.55);
+    }
+  `,
+    entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
+    byValue = (value) => entries.find((entry) => entry.source.toLowerCase() === value);
+  assert.equal(byValue("rgba(255, 255, 255, 0.06)").label, "Shadow color");
+  assert.equal(byValue("rgba(0, 0, 0, 0.95)").label, "Shadow color 2");
+  assert.equal(byValue("rgba(0, 0, 0, 0.55)").label, "Shadow color 3");
+});
+
+run("detectLiteralColorEditables marks only the first color per state (across all roles) as checked by default, to avoid overwhelming the checklist", () => {
+  // A single state can legitimately touch a dozen literal colors (a
+  // gradient, a layered glow, a separate status pill, its own shadow) —
+  // all real, all distinct, but too many to sensibly pre-select at once.
+  // Only the first color found for a given state should default to
+  // checked; the rest stay available (via "Select all") but unchecked.
+  const styles = `
+    .widget.state-idle { background: rgb(37, 99, 235); box-shadow: 0 0 10px rgba(37, 99, 235, 0.5), 0 0 20px rgba(37, 99, 235, 0.2); }
+    .widget.state-paired { background: rgb(14, 165, 233); box-shadow: 0 0 10px rgba(14, 165, 233, 0.5); }
+  `,
+    entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
+    byValue = (value) => entries.find((entry) => entry.source.toLowerCase() === value);
+  assert.equal(byValue("rgb(37, 99, 235)").checkedByDefault, true);
+  assert.equal(byValue("rgba(37, 99, 235, 0.5)").checkedByDefault, false);
+  assert.equal(byValue("rgba(37, 99, 235, 0.2)").checkedByDefault, false);
+  assert.equal(byValue("rgb(14, 165, 233)").checkedByDefault, true, "each state gets its own independently-checked first color");
+  assert.equal(byValue("rgba(14, 165, 233, 0.5)").checkedByDefault, false);
+});
+
+run("detectLiteralColorEditables also only pre-checks the first state-independent color (e.g. a constant, non-state-varying gradient)", () => {
+  const styles = `.face { background: radial-gradient(circle, #242424 0%, #111111 50%, #020202 100%); }`,
+    entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
+    byValue = (value) => entries.find((entry) => entry.source.toLowerCase() === value);
+  assert.equal(byValue("#242424").checkedByDefault, true);
+  assert.equal(byValue("#111111").checkedByDefault, false);
+  assert.equal(byValue("#020202").checkedByDefault, false);
 });
 
 run("detectLiteralColorEditables preserves original casing for reliable replacement", () => {
@@ -717,6 +941,10 @@ run("translatedStateFamilyRuntime wires the state input, feedback output, and cl
   assert.ok(script.includes("ComposerSignals.publish('stateFeedback',currentIndex)"));
   assert.ok(script.includes('["state-idle","state-pairing","state-paired"]'));
   assert.ok(!script.includes("subscribe('stateText"), "no textSelector was passed, so per-state text wiring must not be generated");
+  assert.ok(
+    script.includes("/* composer-generated-runtime */") && script.includes("/* /composer-generated-runtime */"),
+    "must be wrapped in the marker auditCustomSource() strips out, or the ResizeObserver/API compatibility checks would fire on every single translated component regardless of the widget's own code",
+  );
 });
 
 run("translatedStateFamilyRuntime adds per-state text subscriptions when a text selector is given", () => {
@@ -731,6 +959,15 @@ run("translatedStateFamilyRuntime adds per-state text subscriptions when a text 
     "one subscription per state, keyed stateText0/stateText1/stateText2 at runtime via the loop index",
   );
   assert.ok(script.includes("states.forEach(function(name,index)"));
+});
+
+run("translatedResponsiveFitRuntime is wrapped in the composer-generated-runtime marker, since it's unconditionally appended to every translated component's JavaScript", () => {
+  const script = translatedResponsiveFitRuntime();
+  assert.ok(script.includes("ResizeObserver"), "sanity check: this is the function that uses ResizeObserver");
+  assert.ok(
+    script.includes("/* composer-generated-runtime */") && script.includes("/* /composer-generated-runtime */"),
+    "unmarked, its own unconditional ResizeObserver usage would make the modern-browser-apis compatibility finding fire on every single import regardless of the widget's own code, with no way for the user to act on it",
+  );
 });
 
 run("filterNaturalContentRects excludes a full-bleed wrapper (real bluetooth-button.html shape) and keeps the actual button size", () => {
@@ -874,6 +1111,26 @@ run("customBehaviorRuntime emits a working 'speed' action, not just the older ma
   assert.ok(script.includes("animationDuration=scaleDurations"));
   assert.ok(script.includes("transitionDuration=scaleDurations"));
   assert.ok(script.includes("ComposerSignals.subscribe"));
+});
+
+run("every action the runtime dispatcher's apply() switch implements is also a selectable option in the manual behavior-row editor's dropdown", () => {
+  // Real bug this catches: a behavior whose action isn't in
+  // customBehaviorActions.value renders with no matching <option>, so the
+  // browser silently defaults that row's <select> to its FIRST option
+  // instead — collectCustomBehaviorRow() then reports the wrong action
+  // entirely (no error, no warning). This exact gap turned an auto-
+  // suggested "speed" behavior targeting `body` into a "text" behavior
+  // targeting `body`, which the self-test's own analog test values then
+  // used to overwrite the entire component body with the literal text
+  // "100" — destroying the button being tested for, right before trying
+  // to click it.
+  const script = customBehaviorRuntime([{ source: "signal-input", key: "probe", selector: "body", action: "text" }]),
+    applyBody = script.slice(script.indexOf("function apply("), script.indexOf("function pulse(")),
+    dispatchedActions = [...applyBody.matchAll(/case'([a-zA-Z]+)':/g)].map((match) => match[1]),
+    registeredValueActions = new Set(customBehaviorActions.value.map(([key]) => key)),
+    missing = dispatchedActions.filter((action) => !registeredValueActions.has(action));
+  assert.ok(dispatchedActions.length > 20, "sanity check: the apply() switch should have been found and parsed");
+  assert.deepEqual(missing, []);
 });
 
 if (process.exitCode) process.exit(process.exitCode);
