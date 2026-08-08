@@ -1146,7 +1146,11 @@
         ),
       ],
       preparedHtml = prepareCustomSource(entry.html),
-      managedGlow = detectManagedGlow(entry.properties, preparedHtml);
+      managedGlow = detectManagedGlow(entry.properties, preparedHtml),
+      optionalContent = {
+        ...(entry.optionalContent || {}),
+        ...detectTranslatedOptionalContent(entry.html),
+      };
     window.ComposerRuntime.register({
       id: entry.id,
       name: entry.name,
@@ -1154,6 +1158,7 @@
       icon: entry.icon || "🧩",
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
       properties,
+      optionalContent,
       signals: (entry.signals || []).filter(
         (signal) => signal.key !== "visibility" && signal.key !== "disabled",
       ),
@@ -11724,6 +11729,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       .replace(/^[^A-Za-z_$]+/, "");
     return words || fallback;
   }
+  // Converts what a DOM lookup method returns into an equivalent CSS
+  // selector string, so getElementById/getElementsByClassName/
+  // getElementsByTagName can feed the exact same downstream matching as
+  // querySelector/querySelectorAll instead of being invisible to it.
+  function domLookupToSelector(method, value) {
+    if (method === "getElementById") return `#${value}`;
+    if (method === "getElementsByClassName")
+      return value.trim().split(/\s+/).filter(Boolean).map((name) => `.${name}`).join("");
+    if (method === "getElementsByTagName") return value;
+    return value;
+  }
   function inferSnippetBehaviors(javascript, styles) {
     const candidates = [],
       seen = new Set(),
@@ -11737,32 +11753,36 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
       };
     for (const match of javascript.matchAll(
-      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?querySelector\(\s*(["'`])(.+?)\2\s*\)/g,
+      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?(querySelector|getElementById)\(\s*(["'`])(.+?)\3\s*\)/g,
     ))
-      variables.set(match[1], match[3]);
+      if (!variables.has(match[1]))
+        variables.set(match[1], domLookupToSelector(match[2], match[4]));
     for (const match of javascript.matchAll(
-      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?querySelectorAll\(\s*(["'`])(.+?)\2\s*\)/g,
+      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document\.)?(querySelectorAll|getElementsByClassName|getElementsByTagName)\(\s*(["'`])(.+?)\3\s*\)/g,
     ))
-      collections.set(match[1], match[3]);
+      if (!collections.has(match[1]))
+        collections.set(match[1], domLookupToSelector(match[2], match[4]));
     for (const match of javascript.matchAll(
-      /(?:document\.)?querySelector\(\s*(["'`])(.+?)\1\s*\)\.addEventListener\(\s*(["'])(click|pointerdown|pointerup|input|change)\3/g,
+      /(?:document\.)?(querySelector|getElementById)\(\s*(["'`])(.+?)\2\s*\)\.addEventListener\(\s*(["'])(click|pointerdown|pointerup|input|change)\4/g,
     ))
       add({
         kind: "event",
-        label: `${match[4]} handler`,
-        selector: match[2],
-        event: match[4],
+        label: `${match[5]} handler`,
+        selector: domLookupToSelector(match[1], match[3]),
+        event: match[5],
         source: "signal-output",
-        type: match[4] === "input" || match[4] === "change" ? "analog" : "digital",
+        type: match[5] === "input" || match[5] === "change" ? "analog" : "digital",
         direction: "output",
-        action: match[4] === "input" || match[4] === "change" ? "input" : match[4] === "click" ? "click" : match[4] === "pointerup" ? "release" : "press",
+        action: match[5] === "input" || match[5] === "change" ? "input" : match[5] === "click" ? "click" : match[5] === "pointerup" ? "release" : "press",
       });
     for (const handler of javascript.matchAll(
-      /(?:document\.)?querySelector\(\s*(["'`])(.+?)\1\s*\)\.addEventListener\(\s*(["'])(click|pointerdown|pointerup|change)\3\s*,([\s\S]{0,1800}?)(?=\n\s*\}\s*\)|\n\s*\);|$)/g,
+      /(?:document\.)?(querySelector|getElementById)\(\s*(["'`])(.+?)\2\s*\)\.addEventListener\(\s*(["'])(click|pointerdown|pointerup|change)\4\s*,([\s\S]{0,1800}?)(?=\n\s*\}\s*\)|\n\s*\);|$)/g,
     )) {
-      const triggerSelector = handler[2], event = handler[4], body = handler[5];
+      const triggerSelector = domLookupToSelector(handler[1], handler[3]),
+        event = handler[5],
+        body = handler[6];
       for (const target of body.matchAll(
-        /(?:document\.)?querySelector(?:All)?\(\s*(["'`])(.+?)\1\s*\)/g,
+        /(?:document\.)?(querySelector|querySelectorAll|getElementById|getElementsByClassName|getElementsByTagName)\(\s*(["'`])(.+?)\2\s*\)/g,
       )) {
         const following = body.slice(
             (target.index || 0) + target[0].length,
@@ -11776,7 +11796,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           kind: "interaction-relationship",
           label: `${event} controls related element`,
           selector: triggerSelector,
-          targetSelector: target[2],
+          targetSelector: domLookupToSelector(target[1], target[3]),
           event,
           effect: classMatch
             ? `${classMatch[1]} class “${classMatch[3]}”`
@@ -11790,7 +11810,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         });
       }
       const datasetMatch = body.match(/\.dataset\.([A-Za-z_$][\w$]*)/);
-      if (datasetMatch && /querySelector\s*\([^)]*dataset/.test(body))
+      if (datasetMatch && /(?:querySelector|getElementById)\s*\([^)]*dataset/.test(body))
         add({
           kind: "interaction-relationship",
           label: `${event} selects a dataset-linked target`,
@@ -11926,8 +11946,27 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (/\btransition\s*:/i.test(styles))
       add({ kind: "animation", label: "CSS transition", selector: "", source: "local", type: "digital", direction: "input", action: "transition" });
     const usedKeys = new Set();
+    // Rule: a lone digital "press" output is what component-runtime.js's
+    // register() looks for to auto-add a Held output + editable hold
+    // duration (the same standard capability every built-in button gets).
+    // A rule-inferred candidate's own label ("pointerdown handler") would
+    // otherwise produce an arbitrary key that mechanism doesn't recognize,
+    // so press/release/selected-like candidates get the same clean,
+    // conventional key names the built-in preset signals already use.
+    const conventionalKey = (candidate) => {
+      if (candidate.action === "press") return "press";
+      if (candidate.action === "release") return "release";
+      if (
+        candidate.action === "classToggle" &&
+        /pressed|selected|active|checked|open|expanded/i.test(candidate.parameter || "")
+      )
+        return "selected";
+      return null;
+    };
     return candidates.map((candidate, index) => {
-      const base = translatorKey(candidate.label, `inferred${index + 1}`);
+      const base =
+        conventionalKey(candidate) ||
+        translatorKey(candidate.label, `inferred${index + 1}`);
       let key = base,
         suffix = 2;
       while (usedKeys.has(key)) key = `${base}${suffix++}`;
@@ -12001,6 +12040,55 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   // arbitrary CSS text risks false positives on unrelated words.
   // `translatorKey` is taken as a parameter (rather than closed over) so
   // this stays a pure function of its inputs and can be tested standalone.
+  // Given a CSS selector, names the state/role it visually represents so a
+  // literal value found inside it can be labeled meaningfully (e.g.
+  // "Paired border color" instead of a bare "Border color 3") rather than
+  // leaving every imported widget with generically-numbered properties.
+  // Recognizes the same state-/mode-/is- family prefixes detectStateFamilies
+  // does, plus the common semantic classes/pseudo-classes Composer's own
+  // built-in button-like widgets already expose as separate color
+  // properties (selected, pressed, hover, disabled, focus).
+  function describeSelectorStateRole(selector, statePrefixes = ["state-", "mode-", "is-"]) {
+    const classes = [...String(selector || "").matchAll(/\.([A-Za-z0-9_-]+)/g)].map(
+        (match) => match[1],
+      ),
+      statePrefix = statePrefixes.find((prefix) =>
+        classes.some((name) => name.startsWith(prefix)),
+      );
+    if (statePrefix) {
+      const stateName = classes
+        .find((name) => name.startsWith(statePrefix))
+        .slice(statePrefix.length);
+      return stateName
+        .split(/[-_]+/)
+        .filter(Boolean)
+        .map((word, index) =>
+          index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word,
+        )
+        .join(" ");
+    }
+    const semanticRoles = [
+        [/(?:^|[.:])selected\b/i, "Selected"],
+        [/(?:^|[.:])pressed\b/i, "Pressed"],
+        [/(?:^|[.:])hover\b/i, "Hover"],
+        [/(?:^|[.:])disabled\b/i, "Disabled"],
+        [/(?:^|[.:])focus(?:-visible|-within)?\b/i, "Focus"],
+        [/(?:^|[.:])active\b/i, "Active"],
+      ],
+      matched = semanticRoles.find(([pattern]) => pattern.test(String(selector || "")));
+    return matched ? matched[1] : "";
+  }
+  // Finds the selector text of the CSS rule that textually encloses a given
+  // position in the stylesheet (a lightweight lookback, not a full parser —
+  // sufficient for the flat, single-level rule lists typical of imported
+  // snippets; nested @media blocks fall back to no detected role rather
+  // than a wrong one).
+  function enclosingSelectorAt(styles, position) {
+    const openBrace = styles.lastIndexOf("{", position);
+    if (openBrace < 0) return "";
+    const closeBrace = styles.lastIndexOf("}", openBrace);
+    return styles.slice(closeBrace + 1, openBrace);
+  }
   function detectLiteralColorEditables(styles, variableValues, translatorKey) {
     const colorValuePattern =
         /#[0-9a-f]{8}\b|#[0-9a-f]{6}\b|#[0-9a-f]{4}\b|#[0-9a-f]{3}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)/gi,
@@ -12021,13 +12109,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ([lower]) =>
         !(variableValues || new Set()).has(lower) && !transparentCanvasColors.has(lower),
     );
+    const roleUsageCount = new Map();
     return literalColors.map(([lower, original], index) => {
-      const before = styles.slice(
-          Math.max(0, styles.toLowerCase().indexOf(lower) - 50),
-          styles.toLowerCase().indexOf(lower),
-        ),
+      const firstIndex = styles.toLowerCase().indexOf(lower),
+        before = styles.slice(Math.max(0, firstIndex - 50), firstIndex),
         property = before.match(/([a-z-]+)\s*:\s*[^;{}]*$/i)?.[1] || "color",
-        role = /border/.test(property)
+        stateRole = describeSelectorStateRole(enclosingSelectorAt(styles, firstIndex)),
+        baseRole = /border/.test(property)
           ? "Border color"
           : /background/.test(property)
             ? "Background color"
@@ -12035,8 +12123,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               ? "Shadow color"
               : /stroke|fill|color/.test(property)
                 ? "Text / icon color"
-                : `Additional color ${index + 1}`,
-        key = translatorKey(role) + (index ? index + 1 : ""),
+                : "Additional color",
+        role = stateRole
+          ? `${stateRole} ${baseRole.charAt(0).toLowerCase()}${baseRole.slice(1)}`
+          : baseRole,
+        usageIndex = (roleUsageCount.get(role) || 0) + 1,
+        label = usageIndex > 1 ? `${role} ${usageIndex}` : role,
+        key = translatorKey(role) + (usageIndex > 1 ? usageIndex : ""),
         isHex3 = /^#[0-9a-f]{3}$/i.test(lower),
         isHex6 = /^#[0-9a-f]{6}$/i.test(lower),
         // Only formats a native color-picker can represent exactly (plain
@@ -12051,9 +12144,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           : pickerSafe
             ? lower
             : original;
+      roleUsageCount.set(role, usageIndex);
       return {
         key,
-        label: role,
+        label,
         type: pickerSafe ? "color" : "text",
         value: displayValue,
         kind: "literal",
@@ -12088,16 +12182,23 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           property,
           rawNumber: match[2],
           unit: match[3] || "",
+          index: match.index,
         });
     }
-    const numericCountByProperty = new Map();
+    const roleUsageCount = new Map();
     return [...numericMatchesByValue.values()].map((entry) => {
-      const role = numericRoleLabels[entry.property],
-        count = (numericCountByProperty.get(entry.property) || 0) + 1;
-      numericCountByProperty.set(entry.property, count);
+      const stateRole = describeSelectorStateRole(
+          enclosingSelectorAt(styles, entry.index),
+        ),
+        baseRole = numericRoleLabels[entry.property],
+        role = stateRole
+          ? `${stateRole} ${baseRole.charAt(0).toLowerCase()}${baseRole.slice(1)}`
+          : baseRole,
+        usageIndex = (roleUsageCount.get(role) || 0) + 1;
+      roleUsageCount.set(role, usageIndex);
       return {
-        key: translatorKey(role) + (count > 1 ? count : ""),
-        label: count > 1 ? `${role} ${count}` : role,
+        key: translatorKey(role) + (usageIndex > 1 ? usageIndex : ""),
+        label: usageIndex > 1 ? `${role} ${usageIndex}` : role,
         type: "number",
         value: parseFloat(entry.rawNumber),
         kind: "css-declaration",
@@ -12107,14 +12208,163 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
     });
   }
+  // Detects a discrete, class-driven visual state machine: 3+ classes
+  // sharing a recognized prefix (state-/mode-/is-), applied as mutually
+  // exclusive alternatives on the same base element (e.g.
+  // .bluetooth-button.state-idle, .state-pairing, .state-paired). Two
+  // total states is an ordinary binary toggle/pressed-state and is left to
+  // the toggle/press detectors instead — this only fires for 3 or more,
+  // per the rule that multi-state widgets need an analog input/output
+  // pair rather than a simple digital one.
+  //
+  // States start in first-CSS-appearance order, then a recognized resting
+  // keyword (idle/off/default/...) is promoted to index 0 if one exists.
+  // First-appearance alone is not reliable: a real component grouped its
+  // "shown only during pairing" override with unrelated ring styling near
+  // the top of the file, ahead of the main .state-idle block further
+  // down, which would otherwise make analog value 0 mean "pairing," not
+  // the resting state a SIMPL programmer would expect.
+  function detectStateFamilies(styles, statePrefixes = ["state-", "mode-", "is-"]) {
+    const families = new Map();
+    for (const rule of styles.matchAll(/([^{}]+)\{/g)) {
+      for (const rawSelector of rule[1].split(",")) {
+        const firstSegment = rawSelector.trim().split(/\s+/)[0] || "",
+          classes = [...firstSegment.matchAll(/\.([A-Za-z0-9_-]+)/g)].map((match) => match[1]);
+        if (!classes.length) continue;
+        const matchedPrefix = statePrefixes.find((prefix) =>
+          classes.some((name) => name.startsWith(prefix)),
+        );
+        if (!matchedPrefix) continue;
+        const stateClasses = classes.filter((name) => name.startsWith(matchedPrefix)),
+          nonStateClasses = classes.filter((name) => !name.startsWith(matchedPrefix)),
+          familyKey = `${nonStateClasses.join(".") || "__root__"}|${matchedPrefix}`;
+        if (!families.has(familyKey)) families.set(familyKey, []);
+        const members = families.get(familyKey);
+        stateClasses.forEach((name) => {
+          if (!members.includes(name)) members.push(name);
+        });
+      }
+    }
+    let best = null;
+    families.forEach((members, familyKey) => {
+      if (members.length >= 3 && (!best || members.length > best.states.length)) {
+        const [baseSelector, prefix] = familyKey.split("|");
+        best = {
+          prefix,
+          baseSelector: baseSelector === "__root__" ? "" : baseSelector,
+          states: members,
+        };
+      }
+    });
+    if (best) {
+      const restingKeyword = /^(?:idle|off|default|none|closed|empty|inactive|resting|initial|normal)$/i,
+        restingIndex = best.states.findIndex((name) =>
+          restingKeyword.test(name.slice(best.prefix.length)),
+        );
+      if (restingIndex > 0) {
+        const [resting] = best.states.splice(restingIndex, 1);
+        best.states.unshift(resting);
+      }
+    }
+    return best;
+  }
+  // A root-level wrapper styled position:fixed/absolute with a full inset
+  // (0 on every side) is a very common "fill the whole panel" convention
+  // for standalone touch-panel widgets — but per the CSS spec, an
+  // absolutely/fixed-positioned element's inset values are relative to
+  // its containing block's *padding edge*, not its content edge, so this
+  // pattern silently ignores any padding reserved on that ancestor (e.g.
+  // the "Glow-safe inset" property, which exists specifically to protect
+  // shadows/glows from the frame's own overflow clipping). It's also
+  // unnecessary once imported: body already fills the component's box, so
+  // a normal-flow width:100%/height:100% child achieves the same "fill
+  // the widget" result without taking the element out of flow or
+  // bypassing ancestor padding. Runs unconditionally for every import —
+  // not as an opt-in repair — since every full-bleed import needs it, and
+  // is scoped to body's own direct children only, so nested elements that
+  // legitimately fill their own (already correctly-sized) positioned
+  // parent — like an inner ring or knob overlay — are left untouched.
+  function normalizeFullBleedRootWrapper(bodyElement, styles) {
+    let updatedStyles = styles;
+    for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector = rule[1].trim(),
+        declarationText = rule[2],
+        declarationPairs = [
+          ...declarationText.matchAll(/([a-z-]+)\s*:\s*([^;]+)\s*;?/gi),
+        ].map((match) => [match[1].toLowerCase(), match[2].trim()]),
+        declarations = Object.fromEntries(declarationPairs),
+        position = (declarations.position || "").toLowerCase();
+      if (position !== "fixed" && position !== "absolute") continue;
+      const isZero = (value) => /^0(?:px)?$/.test(String(value || "").trim()),
+        insetParts = declarations.inset ? declarations.inset.split(/\s+/) : null,
+        fullInset =
+          (insetParts && insetParts.length <= 4 && insetParts.every(isZero)) ||
+          (isZero(declarations.top) &&
+            isZero(declarations.right) &&
+            isZero(declarations.bottom) &&
+            isZero(declarations.left));
+      if (!fullInset) continue;
+      let target;
+      try {
+        target = bodyElement.querySelector(selector);
+      } catch (_) {
+        continue;
+      }
+      if (!target || target.parentElement !== bodyElement) continue;
+      const skip = new Set(["position", "inset", "top", "right", "bottom", "left"]),
+        rebuilt = declarationPairs
+          .filter(([key]) => !skip.has(key))
+          .map(([key, value]) => `${key}: ${value};`)
+          .join(" "),
+        newDeclarationText = `position: static; width: 100%; height: 100%; box-sizing: border-box; ${rebuilt}`;
+      updatedStyles = updatedStyles.replace(rule[0], `${rule[1]}{${newDeclarationText}}`);
+    }
+    return updatedStyles;
+  }
+  function detectTranslatedOptionalContent(html) {
+    return /data-translated-text=["']text["']/i.test(html || "")
+      ? { showLabel: '[data-translated-text="text"]' }
+      : {};
+  }
+  // A continuously-looping CSS animation (a spinning ring, a morphing
+  // shape) is "extra stuff a standard component doesn't have" and needs a
+  // live Speed control — unlike an ordinary one-shot hover/focus
+  // transition, which is just baked-in polish. Requires an
+  // animation-iteration-count of infinite actually correlated to one of
+  // the stylesheet's own @keyframes names (both the shorthand form and the
+  // longhand animation-name/animation-iteration-count pair declared
+  // together in the same rule), so unrelated "infinite" text elsewhere
+  // can't false-positive.
+  function detectLoopingAnimation(styles) {
+    const keyframeNames = [
+      ...String(styles || "").matchAll(/@keyframes\s+([A-Za-z_][\w-]*)/g),
+    ].map((match) => match[1]);
+    if (!keyframeNames.length) return false;
+    return keyframeNames.some((name) => {
+      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        shorthand = new RegExp(
+          `animation\\s*:[^;{}]*\\b${escapedName}\\b[^;{}]*\\binfinite\\b`,
+          "i",
+        ),
+        namedLonghand = new RegExp(
+          `animation-name\\s*:\\s*${escapedName}\\b`,
+          "i",
+        );
+      if (shorthand.test(styles)) return true;
+      for (const rule of styles.matchAll(/\{([^{}]*)\}/g))
+        if (
+          namedLonghand.test(rule[1]) &&
+          /animation-iteration-count\s*:\s*infinite\b/i.test(rule[1])
+        )
+          return true;
+      return false;
+    });
+  }
   function analyzeSnippet(name, source) {
     const documentValue = new DOMParser().parseFromString(
         String(source || ""),
         "text/html",
       ),
-      styles = [...documentValue.querySelectorAll("style")]
-        .map((element) => element.textContent)
-        .join("\n"),
       javascript = [...documentValue.querySelectorAll("script")]
         .map((element) => element.textContent)
         .join("\n"),
@@ -12127,6 +12377,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     body
       .querySelectorAll("script,style")
       .forEach((element) => element.remove());
+    let styles = normalizeFullBleedRootWrapper(
+      body,
+      [...documentValue.querySelectorAll("style")]
+        .map((element) => element.textContent)
+        .join("\n"),
+    );
     const editables = [],
       seen = new Set(),
       add = (entry) => {
@@ -12216,7 +12472,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ),
       interactiveNumeric = numericElements.filter((element) =>
         element.matches('input,[role="slider"],.slider'),
-      );
+      ),
+      textEntryElements = [
+        ...body.querySelectorAll(
+          'input[type="text"],input[type="tel"],input[type="password"],input[type="search"],input[type="email"],input[type="url"]',
+        ),
+      ];
     if (repeatedGroup) {
       repeatedGroup.container.setAttribute(
         "data-translated-repeat-container",
@@ -12322,6 +12583,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     numericElements.forEach(
       (element, index) => (element.dataset.translatedNumeric = String(index)),
     );
+    textEntryElements.forEach(
+      (element, index) => (element.dataset.translatedTextEntry = String(index)),
+    );
     let textIndex = 1;
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
     for (
@@ -12348,17 +12612,44 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         textIndex++;
       }
     }
-    const inferredBehaviors = inferSnippetBehaviors(javascript, styles);
+    // A widget with no text of its own still needs a way to display a
+    // Crestron-driven label. Toggles already get a small overlay label
+    // (translatedToggleCss); everything else gets a plain block-flow
+    // label appended after the widget's own content, wired through the
+    // same data-translated-text mechanism the normal text detector uses
+    // so it needs no separate signal-generation path.
+    let generatedLabelStyles = "";
+    if (textIndex === 1 && !toggleElements.length) {
+      const generatedLabel = documentValue.createElement("span");
+      generatedLabel.setAttribute("data-translated-text", "text");
+      generatedLabel.setAttribute("data-translated-generic-label", "");
+      generatedLabel.textContent = "Label";
+      body.appendChild(generatedLabel);
+      add({
+        key: "text",
+        label: "Text: Label",
+        type: "text",
+        value: "Label",
+        kind: "text",
+        source: "Label",
+      });
+      generatedLabelStyles =
+        "\n[data-translated-generic-label]{display:block;width:100%;margin-top:4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}";
+    }
+    const finalStyles = styles + generatedLabelStyles,
+      inferredBehaviors = inferSnippetBehaviors(javascript, finalStyles);
     return {
       fileName: name,
       source,
       html: body.innerHTML.trim(),
-      css: styles,
+      css: finalStyles,
       javascript,
       editables,
       features: {
         preserveAuthoredButtonAppearance,
         buttonCount: buttonElements.length,
+        stateFamily: detectStateFamilies(styles),
+        hasLoopingAnimation: detectLoopingAnimation(styles),
         toggleButtonIndexes: buttonElements
           .map((element, index) => (toggleSet.has(element) ? index : -1))
           .filter((index) => index >= 0),
@@ -12376,10 +12667,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             visualFill: presentation.percentage,
             action: presentation.action,
             parameter: presentation.parameter,
-            min: Number(element.getAttribute("min")) || 0,
+            min: Number(element.getAttribute("min") || 0) || 0,
             max: Number(element.getAttribute("max")) || 100,
           };
         }),
+        textEntryCount: textEntryElements.length,
+        textEntryTargets: textEntryElements.map((element, index) => ({
+          selector: `[data-translated-text-entry="${index}"]`,
+        })),
         textKeys: editables
           .filter((entry) => entry.kind === "text")
           .map((entry) => entry.key),
@@ -12833,6 +13128,49 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
 [data-translated-toggle-root]{transform-origin:center center;will-change:transform;}
 [data-translated-generated-label]{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${value("textColor", "inherit")};font-size:${value("textSize", "inherit")}${properties.some((entry)=>entry.key==="textSize") ? "px" : ""};text-align:center;}`;
   }
+  // Wires a detected 3+-state class family to the "state"/"stateFeedback"
+  // analog signals directly via window.ComposerSignals, bypassing the
+  // generic behavior-rule system (which only knows how to bind a single
+  // CSS property/class per signal, not "pick one of N classes from a
+  // number"). Self-contained on purpose, the same way the responsive-fit
+  // and toggle runtimes are, so it needs no changes to the shared
+  // behavior-plan generator.
+  function translatedStateFamilyRuntime(stateFamily, textSelector = "") {
+    if (!stateFamily) return "";
+    const selector = stateFamily.baseSelector
+        ? `.${stateFamily.baseSelector}`
+        : ":root *",
+      // Per-state text wiring is only emitted at all when a text
+      // selector was actually detected/selected, rather than always
+      // included behind a runtime null-check — keeps generated output
+      // free of dead subscriptions for components with no text.
+      textWiring = textSelector
+        ? `
+var textTarget=window.document.querySelector(${JSON.stringify(textSelector)});
+if(textTarget&&window.ComposerSignals)states.forEach(function(name,index){
+window.ComposerSignals.subscribe('stateText'+index,function(value){
+texts[index]=value;
+if(index===currentIndex)textTarget.textContent=value;
+});
+});`
+        : "\nvar textTarget=null;";
+    return `<script>(function(){
+var root=window.document.querySelector(${JSON.stringify(selector)});
+if(!root)return;
+var states=${JSON.stringify(stateFamily.states)};
+var texts=new Array(states.length);
+var currentIndex=0;${textWiring}
+function applyState(value){
+currentIndex=Math.max(0,Math.min(states.length-1,Math.round(Number(value))||0));
+states.forEach(function(name){root.classList.remove(name)});
+root.classList.add(states[currentIndex]);
+if(textTarget&&texts[currentIndex]!=null)textTarget.textContent=texts[currentIndex];
+if(window.ComposerSignals)window.ComposerSignals.publish('stateFeedback',currentIndex);
+}
+if(window.ComposerSignals)window.ComposerSignals.subscribe('state',applyState);
+applyState(0);
+})();<\/script>`;
+  }
   function translatedResponsiveFitRuntime() {
     return `<script>(function(){
 var runtimeDocument=window.document,body=runtimeDocument.body;
@@ -12898,6 +13236,21 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       { once: true },
     );
   }
+  // A root wrapper styled position:fixed/absolute with inset:0 (a common
+  // "fill the whole panel" convention for standalone touch-panel widgets)
+  // reports its own rendered size as whatever ancestor or viewport it
+  // fills, completely disconnected from its actual visual content size —
+  // measuring body's own bounding box, or including that wrapper's rect,
+  // produces a wildly oversized result. Excluding rects that approximate
+  // the full measurement viewport keeps the measurement anchored to
+  // elements that are actually content-sized, falling back to the
+  // unfiltered set only if that would otherwise leave nothing to measure.
+  function filterNaturalContentRects(rects, viewportWidth, viewportHeight) {
+    const contentRects = rects.filter(
+      (rect) => rect.width < viewportWidth * 0.95 || rect.height < viewportHeight * 0.95,
+    );
+    return contentRects.length ? contentRects : rects;
+  }
   function measureSnippetNaturalSize(html) {
     return new Promise((resolve) => {
       const frame = document.createElement("iframe");
@@ -12919,13 +13272,26 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           requestAnimationFrame(() => {
             try {
               const documentValue = frame.contentDocument,
-                rect = documentValue?.body?.getBoundingClientRect();
-              if (!rect || rect.width <= 1 || rect.height <= 1) return finish(null);
+                viewportWidth = frame.clientWidth || 900,
+                viewportHeight = frame.clientHeight || 600,
+                allRects = documentValue
+                  ? [...documentValue.body.querySelectorAll("*")]
+                      .map((element) => element.getBoundingClientRect())
+                      .filter((rect) => rect.width > 1 && rect.height > 1)
+                  : [],
+                measured = filterNaturalContentRects(allRects, viewportWidth, viewportHeight);
+              if (!measured.length) return finish(null);
+              const bounds = {
+                  left: Math.min(...measured.map((rect) => rect.left)),
+                  top: Math.min(...measured.map((rect) => rect.top)),
+                  right: Math.max(...measured.map((rect) => rect.right)),
+                  bottom: Math.max(...measured.map((rect) => rect.bottom)),
+                },
+                width = bounds.right - bounds.left,
+                height = bounds.bottom - bounds.top;
+              if (width <= 1 || height <= 1) return finish(null);
               clearTimeout(failTimer);
-              finish({
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
-              });
+              finish({ width: Math.round(width), height: Math.round(height) });
             } catch (_) {
               finish(null);
             }
@@ -13116,7 +13482,15 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     if (buttonCount) {
       ["press", "selected", "label", "name"].forEach((key) => {
         const existing = signals.find((entry) => entry.key === key);
-        if (existing && buttonCount > 1)
+        // The preset's own baseline "selected" signal is added above,
+        // before this loop ever runs — buttonCount === 1 alone wouldn't
+        // otherwise remove it, so a state-family widget needs its own
+        // explicit check here too, not just a guard on the loop's own
+        // (re-)addition further down.
+        if (
+          existing &&
+          (buttonCount > 1 || (key === "selected" && detected.stateFamily))
+        )
           signals.splice(signals.indexOf(existing), 1);
       });
       for (let index = 0; index < buttonCount; index++) {
@@ -13129,15 +13503,31 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           direction: "output",
           suffix: buttonCount === 1 ? "Press" : `Button${index + 1}.Press`,
         });
-        addSignal({
-          key: `selected${suffix}`,
-          name: `Selected${title}`,
-          type: "digital",
-          direction: "input",
-          suffix:
-            buttonCount === 1 ? "Selected" : `Button${index + 1}.Selected`,
-        });
-        if (hasVisibleText)
+        // A widget with a detected multi-state family doesn't also need a
+        // boolean Selected input: with 3+ states, "selected" is really just
+        // state index 1 — a separate digital signal for it would be
+        // redundant with (and could drift out of sync with) the analog
+        // state input that already drives the same visual change.
+        if (!(buttonCount === 1 && detected.stateFamily))
+          addSignal({
+            key: `selected${suffix}`,
+            name: `Selected${title}`,
+            type: "digital",
+            direction: "input",
+            suffix:
+              buttonCount === 1 ? "Selected" : `Button${index + 1}.Selected`,
+          });
+        // When a single button also has a detected state family, its text
+        // is already covered by the per-state stateText0/1/2 signals below
+        // — adding this generic Name signal too would give the same label
+        // element two independent, competing signals. A multi-button
+        // widget always gets a Name signal per button, even if none of
+        // them currently have text, since each is its own independently
+        // labelable control.
+        if (
+          (hasVisibleText || buttonCount > 1) &&
+          !(buttonCount === 1 && detected.stateFamily)
+        )
           addSignal({
             key: `name${suffix}`,
             name: `Name${title}`,
@@ -13147,15 +13537,35 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           });
       }
     }
-    (detected.textKeys || []).forEach((key, index) =>
+    // A widget with 3+ discrete states needs its own text per state (the
+    // label reads differently for each one), so the first detected text
+    // element gets one serial input per state instead of a single generic
+    // Name signal. Any additional, unrelated text elements still get the
+    // ordinary per-element Name signal.
+    (detected.textKeys || []).forEach((key, index) => {
+      if (index === 0 && detected.stateFamily) {
+        detected.stateFamily.states.forEach((stateClass, stateIndex) => {
+          const label = stateClass
+            .replace(/^[a-z]+-/, "")
+            .replace(/(^|-)([a-z])/g, (_, __, letter) => letter.toUpperCase());
+          addSignal({
+            key: `stateText${stateIndex}`,
+            name: `${label} Text`,
+            type: "serial",
+            direction: "input",
+            suffix: `State${stateIndex}.Text`,
+          });
+        });
+        return;
+      }
       addSignal({
         key: `name${index ? index + 1 : ""}`,
         name: index ? `Text ${index + 1} Name` : "Name",
         type: "serial",
         direction: "input",
         suffix: index ? `Text${index + 1}.Name` : "Name",
-      }),
-    );
+      });
+    });
     if (detected.numericCount > 1)
       ["feedback", "set"].forEach((key) => {
         const existing = signals.find((entry) => entry.key === key);
@@ -13180,8 +13590,46 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           suffix: detected.numericCount === 1 ? "ValueSet" : `Value${index + 1}.ValueSet`,
         });
     });
+    if (detected.stateFamily) {
+      addSignal({
+        key: "state",
+        name: "State",
+        type: "analog",
+        direction: "input",
+        suffix: "State",
+      });
+      addSignal({
+        key: "stateFeedback",
+        name: "State Feedback",
+        type: "analog",
+        direction: "output",
+        suffix: "State.Feedback",
+      });
+    }
+    // Text/number entry gets a serial output (what was typed) and serial
+    // input (external feedback) regardless of which preset happens to be
+    // selected — the same pair the "text" preset itself defines, added
+    // here too so the widget doesn't have to be built starting from that
+    // exact preset for a detected entry field to be wired up correctly.
+    if (detected.textEntryCount) {
+      addSignal({ key: "text", name: "Text", type: "serial", direction: "output", suffix: "Text" });
+      addSignal({ key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" });
+    }
+    // A continuously-looping decorative animation (spinning ring,
+    // morphing shape) is "extra stuff a standard component doesn't have"
+    // and gets a live Speed control — scales every transition/animation
+    // duration in the widget without needing to know which element or
+    // CSS property is actually animating.
+    if (detected.hasLoopingAnimation)
+      addSignal({ key: "speed", name: "Speed", type: "analog", direction: "input", suffix: "Speed" });
     selectedTranslateInferences()
       .filter((entry) => entry.mode === "generated")
+      // Same reasoning as the button-loop Selected signal above: an
+      // inferred class-toggle candidate keyed "selected" (e.g. a JS pattern
+      // toggling a class whose name happens to match /active|open|.../) is
+      // still redundant with the analog state input once a state family is
+      // detected, even though it arrived through a different detector.
+      .filter((entry) => !(detected.stateFamily && /^selected\d*$/.test(entry.key)))
       .forEach((entry) =>
         addSignal({
           key: entry.key,
@@ -13456,7 +13904,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           : "selectedClass",
       });
       if (
-        (detected.textKeys || []).length &&
+        ((detected.textKeys || []).length || (detected.buttonCount || 0) > 1) &&
         !(detected.toggleButtonIndexes || []).includes(index)
       )
         add({ name: `Button ${index + 1} Name`, source: "signal-input", key: `name${suffix}`, selector: label, action: "text" });
@@ -13496,10 +13944,19 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           },
         });
     });
-    if (preset === "text") {
+    if (preset === "text" || detected.textEntryCount) {
       add({ name: "Text output", source: "signal-output", key: "text", selector: "input,textarea", action: "input" });
       add({ name: "Text feedback", source: "signal-input", key: "name", selector: "input,textarea", action: "value" });
     }
+    if (detected.hasLoopingAnimation)
+      add({
+        name: "Animation speed",
+        source: "signal-input",
+        key: "speed",
+        selector: "body",
+        action: "speed",
+        mapping: { enabled: true, inputMin: 0, inputMax: 65535, outputMin: 0, outputMax: 100, unit: "" },
+      });
     inferredBehaviors
       .filter((entry) => entry.mode === "generated")
       .forEach((entry) =>
@@ -13586,6 +14043,19 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     }
     if ((detected.toggleButtonIndexes || []).length) {
       css += translatedToggleCss(properties, true);
+    }
+    if (
+      detected.stateFamily &&
+      signals.some((entry) => entry.key === "state") &&
+      signals.some((entry) => entry.key === "stateFeedback")
+    ) {
+      const stateTextSelector =
+        (detected.textKeys || []).length && signals.some((entry) => entry.key === "stateText0")
+          ? `[data-translated-text="${detected.textKeys[0]}"]`
+          : "";
+      javascript += translatedStateFamilyRuntime(detected.stateFamily, stateTextSelector)
+        .replace(/^<script>/, "\n")
+        .replace(/<\/script>$/, "");
     }
     javascript += translatedResponsiveFitRuntime()
       .replace(/^<script>/, "\n")
@@ -14532,6 +15002,71 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       (asset) => String(asset.name || "").toLowerCase() === name.toLowerCase(),
     );
   }
+  // Explicit, extensible requirements a component's detected structural
+  // shape must satisfy before it can be built/saved. Each rule declares
+  // the pattern it looks for (detect), what must already be true for that
+  // pattern to be considered correctly wired (satisfied), and the message
+  // shown when it isn't. severity: "error" feeds auditCustomSource()'s
+  // findings into runCustomComponentSelfTest()'s failure list, which is
+  // what blocks the Save button — anything else is advisory only. New
+  // requirements belong here, in one place, rather than as ad hoc checks
+  // scattered elsewhere, so every rule is enforced the same way at Build
+  // Component time regardless of whether Import & Translate or a
+  // hand-built "Create Component" produced the source.
+  const componentRequirementRules = [
+    {
+      id: "interactive-control-requires-output-signal",
+      detect: (ctx) => ctx.interactiveElementCount > 0,
+      satisfied: (ctx) => ctx.signals.some((signal) => signal.direction === "output"),
+      message: (ctx) =>
+        `${ctx.interactiveElementCount} interactive control${ctx.interactiveElementCount === 1 ? "" : "s"} (button, checkbox, radio, role="button", or role="switch") were found, but no output signal is bound yet. Add a signal in "Add capabilities," or accept a detected Import & Translate behavior.`,
+      severity: "error",
+    },
+    {
+      id: "numeric-control-requires-analog-signal",
+      detect: (ctx) => ctx.numericElementCount > 0,
+      satisfied: (ctx) => {
+        const hasInput = ctx.signals.some((signal) => signal.type === "analog" && signal.direction === "input"),
+          hasOutput = ctx.signals.some((signal) => signal.type === "analog" && signal.direction === "output");
+        // Gauge/knob/rotator/slider: an interactive one (range/number
+        // input, role="slider") needs both directions — an analog input
+        // for external feedback to correct its display, and an analog
+        // output that fires when it's actually adjusted. A read-only
+        // display (meter/progress/role="progressbar") only ever needs
+        // the input, since there's nothing a person adjusts to publish.
+        return ctx.interactiveNumericElementCount > 0 ? hasInput && hasOutput : hasInput;
+      },
+      message: (ctx) =>
+        ctx.interactiveNumericElementCount > 0
+          ? `${ctx.numericElementCount} numeric control${ctx.numericElementCount === 1 ? "" : "s"} (range/number input or role="slider") were found, but need both an analog input (external feedback) and an analog output (fires when adjusted). Add both signals in "Add capabilities."`
+          : `${ctx.numericElementCount} numeric display${ctx.numericElementCount === 1 ? "" : "s"} (meter, progress, or role="progressbar") were found, but no analog input signal drives the display yet. Add an analog signal in "Add capabilities."`,
+      severity: "error",
+    },
+    {
+      id: "text-entry-requires-serial-output",
+      detect: (ctx) => ctx.textEntryElementCount > 0,
+      satisfied: (ctx) =>
+        ctx.signals.some((signal) => signal.type === "serial" && signal.direction === "output"),
+      message: (ctx) =>
+        `${ctx.textEntryElementCount} text/number-entry field${ctx.textEntryElementCount === 1 ? "" : "s"} were found, but no serial output signal publishes what's typed. Add a serial output in "Add capabilities."`,
+      severity: "error",
+    },
+    {
+      id: "multi-state-requires-analog-signal-pair",
+      detect: (ctx) => !!ctx.stateFamily,
+      satisfied: (ctx) =>
+        ctx.signals.some((signal) => signal.type === "analog" && signal.direction === "input") &&
+        ctx.signals.some((signal) => signal.type === "analog" && signal.direction === "output"),
+      message: (ctx) =>
+        `Detected ${ctx.stateFamily.states.length} visual states (${ctx.stateFamily.states.join(", ")}) but no analog input/output signal pair selects between them. Add an analog input (0-based) to drive the state and an analog output to report it back, or accept the auto-suggested "State"/"State Feedback" signals from Import & Translate.`,
+      severity: "error",
+    },
+  ];
+  function evaluateComponentRequirementRules(context) {
+    return componentRequirementRules
+      .filter((rule) => rule.detect(context) && !rule.satisfied(context))
+      .map((rule) => ({ code: rule.id, message: rule.message(context), severity: rule.severity }));
+  }
   function auditCustomSource() {
     const { html, css, javascript } = currentCustomSourceSnapshot(),
       source = `${html}\n${css}\n${javascript}`,
@@ -14579,6 +15114,33 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
     if (duplicateIds.length)
       add("duplicate-ids", `Duplicate element IDs: ${duplicateIds.join(", ")}.`, { severity: "error" });
+    const requirementContext = {
+      html,
+      css,
+      javascript,
+      signals: collectCustomSignals(),
+      interactiveElementCount: parsed.querySelectorAll(
+        'button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],input[type="checkbox"],input[type="radio"],[role="switch"]',
+      ).length,
+      numericElementCount: parsed.querySelectorAll(
+        'input[type="range"],input[type="number"],meter,progress,[role="slider"],[role="progressbar"]',
+      ).length,
+      // meter/progress/role="progressbar" are inherently read-only display
+      // elements — only these three shapes represent something a person
+      // actually adjusts, which is what determines whether an analog
+      // *output* (fires on adjustment) is required in addition to the
+      // input every numeric control needs for display feedback.
+      interactiveNumericElementCount: parsed.querySelectorAll(
+        'input[type="range"],input[type="number"],[role="slider"]',
+      ).length,
+      textEntryElementCount: parsed.querySelectorAll(
+        'input[type="text"],input[type="tel"],input[type="password"],input[type="search"],input[type="email"],input[type="url"]',
+      ).length,
+      stateFamily: detectStateFamilies(css),
+    };
+    evaluateComponentRequirementRules(requirementContext).forEach((finding) =>
+      add(finding.code, finding.message, { severity: finding.severity }),
+    );
     if (/\b(?:parent|top)\.document\b/.test(javascript))
       add("parent-document", "JavaScript reaches outside the component iframe through parent/top.document and can alter other widgets or the editor.", { severity: "error", repairable: true });
     const listenerSignatures = [
@@ -17115,7 +17677,7 @@ function truthy(value){return value===true||value===1||value==='1'||String(value
 function mapped(rule,value){if(rule.booleanMapping&&rule.booleanMapping.enabled)return truthy(value)?rule.booleanMapping.trueValue:rule.booleanMapping.falseValue;if(!rule.mapping||!rule.mapping.enabled)return value;var m=rule.mapping,n=Number(value),span=Number(m.inputMax)-Number(m.inputMin);if(!Number.isFinite(n)||!span)return Number(m.outputMin)||0;var ratio=Math.max(0,Math.min(1,(n-Number(m.inputMin))/span));return Number(m.outputMin)+ratio*(Number(m.outputMax)-Number(m.outputMin))}
 function transforms(target){target.style.transform='translateX(var(--composer-translate-x,0px)) translateY(var(--composer-translate-y,0px)) rotate(var(--composer-rotate,0deg)) scale(var(--composer-scale,1))'}
 function appearance(target){var glow=Math.max(0,Number(target.style.getPropertyValue('--composer-glow-strength'))||0),shadow=Math.max(0,Number(target.style.getPropertyValue('--composer-shadow-size'))||0),color=target.style.getPropertyValue('--composer-glow-color')||'var(--glow-color,#00e5c3)',parts=[];if(shadow)parts.push(shadow+'px '+shadow+'px '+shadow*2+'px rgba(0,0,0,.48)');if(glow){parts.push('0 0 '+glow+'px '+color);parts.push('0 0 '+glow*2+'px '+color)}target.style.boxShadow=parts.join(',')}
-function apply(rule,value){if(value==='__preserve__')return;var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'checkedState':var checked=truthy(mappedValue);if('checked'in target)target.checked=checked;target.classList.toggle('selected',checked);target.classList.toggle('active',checked);target.setAttribute('aria-checked',String(checked));target.dispatchEvent(new Event('change',{bubbles:true}));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter){target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));if(/glow/i.test(rule.parameter))appearance(target)}break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':target.style.setProperty('--composer-glow-strength',String(Math.max(0,Number(mappedValue)||0)));target.style.setProperty('--composer-glow-color',rule.parameter||'var(--glow-color,#00e5c3)');appearance(target);break;case'shadowSize':target.style.setProperty('--composer-shadow-size',String(Math.max(0,Number(mappedValue)||0)));appearance(target);break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':var image=String(mappedValue||'');if(target.tagName==='IMG'){if(!target.hasAttribute('data-composer-original-src'))target.setAttribute('data-composer-original-src',target.getAttribute('src')||'');target.src=image||target.getAttribute('data-composer-original-src')||''}else{if(!target.hasAttribute('data-composer-original-background'))target.setAttribute('data-composer-original-background',target.style.backgroundImage||'');target.style.backgroundImage=image?'url("'+image.replace(/"/g,'\\"')+'")':target.getAttribute('data-composer-original-background')||''}break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;}})}
+function apply(rule,value){if(value==='__preserve__')return;var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}var mappedValue=mapped(rule,value),unit=rule.mapping&&rule.mapping.enabled?(rule.mapping.unit||''):'';targets.forEach(function(target){switch(rule.action){case'text':target.textContent=mappedValue==null?'':String(mappedValue);break;case'color':target.style.color=String(mappedValue||'');break;case'backgroundColor':target.style.backgroundColor=String(mappedValue||'');break;case'borderColor':target.style.borderColor=String(mappedValue||'');break;case'fontSize':target.style.fontSize=(Number(mappedValue)||0)+(unit||'px');break;case'opacity':target.style.opacity=String(Math.max(0,Math.min(1,Number(mappedValue)>1?Number(mappedValue)/100:Number(mappedValue))));break;case'width':target.style.width=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'height':target.style.height=Math.max(0,Number(mappedValue)||0)+(unit||'%');break;case'visibility':target.style.visibility=truthy(mappedValue)?'visible':'hidden';break;case'selectedClass':target.classList.toggle('selected',truthy(mappedValue));target.classList.toggle('active',truthy(mappedValue));break;case'checkedState':var checked=truthy(mappedValue);if('checked'in target)target.checked=checked;target.classList.toggle('selected',checked);target.classList.toggle('active',checked);target.setAttribute('aria-checked',String(checked));target.dispatchEvent(new Event('change',{bubbles:true}));break;case'disabledState':var disabled=truthy(mappedValue);target.classList.toggle('disabled',disabled);if('disabled'in target)target.disabled=disabled;target.setAttribute('aria-disabled',String(disabled));break;case'value':target.value=mappedValue==null?'':String(mappedValue);break;case'cssProperty':if(rule.parameter)target.style.setProperty(rule.parameter,String(mappedValue??'')+unit);break;case'cssVariable':if(rule.parameter){target.style.setProperty(rule.parameter.indexOf('--')===0?rule.parameter:'--'+rule.parameter,String(mappedValue??''));if(/glow/i.test(rule.parameter))appearance(target)}break;case'attribute':if(rule.parameter){if(mappedValue==null||mappedValue===false)target.removeAttribute(rule.parameter);else target.setAttribute(rule.parameter,String(mappedValue))}break;case'classToggle':if(rule.parameter)target.classList.toggle(rule.parameter,truthy(mappedValue));break;case'scale':target.style.setProperty('--composer-scale',String(Math.max(0,Number(mappedValue)||0)/100));transforms(target);break;case'glowStrength':target.style.setProperty('--composer-glow-strength',String(Math.max(0,Number(mappedValue)||0)));target.style.setProperty('--composer-glow-color',rule.parameter||'var(--glow-color,#00e5c3)');appearance(target);break;case'shadowSize':target.style.setProperty('--composer-shadow-size',String(Math.max(0,Number(mappedValue)||0)));appearance(target);break;case'borderRadius':target.style.borderRadius=Math.max(0,Number(mappedValue)||0)+(unit||'px');break;case'translateX':target.style.setProperty('--composer-translate-x',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'translateY':target.style.setProperty('--composer-translate-y',String(Number(mappedValue)||0)+(unit||'px'));transforms(target);break;case'rotate':target.style.setProperty('--composer-rotate',String(Number(mappedValue)||0)+(unit||'deg'));transforms(target);break;case'imageSource':var image=String(mappedValue||'');if(target.tagName==='IMG'){if(!target.hasAttribute('data-composer-original-src'))target.setAttribute('data-composer-original-src',target.getAttribute('src')||'');target.src=image||target.getAttribute('data-composer-original-src')||''}else{if(!target.hasAttribute('data-composer-original-background'))target.setAttribute('data-composer-original-background',target.style.backgroundImage||'');target.style.backgroundImage=image?'url("'+image.replace(/"/g,'\\"')+'")':target.getAttribute('data-composer-original-background')||''}break;case'backgroundImage':target.style.backgroundImage=mappedValue?'url("'+String(mappedValue).replace(/"/g,'\\"')+'")':'none';target.style.backgroundRepeat='no-repeat';target.style.backgroundPosition='center';target.style.backgroundSize='contain';break;case'speed':var durationScale=4-(Math.max(0,Math.min(1,Number(mappedValue)/100))*3.8),nodes=[target].concat(Array.prototype.slice.call(target.querySelectorAll('*'))),scaleDurations=function(value){return String(value||'0s').split(',').map(function(part){var match=String(part).trim().match(/^([0-9.]+)(ms|s)$/i);if(!match)return part;var milliseconds=Number(match[1])*(match[2].toLowerCase()==='s'?1000:1);return milliseconds<=0?'0ms':Math.max(10,Math.round(milliseconds*durationScale))+'ms'}).join(', ')};nodes.forEach(function(node){var computed=window.getComputedStyle(node),transitionBase=node.getAttribute('data-composer-transition-duration')||computed.transitionDuration,animationBase=node.getAttribute('data-composer-animation-duration')||computed.animationDuration;if(!node.hasAttribute('data-composer-transition-duration'))node.setAttribute('data-composer-transition-duration',transitionBase);if(!node.hasAttribute('data-composer-animation-duration'))node.setAttribute('data-composer-animation-duration',animationBase);node.style.transitionDuration=scaleDurations(transitionBase);node.style.animationDuration=scaleDurations(animationBase)});break;}})}
 function pulse(key){window.ComposerSignals.publish(key,true);setTimeout(function(){window.ComposerSignals.publish(key,false)},50)}
 rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='property'){apply(rule,properties[rule.key]);return}if(rule.source==='signal-input'){window.ComposerSignals.subscribe(rule.key,function(value){apply(rule,value)});return}var targets;try{targets=document.querySelectorAll(rule.selector)}catch(error){return}targets.forEach(function(target){if(rule.action==='press'){var release=function(){window.ComposerSignals.publish(rule.key,false)};target.addEventListener('pointerdown',function(){window.ComposerSignals.publish(rule.key,true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release)}else if(rule.action==='click')target.addEventListener('click',function(){pulse(rule.key)});else if(rule.action==='release')target.addEventListener('pointerup',function(){pulse(rule.key)});else if(rule.action==='hold'){var timer=0,complete=false,cancel=function(){clearTimeout(timer);timer=0;complete=false};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){complete=true;pulse(rule.key)},Math.max(1,Number(rule.parameter)||1000))});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel)}else target.addEventListener(rule.action,function(){var raw=target.type==='range'||target.type==='number'?Number(target.value):target.type==='checkbox'?target.checked:target.value;window.ComposerSignals.publish(rule.key,mapped(rule,raw))})})});
 })();<\/script>`;

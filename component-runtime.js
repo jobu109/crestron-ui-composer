@@ -741,7 +741,7 @@
     }
     definition.itemSelector =
       definition.itemSelector || repeatedItemSelectors[definition.id] || "";
-    Object.keys(optionalContent[definition.id] || {}).forEach((key) => {
+    Object.keys(definition.optionalContent || {}).forEach((key) => {
       if (!definition.properties.some((property) => property.key === key))
         definition.properties.push({
           key,
@@ -1523,7 +1523,7 @@
       cleanups.push(wireScrollReturn(root, root.closest(".widget,.scoped-widget") || root, definition, options.properties || {}));
       const disposeCip = wireCipText(root, signals);
       cleanups.push(disposeCip);
-      const visibility = optionalContent[id],
+      const visibility = definition.optionalContent,
         style = document.createElement("style"),
         holder = root.closest(".widget,.scoped-widget"),
         scope = holder?.dataset.id

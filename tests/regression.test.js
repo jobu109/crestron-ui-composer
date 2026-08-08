@@ -1682,6 +1682,32 @@ run("Import and Translate merges preset and detected Name bindings", () => {
   assert.ok(editor.includes("entry.direction === signal.direction"));
 });
 
+run("Import and Translate skips the redundant Selected signal for a detected multi-state widget, since Selected is essentially state index 1", () => {
+  const editor = read("editor.js");
+  // Two separate places must both exclude it: the preset's own baseline
+  // "selected" signal (added to the list before the per-button loop even
+  // runs — a real bug slipped through here once, because a loop-only guard
+  // never got a chance to run against a signal the preset had already
+  // added) and the per-button loop's own (re-)addition.
+  assert.ok(
+    editor.includes(
+      '(buttonCount > 1 || (key === "selected" && detected.stateFamily))',
+    ),
+    "the preset's baseline Selected signal must be explicitly removed for a single-button state-family widget, not just guarded against re-addition by the loop below",
+  );
+  assert.ok(
+    editor.includes("if (!(buttonCount === 1 && detected.stateFamily))") &&
+      editor.includes("key: `selected${suffix}`"),
+    "the per-button loop must also not re-add the Selected signal for a single-button widget that already has a detected state family",
+  );
+  assert.ok(
+    editor.includes(
+      "!(detected.stateFamily && /^selected\\d*$/.test(entry.key))",
+    ),
+    "an inferred class-toggle candidate keyed 'selected' must also be suppressed once a state family is detected, even though it comes from a different detector",
+  );
+});
+
 run("Import and Translate is consolidated into Component Creator", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
   assert.ok(!html.includes('id="translate-snippet-menu"'));
