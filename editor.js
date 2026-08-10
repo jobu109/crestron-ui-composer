@@ -78,6 +78,7 @@
   let lastRenderedPageId = "";
   let customEditingId = "";
   let customWizardStep = 0;
+  let customCapabilityPage = "properties";
   let editingSubpagePagesId = "";
   let editingSubpagePropertiesId = "";
   let creatingSubpageMode = "";
@@ -90,6 +91,7 @@
   let customPickedElement = null;
   let customAnalyzedElements = [],
     customSavedElementRoles = [];
+  let customWorkbenchDraft = null;
   let customOriginalSourceSnapshot = null;
   let customBuilderSourceItemId = "";
   let customPreviewEvents = [];
@@ -800,9 +802,9 @@
     state.pageTemplates = p.pageTemplates || [];
     state.subpages = p.subpages || [];
     state.themes = p.themes || [];
-    state.customComponents = p.customComponents || [];
+    mergeGlobalCustomComponents(p.customComponents || [], p.assets || []);
     state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
-    state.customComponents.forEach(registerCustomComponent);
+    scheduleComponentLibrarySave();
     state.contract = {
       ...state.contract,
       ...(p.contract || {}),
@@ -935,6 +937,104 @@
       nativePending.set(id, { resolve, reject });
       native.postMessage({ id, command, payload });
     });
+  }
+  const componentLibraryBrowserKey = "composer-global-component-library-v1";
+  let globalComponentLibrary = { version: 1, components: [], assets: [] },
+    componentLibrarySaveTimer = 0,
+    componentLibraryLoaded = false;
+  function mergeLibraryAssets(incoming) {
+    const existingByData = new Map(
+      (state.assets || []).filter((asset) => asset?.dataUrl).map((asset) => [asset.dataUrl, asset]),
+    );
+    (incoming || []).forEach((source) => {
+      if (!source?.id || !source.dataUrl) return;
+      const sameData = existingByData.get(source.dataUrl);
+      if (sameData) return;
+      if (!state.assets.some((asset) => asset.id === source.id))
+        state.assets.push(structuredClone(source));
+      existingByData.set(source.dataUrl, source);
+    });
+  }
+  function mergeGlobalCustomComponents(projectComponents = [], projectAssets = []) {
+    mergeLibraryAssets(globalComponentLibrary.assets);
+    mergeLibraryAssets(projectAssets);
+    const merged = new Map();
+    (globalComponentLibrary.components || []).forEach((entry) => {
+      if (entry?.id) merged.set(entry.id, structuredClone(entry));
+    });
+    // A project carries the exact component definitions it was built with.
+    // Let those definitions win while opening the project, then promote them
+    // into the application library so they are available from then on.
+    (projectComponents || []).forEach((entry) => {
+      if (entry?.id) merged.set(entry.id, structuredClone(entry));
+    });
+    state.customComponents = [...merged.values()];
+    state.customComponents.forEach(registerCustomComponent);
+    globalComponentLibrary.components = structuredClone(state.customComponents);
+    globalComponentLibrary.assets = structuredClone(
+      state.assets.filter((asset) =>
+        state.customComponents.some((entry) =>
+          customComponentDependencies(entry, state.assets).some(
+            (dependency) => dependency.id === asset.id,
+          ),
+        ),
+      ),
+    );
+  }
+  function componentLibraryDocument() {
+    const dependencyIds = new Set();
+    state.customComponents.forEach((entry) =>
+      customComponentDependencies(entry, state.assets).forEach((asset) =>
+        dependencyIds.add(asset.id),
+      ),
+    );
+    return {
+      format: "crestron-ui-composer-global-components",
+      version: 1,
+      savedAt: new Date().toISOString(),
+      components: structuredClone(state.customComponents),
+      assets: structuredClone(
+        state.assets.filter((asset) => dependencyIds.has(asset.id)),
+      ),
+    };
+  }
+  async function persistComponentLibrary() {
+    if (!componentLibraryLoaded) return;
+    const library = componentLibraryDocument(),
+      serialized = JSON.stringify(library, null, 2);
+    globalComponentLibrary = library;
+    localStorage.setItem(componentLibraryBrowserKey, serialized);
+    if (native) await nativeRequest("writeComponentLibrary", serialized);
+  }
+  function scheduleComponentLibrarySave() {
+    if (!componentLibraryLoaded) return;
+    clearTimeout(componentLibrarySaveTimer);
+    componentLibrarySaveTimer = setTimeout(() => {
+      persistComponentLibrary().catch((error) =>
+        console.warn("Composer component library could not be saved", error),
+      );
+    }, 200);
+  }
+  async function loadComponentLibrary() {
+    let serialized = "";
+    if (native)
+      try {
+        serialized = await nativeRequest("readComponentLibrary");
+      } catch (error) {
+        console.warn("Composer component library could not be read", error);
+      }
+    if (!serialized) serialized = localStorage.getItem(componentLibraryBrowserKey) || "";
+    if (serialized)
+      try {
+        const parsed = JSON.parse(serialized);
+        if (Array.isArray(parsed.components) && Array.isArray(parsed.assets))
+          globalComponentLibrary = parsed;
+      } catch (error) {
+        console.warn("Ignoring an invalid Composer component library", error);
+      }
+    componentLibraryLoaded = true;
+    mergeGlobalCustomComponents(state.customComponents, state.assets);
+    renderComponentLibrary();
   }
   const uid = (p) =>
       (p || "w") +
@@ -1124,6 +1224,7 @@
     };
   }
   function registerCustomComponent(entry) {
+    entry.workbench = window.ComposerComponentWorkbench.migrate(entry);
     entry.html = upgradeCustomFrameOverflow(
       upgradeCustomResponsiveFitRuntime(
         upgradeCustomAnimationSpeedRuntime(entry.html),
@@ -1226,18 +1327,28 @@
       category: entry.category || "Custom",
       icon: entry.icon || "🧩",
       defaultSize: entry.defaultSize || { width: 320, height: 180 },
-      properties,
+      // ComposerRuntime.register() normalizes and augments definitions in
+      // place.  Keep those runtime-only additions away from the persisted
+      // Workbench entry or its fingerprint changes immediately after it is
+      // registered.
+      properties: structuredClone(properties),
       optionalContent,
-      signals: (entry.signals || []).filter(
-        (signal) => signal.key !== "visibility" && signal.key !== "disabled",
+      signals: structuredClone(
+        (entry.signals || []).filter(
+          (signal) => signal.key !== "visibility" && signal.key !== "disabled",
+        ),
       ),
       rangeBindings:
-        entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
+        structuredClone(
+          entry.rangeBindings || repeatedItemRanges(entry.repeatedItems),
+        ),
       template: '<div class="custom-component-host"></div>',
       styles:
         "[data-component] .custom-component-host{display:block;position:relative;width:100%;height:100%;overflow:visible}[data-component] .custom-component-host iframe{display:block;position:relative;z-index:1;width:100%;height:100%;border:0;background:transparent;overflow:hidden}[data-component] .custom-component-glow-proxy{position:absolute;z-index:2;pointer-events:none;background:transparent}",
       data: {
         html: preparedHtml,
+        schemaFingerprint: customComponentReadinessFingerprint(entry),
+        workbenchVersion: Number(entry.workbench?.schemaVersion) || 0,
         managedGlow,
         signals: (entry.signals || []).filter(
           (signal) => signal.key !== "visibility" && signal.key !== "disabled",
@@ -1266,8 +1377,15 @@
               !["visibility", "disabledState"].includes(behavior.action),
           ),
         ),
-        stateCss: customStateCss(entry.stateStyles || null),
-        stateRuntime: customStateRuntime(entry.stateStyles || null),
+        stateCss: entry.generatedAdapter ? "" : customStateCss(entry.stateStyles || null),
+        stateRuntime: entry.generatedAdapter ? "" : customStateRuntime(entry.stateStyles || null),
+        adapterCss: entry.generatedAdapter?.css || "",
+        // Store executable markup in the serializable definition data. The
+        // mounted component also runs in exported HTML where editor helpers
+        // such as customAdapterRuntimeMarkup do not exist.
+        adapterRuntime: customAdapterRuntimeMarkup(
+          entry.generatedAdapter?.javascript || "",
+        ),
       },
       mount(root, context) {
         const host = root.querySelector(".custom-component-host"),
@@ -1343,6 +1461,18 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
             String(properties[key] ?? ""),
           ),
+          adapterCss = String(context.options.definitionData.adapterCss || "").replace(
+            /\{\{([A-Za-z_$][\w$]*)\}\}/g,
+            (_, key) => String(properties[key] ?? ""),
+          ),
+          adapterStyle = adapterCss
+            ? `<style data-composer-adapter>${adapterCss}</style>`
+            : "",
+          adapterRuntime = String(
+            context.options.definitionData.adapterRuntime || "",
+          ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
+            String(properties[key] ?? ""),
+          ),
           // The widget's own behaviorRuntime paints a real, live glow via
           // inline box-shadow (customBehaviorRuntime's appearance() helper)
           // whenever a glowStrength/glowColor-driven behavior fires - that's
@@ -1364,6 +1494,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                   bridge +
                   managedGlowFlagScript +
                   repeatRuntime +
+                  adapterStyle +
+                  adapterRuntime +
                   stateStyle +
                   stateRuntime +
                   behaviorStyle +
@@ -1378,6 +1510,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               bridge +
               managedGlowFlagScript +
               repeatRuntime +
+              adapterStyle +
+              adapterRuntime +
               stateStyle +
               stateRuntime +
               behaviorStyle +
@@ -1770,6 +1904,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               ? 32768
               : `REMOUNT_${index + 1}`,
       })),
+      expectedFingerprint = customComponentReadinessFingerprint(entry),
       sizes = [
         { width: 320, height: 220 },
         { width: 480, height: 260 },
@@ -1778,7 +1913,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       errors = [],
       widgetListDefinition = window.ComposerRuntime.get("widget-list"),
       widgetListProbe = { holder: null, root: null, dispose: null };
-    let exportedRuntime = { passed: false, errors: [] };
+    let exportedRuntime = { passed: false, errors: [] },
+      definitionParity = definition.data?.schemaFingerprint === expectedFingerprint,
+      ch5Structure = false;
+    if (!definitionParity)
+      errors.push("Registered runtime definition does not match the saved Component Workbench definition.");
     retainedInputs.forEach(({ signal, address, value }) =>
       window.ComposerRuntime.simulator.set(
         window.ComposerRuntime.typeCode(signal.type),
@@ -1964,10 +2103,29 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ];
       exportProject.subpages = [];
       exportProject.diagnostics = false;
+      // A newly-created component is registered before it is committed to
+      // state.customComponents.  Include the exact candidate definition in
+      // this isolated export so the probe validates what is about to be
+      // saved instead of the previous project library.
+      exportProject.customComponents = [
+        ...(exportProject.customComponents || []).filter(
+          (candidate) => candidate.id !== entry.id,
+        ),
+        structuredClone(entry),
+      ];
       const errorBridge = `<script>window.addEventListener('error',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:event.message},'*')});window.addEventListener('unhandledrejection',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:String(event.reason&&event.reason.message||event.reason)},'*')});<\/script>`,
         exportedHtml = window.ComposerExporter
           .exportProject(exportProject)
           .replace(/<head>/i, `<head>${errorBridge}`);
+      if (!exportedHtml.includes(JSON.stringify(expectedFingerprint)))
+        messages.push("The exported runtime does not contain the saved Component Workbench definition fingerprint.");
+      ch5Structure =
+        exportedHtml.includes('<script src="cr-com-lib.js">') &&
+        exportedHtml.includes(`data-instance="${instanceId}"`) &&
+        exportedHtml.includes(JSON.stringify(entry.id)) &&
+        /(?:ch5|webxpanel|CrComLib)/i.test(exportedHtml);
+      if (!ch5Structure)
+        messages.push("The exported CH5 payload is missing required runtime, component, or instance structure.");
       holder.style.cssText =
         "position:fixed;left:-10000px;top:920px;width:640px;height:360px;overflow:hidden;pointer-events:none";
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
@@ -2029,6 +2187,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       widgetListInstances: nestedRoots.length,
       exportedRuntime: exportedRuntime.passed,
       remountRuntime: !errors.some((message) => message.startsWith("Page remount")),
+      definitionParity,
+      ch5Structure,
     };
   }
   function renderComponentLibrary() {
@@ -4530,6 +4690,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       state.customComponents.push(component);
       registerCustomComponent(component);
     });
+    if (imported.customComponents.length) scheduleComponentLibrarySave();
     state.reusables.push(...imported.reusables);
     state.pageTemplates.push(...imported.pageTemplates);
     (imported.subpages || []).forEach((entry) => {
@@ -10280,10 +10441,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             `Custom component “${customEntry.name}” failed its saved Component Readiness test.`,
             { category: "Custom components" },
           );
-        else if (Number(readiness.confidence) < 85)
+        else if (Number(readiness.warningCount) > 0)
           add(
             "warning",
-            `Custom component “${customEntry.name}” passed at ${Number(readiness.confidence) || 0}% confidence; review its saved warnings.`,
+            `Custom component “${customEntry.name}” passed with ${Number(readiness.warningCount)} review note${Number(readiness.warningCount) === 1 ? "" : "s"}. Open it to review the exact notes.`,
             { category: "Custom components" },
           );
       }
@@ -12411,6 +12572,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         .join(" ");
     }
     const semanticRoles = [
+        [/:checked\b|\[aria-checked=["']?true/i, "Selected"],
         [/(?:^|[.:])selected\b/i, "Selected"],
         [/(?:^|[.:])pressed\b/i, "Pressed"],
         [/(?:^|[.:])hover\b/i, "Hover"],
@@ -12420,6 +12582,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ],
       matched = semanticRoles.find(([pattern]) => pattern.test(String(selector || "")));
     return matched ? matched[1] : "";
+  }
+  function describeSelectorVisualPart(selector) {
+    const value = String(selector || "").toLowerCase();
+    if (/(?:^|[.\s#_-])(?:knob|thumb|handle)(?:\b|[_-])/.test(value))
+      return "Handle / knob";
+    if (/(?:^|[.\s#_-])(?:track|rail)(?:\b|[_-])/.test(value)) return "Track";
+    if (/(?:^|[.\s#_-])(?:fill|level|progress)(?:\b|[_-])/.test(value))
+      return "Fill / level";
+    if (/(?:^|[.\s#_-])(?:icon|symbol|glyph)(?:\b|[_-])|\b(?:svg|img)\b/.test(value))
+      return "Icon / graphic";
+    if (/(?:^|[.\s#_-])(?:label|text|title|caption|name|value|percent)(?:\b|[_-])/.test(value))
+      return "Label / text";
+    return "";
   }
   // Finds the selector text of the CSS rule that textually encloses a given
   // position in the stylesheet (a lightweight lookback, not a full parser —
@@ -12452,15 +12627,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ([lower]) =>
         !(variableValues || new Set()).has(lower) && !transparentCanvasColors.has(lower),
     );
-    const roleUsageCount = new Map(),
-      // A single visual state can legitimately touch a dozen literal
-      // colors — a multi-stop gradient, a layered glow, a separate status
-      // pill, its own shadow — all real, all distinct. That's still too
-      // many independent checkboxes to make sense of at a glance, so only
-      // the first color found for a given state (or the first
-      // state-independent one) is pre-checked; the rest stay available
-      // but unchecked, rather than pre-selecting all of them.
-      stateGroupUsageCount = new Map();
+    const roleUsageCount = new Map();
     return literalColors.map(([lower, original], index) => {
       const firstIndex = styles.toLowerCase().indexOf(lower),
         // The owning property can be arbitrarily far before the color
@@ -12479,8 +12646,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           ) + 1,
         before = styles.slice(declarationStart, firstIndex),
         property = before.match(/^\s*([a-z-]+)\s*:/i)?.[1] || "color",
-        stateRole = describeSelectorStateRole(enclosingSelectorAt(styles, firstIndex)),
-        baseRole = /border/.test(property)
+        owningSelector = enclosingSelectorAt(styles, firstIndex),
+        stateRole = describeSelectorStateRole(owningSelector),
+        visualPart = describeSelectorVisualPart(owningSelector),
+        propertyRole = /border/.test(property)
           ? "Border color"
           : /background/.test(property)
             ? "Background color"
@@ -12489,8 +12658,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               : /stroke|fill|color/.test(property)
                 ? "Text / icon color"
                 : "Additional color",
+        baseRole = visualPart && /^(?:background|background-color|color|fill|stroke)$/.test(property)
+          ? `${visualPart} color`
+          : propertyRole,
         role = stateRole
-          ? `${stateRole} ${baseRole.charAt(0).toLowerCase()}${baseRole.slice(1)}`
+          ? `${stateRole} state — ${baseRole}`
           : baseRole,
         usageIndex = (roleUsageCount.get(role) || 0) + 1,
         label = usageIndex > 1 ? `${role} ${usageIndex}` : role,
@@ -12512,10 +12684,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           ? `#${lower[1]}${lower[1]}${lower[2]}${lower[2]}${lower[3]}${lower[3]}`
           : pickerSafe
             ? lower
-            : original,
-        stateGroupUsage = (stateGroupUsageCount.get(stateRole) || 0) + 1;
+            : original;
       roleUsageCount.set(role, usageIndex);
-      stateGroupUsageCount.set(stateRole, stateGroupUsage);
       return {
         key,
         label,
@@ -12523,7 +12693,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         value: displayValue,
         kind: "literal",
         source: original,
-        checkedByDefault: stateGroupUsage === 1,
+        checkedByDefault: true,
       };
     });
   }
@@ -12868,12 +13038,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         track = element.nextElementSibling;
       root?.setAttribute("data-translated-toggle-root", "");
       if (track) track.setAttribute("data-translated-toggle-track", "");
-      if (root && !root.textContent.trim()) {
-        const generatedLabel = documentValue.createElement("span");
-        generatedLabel.setAttribute("data-translated-generated-label", "");
-        generatedLabel.textContent = "Toggle";
-        root.insertAdjacentElement("afterend", generatedLabel);
-      }
     });
     if (toggleElements.length) {
       const toggleDeclarations = [],
@@ -14472,8 +14636,16 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         /((?:setTimeout|setInterval)\s*\([\s\S]{0,300}?,\s*)\d+(\s*\))/g,
         "$1{{timingMs}}$2",
       );
+    const continueButton = $("translate-continue");
+    continueButton.disabled = true;
+    continueButton.textContent = "Opening Component Workbench…";
     $("translate-snippet-dialog").close();
-    openCustomBuilder();
+    // WebView2 can reject showModal() when one modal is closed and another is
+    // opened synchronously in the same event task. Queue the Workbench handoff
+    // so the translated setup cannot disappear between the two dialogs.
+    setTimeout(() => {
+      try {
+        openCustomBuilder();
     customDraftNaturalSize = translateSource?.naturalSize || null;
     $("custom-component-name").value = $("translate-name").value;
     $("custom-component-category").value = $("translate-category").value;
@@ -14550,7 +14722,27 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       syncCustomRepeatedRows();
     }
     analyzeCustomElements();
-    captureCustomOriginalSource();
+    populateCustomWorkbenchFromTranslation({
+      properties: collectCustomProperties(),
+      signals: collectCustomSignals(),
+      behaviors: collectCustomBehaviors(),
+      repeatedItems: collectCustomRepeatedItems(),
+    });
+        repairMissingTranslatedTargetMarkers();
+        captureCustomOriginalSource();
+        setStatus(`Opened “${$("translate-name").value}” in Component Workbench`);
+      } catch (error) {
+        console.error("Component Workbench handoff failed", error);
+        alert(
+          `Composer could not open the Component Workbench. Your imported setup has been preserved.\n\n${error.message || error}`,
+        );
+        if (!$("translate-snippet-dialog").open)
+          $("translate-snippet-dialog").showModal();
+      } finally {
+        continueButton.disabled = false;
+        continueButton.textContent = "Continue to Component Workbench";
+      }
+    }, 0);
   };
   $("component-search").oninput = renderComponentLibrary;
   $("palette-preferences").onclick = (event) => {
@@ -15356,6 +15548,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       javascript: $("custom-source-javascript").value,
       properties: collectCustomProperties(),
       stateStyles: collectCustomStateStyles(),
+      generatedAdapter: customGeneratedAdapter(),
     };
   }
   function captureCustomOriginalSource() {
@@ -15639,6 +15832,24 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         `Composer-managed code block${brokenManagedMarkers.length === 1 ? "" : "s"} (${brokenManagedMarkers.join(", ")}) ${brokenManagedMarkers.length === 1 ? "has" : "have"} a missing or edited COMPOSER MANAGED marker. The generated property or connection may no longer update. Remove the remaining marker comment and its code, then re-add the capability from "Add capabilities."`,
         { severity: "error" },
       );
+    const intervalCount = (authoredJavascript.match(/\bsetInterval\s*\(/g) || []).length,
+      timeoutCount = (authoredJavascript.match(/\bsetTimeout\s*\(/g) || []).length,
+      animationFrameCount = (authoredJavascript.match(/\brequestAnimationFrame\s*\(/g) || []).length,
+      observerCount = (authoredJavascript.match(/\b(?:Resize|Intersection|Mutation)Observer\s*\(/g) || []).length,
+      infiniteAnimationCount = (css.match(/\banimation(?:-iteration-count)?\s*:[^;}{]*\binfinite\b/gi) || []).length,
+      expensiveEffectCount = (css.match(/\b(?:filter\s*:\s*(?:blur|drop-shadow)|backdrop-filter|box-shadow\s*:)/gi) || []).length,
+      repeatedMaximum = Math.max(1, Number(collectCustomRepeatedItems()?.maxCount) || 1),
+      repeatedAnimationCost = repeatedMaximum * (infiniteAnimationCount + animationFrameCount + observerCount);
+    if (intervalCount)
+      add("unbounded-intervals", `${intervalCount} repeating interval${intervalCount === 1 ? "" : "s"} must be cleared when the component unmounts to prevent work accumulating after page changes.`);
+    if (timeoutCount > 12)
+      add("excessive-timers", `${timeoutCount} authored timers can create delayed-action spikes on touch panels. Consolidate or cancel timers when remounted.`);
+    if (observerCount > 3)
+      add("excessive-observers", `${observerCount} observers are created per component instance. Prefer one shared observer inside each instance.`);
+    if (infiniteAnimationCount > 3 || expensiveEffectCount > 8)
+      add("expensive-effects", `${infiniteAnimationCount} infinite animation${infiniteAnimationCount === 1 ? "" : "s"} and ${expensiveEffectCount} filtered/shadow effect${expensiveEffectCount === 1 ? "" : "s"} may reduce frame rate on lower-powered panels.`);
+    if (repeatedAnimationCost > 24)
+      add("repeated-animation-cost", `At the configured maximum of ${repeatedMaximum} items, observers and continuous animation produce an estimated cost of ${repeatedAnimationCost}. Limit simultaneous effects or item count.`);
     return findings;
   }
   // Findings that aren't auto-repairable still deserve a concrete next
@@ -15663,14 +15874,20 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     },
     "complex-css-inset": { field: "css", pattern: /\binset\s*:\s*[^;}{]+(?=[;}])/ },
     "duplicate-listeners": { field: "javascript", pattern: /\.addEventListener\(/ },
+    "unbounded-intervals": { field: "javascript", pattern: /\bsetInterval\s*\(/ },
+    "excessive-timers": { field: "javascript", pattern: /\bsetTimeout\s*\(/ },
+    "excessive-observers": { field: "javascript", pattern: /\b(?:Resize|Intersection|Mutation)Observer\s*\(/ },
+    "expensive-effects": { field: "css", pattern: /\b(?:animation|filter|backdrop-filter|box-shadow)\s*:/ },
+    "repeated-animation-cost": { field: "javascript", pattern: /\b(?:requestAnimationFrame|ResizeObserver|IntersectionObserver|MutationObserver)\b/ },
   };
   function switchCustomSourceTab(name) {
     document
       .querySelectorAll("[data-custom-tab]")
       .forEach((entry) => entry.classList.toggle("active", entry.dataset.customTab === name));
-    ["html", "css", "javascript"].forEach(
+    ["html", "css", "javascript", "adapter"].forEach(
       (field) => ($("custom-source-" + field).hidden = field !== name),
     );
+    if (name === "adapter") renderCustomGeneratedAdapter();
   }
   function goToCustomAuditFindingSource(code) {
     const search = customAuditFindingSearch[code];
@@ -15868,6 +16085,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     row.className = "custom-property-row";
     row.dataset.preserveDefault = String(!!property.preserveDefault);
     row.dataset.suggestedValue = String(property.suggestedValue ?? property.defaultValue ?? "");
+    row.dataset.min = property.min ?? "";
+    row.dataset.max = property.max ?? "";
+    row.dataset.step = property.step ?? "";
+    row.dataset.unit = property.unit ?? "";
     row.innerHTML =
       '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>text</option><option>number</option><option>color</option><option>color-alpha</option><option>select</option><option>checkbox</option><option>asset</option></select><input data-field="defaultValue" placeholder="Default"><button type="button" class="custom-row-delete">×</button>';
     row.querySelector('[data-field="key"]').value = property.key || "";
@@ -15881,6 +16102,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     let previousKey = normalizeCustomKey(keyInput.value);
     row.querySelector("button").onclick = () => {
       removeCustomBehaviorReferences("property", previousKey);
+      if (customWorkbenchDraft)
+        customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter(
+          (property) => property.key !== previousKey,
+        );
       row.remove();
       refreshCustomPreview();
     };
@@ -15896,6 +16121,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           "property",
           nextKey,
         );
+        const mapping = customWorkbenchDraft?.properties.find(
+          (property) => property.key === previousKey,
+        );
+        if (mapping) {
+          mapping.key = nextKey;
+          if (mapping.id === `property-${previousKey}`)
+            mapping.id = `property-${nextKey}`;
+        }
         previousKey = nextKey;
       }
       refreshCustomPreview();
@@ -15906,6 +16139,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const row = document.createElement("div");
     row.className = "custom-signal-row";
     row.dataset.optionalProperty = signal.optionalProperty || "";
+    row.dataset.connectionConfig = JSON.stringify(signal.connectionConfig || {});
+    row.dataset.range = JSON.stringify(signal.range || null);
     row.innerHTML =
       '<input data-field="key" placeholder="key"><input data-field="name" placeholder="Label"><select data-field="type"><option>digital</option><option>analog</option><option>serial</option></select><select data-field="direction"><option>output</option><option>input</option></select><input data-field="defaultValue" placeholder="Join / contract"><button type="button" class="custom-row-delete">×</button>';
     ["key", "name", "type", "direction", "defaultValue"].forEach((key) => {
@@ -15917,6 +16152,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       previousSource = `signal-${directionInput.value}`;
     row.querySelector("button").onclick = () => {
       removeCustomBehaviorReferences(previousSource, previousKey);
+      if (customWorkbenchDraft)
+        customWorkbenchDraft.connections = customWorkbenchDraft.connections.filter(
+          (connection) => connection.key !== previousKey,
+        );
       row.remove();
       refreshCustomPreview();
     };
@@ -15932,6 +16171,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           previousSource,
           nextKey,
         );
+        const mapping = customWorkbenchDraft?.connections.find(
+          (connection) => connection.key === previousKey,
+        );
+        if (mapping) {
+          mapping.key = nextKey;
+          if (mapping.id === `connection-${previousKey}`)
+            mapping.id = `connection-${nextKey}`;
+        }
         previousKey = nextKey;
       }
       refreshCustomPreview();
@@ -15971,6 +16218,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
                 : type === "select"
                   ? rawDefault.split(",")[0] || ""
                   : rawDefault,
+          ...(row.dataset.min !== "" ? { min: Number(row.dataset.min) } : {}),
+          ...(row.dataset.max !== "" ? { max: Number(row.dataset.max) } : {}),
+          ...(row.dataset.step !== "" ? { step: Number(row.dataset.step) } : {}),
+          ...(row.dataset.unit !== "" ? { unit: row.dataset.unit } : {}),
           ...(row.dataset.preserveDefault === "true"
             ? {
                 preserveDefault: true,
@@ -16004,6 +16255,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
               defaultValue: value("defaultValue").trim(),
               ...(row.dataset.optionalProperty
                 ? { optionalProperty: row.dataset.optionalProperty }
+                : {}),
+              ...(JSON.parse(row.dataset.connectionConfig || "null")
+                ? { connectionConfig: JSON.parse(row.dataset.connectionConfig) }
+                : {}),
+              ...(JSON.parse(row.dataset.range || "null")
+                ? { range: JSON.parse(row.dataset.range) }
                 : {}),
             }
           : null;
@@ -16477,62 +16734,169 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     { value: "width", label: "Width", type: "number", defaultValue: 100, css: "width", unit: "px", help: "Changes the selected part's width in pixels." },
     { value: "height", label: "Height", type: "number", defaultValue: 50, css: "height", unit: "px", help: "Changes the selected part's height in pixels." },
     { value: "fontSize", label: "Text / icon size", type: "number", defaultValue: 18, css: "font-size", unit: "px", help: "Changes font-based text and icon size." },
+    { value: "standardText", label: "Standard / Idle text", type: "text", defaultValue: "Idle", javascript: "stateText", stateMode: "standard", help: "Sets the text displayed while this control is in its Standard or Idle state. Composer safely creates a separate label when the selected part is structural." },
+    { value: "selectedText", label: "Selected text", type: "text", defaultValue: "Selected", javascript: "stateText", stateMode: "selected", help: "Sets the text displayed while Selected feedback is active. Composer safely creates a separate label when the selected part is structural." },
+    { value: "standardFontSize", label: "Standard / Idle text size", type: "number", defaultValue: 18, css: "font-size", unit: "px", stateMode: "standard", help: "Changes the selected part's text size only while it is in its Standard or Idle state." },
+    { value: "selectedFontSize", label: "Selected text size", type: "number", defaultValue: 18, css: "font-size", unit: "px", stateMode: "selected", help: "Changes the selected part's text size only while Selected feedback is active." },
     { value: "cornerRadius", label: "Corner radius", type: "number", defaultValue: 8, css: "border-radius", unit: "px", help: "Changes the selected part's corner radius." },
     { value: "opacity", label: "Opacity", type: "number", defaultValue: 100, css: "opacity", transform: "percent", help: "Changes opacity from 0 to 100 percent." },
     { value: "text", label: "Displayed text", type: "text", defaultValue: "Text", javascript: "text", help: "Replaces the selected part's displayed text." },
-    { value: "asset", label: "Image / asset", type: "asset", defaultValue: "", css: "background-image", transform: "asset", help: "Uses a Composer asset as the selected part's image." },
+    { value: "asset", label: "Background image / asset", type: "asset", defaultValue: "", css: "background-image", transform: "asset", help: "Uses a Composer asset as the selected part's background image." },
+    { value: "foregroundAsset", label: "Foreground image / asset", type: "asset", defaultValue: "", javascript: "foregroundAsset", help: "Uses a Composer asset as the selected image element's source." },
+    { value: "cssProperty", label: "Other CSS property", type: "text", defaultValue: "", targetName: "box-shadow", customTarget: true, help: "Exposes any CSS property, such as padding, transform, box-shadow, or animation-duration." },
+    { value: "cssVariable", label: "CSS custom variable", type: "text", defaultValue: "", targetName: "--accent-color", customTarget: true, help: "Exposes an authored CSS variable without replacing the surrounding CSS." },
+    { value: "attribute", label: "HTML attribute", type: "text", defaultValue: "", targetName: "aria-label", customTarget: true, javascript: "attribute", help: "Sets an HTML attribute on the selected part." },
+    { value: "domProperty", label: "DOM property", type: "text", defaultValue: "", targetName: "value", customTarget: true, javascript: "domProperty", help: "Sets a browser DOM property such as value, checked, disabled, or src." },
+    { value: "classPresence", label: "Class on/off", type: "checkbox", defaultValue: false, targetName: "active", customTarget: true, javascript: "classPresence", help: "Adds or removes a class from the selected part." },
+    { value: "dataAttribute", label: "Data attribute", type: "text", defaultValue: "", targetName: "mode", customTarget: true, javascript: "dataAttribute", help: "Sets a data-* value on the selected part." },
+    { value: "visibility", label: "Local visibility", type: "checkbox", defaultValue: true, javascript: "visibility", help: "Shows or hides this part using a normal Composer property." },
   ];
   const customScopedSignalActions = {
     "digital:input": [
       ["selected", "Selected feedback", "Sets checked/Selected state."],
-      ["visibility", "Visibility feedback", "Shows or hides the selected part."],
-      ["disabled", "Disabled feedback", "Enables or disables interaction."],
+      ["classState", "Custom class feedback", "Adds or removes a named authored CSS class."],
+      ["checkedState", "Checked feedback", "Sets the native checked state and dispatches change."],
     ],
     "digital:output": [
-      ["press", "Press", "Publishes true while pressed and false on release."],
+      ["press", "Press", "Publishes a press. It can be delayed until release to remain exclusive from Held."],
       ["release", "Release", "Publishes a pulse when released."],
+      ["pulse", "Pulse", "Publishes a configurable pulse when activated."],
       ["held", "Held", "Publishes a pulse after a three-second hold."],
     ],
     "analog:input": [
       ["value", "Value / feedback", "Applies incoming 0–65535 feedback to the control value."],
-      ["glowStrength", "Glow strength", "Maps 0–65535 to a 0–30 pixel glow."],
-      ["width", "Width", "Maps 0–65535 to 0–100 percent width."],
-      ["height", "Height", "Maps 0–65535 to 0–100 percent height."],
-      ["opacity", "Opacity", "Maps 0–65535 to 0–100 percent opacity."],
-      ["speed", "Animation speed", "Maps 0–65535 from slowest to fastest and directly scales authored CSS transitions and animations."],
+      ["mappedProperty", "Mapped CSS / DOM value", "Maps the incoming range to a named CSS property, variable, or DOM property."],
+      ["stateIndex", "State / mode index", "Selects an authored zero-based state or mode."],
+      ["glowStrength", "Glow strength", "Uses the exact Crestron analog value as the glow strength."],
+      ["width", "Width", "Uses the exact Crestron analog value as the width."],
+      ["height", "Height", "Uses the exact Crestron analog value as the height."],
+      ["opacity", "Opacity", "Uses the exact Crestron analog value as the opacity."],
+      ["fill", "Gauge / fill level", "Maps feedback to the component's fill level."],
+      ["rotation", "Rotation", "Maps feedback to rotation in degrees."],
+      ["speed", "Animation speed", "Uses the configured Crestron analog range to directly control authored CSS transitions and animations."],
       ["itemCount", "Number of items", "Sets the repeated item-count value."],
     ],
-    "analog:output": [["valueSet", "Value Set", "Publishes the selected numeric value."]],
+    "analog:output": [
+      ["valueSet", "Value Set", "Publishes the selected numeric value."],
+      ["selectedIndex", "Selected index", "Publishes a zero-based selected item index."],
+    ],
     "serial:input": [
       ["text", "Text / name", "Replaces the selected part's displayed text."],
+      ["standardStateText", "Standard-state text", "Stores text for the Standard/Idle state and displays it whenever the target is not selected."],
+      ["selectedStateText", "Selected-state text", "Stores text for the Selected state and displays it whenever the target is selected."],
       ["asset", "Image / asset source", "Applies incoming image data or URL."],
       ["url", "URL / media source", "Applies an incoming URL to a source-capable element."],
+      ["attribute", "Attribute / data value", "Sets a named HTML attribute or data value."],
     ],
     "serial:output": [["text", "Text / value", "Publishes text entered or selected by the user."]],
   };
+  function customScopePartLabel(part) {
+    const metadata = part?.metadata || {},
+      selector = String(part?.selector || ""),
+      name = String(part?.name || "").trim(),
+      signature = `${selector} ${name} ${metadata.id || ""} ${metadata.className || ""} ${metadata.tag || ""} ${metadata.inputType || ""} ${metadata.role || ""} ${metadata.ariaLabel || ""}`.toLowerCase(),
+      qualifierSeed = String(metadata.ariaLabel || metadata.text || metadata.id || name || "")
+        .trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ").slice(0, 36),
+      qualify = (label, genericPattern) => {
+        if (!qualifierSeed || genericPattern.test(qualifierSeed)) return label;
+        return `${label} — ${qualifierSeed}`;
+      };
+    if (/\.knob\b|\.thumb\b|\bhandle\b|sliderhandle|range.?handle|drag.?handle/.test(signature) || part?.role === "sliderHandle")
+      return qualify("Handle / knob", /^(?:knob|thumb|handle|slider handle)$/i);
+    if (/\.track\b|toggle-track|switch-track|slider-track|range-track/.test(signature))
+      return qualify("Track", /^(?:track|toggle track|switch track|slider track)$/i);
+    if (/\bfill\b|progress.?fill|level.?fill|meter.?fill|bar.?fill/.test(signature))
+      return qualify("Fill / level", /^(?:fill|level|progress|bar)$/i);
+    if (/type.?checkbox|type.?radio|#toggle\b|data-translated-toggle(?!-root)/.test(signature))
+      return qualify("Toggle control", /^(?:toggle|switch|checkbox|radio|control)$/i);
+    if (/data-translated-toggle-root|label\.switch|label\.toggle|\.switch\b|\.toggle\b/.test(signature) || part?.role === "toggle")
+      return qualify("Toggle container", /^(?:toggle|switch|toggle container)$/i);
+    if (/type.?range|input.?range/.test(signature) || part?.role === "slider")
+      return qualify("Slider control", /^(?:slider|range|control)$/i);
+    if (/type.?(?:text|search|password|email|tel|url)|textarea|text.?input|search.?field|password.?field/.test(signature) || part?.role === "textInput")
+      return qualify("Text input", /^(?:text|input|text input|search|password)$/i);
+    if (/\bbutton\b|\bbtn\b|\bpress\b|role.?button|menuitem/.test(signature) || part?.role === "button")
+      return qualify("Button", /^(?:button|btn|press|control)$/i);
+    if (/data-translated-generated-label|data-translated-text|data-custom-text|\blabel\b|\bcaption\b|\btitle\b|\bname\b/.test(signature) || part?.role === "text")
+      return qualify("Label / text", /^(?:label|text|name|title|caption)$/i);
+    if (/\bpercentage\b|\bpercent\b|\bvalue\b|value.?text|readout/.test(signature))
+      return qualify("Value / percentage", /^(?:value|percentage|percent|readout)$/i);
+    if (/\bicon\b|\bimage\b|\bgraphic\b|\bsymbol\b|\bsvg\b|\bimg\b/.test(signature) || part?.role === "icon")
+      return qualify("Icon / graphic", /^(?:icon|image|graphic|symbol|svg|img)$/i);
+    if (/\bled\b|\bindicator\b|\bstatus\b|selected.?indicator|active.?indicator/.test(signature) || part?.role === "selected")
+      return qualify("Status / selected indicator", /^(?:led|indicator|status|selected|active)$/i);
+    if (/\bgauge\b|\bmeter\b|\bdial\b|\barc\b|\bring\b/.test(signature) || part?.role === "gauge")
+      return qualify("Gauge / meter", /^(?:gauge|meter|dial|arc|ring)$/i);
+    if (/\bitem\b|\bcard\b|\brow\b|\btile\b/.test(signature) && part?.role !== "repeated")
+      return qualify("Item / card", /^(?:item|card|row|tile)$/i);
+    if (/\blist\b|\bgrid\b|\bmenu\b|\brepeat/.test(signature) || part?.role === "repeated")
+      return qualify("Items / list container", /^(?:list|grid|menu|items|repeated item)$/i);
+    if (/\bbackground\b|\bbackdrop\b|\bwallpaper\b/.test(signature) || part?.role === "backgroundAsset")
+      return qualify("Background", /^(?:background|backdrop|wallpaper)$/i);
+    if (/\boverlay\b|\bmask\b/.test(signature))
+      return qualify("Overlay / mask", /^(?:overlay|mask)$/i);
+    if (/\bcontainer\b|\bwrapper\b|\bpanel\b|\bsurface\b|\broot\b/.test(signature))
+      return qualify("Container / surface", /^(?:container|wrapper|panel|surface|root)$/i);
+    const role = String(part?.role || "element").replace(/([A-Z])/g, " $1").trim(),
+      roleLabel = {
+        button: "Button",
+        toggle: "Toggle",
+        text: "Label / text",
+        textInput: "Text input",
+        icon: "Icon / graphic",
+        backgroundAsset: "Background",
+        gauge: "Gauge / meter",
+        slider: "Slider control",
+        sliderHandle: "Handle / knob",
+        selected: "Status / selected indicator",
+        repeated: "Items / list container",
+        decorative: "Decoration",
+        element: "Element",
+      }[part?.role] || role.replace(/^./, (letter) => letter.toUpperCase());
+    return name && name.toLowerCase() !== roleLabel.toLowerCase()
+      ? `${roleLabel} · ${name}`
+      : roleLabel;
+  }
   function customScopeTargets(includePseudo = true) {
-    const targets = [], seen = new Set(),
-      add = (label, selector) => {
+    const targets = [], seen = new Set(), nodeOwners = new Map(),
+      previewDocument = $("custom-component-preview")?.contentDocument,
+      add = (label, selector, partId = "", advanced = false) => {
         const value = String(selector || "").trim();
         if (!value || seen.has(value) || (!includePseudo && /::?(?:before|after)\b/i.test(value))) return;
+        let node = null;
+        try {
+          const matches = previewDocument ? previewDocument.querySelectorAll(value) : [];
+          if (matches.length === 1) node = matches[0];
+        } catch {}
+        if (node && nodeOwners.has(node)) return;
         seen.add(value);
-        targets.push({ label, selector: value });
+        if (node) nodeOwners.set(node, value);
+        targets.push({ label, selector: value, partId, advanced });
       },
       parsed = new DOMParser().parseFromString($("custom-source-html").value, "text/html"),
       root = parsed.body.firstElementChild;
+    [...(customWorkbenchDraft?.parts || [])]
+      .sort((left, right) => {
+        const rank = (part) => part.role === "mapped-target" || /\[data-translated|,/.test(part.selector || "") ? 1 : 0;
+        return rank(left) - rank(right);
+      })
+      .forEach((part) => {
+        const advanced = part.role === "mapped-target" || /\[data-translated|,/.test(part.selector || "");
+        add(customScopePartLabel(part), part.selector, part.id, advanced);
+      });
     if (root) {
       const rootSelector = root.id
         ? `#${CSS.escape(root.id)}`
         : root.classList.length
           ? `.${CSS.escape(root.classList[0])}`
           : root.tagName.toLowerCase();
-      add("Whole component", rootSelector);
+      add("Whole component", rootSelector, "", false);
     }
     detectedCustomVisualParts().forEach((part) => {
-      add(part.title, part.selector);
+      add(part.title, part.selector, "", false);
       part.options.forEach((option) => {
         const selected = /selected/i.test(option.label) || /checked/.test(option.selector);
-        add(`${selected ? "Selected " : ""}${part.title}`, option.selector);
+        add(`${selected ? "Selected " : ""}${part.title}`, option.selector, "", true);
       });
     });
     parsed.body.querySelectorAll("[id],[class],button,input,label,span,img,svg").forEach((element) => {
@@ -16541,22 +16905,48 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : element.classList.length
           ? `.${CSS.escape(element.classList[0])}`
           : element.tagName.toLowerCase();
-      const description =
-        element.getAttribute("aria-label") ||
-        element.textContent?.trim().slice(0, 30) ||
-        element.id ||
-        element.classList[0] ||
-        element.tagName.toLowerCase();
-      add(description, selector);
+      const metadata = {
+          tag: element.tagName.toLowerCase(),
+          inputType: element.type || "",
+          role: element.getAttribute("role") || "",
+          id: element.id || "",
+          className: [...element.classList].join(" "),
+          ariaLabel: element.getAttribute("aria-label") || "",
+          text: element.textContent?.trim().slice(0, 36) || "",
+          childCount: element.children.length,
+        },
+        inference = inferCustomElementRole(metadata);
+      add(customScopePartLabel({ selector, name: friendlyCustomPartName({ metadata, role: inference.role }), role: inference.role, metadata }), selector, "", false);
     });
     if (!targets.length) add("Whole component", "body > *:first-child");
     return targets;
   }
   function fillCustomScopeTarget(select, includePseudo = true) {
-    const previous = select.value;
-    select.innerHTML = customScopeTargets(includePseudo)
-      .map(({ label, selector }) => `<option value="${translateEscape(selector)}">${translateEscape(label)} — ${translateEscape(selector)}</option>`)
-      .join("");
+    const previous = select.value,
+      targets = customScopeTargets(includePseudo),
+      recommended = targets.filter((target) => !target.advanced),
+      advanced = targets.filter((target) => target.advanced);
+    select.innerHTML = "";
+    const append = (parent, { label, selector, partId, advanced: isAdvanced }) => {
+      const option = document.createElement("option");
+      option.value = selector;
+      option.textContent = isAdvanced ? `${label} — ${selector}` : label;
+      option.title = selector;
+      option.dataset.partId = partId || "";
+      parent.appendChild(option);
+    };
+    if (recommended.length) {
+      const group = document.createElement("optgroup");
+      group.label = "Component parts";
+      recommended.forEach((target) => append(group, target));
+      select.appendChild(group);
+    }
+    if (advanced.length) {
+      const group = document.createElement("optgroup");
+      group.label = "Advanced selectors";
+      advanced.forEach((target) => append(group, target));
+      select.appendChild(group);
+    }
     if ([...select.options].some((option) => option.value === previous)) select.value = previous;
   }
   function preferredCustomPropertyTarget(definition, select) {
@@ -16571,11 +16961,41 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       )
     )
       return byValue(trackSelector) || byLabel(/^(?:track|button|control surface)\b/i) || options[0];
-    if (["text", "textColor", "fontSize"].includes(definition.value))
+    if (["text", "standardText", "selectedText", "textColor", "fontSize", "standardFontSize", "selectedFontSize"].includes(definition.value))
       return byLabel(/(?:text|label|name|title|caption)/i) || options[0];
     if (definition.value === "asset")
       return byLabel(/(?:icon|image|graphic|track|button)/i) || options[0];
     return byLabel(/^whole component\b/i) || options[0];
+  }
+  function renderCustomAdditionalTargetChecks() {
+    const select = $("custom-property-additional-targets"),
+      host = $("custom-property-additional-target-checks"),
+      primaryTarget = $("custom-property-target")?.value || "";
+    if (!select || !host) return;
+    host.innerHTML = "";
+    [...select.options].forEach((option) => {
+      if (option.value === primaryTarget) {
+        option.selected = false;
+        return;
+      }
+      const label = document.createElement("label"), checkbox = document.createElement("input"), text = document.createElement("span");
+      checkbox.type = "checkbox";
+      checkbox.checked = option.selected;
+      checkbox.value = option.value;
+      text.textContent = option.textContent;
+      checkbox.onchange = () => {
+        option.selected = checkbox.checked;
+        refreshCustomPropertyCreator();
+      };
+      label.append(checkbox, text);
+      host.appendChild(label);
+    });
+    if (!host.children.length) {
+      const empty = document.createElement("span");
+      empty.className = "hint";
+      empty.textContent = "No other component parts were detected.";
+      host.appendChild(empty);
+    }
   }
   function scopedCustomKey(value, fallback = "property") {
     const key = normalizeCustomKey(String(value || "").replace(/^[^A-Za-z_$]+/, ""));
@@ -16594,22 +17014,297 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       ? editor.value.replace(pattern, block)
       : `${editor.value.trimEnd()}\n\n${block}\n`;
   }
+  function removeCustomManagedSource(language, id) {
+    const editor = $(`custom-source-${language}`),
+      safeId = String(id).replace(/[^A-Za-z0-9_-]/g, "-"),
+      escapedStart = `/* COMPOSER MANAGED ${safeId} START */`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      escapedEnd = `/* COMPOSER MANAGED ${safeId} END */`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    editor.value = editor.value
+      .replace(new RegExp(`\\s*${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, "g"), "\n")
+      .trim();
+  }
   function customScopedPropertyCss(definition, selector, key) {
+    if (definition.stateMode === "standard" && definition.css)
+      return `${selector}:not(.selected):not(.active):not(:checked):not([aria-checked="true"]) { font-size: {{${key}}}${definition.unit || "px"}; }`;
+    if (definition.stateMode === "selected" && definition.css)
+      return `${selector}.selected, ${selector}.active, ${selector}:checked, ${selector}[aria-checked="true"] { font-size: {{${key}}}${definition.unit || "px"}; }`;
     if (definition.value === "glowColor")
       return `${selector} { --composer-scope-glow-color: {{${key}}}; filter: drop-shadow(0 0 var(--composer-scope-glow-strength, 6px) var(--composer-scope-glow-color)); }`;
     if (definition.value === "glowStrength")
       return `${selector} { --composer-scope-glow-strength: {{${key}}}px; filter: drop-shadow(0 0 var(--composer-scope-glow-strength) var(--composer-scope-glow-color, #00e5c3)); }`;
     if (definition.transform === "asset")
       return `${selector} { background-image: url("{{${key}Data}}"); background-repeat: no-repeat; background-position: center; background-size: contain; }`;
+    const cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
+      ? definition.targetName
+      : definition.css;
+    if (!cssName) return "";
     const value = definition.transform === "percent"
       ? `calc({{${key}}} / 100)`
       : `{{${key}}}${definition.unit || ""}`;
-    return `${selector} { ${definition.css}: ${value}; }`;
+    return `${selector} { ${cssName}: ${value}; }`;
+  }
+  function customSafeTextTargetRuntime(targetName = "target") {
+    return `var textTarget=${targetName},structure=${targetName}.matches('input,select,textarea')||${targetName}.querySelector('input,select,textarea,[data-translated-toggle-track],.track,.knob,.slider');if(structure){var container=${targetName}.matches('input,select,textarea')?${targetName}.closest('label'):${targetName},candidate=container&&container.querySelector('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value');if(!candidate&&container&&container.nextElementSibling&&container.nextElementSibling.matches('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value'))candidate=container.nextElementSibling;if(!candidate){candidate=document.createElement('span');candidate.setAttribute('data-composer-property-text','true');candidate.className='composer-property-text';if(container&&container.parentNode)container.parentNode.insertBefore(candidate,container.nextSibling);else ${targetName}.appendChild(candidate)}textTarget=candidate}else if(${targetName}.children.length){textTarget=${targetName}.querySelector('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value');if(!textTarget){textTarget=document.createElement('span');textTarget.setAttribute('data-composer-property-text','true');${targetName}.appendChild(textTarget)}}`;
   }
   function customScopedPropertyJavascript(definition, selector, key) {
+    if (definition.javascript === "stateText") {
+      const stateName = definition.stateMode === "selected" ? "selected" : "standard";
+      return `window.addEventListener('DOMContentLoaded',function(){var target=document.querySelector(${JSON.stringify(selector)});if(!target)return;${customSafeTextTargetRuntime()}var container=target.closest('button,label,[role="button"],[role="switch"],[data-translated-toggle-root],[data-translated-button]'),control=target.matches('input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-toggle],[data-translated-button]')?target:(container&&container.querySelector('input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-toggle],[data-translated-button]'))||container||(target.previousElementSibling&&target.previousElementSibling.matches('input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-toggle]')?target.previousElementSibling:null)||document.querySelector('[data-translated-toggle],input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-button]')||target,store=textTarget.__composerStateText||(textTarget.__composerStateText={standard:String(textTarget.textContent||''),selected:String(textTarget.textContent||'')});store.${stateName}={{${key}Json}};var render=function(){var active=control.matches&&control.matches(':checked')||control.classList.contains('selected')||control.classList.contains('active')||control.getAttribute('aria-checked')==='true',value=active?store.selected:store.standard;if(value!=null&&textTarget.textContent!==String(value))textTarget.textContent=String(value)};new MutationObserver(render).observe(control,{attributes:true,attributeFilter:['class','checked','aria-checked']});control.addEventListener('change',render);control.addEventListener('composer-state-change',render);render()},{once:true});`;
+    }
+    if (definition.stateMode) {
+      const selected = definition.stateMode === "selected";
+      return `window.addEventListener('DOMContentLoaded',function(){var target=document.querySelector(${JSON.stringify(selector)});if(!target)return;var control=(target.matches('input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-toggle],[data-translated-button]')?target:null)||target.closest('button,label,[role="button"],[role="switch"],[data-translated-toggle-root],[data-translated-button]')||document.querySelector('[data-translated-toggle],input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-button]');if(!control)return;var apply=function(){var active=control.matches(':checked')||control.classList.contains('selected')||control.classList.contains('active')||control.getAttribute('aria-checked')==='true';if(active===${selected})target.style.fontSize='{{${key}}}${definition.unit || "px"}'};new MutationObserver(apply).observe(control,{attributes:true,attributeFilter:['class','checked','aria-checked']});control.addEventListener('change',apply);control.addEventListener('composer-state-change',apply);apply()},{once:true});`;
+    }
     if (definition.javascript === "text")
-      return `window.addEventListener('DOMContentLoaded',function(){var target=document.querySelector(${JSON.stringify(selector)});if(target)target.textContent={{${key}Json}};},{once:true});`;
+      return `window.addEventListener('DOMContentLoaded',function(){var target=document.querySelector(${JSON.stringify(selector)});if(!target)return;${customSafeTextTargetRuntime()}textTarget.textContent={{${key}Json}};},{once:true});`;
+    const readyTarget = (body) => `window.addEventListener('DOMContentLoaded',function(){var target=document.querySelector(${JSON.stringify(selector)});if(!target)return;${body}},{once:true});`;
+    if (definition.javascript === "attribute")
+      return readyTarget(`target.setAttribute(${JSON.stringify(definition.targetName)},{{${key}Json}});`);
+    if (definition.javascript === "domProperty")
+      return readyTarget(`target[${JSON.stringify(definition.targetName)}]={{${key}Json}};`);
+    if (definition.javascript === "classPresence")
+      return readyTarget(`target.classList.toggle(${JSON.stringify(definition.targetName)},Boolean({{${key}Json}}));`);
+    if (definition.javascript === "dataAttribute")
+      return readyTarget(`target.dataset[${JSON.stringify(String(definition.targetName || "value").replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase()))}]={{${key}Json}};`);
+    if (definition.javascript === "visibility")
+      return readyTarget(`target.style.display=Boolean({{${key}Json}})?'':'none';`);
+    if (definition.javascript === "foregroundAsset")
+      return readyTarget(`var source={{${key}Json}}||'';if('src'in target)target.src=source;else{var image=Array.prototype.slice.call(target.children||[]).find(function(child){return child.tagName==='IMG'&&child.getAttribute('data-composer-foreground')==='true'});if(!image){image=document.createElement('img');image.setAttribute('data-composer-foreground','true');image.style.cssText='max-width:100%;max-height:100%;object-fit:contain;pointer-events:none';target.appendChild(image)}image.src=source;}`);
     return "";
+  }
+  function scopedPropertyCurrentValue(definition, selector) {
+    let target;
+    try { target = $("custom-component-preview")?.contentDocument?.querySelector(selector); } catch (_) { return definition.defaultValue; }
+    if (!target) return definition.defaultValue;
+    const style = target.ownerDocument.defaultView.getComputedStyle(target),
+      cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
+        ? definition.targetName
+        : definition.css;
+    if (definition.javascript === "text") return target.textContent?.trim() || definition.defaultValue;
+    if (definition.javascript === "attribute") return target.getAttribute(definition.targetName) ?? definition.defaultValue;
+    if (definition.javascript === "domProperty") return target[definition.targetName] ?? definition.defaultValue;
+    if (definition.javascript === "classPresence") return target.classList.contains(definition.targetName);
+    if (definition.javascript === "dataAttribute") return target.dataset[String(definition.targetName || "value").replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase())] ?? definition.defaultValue;
+    if (definition.javascript === "visibility") return style.display !== "none";
+    if (!cssName) return definition.defaultValue;
+    const raw = style.getPropertyValue(cssName).trim();
+    if (!raw) return definition.defaultValue;
+    if (definition.type === "color") {
+      const match = raw.match(/rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/i);
+      return match ? rgbToHex(Number(match[1]), Number(match[2]), Number(match[3])) : raw;
+    }
+    if (definition.type === "number") return parseFloat(raw) || 0;
+    return raw;
+  }
+  function customPropertyGenerationText(definition, selector, key) {
+    const css = customScopedPropertyCss(definition, selector, key),
+      javascript = customScopedPropertyJavascript(definition, selector, key),
+      lines = [
+        `Inspector property: ${key} (${definition.type})`,
+        `Target part: ${selector}`,
+        "HTML: uses the existing target part; no authored markup is replaced.",
+      ];
+    if (css) lines.push(`\nCSS\n${css}`);
+    if (javascript) lines.push(`\nJavaScript adapter\n${javascript}`);
+    return lines.join("\n");
+  }
+  function renderCustomPropertyMappings() {
+    const host = $("custom-property-mapping-list");
+    if (!host) return;
+    host.innerHTML = "";
+    (customWorkbenchDraft?.properties || [])
+      .forEach((mapping, index, mappings) => {
+        const card = document.createElement("div"),
+          info = document.createElement("div"),
+          edit = document.createElement("button"),
+          duplicate = document.createElement("button"),
+          up = document.createElement("button"),
+          down = document.createElement("button"),
+          remove = document.createElement("button");
+        [edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
+        card.className = "custom-property-mapping-card";
+        card.dataset.mappingId = mapping.id;
+        info.innerHTML = `<strong></strong><small></small>`;
+        info.querySelector("strong").textContent = mapping.label || mapping.key;
+        info.querySelector("small").textContent = `${mapping.type} · ${mapping.target?.selector || "unresolved target"} · ${mapping.target?.kind || "adapter"}${mapping.target?.name ? ` (${mapping.target.name})` : ""}`;
+        edit.textContent = "Edit";
+        duplicate.textContent = "Duplicate";
+        up.textContent = "↑";
+        down.textContent = "↓";
+        remove.textContent = "Delete";
+        remove.className = "custom-part-delete";
+        edit.onclick = () => editCustomPropertyMapping(mapping);
+        info.onclick = () => focusCustomAdapterMapping(mapping.id);
+        duplicate.onclick = () => duplicateCustomPropertyMapping(mapping);
+        up.disabled = index === 0;
+        down.disabled = index === mappings.length - 1;
+        up.onclick = () => {
+          const absolute = customWorkbenchDraft.properties.indexOf(mapping), previous = absolute - 1;
+          if (previous >= 0) [customWorkbenchDraft.properties[previous], customWorkbenchDraft.properties[absolute]] = [mapping, customWorkbenchDraft.properties[previous]];
+          const row = customDefinitionRow("custom-property-list", mapping.key), prior = row?.previousElementSibling;
+          if (row && prior) row.parentElement.insertBefore(row, prior);
+          renderCustomPropertyMappings();
+        };
+        down.onclick = () => {
+          const absolute = customWorkbenchDraft.properties.indexOf(mapping), next = absolute + 1;
+          if (next < customWorkbenchDraft.properties.length) [customWorkbenchDraft.properties[next], customWorkbenchDraft.properties[absolute]] = [mapping, customWorkbenchDraft.properties[next]];
+          const row = customDefinitionRow("custom-property-list", mapping.key), following = row?.nextElementSibling;
+          if (row && following) row.parentElement.insertBefore(following, row);
+          renderCustomPropertyMappings();
+        };
+        remove.onclick = () => removeCustomPropertyMapping(mapping);
+        card.append(info, edit, duplicate, up, down, remove);
+        host.appendChild(card);
+      });
+    renderCustomGeneratedAdapter();
+  }
+  function editCustomPropertyMapping(mapping) {
+    openCustomScopeCreator("property");
+    const capability = customScopedPropertyTypes.some((entry) => entry.value === mapping.capability)
+      ? mapping.capability
+      : mapping.target?.kind === "css-custom-property" ? "cssVariable"
+        : mapping.target?.kind === "css-property" ? "cssProperty"
+          : mapping.target?.kind || "cssProperty";
+    $("custom-property-capability").value = capability;
+    refreshCustomPropertyCreator();
+    const values = {
+      "custom-property-target": mapping.target?.selector || "",
+      "custom-property-value-type": mapping.type || "text",
+      "custom-property-label": mapping.label || mapping.key,
+      "custom-property-key": mapping.key,
+      "custom-property-default": mapping.defaultValue ?? "",
+      "custom-property-target-name": mapping.target?.name || "",
+      "custom-property-unit": mapping.unit || "",
+      "custom-property-min": mapping.min ?? "",
+      "custom-property-max": mapping.max ?? "",
+      "custom-property-step": mapping.step ?? "",
+    };
+    Object.entries(values).forEach(([id, value]) => {
+      $(id).value = value;
+      $(id).dataset.edited = "true";
+    });
+    const additionalSelectors = new Set(
+      (mapping.targets || [])
+        .map((target) => target.selector)
+        .filter((selector) => selector && selector !== mapping.target?.selector),
+    );
+    [...$("custom-property-additional-targets").options].forEach(
+      (option) => (option.selected = additionalSelectors.has(option.value)),
+    );
+    $("custom-property-create").dataset.editingKey = mapping.key;
+    $("custom-property-create").textContent = "Update property and source";
+    refreshCustomPropertyCreator();
+  }
+  function duplicateCustomPropertyMapping(mapping) {
+    let index = 2, key = `${mapping.key}Copy`;
+    const keys = new Set(collectCustomProperties().map((property) => property.key));
+    while (keys.has(key)) key = `${mapping.key}Copy${index++}`;
+    editCustomPropertyMapping({
+      ...structuredClone(mapping),
+      id: `property-${key}`,
+      key,
+      label: `${mapping.label || mapping.key} copy`,
+    });
+    $("custom-property-create").dataset.editingKey = "";
+    $("custom-property-create").textContent = "Add property to Composer and source";
+  }
+  function removeCustomPropertyMapping(mapping) {
+    if (!confirm(`Remove editable property “${mapping.label || mapping.key}” and its managed source?`)) return;
+    customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter((candidate) => candidate !== mapping);
+    const row = customDefinitionRow("custom-property-list", mapping.key);
+    row?.remove();
+    removeCustomManagedSource("css", `property-${mapping.key}`);
+    removeCustomManagedSource("javascript", `property-${mapping.key}`);
+    renderCustomPropertyMappings();
+    refreshCustomPreview();
+  }
+  function renderCustomConnectionMappings() {
+    const host = $("custom-connection-mapping-list");
+    if (!host) return;
+    host.innerHTML = "";
+    (customWorkbenchDraft?.connections || [])
+      .forEach((mapping, index, mappings) => {
+        const card = document.createElement("div"), info = document.createElement("div"),
+          edit = document.createElement("button"), duplicate = document.createElement("button"),
+          up = document.createElement("button"), down = document.createElement("button"), remove = document.createElement("button");
+        [edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
+        card.className = "custom-property-mapping-card";
+        card.dataset.mappingId = mapping.id;
+        info.innerHTML = "<strong></strong><small></small>";
+        info.querySelector("strong").textContent = mapping.label || mapping.key;
+        info.querySelector("small").textContent = `${mapping.type} ${mapping.direction} · ${mapping.action || mapping.target?.kind} · ${mapping.target?.selector || "unresolved target"}${mapping.perItem ? " · per item" : ""}`;
+        edit.textContent = "Edit"; duplicate.textContent = "Duplicate"; up.textContent = "↑"; down.textContent = "↓"; remove.textContent = "Delete";
+        remove.className = "custom-part-delete";
+        edit.onclick = () => editCustomConnectionMapping(mapping);
+        info.onclick = () => focusCustomAdapterMapping(mapping.id);
+        duplicate.onclick = () => duplicateCustomConnectionMapping(mapping);
+        up.disabled = index === 0; down.disabled = index === mappings.length - 1;
+        up.onclick = () => {
+          const absolute = customWorkbenchDraft.connections.indexOf(mapping);
+          if (absolute > 0) [customWorkbenchDraft.connections[absolute - 1], customWorkbenchDraft.connections[absolute]] = [mapping, customWorkbenchDraft.connections[absolute - 1]];
+          const row = customDefinitionRow("custom-signal-list", mapping.key), prior = row?.previousElementSibling;
+          if (row && prior) row.parentElement.insertBefore(row, prior);
+          renderCustomConnectionMappings();
+        };
+        down.onclick = () => {
+          const absolute = customWorkbenchDraft.connections.indexOf(mapping);
+          if (absolute + 1 < customWorkbenchDraft.connections.length) [customWorkbenchDraft.connections[absolute + 1], customWorkbenchDraft.connections[absolute]] = [mapping, customWorkbenchDraft.connections[absolute + 1]];
+          const row = customDefinitionRow("custom-signal-list", mapping.key), following = row?.nextElementSibling;
+          if (row && following) row.parentElement.insertBefore(following, row);
+          renderCustomConnectionMappings();
+        };
+        remove.onclick = () => removeCustomConnectionMapping(mapping);
+        card.append(info, edit, duplicate, up, down, remove);
+        host.appendChild(card);
+      });
+    renderCustomGeneratedAdapter();
+  }
+  function editCustomConnectionMapping(mapping) {
+    openCustomScopeCreator("signal");
+    $("custom-signal-capability-type").value = mapping.type || "digital";
+    $("custom-signal-capability-direction").value = mapping.direction || "input";
+    refreshCustomSignalCreator();
+    const config = customDefinitionRow("custom-signal-list", mapping.key)?.dataset.connectionConfig;
+    let saved = {};
+    try { saved = JSON.parse(config || "{}"); } catch (_) {}
+    const values = {
+      "custom-signal-capability-action": mapping.action || mapping.target?.kind || "selected",
+      "custom-signal-target": mapping.target?.selector || "",
+      "custom-signal-capability-key": mapping.key,
+      "custom-signal-capability-label": mapping.label || mapping.key,
+      "custom-signal-capability-address": mapping.defaultValue || "",
+      "custom-signal-parameter": mapping.target?.parameter || saved.parameter || "",
+      "custom-signal-hold-duration": mapping.holdDuration ?? saved.holdDuration ?? 3,
+      "custom-signal-pulse-duration": mapping.pulseDuration ?? saved.pulseDuration ?? 50,
+      "custom-signal-input-min": mapping.mapping?.inputMin ?? 0,
+      "custom-signal-input-max": mapping.mapping?.inputMax ?? 65535,
+      "custom-signal-unit": mapping.mapping?.unit || "",
+    };
+    Object.entries(values).forEach(([id, value]) => { $(id).value = value; $(id).dataset.edited = "true"; });
+    $("custom-signal-exclusive").checked = mapping.exclusive !== false;
+    $("custom-signal-invert").checked = !!mapping.mapping?.invert;
+    $("custom-signal-clamp").checked = mapping.mapping?.clamp !== false;
+    $("custom-signal-zero-based").checked = !!mapping.zeroBased;
+    $("custom-signal-per-item").checked = !!mapping.perItem;
+    $("custom-signal-create").dataset.editingKey = mapping.key;
+    $("custom-signal-create").textContent = "Update connection and source";
+    refreshCustomSignalCreator();
+  }
+  function duplicateCustomConnectionMapping(mapping) {
+    let index = 2, key = `${mapping.key}Copy`;
+    const keys = new Set(collectCustomSignals().map((signal) => signal.key));
+    while (keys.has(key)) key = `${mapping.key}Copy${index++}`;
+    editCustomConnectionMapping({ ...structuredClone(mapping), id: `connection-${key}`, key, label: `${mapping.label || mapping.key} copy`, defaultValue: `${mapping.defaultValue || mapping.key}Copy` });
+    $("custom-signal-create").dataset.editingKey = "";
+    $("custom-signal-create").textContent = "Add connection to Composer and source";
+  }
+  function removeCustomConnectionMapping(mapping) {
+    if (!confirm(`Remove Crestron connection “${mapping.label || mapping.key}” and its managed source?`)) return;
+    customWorkbenchDraft.connections = customWorkbenchDraft.connections.filter((candidate) => candidate !== mapping);
+    customDefinitionRow("custom-signal-list", mapping.key)?.remove();
+    removeCustomManagedSource("javascript", `signal-${mapping.key}`);
+    renderCustomConnectionMappings();
+    refreshCustomPreview();
   }
   function customAnimationSpeedRuntimeBody() {
     return "var durationScale=4-(ratio*3.8),nodes=[target].concat(Array.prototype.slice.call(target.querySelectorAll('*'))),scaleDurations=function(value){return String(value||'0s').split(',').map(function(part){var match=String(part).trim().match(/^([0-9.]+)(ms|s)$/i);if(!match)return part;var milliseconds=Number(match[1])*(match[2].toLowerCase()==='s'?1000:1);return milliseconds<=0?'0ms':Math.max(10,Math.round(milliseconds*durationScale))+'ms'}).join(', ')};target.style.setProperty('--speed',String(ratio*100));target.style.setProperty('--animation-speed',String(ratio*100));target.style.setProperty('--composer-speed-ratio',String(ratio));nodes.forEach(function(node){var computed=window.getComputedStyle(node),transitionBase=node.getAttribute('data-composer-transition-duration')||computed.transitionDuration,animationBase=node.getAttribute('data-composer-animation-duration')||computed.animationDuration;if(!node.hasAttribute('data-composer-transition-duration'))node.setAttribute('data-composer-transition-duration',transitionBase);if(!node.hasAttribute('data-composer-animation-duration'))node.setAttribute('data-composer-animation-duration',animationBase);node.style.transitionDuration=scaleDurations(transitionBase);node.style.animationDuration=scaleDurations(animationBase)});";
@@ -16642,7 +17337,35 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       .join("");
     if (customScopedPropertyTypes.some((entry) => entry.value === current)) select.value = current;
     fillCustomScopeTarget($("custom-property-target"), true);
+    const priorAdditional = new Set(
+      [...$("custom-property-additional-targets").selectedOptions].map((option) => option.value),
+    );
+    fillCustomScopeTarget($("custom-property-additional-targets"), true);
+    [...$("custom-property-additional-targets").options].forEach(
+      (option) => (option.selected = priorAdditional.has(option.value)),
+    );
+    renderCustomAdditionalTargetChecks();
     const definition = customScopedPropertyTypes.find((entry) => entry.value === select.value) || customScopedPropertyTypes[0];
+    if (!$("custom-property-value-type").dataset.edited)
+      $("custom-property-value-type").value = definition.type;
+    const selectedType = $("custom-property-value-type").value || definition.type;
+    const customTarget = !!definition.customTarget,
+      numberType = selectedType === "number";
+    $("custom-property-target-name-row").hidden = !customTarget;
+    $("custom-property-unit-row").hidden = !numberType && definition.value !== "cssProperty" && definition.value !== "cssVariable";
+    $("custom-property-min-row").hidden = !numberType;
+    $("custom-property-max-row").hidden = !numberType;
+    $("custom-property-step-row").hidden = !numberType;
+    if (customTarget && !$("custom-property-target-name").dataset.edited)
+      $("custom-property-target-name").value = definition.targetName || "";
+    if (!$("custom-property-unit").dataset.edited)
+      $("custom-property-unit").value = definition.unit || "";
+    if (!$("custom-property-min").dataset.edited)
+      $("custom-property-min").value = definition.value === "opacity" ? 0 : "";
+    if (!$("custom-property-max").dataset.edited)
+      $("custom-property-max").value = definition.value === "opacity" ? 100 : "";
+    if (!$("custom-property-step").dataset.edited)
+      $("custom-property-step").value = numberType ? 1 : "";
     if (!$("custom-property-target").dataset.edited) {
       const preferred = preferredCustomPropertyTarget(definition, $("custom-property-target"));
       if (preferred) $("custom-property-target").value = preferred.value;
@@ -16652,8 +17375,28 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       suggestedKey = scopedCustomKey(`${targetLabel} ${definition.value}`, definition.value);
     if (!$("custom-property-key").dataset.edited) $("custom-property-key").value = suggestedKey;
     if (!$("custom-property-label").dataset.edited) $("custom-property-label").value = `${targetLabel} ${definition.label}`;
-    if (!$("custom-property-default").dataset.edited) $("custom-property-default").value = definition.defaultValue;
-    $("custom-property-capability-help").textContent = definition.help;
+    const effectiveDefinition = {
+      ...definition,
+      type: selectedType,
+      targetName: $("custom-property-target-name").value.trim() || definition.targetName,
+      unit: $("custom-property-unit").value.trim() || definition.unit || "",
+    };
+    if (!$("custom-property-default").dataset.edited)
+      $("custom-property-default").value = scopedPropertyCurrentValue(
+        effectiveDefinition,
+        $("custom-property-target").value,
+      );
+    const selectedTargetLabel = $("custom-property-target").selectedOptions[0]?.textContent || "";
+    $("custom-property-capability-help").textContent = definition.value === "text" && /Toggle (?:control|container)/i.test(selectedTargetLabel)
+      ? `${definition.help} Composer will create a separate Label for this text; it will not replace the toggle Track or Handle.`
+      : definition.help;
+    const previewTargets = [
+      $("custom-property-target").value,
+      ...[...$("custom-property-additional-targets").selectedOptions].map((option) => option.value),
+    ].filter((value, index, values) => value && values.indexOf(value) === index);
+    $("custom-property-generation-preview").textContent = previewTargets
+      .map((target) => customPropertyGenerationText(effectiveDefinition, target, $("custom-property-key").value || suggestedKey))
+      .join("\n\n--- additional target ---\n\n");
   }
   function refreshCustomSignalCreator() {
     const type = $("custom-signal-capability-type").value,
@@ -16672,36 +17415,138 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (!$("custom-signal-capability-address").dataset.edited)
       $("custom-signal-capability-address").value = `${contractBase}.${action[0].replace(/^./, (letter) => letter.toUpperCase())}`;
     $("custom-signal-capability-help").textContent = action[2];
+    const digitalOutput = type === "digital" && direction === "output",
+      analog = type === "analog",
+      needsParameter = ["classState", "mappedProperty", "attribute", "standardStateText", "selectedStateText"].includes(action[0]),
+      targetPartId = $("custom-signal-target").selectedOptions[0]?.dataset.partId || "",
+      repeatedTarget = customWorkbenchDraft?.parts.find((part) => part.id === targetPartId)?.multiple;
+    $("custom-signal-parameter-row").hidden = !needsParameter;
+    $("custom-signal-parameter-label").textContent = ["standardStateText", "selectedStateText"].includes(action[0])
+      ? "Selected-state CSS class"
+      : action[0] === "classState"
+        ? "CSS class"
+        : action[0] === "attribute"
+          ? "HTML attribute"
+          : "CSS/DOM property";
+    $("custom-signal-hold-row").hidden = !(digitalOutput && ["press", "held"].includes(action[0]));
+    $("custom-signal-pulse-row").hidden = !(digitalOutput && ["release", "pulse", "held"].includes(action[0]));
+    $("custom-signal-exclusive-row").hidden = !(digitalOutput && action[0] === "press");
+    ["input-min", "input-max", "unit", "invert", "clamp", "zero"].forEach(
+      (name) => ($(`custom-signal-${name}-row`).hidden = !analog),
+    );
+    $("custom-signal-per-item-row").hidden = !repeatedTarget;
+    if (needsParameter && !$("custom-signal-parameter").dataset.edited) {
+      const defaults = { classState: "selected", mappedProperty: "--value", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected" };
+      $("custom-signal-parameter").value = defaults[action[0]];
+    }
+    const config = collectCustomSignalCreatorConfig();
+    $("custom-signal-generation-preview").textContent = [
+      `Connection: ${config.type} ${config.direction} · ${config.key}`,
+      `Target part: ${config.selector}`,
+      `Address: ${config.defaultValue}`,
+      config.mapping ? `Crestron value: ${config.mapping.inputMin}…${config.mapping.inputMax}${config.mapping.unit || ""}${config.mapping.invert ? " (inverted)" : ""}` : "",
+      config.perItem ? "Per-item range: zero-based; use {n} or {index} in the address." : "",
+      "\nJavaScript adapter\n" + (customScopedSignalJavascript(config.type, config.direction, config.action, config.selector, config.key, config) || "No valid adapter rule for this selection."),
+    ].filter(Boolean).join("\n");
   }
-  function customScopedSignalJavascript(type, direction, action, selector, key) {
+  function collectCustomSignalCreatorConfig() {
+    const type = $("custom-signal-capability-type").value,
+      direction = $("custom-signal-capability-direction").value;
+    return {
+      type,
+      direction,
+      action: $("custom-signal-capability-action").value,
+      selector: $("custom-signal-target").value,
+      key: scopedCustomKey($("custom-signal-capability-key").value, "signal"),
+      name: $("custom-signal-capability-label").value.trim(),
+      defaultValue: $("custom-signal-capability-address").value.trim(),
+      parameter: $("custom-signal-parameter").value.trim(),
+      holdDuration: Math.max(0.1, Number($("custom-signal-hold-duration").value) || 3),
+      pulseDuration: Math.max(20, Number($("custom-signal-pulse-duration").value) || 50),
+      exclusive: $("custom-signal-exclusive").checked,
+      perItem: $("custom-signal-per-item").checked,
+      zeroBased: $("custom-signal-zero-based").checked,
+      mapping: type === "analog" ? {
+        inputMin: Number($("custom-signal-input-min").value) || 0,
+        inputMax: Number($("custom-signal-input-max").value) || 65535,
+        // Workbench analog connections use the exact value sent by
+        // Crestron. There is no second, hidden component target range.
+        outputMin: Number($("custom-signal-input-min").value) || 0,
+        outputMax: Number($("custom-signal-input-max").value) || 65535,
+        unit: $("custom-signal-unit").value.trim(),
+        invert: $("custom-signal-invert").checked,
+        clamp: $("custom-signal-clamp").checked,
+      } : null,
+    };
+  }
+  function customScopedSignalJavascript(type, direction, action, selector, key, config = {}) {
     const target = `document.querySelector(${JSON.stringify(selector)})`,
       ready = (body) =>
         `window.addEventListener('DOMContentLoaded',function(){${body}},{once:true});`,
       subscribe = (body) =>
         ready(`var target=${target};if(!target)return;window.ComposerSignals.subscribe(${JSON.stringify(key)},function(value){${body}});`);
+    if (config.perItem) {
+      const duration = Math.round((Number(config.holdDuration) || 3) * 1000),
+        pulse = Math.max(20, Number(config.pulseDuration) || 50),
+        address = `(${JSON.stringify(key)}+'_'+index)`;
+      if (direction === "output" && type === "digital") {
+        const body = action === "held"
+          ? `var timer=0,cancel=function(){clearTimeout(timer)};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){window.ComposerSignals.publish(${address},true);setTimeout(function(){window.ComposerSignals.publish(${address},false)},${pulse})},${duration})});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);`
+          : `target.addEventListener('pointerup',function(){window.ComposerSignals.publish(${address},true);setTimeout(function(){window.ComposerSignals.publish(${address},false)},${pulse})});`;
+        return `window.addEventListener('DOMContentLoaded',function(){Array.prototype.slice.call(document.querySelectorAll(${JSON.stringify(selector)})).forEach(function(target,index){${body}})},{once:true});`;
+      }
+      if (direction === "input") {
+        const body = type === "digital"
+          ? `var active=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';target.classList.toggle(${JSON.stringify(config.parameter || "selected")},active);if('checked'in target)target.checked=active;`
+          : type === "serial"
+            ? "target.textContent=value==null?'':String(value);"
+            : "target.style.setProperty('--value',String(Number(value)||0));";
+        return `window.addEventListener('DOMContentLoaded',function(){Array.prototype.slice.call(document.querySelectorAll(${JSON.stringify(selector)})).forEach(function(target,index){window.ComposerSignals.subscribe(${address},function(value){${body}})})},{once:true});`;
+      }
+    }
     if (direction === "input") {
       if (type === "digital" && action === "selected")
         return subscribe("var active=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';if('checked'in target)target.checked=active;target.classList.toggle('selected',active);target.classList.toggle('active',active);target.setAttribute('aria-checked',String(active));target.dispatchEvent(new Event('change',{bubbles:true}));");
-      if (type === "digital" && action === "visibility")
-        return subscribe("var visible=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';target.style.display=visible?'':'none';");
-      if (type === "digital" && action === "disabled")
-        return subscribe("var disabled=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';if('disabled'in target)target.disabled=disabled;target.classList.toggle('disabled',disabled);target.setAttribute('aria-disabled',String(disabled));");
+      if (type === "digital" && action === "classState")
+        return subscribe(`var active=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';target.classList.toggle(${JSON.stringify(config.parameter || "selected")},active);`);
+      if (type === "digital" && action === "checkedState")
+        return subscribe("var active=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';if('checked'in target)target.checked=active;target.dispatchEvent(new Event('change',{bubbles:true}));");
       if (type === "serial" && action === "text")
         return subscribe("target.textContent=value==null?'':String(value);");
+      if (type === "serial" && ["standardStateText", "selectedStateText"].includes(action)) {
+        const stateName = action === "selectedStateText" ? "selected" : "standard",
+          selectedClass = config.parameter || "selected";
+        return ready(`var target=${target};if(!target)return;${customSafeTextTargetRuntime()}var control=(target.matches('input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-toggle],[data-translated-button]')?target:null)||target.closest('button,label,[role="button"],[role="switch"],[data-translated-toggle-root],[data-translated-button]')||(target.previousElementSibling&&target.previousElementSibling.querySelector('input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-toggle]'))||document.querySelector('[data-translated-toggle],input[type="checkbox"],input[type="radio"],[role="switch"],[data-translated-button]')||target;var store=textTarget.__composerStateText||(textTarget.__composerStateText={standard:String(textTarget.textContent||''),selected:String(textTarget.textContent||'')});var render=function(){var selected=control.classList.contains(${JSON.stringify(selectedClass)})||control.classList.contains('active')||control.checked===true||control.getAttribute('aria-checked')==='true';var text=selected?store.selected:store.standard;if(text!=null&&textTarget.textContent!==String(text))textTarget.textContent=String(text)};window.ComposerSignals.subscribe(${JSON.stringify(key)},function(value){store.${stateName}=value==null?'':String(value);render()});new MutationObserver(render).observe(control,{attributes:true,attributeFilter:['class','aria-checked','checked']});control.addEventListener('change',render);control.addEventListener('composer-state-change',render);render();`);
+      }
       if (type === "serial" && action === "asset")
         return subscribe("var source=String(value||'');if(target.tagName==='IMG')target.src=source;else{target.style.backgroundImage=source?'url(\\\"'+source.replace(/\\\"/g,'\\\\\\\"')+'\\\")':'none';target.style.backgroundPosition='center';target.style.backgroundRepeat='no-repeat';target.style.backgroundSize='contain';}");
       if (type === "serial" && action === "url")
         return subscribe("var source=String(value||'');if('src'in target)target.src=source;else target.setAttribute('data-source-url',source);");
+      if (type === "serial" && action === "attribute")
+        return subscribe(`target.setAttribute(${JSON.stringify(config.parameter || "data-value")},value==null?'':String(value));`);
       if (type === "analog") {
-        const normalized = "var raw=Math.max(0,Math.min(65535,Number(value)||0)),ratio=raw/65535;";
+        const mapping = config.mapping || {},
+          inputMin = Number.isFinite(mapping.inputMin) ? mapping.inputMin : 0,
+          inputMax = Number.isFinite(mapping.inputMax) ? mapping.inputMax : 65535,
+          outputMin = Number.isFinite(mapping.outputMin) ? mapping.outputMin : 0,
+          outputMax = Number.isFinite(mapping.outputMax) ? mapping.outputMax : 100,
+          normalized = `var raw=Number(value)||0,inputMin=${inputMin},inputMax=${inputMax},ratio=inputMax===inputMin?0:(raw-inputMin)/(inputMax-inputMin);${mapping.clamp !== false ? "ratio=Math.max(0,Math.min(1,ratio));" : ""}${mapping.invert ? "ratio=1-ratio;" : ""}var mapped=${outputMin}+ratio*(${outputMax}-${outputMin});`;
         if (action === "value")
-          return subscribe(`${normalized}if('value'in target){var min=Number(target.min||0),max=Number(target.max||100);target.value=String(min+ratio*(max-min));target.dispatchEvent(new Event('input',{bubbles:true}));}else target.style.setProperty('--value',String(raw));`);
+          return subscribe(`${normalized}if('value'in target){target.value=String(mapped);target.dispatchEvent(new Event('input',{bubbles:true}));}else target.style.setProperty('--value',String(mapped));`);
+        if (action === "mappedProperty")
+          return subscribe(`${normalized}var name=${JSON.stringify(config.parameter || "--value")};if(name.indexOf('--')===0||name.indexOf('-')>=0)target.style.setProperty(name,String(mapped)+${JSON.stringify(mapping.unit || "")});else if(name in target)target[name]=mapped;else target.style.setProperty(name,String(mapped)+${JSON.stringify(mapping.unit || "")});`);
+        if (action === "stateIndex")
+          return subscribe(`${normalized}var index=Math.max(0,Math.round(mapped));Array.prototype.slice.call(target.classList).forEach(function(name){if(/^composer-state-\d+$/.test(name))target.classList.remove(name)});target.classList.add('composer-state-'+index);target.dataset.stateIndex=String(index);target.dataset.composerMode=String(index);target.dispatchEvent(new CustomEvent('composer-state-change',{detail:{index:index},bubbles:true}));`);
         if (action === "glowStrength")
-          return subscribe(`${normalized}var amount=ratio*30;target.style.filter='drop-shadow(0 0 '+amount+'px var(--composer-scope-glow-color,#00e5c3))';`);
+          return subscribe(`${normalized}target.style.filter='drop-shadow(0 0 '+mapped+'${mapping.unit || "px"} var(--composer-scope-glow-color,#00e5c3))';`);
         if (["width", "height"].includes(action))
-          return subscribe(`${normalized}target.style.${action}=(ratio*100)+'%';`);
+          return subscribe(`${normalized}target.style.${action}=String(mapped)+${JSON.stringify(mapping.unit || "%")};`);
         if (action === "opacity")
-          return subscribe(`${normalized}target.style.opacity=String(ratio);`);
+          return subscribe(`${normalized}target.style.opacity=String(mapped>1?mapped/100:mapped);`);
+        if (action === "fill")
+          return subscribe(`${normalized}target.style.setProperty('--fill',String(mapped)+${JSON.stringify(mapping.unit || "%")});target.style.setProperty('--value',String(mapped));`);
+        if (action === "rotation")
+          return subscribe(`${normalized}target.style.transform='rotate('+mapped+'${mapping.unit || "deg"})';`);
         if (action === "speed")
           return subscribe(`${normalized}${customAnimationSpeedRuntimeBody()}`);
         if (action === "itemCount")
@@ -16710,13 +17555,19 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     }
     if (direction === "output") {
       if (type === "digital" && action === "press")
-        return ready(`var target=${target};if(!target)return;var release=function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)};target.addEventListener('pointerdown',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release);`);
+        return config.exclusive
+          ? ready(`var target=${target};if(!target)return;var started=0,limit=${Math.round((Number(config.holdDuration)||3)*1000)};target.addEventListener('pointerdown',function(){started=Date.now()});target.addEventListener('pointerup',function(){if(started&&Date.now()-started<limit){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},${Math.max(20,Number(config.pulseDuration)||50)})}started=0});target.addEventListener('pointercancel',function(){started=0});`)
+          : ready(`var target=${target};if(!target)return;var release=function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)};target.addEventListener('pointerdown',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true)});target.addEventListener('pointerup',release);target.addEventListener('pointercancel',release);target.addEventListener('pointerleave',release);`);
       if (type === "digital" && action === "release")
-        return ready(`var target=${target};if(!target)return;target.addEventListener('pointerup',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},50)});`);
+        return ready(`var target=${target};if(!target)return;target.addEventListener('pointerup',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},${Math.max(20,Number(config.pulseDuration)||50)})});`);
+      if (type === "digital" && action === "pulse")
+        return ready(`var target=${target};if(!target)return;target.addEventListener('pointerup',function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},${Math.max(20,Number(config.pulseDuration)||50)})});`);
       if (type === "digital" && action === "held")
-        return ready(`var target=${target};if(!target)return;var timer=0,cancel=function(){clearTimeout(timer);timer=0};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},50)},3000)});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel);`);
+        return ready(`var target=${target};if(!target)return;var timer=0,cancel=function(){clearTimeout(timer);timer=0};target.addEventListener('pointerdown',function(){cancel();timer=setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},true);setTimeout(function(){window.ComposerSignals.publish(${JSON.stringify(key)},false)},${Math.max(20,Number(config.pulseDuration)||50)})},${Math.round((Number(config.holdDuration)||3)*1000)})});target.addEventListener('pointerup',cancel);target.addEventListener('pointercancel',cancel);target.addEventListener('pointerleave',cancel);`);
       if (type === "analog" && action === "valueSet")
         return ready(`var target=${target};if(!target)return;var publish=function(){var min=Number(target.min||0),max=Number(target.max||100),value=Number(target.value)||0,ratio=max===min?0:(value-min)/(max-min);window.ComposerSignals.publish(${JSON.stringify(key)},Math.round(Math.max(0,Math.min(1,ratio))*65535))};target.addEventListener('input',publish);target.addEventListener('change',publish);`);
+      if (type === "analog" && action === "selectedIndex")
+        return `window.addEventListener('DOMContentLoaded',function(){var targets=Array.prototype.slice.call(document.querySelectorAll(${JSON.stringify(selector)}));targets.forEach(function(target,index){target.addEventListener('pointerup',function(){window.ComposerSignals.publish(${JSON.stringify(key)},index)})})},{once:true});`;
       if (type === "serial" && action === "text")
         return ready(`var target=${target};if(!target)return;var publish=function(){window.ComposerSignals.publish(${JSON.stringify(key)},'value'in target?String(target.value||''):String(target.textContent||''))};target.addEventListener('input',publish);target.addEventListener('change',publish);`);
     }
@@ -16732,58 +17583,211 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-property-creator").hidden = !property;
     $("custom-signal-creator").hidden = property;
     resetCustomScopeCreatorEdits(property ? "custom-property-" : "custom-signal-capability-");
-    if (property) refreshCustomPropertyCreator();
-    else refreshCustomSignalCreator();
+    if (property) {
+      $("custom-property-create").dataset.editingKey = "";
+      $("custom-property-create").textContent = "Add property to Composer and source";
+      refreshCustomPropertyCreator();
+    }
+    else {
+      $("custom-signal-create").dataset.editingKey = "";
+      $("custom-signal-create").textContent = "Add connection to Composer and source";
+      refreshCustomSignalCreator();
+    }
     (property ? $("custom-property-creator") : $("custom-signal-creator")).scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
   function createScopedCustomProperty() {
-    const definition = customScopedPropertyTypes.find(
+    const baseDefinition = customScopedPropertyTypes.find(
         (entry) => entry.value === $("custom-property-capability").value,
       ),
+      definition = {
+        ...baseDefinition,
+        type: $("custom-property-value-type").value || baseDefinition?.type || "text",
+        targetName: $("custom-property-target-name").value.trim() || baseDefinition?.targetName || "",
+        unit: $("custom-property-unit").value.trim() || baseDefinition?.unit || "",
+      },
       selector = $("custom-property-target").value,
       key = scopedCustomKey($("custom-property-key").value, definition.value),
       name = $("custom-property-label").value.trim() || definition.label,
       rawDefault = $("custom-property-default").value,
-      defaultValue = definition.type === "number" ? Number(rawDefault) || 0 : rawDefault;
+      defaultValue = definition.type === "number"
+        ? Number(rawDefault) || 0
+        : definition.type === "checkbox"
+          ? /^(true|1|yes|on)$/i.test(rawDefault)
+          : rawDefault;
     if (!definition || !selector) return;
+    if (definition.customTarget && !definition.targetName) {
+      alert("Enter the CSS, attribute, DOM property, class, or data name to expose.");
+      return;
+    }
+    const min = $("custom-property-min").value,
+      max = $("custom-property-max").value,
+      step = $("custom-property-step").value,
+      propertyDefinition = {
+        key,
+        name,
+        type: definition.type,
+        defaultValue,
+        ...(min !== "" ? { min: Number(min) } : {}),
+        ...(max !== "" ? { max: Number(max) } : {}),
+        ...(step !== "" ? { step: Number(step) } : {}),
+        ...(definition.unit ? { unit: definition.unit } : {}),
+      };
+    const editingKey = $("custom-property-create").dataset.editingKey || "";
+    if (editingKey && editingKey !== key) {
+      customDefinitionRow("custom-property-list", editingKey)?.remove();
+      customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter(
+        (property) => property.key !== editingKey,
+      );
+      removeCustomManagedSource("css", `property-${editingKey}`);
+      removeCustomManagedSource("javascript", `property-${editingKey}`);
+    }
     const existing = customDefinitionRow("custom-property-list", key);
     if (!existing)
-      addCustomPropertyRow({ key, name, type: definition.type, defaultValue });
+      addCustomPropertyRow(propertyDefinition);
     else {
       existing.querySelector('[data-field="name"]').value = name;
       existing.querySelector('[data-field="type"]').value = definition.type;
       existing.querySelector('[data-field="defaultValue"]').value = defaultValue;
+      existing.dataset.min = min;
+      existing.dataset.max = max;
+      existing.dataset.step = step;
+      existing.dataset.unit = definition.unit || "";
     }
-    const css = customScopedPropertyCss(definition, selector, key),
-      javascript = customScopedPropertyJavascript(definition, selector, key);
-    if (css) upsertCustomManagedSource("css", `property-${key}`, css);
-    if (javascript) upsertCustomManagedSource("javascript", `property-${key}`, javascript);
+    const selectors = [
+        selector,
+        ...[...$("custom-property-additional-targets").selectedOptions].map((option) => option.value),
+      ].filter((value, index, values) => value && values.indexOf(value) === index),
+      css = selectors.map((target) => customScopedPropertyCss(definition, target, key)).filter(Boolean).join("\n"),
+      javascript = selectors.map((target) => customScopedPropertyJavascript(definition, target, key)).filter(Boolean).join("\n");
+    // Generated CSS/JavaScript is retained in the workbench adapter instead
+    // of being injected into the user's authored source editors.
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const targetOption = $("custom-property-target").selectedOptions[0];
+    let partId = targetOption?.dataset.partId ||
+      customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "";
+    if (!partId)
+      partId = addPickedCustomWorkbenchPart(
+        selector,
+        { tag: "element", text: targetOption?.textContent?.split(" — ")[0] || "Mapped part" },
+        "mapped-target",
+      ).id;
+    const
+      targetKind = definition.value === "cssVariable"
+        ? "css-custom-property"
+        : definition.value === "cssProperty" || definition.css
+          ? "css-property"
+          : definition.javascript || "adapter-value",
+      mapping = {
+        id: customWorkbenchDraft.properties.find((property) => property.key === key)?.id || `property-${key}`,
+        key,
+        label: name,
+        type: definition.type,
+        defaultValue,
+        ...(min !== "" ? { min: Number(min) } : {}),
+        ...(max !== "" ? { max: Number(max) } : {}),
+        ...(step !== "" ? { step: Number(step) } : {}),
+        ...(definition.unit ? { unit: definition.unit } : {}),
+        target: {
+          kind: targetKind,
+          partId,
+          selector,
+          name: definition.targetName || definition.css || definition.javascript || "",
+        },
+        targets: selectors.map((targetSelector) => {
+          const option = [...$("custom-property-target").options, ...$("custom-property-additional-targets").options]
+            .find((candidate) => candidate.value === targetSelector);
+          return {
+            kind: targetKind,
+            partId: option?.dataset.partId || customWorkbenchDraft.parts.find((part) => part.selector === targetSelector)?.id || "",
+            selector: targetSelector,
+            name: definition.targetName || definition.css || definition.javascript || "",
+          };
+        }),
+        capability: definition.value,
+      };
+    const mappingIndex = customWorkbenchDraft.properties.findIndex((property) => property.key === key);
+    if (mappingIndex >= 0) customWorkbenchDraft.properties[mappingIndex] = mapping;
+    else customWorkbenchDraft.properties.push(mapping);
+    renderCustomPropertyMappings();
     refreshCustomPreview();
+    $("custom-property-create").dataset.editingKey = "";
+    $("custom-property-create").textContent = "Add property to Composer and source";
+    $("custom-property-creator").hidden = true;
     setStatus(`Added editable Composer property “${name}”`);
   }
   function createScopedCustomSignal() {
-    const type = $("custom-signal-capability-type").value,
-      direction = $("custom-signal-capability-direction").value,
-      action = $("custom-signal-capability-action").value,
-      selector = $("custom-signal-target").value,
-      key = scopedCustomKey($("custom-signal-capability-key").value, action),
-      name = $("custom-signal-capability-label").value.trim() || key,
-      defaultValue = $("custom-signal-capability-address").value.trim(),
-      javascript = customScopedSignalJavascript(type, direction, action, selector, key);
+    const config = collectCustomSignalCreatorConfig(),
+      { type, direction, action, selector, key, defaultValue } = config,
+      name = config.name || key,
+      javascript = customScopedSignalJavascript(type, direction, action, selector, key, config);
     if (!action || !selector || !defaultValue || !javascript) {
       alert("Choose a target, action, and contract name or join before adding the connection.");
       return;
     }
+    const editingKey = $("custom-signal-create").dataset.editingKey || "";
+    if (editingKey && editingKey !== key) {
+      customDefinitionRow("custom-signal-list", editingKey)?.remove();
+      customWorkbenchDraft.connections = customWorkbenchDraft.connections.filter(
+        (connection) => connection.key !== editingKey,
+      );
+      removeCustomManagedSource("javascript", `signal-${editingKey}`);
+    }
+    const range = config.perItem
+      ? { perItem: true, zeroBased: true, keyPattern: `${key}_{n}`, addressPattern: /\{(?:n|index)\}/.test(defaultValue) ? defaultValue : `${defaultValue}_{n}` }
+      : null,
+      signalDefinition = {
+        key,
+        name,
+        type,
+        direction,
+        defaultValue,
+        connectionConfig: config,
+        ...(range ? { range } : {}),
+      };
     const existing = customDefinitionRow("custom-signal-list", key);
     if (!existing)
-      addCustomSignalRow({ key, name, type, direction, defaultValue });
+      addCustomSignalRow(signalDefinition);
     else {
       ["name", "type", "direction", "defaultValue"].forEach((field) => {
         existing.querySelector(`[data-field="${field}"]`).value = { name, type, direction, defaultValue }[field];
       });
+      existing.dataset.connectionConfig = JSON.stringify(config);
+      existing.dataset.range = JSON.stringify(range);
     }
-    upsertCustomManagedSource("javascript", `signal-${key}`, javascript);
+    // Connection JavaScript is regenerated from this mapping in the separate
+    // Generated Adapter tab; authored JavaScript remains untouched.
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const option = $("custom-signal-target").selectedOptions[0];
+    let partId = option?.dataset.partId || customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "";
+    if (!partId)
+      partId = addPickedCustomWorkbenchPart(selector, { tag: "element", text: option?.textContent?.split(" — ")[0] || "Mapped part" }, "mapped-target").id;
+    const mapping = {
+      id: customWorkbenchDraft.connections.find((connection) => connection.key === key)?.id || `connection-${key}`,
+      key,
+      label: name,
+      type,
+      direction,
+      defaultValue,
+      action,
+      target: { kind: action, partId, selector, parameter: config.parameter || "" },
+      mapping: config.mapping,
+      holdDuration: config.holdDuration,
+      pulseDuration: config.pulseDuration,
+      exclusive: config.exclusive,
+      perItem: config.perItem,
+      zeroBased: config.zeroBased || config.perItem,
+      ...(range ? { range } : {}),
+    };
+    const mappingIndex = customWorkbenchDraft.connections.findIndex((connection) => connection.key === key);
+    if (mappingIndex >= 0) customWorkbenchDraft.connections[mappingIndex] = mapping;
+    else customWorkbenchDraft.connections.push(mapping);
+    renderCustomConnectionMappings();
     refreshCustomPreview();
+    // A completed mapping must leave edit mode. Otherwise the next use of
+    // the form silently replaces this connection instead of adding another.
+    $("custom-signal-create").dataset.editingKey = "";
+    $("custom-signal-create").textContent = "Add connection to Composer and source";
+    $("custom-signal-creator").hidden = true;
     setStatus(`Added Crestron ${type} ${direction} “${name}”`);
   }
   function uniqueCustomBehaviorKey(baseKey, source, selector, action) {
@@ -17074,6 +18078,422 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (entry) => entry.role !== "ignore",
     );
     renderCustomCapabilityQuestions(inventory);
+  }
+  function customPartId(name = "part") {
+    const base = `part-${String(name || "part").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "part"}`,
+      used = new Set((customWorkbenchDraft?.parts || []).map((part) => part.id));
+    let id = base,
+      index = 2;
+    while (used.has(id)) id = `${base}-${index++}`;
+    return id;
+  }
+  function friendlyCustomPartName(entry = {}) {
+    const metadata = entry.metadata || entry.element || {},
+      seed = metadata.ariaLabel || metadata.text || metadata.id ||
+        String(metadata.className || "").split(/\s+/).find(Boolean) || entry.role || metadata.tag || "Part";
+    return String(seed).trim().slice(0, 48).replace(/[-_]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) || "Part";
+  }
+  function ensureCustomWorkbenchDraft(component = null) {
+    const api = window.ComposerComponentWorkbench;
+    customWorkbenchDraft = api.normalize(
+      component ? api.migrate(component) : api.empty(),
+    );
+    return customWorkbenchDraft;
+  }
+  function customWorkbenchTargetKind(action = "") {
+    return {
+      cssVariable: "css-custom-property",
+      cssProperty: "css-property",
+      backgroundColor: "css-property",
+      color: "css-property",
+      borderColor: "css-property",
+      borderRadius: "css-property",
+      fontSize: "css-property",
+      width: "css-property",
+      height: "css-property",
+      opacity: "css-property",
+      glowStrength: "adapter-value",
+      shadowSize: "adapter-value",
+      text: "adapter-value",
+      value: "adapter-value",
+      imageSource: "adapter-value",
+      backgroundImage: "adapter-value",
+      visibility: "adapter-value",
+    }[action] || "adapter-value";
+  }
+  function customWorkbenchCapability(action = "", parameter = "") {
+    if (action === "cssVariable") return "cssVariable";
+    if (action === "cssProperty") return "cssProperty";
+    return {
+      backgroundColor: "backgroundColor",
+      color: "textColor",
+      borderColor: "borderColor",
+      borderRadius: "cornerRadius",
+      fontSize: "textSize",
+      width: "width",
+      height: "height",
+      opacity: "opacity",
+      glowStrength: "glowStrength",
+      shadowSize: "shadowSize",
+      text: "text",
+      imageSource: "asset",
+      backgroundImage: "backgroundAsset",
+      visibility: "showElement",
+    }[action] || parameter || action || "adapterValue";
+  }
+  function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems } = {}) {
+    const api = window.ComposerComponentWorkbench,
+      propertyDefinitions = properties || collectCustomProperties(),
+      signalDefinitions = signals || collectCustomSignals(),
+      rules = behaviors || collectCustomBehaviors(),
+      component = {
+        elementRoles: (customAnalyzedElements || [])
+          .filter((entry) => entry.selector && entry.role !== "ignore")
+          .map((entry) => ({
+            selector: entry.selector,
+            role: entry.role,
+            name: friendlyCustomPartName(entry),
+            metadata: structuredClone(entry.metadata || {}),
+          })),
+        properties: propertyDefinitions,
+        signals: signalDefinitions,
+        behaviors: rules,
+        repeatedItems: repeatedItems || collectCustomRepeatedItems(),
+      },
+      workbench = api.migrate(component),
+      partBySelector = new Map(workbench.parts.map((part) => [part.selector, part])),
+      usedPartIds = new Set(workbench.parts.map((part) => part.id));
+    const translatedPartId = (role) => {
+      const base = `part-${String(role || "target").replace(/[^A-Za-z0-9]+/g, "-").toLowerCase()}`;
+      let id = base,
+        suffix = 2;
+      while (usedPartIds.has(id)) id = `${base}-${suffix++}`;
+      usedPartIds.add(id);
+      return id;
+    };
+    const ensurePart = (selector, role = "mapped-target") => {
+      selector = String(selector || "").trim();
+      if (!selector) return null;
+      if (partBySelector.has(selector)) return partBySelector.get(selector);
+      const part = {
+        id: translatedPartId(role),
+        name: role === "property-target" ? "Editable target" : "Crestron target",
+        selector,
+        role,
+        multiple: false,
+      };
+      workbench.parts.push(part);
+      partBySelector.set(selector, part);
+      return part;
+    };
+    workbench.properties = propertyDefinitions.map((property, index) => {
+      const matching = rules.filter((rule) => rule.source === "property" && rule.key === property.key),
+        primary = matching[0] || {},
+        targets = matching.map((rule) => {
+          const part = ensurePart(rule.selector, "property-target");
+          return {
+            kind: customWorkbenchTargetKind(rule.action),
+            partId: part?.id || "",
+            selector: rule.selector || "",
+            name: rule.parameter || rule.action || "",
+          };
+        });
+      return {
+        id: `property-${property.key || index + 1}`,
+        key: property.key,
+        label: property.name || property.key,
+        type: property.type || "text",
+        defaultValue: structuredClone(property.defaultValue),
+        ...(property.min != null ? { min: property.min } : {}),
+        ...(property.max != null ? { max: property.max } : {}),
+        ...(property.step != null ? { step: property.step } : {}),
+        ...(property.unit ? { unit: property.unit } : {}),
+        target: targets[0] || { kind: "unresolved", partId: "", selector: "", name: "" },
+        targets,
+        capability: customWorkbenchCapability(primary.action, primary.parameter),
+        translatedSuggestion: true,
+      };
+    });
+    workbench.connections = signalDefinitions.map((signal, index) => {
+      const source = signal.direction === "output" ? "signal-output" : "signal-input",
+        matching = rules.filter((rule) => rule.source === source && rule.key === signal.key),
+        primary = matching[0] || {},
+        part = ensurePart(primary.selector, "signal-target"),
+        range = signal.range || (primary.perItem
+          ? { perItem: true, zeroBased: true, keyPattern: `${signal.key}_{n}`, addressPattern: `${signal.defaultValue}_{n}` }
+          : null);
+      return {
+        id: `connection-${signal.key || index + 1}`,
+        key: signal.key,
+        label: signal.name || signal.key,
+        type: signal.type || "digital",
+        direction: signal.direction || "input",
+        defaultValue: signal.defaultValue || "",
+        action: primary.action || "",
+        target: primary.action
+          ? { kind: primary.action, partId: part?.id || "", selector: primary.selector || "", parameter: primary.parameter || "" }
+          : { kind: "unresolved", partId: "", selector: "", parameter: "" },
+        mapping: structuredClone(primary.mapping || signal.connectionConfig?.mapping),
+        holdDuration: primary.holdDuration || signal.connectionConfig?.holdDuration,
+        pulseDuration: primary.pulseDuration || signal.connectionConfig?.pulseDuration,
+        exclusive: primary.exclusive || signal.connectionConfig?.exclusive,
+        perItem: !!(primary.perItem || range?.perItem),
+        zeroBased: !!(primary.zeroBased || range?.zeroBased || range?.perItem),
+        ...(range ? { range: structuredClone(range) } : {}),
+        translatedSuggestion: true,
+      };
+    });
+    workbench.repeatedCollections = component.repeatedItems
+      ? Array.isArray(component.repeatedItems)
+        ? structuredClone(component.repeatedItems)
+        : [structuredClone(component.repeatedItems)]
+      : [];
+    workbench.adapter = { version: 1, rules: [] };
+    workbench.authoredSource = {
+      field: "html",
+      originalSourceField: "originalSource",
+      preserveLocalBehavior: true,
+      translated: true,
+    };
+    workbench.translationReview = {
+      source: "import-and-translate",
+      uncheckedSuggestionsRemoved: true,
+      unresolvedProperties: workbench.properties.filter((entry) => entry.target.kind === "unresolved").map((entry) => entry.key),
+      unresolvedConnections: workbench.connections.filter((entry) => entry.target.kind === "unresolved").map((entry) => entry.key),
+    };
+    customWorkbenchDraft = api.normalize(workbench);
+    renderCustomWorkbenchParts();
+    renderCustomPropertyMappings();
+    renderCustomConnectionMappings();
+    renderCustomGeneratedAdapter();
+    return customWorkbenchDraft;
+  }
+  function seedCustomWorkbenchParts(inventory = customAnalyzedElements, force = false) {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const existing = new Set(customWorkbenchDraft.parts.map((part) => part.selector));
+    (inventory || [])
+      .filter((entry) => entry.selector && entry.role !== "ignore")
+      .forEach((entry) => {
+        if (existing.has(entry.selector)) return;
+        const name = friendlyCustomPartName(entry);
+        customWorkbenchDraft.parts.push({
+          id: customPartId(name),
+          name,
+          selector: entry.selector,
+          role: entry.role || "element",
+          multiple: entry.role === "repeated",
+          metadata: structuredClone(entry.metadata || {}),
+        });
+        existing.add(entry.selector);
+      });
+    renderCustomWorkbenchParts();
+  }
+  function customPreviewSelectorCount(selector) {
+    if (!selector?.trim()) return { count: 0, error: "Selector required" };
+    try {
+      const documentValue = $("custom-component-preview")?.contentDocument;
+      if (!documentValue) return { count: 0, error: "Preview unavailable" };
+      return { count: documentValue.querySelectorAll(selector).length, error: "" };
+    } catch (error) {
+      return { count: 0, error: "Invalid selector" };
+    }
+  }
+  function highlightCustomWorkbenchPart(part) {
+    const frameDocument = $("custom-component-preview")?.contentDocument;
+    if (!frameDocument) return { matched: 0, visible: 0 };
+    frameDocument.querySelectorAll(".composer-workbench-highlight").forEach((node) =>
+      node.classList.remove("composer-workbench-highlight"),
+    );
+    let nodes;
+    try { nodes = [...frameDocument.querySelectorAll(part.selector)]; } catch (_) { return { matched: 0, visible: 0 }; }
+    if (!frameDocument.getElementById("composer-workbench-highlight-style")) {
+      const style = frameDocument.createElement("style");
+      style.id = "composer-workbench-highlight-style";
+      style.textContent = ".composer-workbench-highlight{outline:4px solid #ffd84d!important;outline-offset:3px!important;box-shadow:0 0 0 3px #ffd84d88,0 0 18px #ffd84dcc!important;}";
+      frameDocument.head.appendChild(style);
+    }
+    const isVisible = (node) => {
+        if (!node?.getBoundingClientRect) return false;
+        const rect = node.getBoundingClientRect(),
+          style = frameDocument.defaultView?.getComputedStyle(node);
+        return rect.width > 1 && rect.height > 1 && style?.display !== "none" &&
+          style?.visibility !== "hidden" && Number(style?.opacity ?? 1) > 0;
+      },
+      visibleNodes = [];
+    nodes.forEach((node) => {
+      if (isVisible(node)) {
+        visibleNodes.push(node);
+        return;
+      }
+      const id = node.id ? String(node.id).replace(/(["\\])/g, "\\$1") : "",
+        candidates = [
+          id ? frameDocument.querySelector(`label[for="${id}"]`) : null,
+          node.closest?.("label"),
+          node.nextElementSibling,
+          node.previousElementSibling,
+          node.parentElement,
+        ];
+      const visibleFallback = candidates.find(isVisible);
+      if (visibleFallback) visibleNodes.push(visibleFallback);
+    });
+    const uniqueVisibleNodes = [...new Set(visibleNodes)];
+    uniqueVisibleNodes.forEach((node) => node.classList.add("composer-workbench-highlight"));
+    setTimeout(() => uniqueVisibleNodes.forEach((node) => node.classList.remove("composer-workbench-highlight")), 10000);
+    return { matched: nodes.length, visible: uniqueVisibleNodes.length };
+  }
+  function showCustomWorkbenchPartHighlight(part) {
+    if (!part) return;
+    customElementPickerActive = false;
+    $("custom-component-dialog").classList.add("custom-picker-active");
+    $("custom-preview-picker-close").hidden = false;
+    $("custom-preview-picker-close").textContent = "Close preview";
+    $("custom-picker-instruction").hidden = false;
+    const result = highlightCustomWorkbenchPart(part);
+    $("custom-picker-instruction").textContent = result.visible
+      ? `Highlighted: ${part.name || part.selector || "selected part"}. The yellow outline remains visible for 10 seconds.`
+      : result.matched
+        ? `${part.name || part.selector || "This part"} has no visible box. Composer could not find a visible parent or sibling to outline.`
+        : `No preview element currently matches ${part.selector || "this part's selector"}.`;
+  }
+  function renderCustomWorkbenchParts() {
+    const host = $("custom-part-list"),
+      summary = $("custom-part-validation");
+    if (!host || !summary) return;
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    host.innerHTML = "";
+    let invalid = 0;
+    customWorkbenchDraft.parts.forEach((part) => {
+      const row = document.createElement("div"),
+        name = document.createElement("input"),
+        selector = document.createElement("input"),
+        role = document.createElement("select"),
+        multipleLabel = document.createElement("label"),
+        multiple = document.createElement("input"),
+        status = document.createElement("span"),
+        highlight = document.createElement("button"),
+        remove = document.createElement("button"),
+        metadata = document.createElement("small"),
+        roles = ["element", "button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated", "decorative", "mapped-target"];
+      row.className = "custom-part-row";
+      row.dataset.partId = part.id || "";
+      name.value = part.name || "Part";
+      name.placeholder = "Friendly name";
+      selector.value = part.selector || "";
+      selector.placeholder = "CSS selector, e.g. .toggle-track";
+      roles.forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+        option.selected = value === part.role;
+        role.appendChild(option);
+      });
+      multiple.type = "checkbox";
+      multiple.checked = !!part.multiple;
+      multipleLabel.className = "custom-part-multiple";
+      multipleLabel.append(multiple, document.createTextNode("Multiple matches"));
+      status.className = "custom-part-status";
+      highlight.type = remove.type = "button";
+      highlight.textContent = "Highlight";
+      remove.textContent = "Delete";
+      remove.className = "custom-part-delete";
+      metadata.className = "custom-part-metadata";
+      metadata.textContent = [
+        part.metadata?.tag ? `<${part.metadata.tag}>` : "",
+        part.metadata?.id ? `#${part.metadata.id}` : "",
+        part.metadata?.className ? `.${String(part.metadata.className).trim().replace(/\s+/g, ".")}` : "",
+        part.metadata?.ariaLabel ? `aria-label=“${part.metadata.ariaLabel}”` : "",
+        part.metadata?.text ? `text=“${String(part.metadata.text).slice(0, 80)}”` : "",
+        part.metadata?.computed?.width && part.metadata?.computed?.height
+          ? `${part.metadata.computed.width} × ${part.metadata.computed.height}`
+          : "",
+        part.metadata?.computed?.backgroundColor
+          ? `background ${part.metadata.computed.backgroundColor}`
+          : "",
+        part.metadata?.computed?.color
+          ? `text ${part.metadata.computed.color}`
+          : "",
+        part.metadata?.computed?.fontSize
+          ? `font ${part.metadata.computed.fontSize}`
+          : "",
+      ].filter(Boolean).join(" · ") || "Manual selector";
+      const extraAttributes = Object.entries(part.metadata?.attributes || {})
+        .filter(([key]) => !["id", "class", "aria-label"].includes(key))
+        .map(([key, value]) => `${key}=“${String(value).slice(0, 60)}”`)
+        .join(" · ");
+      if (extraAttributes) metadata.textContent += ` · ${extraAttributes}`;
+      const validate = () => {
+        const result = customPreviewSelectorCount(part.selector);
+        const valid = !result.error && result.count > 0 && (part.multiple || result.count === 1);
+        row.classList.toggle("invalid", !valid);
+        status.textContent = result.error || (result.count ? `${result.count} match${result.count === 1 ? "" : "es"}` : "Not found");
+        status.title = !part.multiple && result.count > 1 ? "Enable Multiple matches or use a more specific selector." : "";
+        renderCustomWorkbenchPartSummary();
+      };
+      name.oninput = () => { part.name = name.value; };
+      selector.oninput = () => { part.selector = selector.value.trim(); validate(); };
+      role.onchange = () => { part.role = role.value; };
+      multiple.onchange = () => { part.multiple = multiple.checked; validate(); };
+      highlight.onclick = () => showCustomWorkbenchPartHighlight(part);
+      remove.onclick = () => {
+        customWorkbenchDraft.parts = customWorkbenchDraft.parts.filter((candidate) => candidate !== part);
+        renderCustomWorkbenchParts();
+      };
+      row.append(name, selector, role, multipleLabel, status, highlight, remove, metadata);
+      host.appendChild(row);
+      const initial = customPreviewSelectorCount(part.selector);
+      if (initial.error || !initial.count || (!part.multiple && initial.count > 1)) invalid++;
+      row.classList.toggle("invalid", initial.error || !initial.count || (!part.multiple && initial.count > 1));
+      status.textContent = initial.error || (initial.count ? `${initial.count} match${initial.count === 1 ? "" : "es"}` : "Not found");
+    });
+    summary.dataset.invalid = String(invalid);
+    renderCustomWorkbenchPartSummary();
+    renderCustomStatePartOptions();
+  }
+  function renderCustomWorkbenchPartSummary() {
+    const summary = $("custom-part-validation");
+    if (!summary || !customWorkbenchDraft) return;
+    const results = customWorkbenchDraft.parts.map((part) => ({ part, ...customPreviewSelectorCount(part.selector) })),
+      invalid = results.filter((result) => result.error || !result.count || (!result.part.multiple && result.count > 1)).length;
+    summary.textContent = customWorkbenchDraft.parts.length
+      ? `${customWorkbenchDraft.parts.length} part${customWorkbenchDraft.parts.length === 1 ? "" : "s"} · ${invalid ? `${invalid} needs attention` : "all selectors valid"}`
+      : "No parts defined yet. Pick a preview element or rescan the source.";
+    summary.style.color = invalid ? "#ffb36c" : "#75e7d1";
+  }
+  function addPickedCustomWorkbenchPart(selector, element = {}, role = "element") {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const existing = customWorkbenchDraft.parts.find((part) => part.selector === selector);
+    if (existing) {
+      existing.role = existing.role || role;
+      renderCustomWorkbenchParts();
+      highlightCustomWorkbenchPart(existing);
+      return existing;
+    }
+    const name = friendlyCustomPartName({ element, role });
+    const part = { id: customPartId(name), name, selector, role, multiple: false, metadata: structuredClone(element) };
+    customWorkbenchDraft.parts.push(part);
+    renderCustomWorkbenchParts();
+    highlightCustomWorkbenchPart(part);
+    return part;
+  }
+  function focusPickedCustomWorkbenchPart(part) {
+    if (!part) return;
+    const technicalTools = document.querySelector(".custom-technical-mappings"),
+      partsSection = document.querySelector(".custom-workbench-parts");
+    if (technicalTools) technicalTools.open = true;
+    if (partsSection) partsSection.open = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const row = [...document.querySelectorAll(".custom-part-row")].find(
+        (candidate) => candidate.dataset.partId === String(part.id || ""),
+      );
+      if (!row) return;
+      document.querySelectorAll(".custom-part-row.picked").forEach((candidate) =>
+        candidate.classList.remove("picked"),
+      );
+      row.classList.add("picked");
+      row.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      row.querySelector("input")?.focus({ preventScroll: true });
+      setTimeout(() => row.classList.remove("picked"), 10000);
+    }));
   }
   function renderCustomCapabilityQuestions(inventory = customAnalyzedElements) {
     const roles = new Set((inventory || []).map((entry) => entry.role)),
@@ -18177,6 +19597,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     const selector = $("custom-state-selector").value.trim();
     if (!selector) return null;
     const states = {};
+    ensureCustomStateRowsEnhanced();
     $("custom-state-grid")
       .querySelectorAll(".custom-state-row")
       .forEach((row) => {
@@ -18188,9 +19609,199 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
           (entry) => entry.id === values.asset,
         );
         values.assetData = asset?.dataUrl || "";
+        values.activation = {
+          kind: row.querySelector('[data-state-meta="activationKind"]')?.value || "class",
+          value: row.querySelector('[data-state-meta="activationValue"]')?.value.trim() || "",
+        };
+        values.inheritContent = !!row.querySelector('[data-state-meta="inheritContent"]')?.checked;
+        values.visibility = row.querySelector('[data-state-meta="visibility"]')?.value || "preserve";
+        values.icon = row.querySelector('[data-state-meta="icon"]')?.value || "";
+        values.modeIndex = Number(row.querySelector('[data-state-meta="modeIndex"]')?.value || 0);
         states[row.dataset.state] = values;
       });
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    customWorkbenchDraft.states = Object.entries(states).map(([name, definition], index) => ({
+      id: `state-${normalizeCustomKey(name) || index}`,
+      name,
+      target: { partId: customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "" },
+      activation: structuredClone(definition.activation),
+      modeIndex: definition.modeIndex,
+      definition: structuredClone(definition),
+    }));
     return { selector, states };
+  }
+  function customStateActivationDefaults(name) {
+    return {
+      standard: { kind: "standard", value: "" },
+      pressed: { kind: "pointer", value: "pressed" },
+      selected: { kind: "class", value: "selected" },
+      disabled: { kind: "attribute", value: "disabled" },
+    }[name] || { kind: "class", value: name };
+  }
+  function preferredCustomStatePart() {
+    const parts = customWorkbenchDraft?.parts || [],
+      preferredRoles = ["toggle", "button", "sliderHandle", "slider", "gauge", "selected", "element"];
+    return preferredRoles.map((role) => parts.find((part) => part.role === role && part.selector)).find(Boolean) ||
+      parts.find((part) => part.selector) || null;
+  }
+  function syncCustomStatePartsFromSource() {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const parts = customWorkbenchDraft.parts,
+      existing = new Set(parts.map((part) => part.selector));
+    customScopeTargets(false)
+      .filter((target) => !target.advanced && target.selector && target.label !== "Whole component")
+      .forEach((target) => {
+        if (existing.has(target.selector)) return;
+        const semantic = String(target.label || "Component part"),
+          role = /^Handle \/ knob/i.test(semantic) ? "sliderHandle"
+            : /^Track/i.test(semantic) ? "element"
+              : /^Toggle control/i.test(semantic) ? "toggle"
+                : /^Toggle container/i.test(semantic) ? "toggle"
+                  : /^Button/i.test(semantic) ? "button"
+                    : /^Label \/ text/i.test(semantic) ? "text"
+                      : /^Text input/i.test(semantic) ? "textInput"
+                        : /^Icon \/ graphic/i.test(semantic) ? "icon"
+                          : /^Gauge \/ meter/i.test(semantic) ? "gauge"
+                            : /^Slider control/i.test(semantic) ? "slider"
+                              : /^Items \/ list/i.test(semantic) ? "repeated"
+                                : "element";
+        parts.push({
+          id: customPartId(semantic),
+          name: semantic,
+          selector: target.selector,
+          role,
+          multiple: false,
+          metadata: { source: "detected-component-anatomy" },
+        });
+        existing.add(target.selector);
+      });
+  }
+  function updateCustomStateAppearanceLabels() {
+    const selector = $("custom-state-selector")?.value.trim() || "",
+      part = (customWorkbenchDraft?.parts || []).find((entry) => entry.selector === selector),
+      partLabel = part ? customScopePartLabel(part).split(" — ")[0] : "Part",
+      backgroundLabel = /Handle \/ knob/i.test(partLabel) ? "Handle / knob color"
+        : /^Track/i.test(partLabel) ? "Track color"
+          : /^Button/i.test(partLabel) ? "Button background"
+            : /^Gauge \/ meter/i.test(partLabel) ? "Gauge background"
+              : /^Label \/ text/i.test(partLabel) ? "Label background"
+                : "Background";
+    $("custom-state-grid")?.querySelectorAll('[data-style="background"]').forEach((input) => {
+      const label = input.closest("label"), text = [...(label?.childNodes || [])].find((node) => node.nodeType === Node.TEXT_NODE);
+      if (text) text.nodeValue = backgroundLabel;
+    });
+  }
+  function updateCustomStateSimulationAvailability() {
+    const selector = $("custom-state-selector")?.value.trim() || "",
+      result = selector ? customPreviewSelectorCount(selector) : { count: 0, error: "" },
+      usable = !!selector && !result.error && result.count > 0,
+      status = $("custom-state-target-status");
+    $("custom-state-grid")?.querySelectorAll("[data-state-simulate]").forEach((button) => {
+      button.disabled = !usable;
+      button.title = usable ? "Preview this appearance" : "Choose a valid component part first";
+    });
+    if (!status) return usable;
+    status.textContent = !selector
+      ? "Choose a part before simulating a state."
+      : result.error
+        ? `This target is invalid: ${result.error}`
+        : !result.count
+          ? "That part was not found in the preview. Choose another part."
+          : `${result.count} preview element${result.count === 1 ? "" : "s"} will change.`;
+    status.classList.toggle("invalid", !usable);
+    return usable;
+  }
+  function renderCustomStatePartOptions() {
+    const select = $("custom-state-part"), selectorInput = $("custom-state-selector");
+    if (!select || !selectorInput) return;
+    syncCustomStatePartsFromSource();
+    const currentSelector = selectorInput.value.trim(), parts = customWorkbenchDraft?.parts || [];
+    select.innerHTML = "";
+    select.appendChild(new Option("Choose a component part", ""));
+    parts.filter((part) => part.selector).forEach((part) => {
+      const option = new Option(customScopePartLabel(part), part.id);
+      option.dataset.selector = part.selector;
+      select.appendChild(option);
+    });
+    const matched = parts.find((part) => part.selector === currentSelector);
+    if (matched) select.value = matched.id;
+    else if (!currentSelector && $("custom-state-enabled")?.checked) {
+      const preferred = preferredCustomStatePart();
+      if (preferred) {
+        select.value = preferred.id;
+        selectorInput.value = preferred.selector;
+      }
+    }
+    updateCustomStateAppearanceLabels();
+    updateCustomStateSimulationAvailability();
+  }
+  function ensureCustomStateRowsEnhanced() {
+    $("custom-state-grid").querySelectorAll(".custom-state-row").forEach((row, index) => {
+      if (row.querySelector(".custom-state-mapping")) return;
+      const name = row.dataset.state,
+        defaults = customStateActivationDefaults(name),
+        mapping = document.createElement("div");
+      mapping.className = "custom-state-mapping";
+      mapping.innerHTML = `<button type="button" data-state-simulate>Simulate ${name.replace(/[-_]+/g, " ")}</button><label class="custom-state-check"><input data-state-meta="inheritContent" type="checkbox" ${name === "standard" ? "" : "checked"}> Use Standard text, icon, and asset when blank</label><details class="custom-state-trigger"><summary>Advanced state trigger</summary><div><label>Activation<select data-state-meta="activationKind"><option value="standard">Standard / fallback</option><option value="pointer">Pointer press</option><option value="class">CSS class</option><option value="attribute">HTML attribute</option><option value="data">Data value</option><option value="property">DOM property</option><option value="function">Authored function</option><option value="analog-index">Analog mode index</option></select></label><label>Class, attribute, property, function, or value<input data-state-meta="activationValue" placeholder="${name}"></label><label>Mode index<input data-state-meta="modeIndex" type="number" min="0" value="${index}"></label><label>Visibility<select data-state-meta="visibility"><option value="preserve">Preserve authored</option><option value="show">Show</option><option value="hide">Hide</option></select></label><label>Icon / symbol<input data-state-meta="icon" placeholder="Preserve authored icon"></label></div></details>${["standard", "pressed", "selected", "disabled"].includes(name) ? "" : '<button type="button" data-state-delete>Delete</button>'}`;
+      row.appendChild(mapping);
+      mapping.querySelector('[data-state-meta="activationKind"]').value = defaults.kind;
+      mapping.querySelector('[data-state-meta="activationValue"]').value = defaults.value;
+      mapping.querySelector("[data-state-simulate]").onclick = () => simulateCustomState(row.dataset.state);
+      mapping.querySelector("[data-state-delete]")?.addEventListener("click", () => {
+        row.remove();
+        collectCustomStateStyles();
+        refreshCustomGeneratedCode();
+      });
+    });
+    updateCustomStateSimulationAvailability();
+  }
+  function addCustomStateRow(kind = "digital") {
+    ensureCustomStateRowsEnhanced();
+    const existing = [...$("custom-state-grid").querySelectorAll(".custom-state-row")],
+      number = existing.filter((row) => row.dataset.state.startsWith(kind === "analog" ? "mode-" : "state-")).length + 1,
+      name = `${kind === "analog" ? "mode" : "state"}-${number}`,
+      row = existing.find((entry) => entry.dataset.state === "selected").cloneNode(true);
+    row.dataset.state = name;
+    row.querySelector("strong").textContent = kind === "analog" ? `Mode ${number}` : `State ${number}`;
+    row.querySelector(".custom-state-mapping")?.remove();
+    row.querySelectorAll('[data-style="text"],[data-style="asset"] input').forEach((input) => input.value = "");
+    $("custom-state-grid").appendChild(row);
+    ensureCustomStateRowsEnhanced();
+    row.querySelector('[data-state-meta="activationKind"]').value = kind === "analog" ? "analog-index" : "class";
+    row.querySelector('[data-state-meta="activationValue"]').value = name;
+    row.querySelector('[data-state-meta="modeIndex"]').value = String(existing.length);
+    collectCustomStateStyles();
+    refreshCustomGeneratedCode();
+  }
+  function simulateCustomState(name) {
+    if (!updateCustomStateSimulationAvailability()) {
+      $("custom-state-summary").textContent = "Choose a valid part in ‘Which part changes appearance?’ before simulating.";
+      return;
+    }
+    const frame = $("custom-component-preview")?.contentWindow,
+      normalized = String(name || "standard").replace(/^state-/, "").toLowerCase(),
+      connections = customWorkbenchDraft?.connections || [],
+      states = customWorkbenchDraft?.states || [],
+      selectedConnection = connections.find((connection) =>
+        connection.direction === "input" &&
+        connection.type === "digital" &&
+        (/selected/i.test(connection.key || "") || ["checkedState", "selectedClass", "classState"].includes(connection.action)),
+      ),
+      modeConnection = connections.find((connection) =>
+        connection.direction === "input" &&
+        connection.type === "analog" &&
+        (connection.action === "stateIndex" || /(?:state|mode)/i.test(connection.key || "")),
+      ),
+      stateDefinition = states.find((entry) =>
+        [entry.id, entry.name].some((value) => String(value || "").replace(/^state-/, "").toLowerCase() === normalized),
+      );
+    frame?.postMessage({ type: "composer-state-simulate", state: normalized }, "*");
+    if (selectedConnection && ["standard", "selected"].includes(normalized))
+      sendCustomSimulatorInput(selectedConnection, normalized === "selected");
+    if (modeConnection && stateDefinition?.modeIndex != null)
+      sendCustomSimulatorInput(modeConnection, Number(stateDefinition.modeIndex));
+    $("custom-state-summary").textContent =
+      `Simulating ${stateDefinition?.name || normalized}. ${selectedConnection || modeConnection ? "Mapped Crestron feedback was also applied." : "Authored transitions remain active."}`;
   }
   function setCustomStateStyles(config) {
     const defaults = {
@@ -18202,6 +19813,19 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     $("custom-state-enabled").checked = !!config?.selector;
     $("custom-state-controls").hidden = !config?.selector;
     $("custom-state-selector").value = config?.selector || "";
+    renderCustomStatePartOptions();
+    const grid = $("custom-state-grid"), builtIns = new Set(["standard", "pressed", "selected", "disabled"]);
+    grid.querySelectorAll(".custom-state-row").forEach((row) => {
+      if (!builtIns.has(row.dataset.state)) row.remove();
+    });
+    Object.keys(config?.states || {}).filter((name) => !builtIns.has(name)).forEach((name) => {
+      const source = grid.querySelector('[data-state="selected"]'), row = source.cloneNode(true);
+      row.dataset.state = name;
+      row.querySelector("strong").textContent = name.replace(/[-_]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+      row.querySelector(".custom-state-mapping")?.remove();
+      grid.appendChild(row);
+    });
+    ensureCustomStateRowsEnhanced();
     $("custom-state-grid")
       .querySelectorAll(".custom-state-row")
       .forEach((row) => {
@@ -18232,39 +19856,115 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
           if (values[input.dataset.style] != null)
             input.value = values[input.dataset.style];
         });
+        const activation = values.activation || customStateActivationDefaults(row.dataset.state);
+        row.querySelector('[data-state-meta="activationKind"]').value = activation.kind || "class";
+        row.querySelector('[data-state-meta="activationValue"]').value = activation.value || "";
+        row.querySelector('[data-state-meta="modeIndex"]').value = String(values.modeIndex ?? [...row.parentElement.children].indexOf(row));
+        row.querySelector('[data-state-meta="visibility"]').value = values.visibility || "preserve";
+        row.querySelector('[data-state-meta="icon"]').value = values.icon || "";
+        row.querySelector('[data-state-meta="inheritContent"]').checked = row.dataset.state !== "standard" && values.inheritContent !== false;
       });
   }
   function customStateCss(config) {
     if (!config?.selector || !config.states) return "";
-    const suffixes = {
-        standard: "",
-        pressed: ":active",
-        selected: ".selected",
-        disabled: ".disabled",
-      },
-      aliases = {
-        pressed: `${config.selector}.composer-pressed`,
-        selected: `${config.selector}.active`,
-        disabled: `${config.selector}[disabled]`,
-      };
+    const activationSelector = (name, values) => {
+      const activation = values.activation || customStateActivationDefaults(name), value = String(activation.value || name).replace(/"/g, '\\"');
+      if (activation.kind === "standard") return config.selector;
+      if (activation.kind === "pointer") return `${config.selector}:active,${config.selector}.composer-pressed`;
+      if (activation.kind === "attribute") return `${config.selector}[${value}]`;
+      if (activation.kind === "data") return `${config.selector}[data-state="${value}"]`;
+      if (activation.kind === "analog-index") return `${config.selector}[data-composer-mode="${Number(values.modeIndex) || 0}"]`;
+      if (activation.kind === "property") return `${config.selector}[data-composer-property-state="${value}"]`;
+      return `${config.selector}.${value}`;
+    };
     return Object.entries(config.states)
       .map(([stateName, values]) => {
-        const selector = `${config.selector}${suffixes[stateName] || ""}`,
-          selectors = aliases[stateName]
-            ? `${selector},${aliases[stateName]}`
-            : selector,
+        const selectors = activationSelector(stateName, values),
           opacity = Math.max(0, Math.min(100, Number(values.opacity) || 0)) / 100,
           scale = Math.max(0, Number(values.scale) || 0) / 100,
           scaleDeclaration = Math.abs(scale - 1) > 0.0001
             ? `transform:scale(${scale})!important;`
-            : "";
-        return `${selectors}{background-color:${values.background}!important;color:${values.color}!important;border-color:${values.border}!important;box-shadow:0 0 12px ${values.glow}!important;opacity:${opacity}!important;${scaleDeclaration}${stateName === "disabled" ? "pointer-events:none!important;" : ""}}`;
+            : "",
+          visibility = values.visibility === "hide" ? "visibility:hidden!important;" : values.visibility === "show" ? "visibility:visible!important;" : "";
+        return `${selectors}{background-color:${values.background}!important;color:${values.color}!important;border-color:${values.border}!important;box-shadow:0 0 12px ${values.glow}!important;opacity:${opacity}!important;${scaleDeclaration}${visibility}${stateName === "disabled" ? "pointer-events:none!important;" : ""}}`;
       })
       .join("\n");
   }
   function customStateRuntime(config) {
     if (!config?.selector || !config.states) return "";
-    return `<script>(function(){var config=${JSON.stringify(config)},hasStateText=Object.keys(config.states).some(function(key){return!!config.states[key].text});function setup(target){var textTarget=target.querySelector('[data-state-text],[data-custom-text],.button-label,.label')||target,originalText=textTarget.textContent,pressed=false;function current(){if(target.classList.contains('disabled')||target.hasAttribute('disabled'))return'disabled';if(target.classList.contains('selected')||target.classList.contains('active'))return'selected';if(pressed)return'pressed';return'standard'}function apply(){var name=current(),state=config.states[name]||{},standard=config.states.standard||{},text=state.text||standard.text,asset=state.assetData||standard.assetData;if(text)textTarget.textContent=text;else if(hasStateText)textTarget.textContent=originalText;if(target.tagName==='IMG'){if(asset)target.src=asset}else target.style.backgroundImage=asset?'url("'+String(asset).replace(/"/g,'\\"')+'")':''}target.addEventListener('pointerdown',function(){pressed=true;target.classList.add('composer-pressed');apply()});['pointerup','pointercancel','pointerleave'].forEach(function(eventName){target.addEventListener(eventName,function(){pressed=false;target.classList.remove('composer-pressed');apply()})});new MutationObserver(apply).observe(target,{attributes:true,attributeFilter:['class','disabled']});apply()}document.querySelectorAll(config.selector).forEach(setup)})();<\/script>`;
+    return `<script>(function(){var config=${JSON.stringify(config)},forced='',hasStateText=Object.keys(config.states).some(function(key){return!!config.states[key].text});function setup(target){var textTarget=target.querySelector('[data-state-text],[data-custom-text],.button-label,.label')||target,iconTarget=target.querySelector('[data-state-icon],[data-custom-icon],.icon')||null,originalText=textTarget.textContent,originalIcon=iconTarget?iconTarget.textContent:'',pressed=false;function active(name,state){var activation=state.activation||{},value=activation.value||name;if(activation.kind==='pointer')return pressed;if(activation.kind==='class')return target.classList.contains(value);if(activation.kind==='attribute')return target.hasAttribute(value);if(activation.kind==='data')return target.dataset.state===value;if(activation.kind==='property')return Boolean(target[value]);if(activation.kind==='function')return typeof target[value]==='function'&&Boolean(target[value]());if(activation.kind==='analog-index')return Number(target.dataset.composerMode)===Number(state.modeIndex||0);return false}function current(){if(forced&&config.states[forced])return forced;var names=Object.keys(config.states).filter(function(name){return name!=='standard'});for(var i=names.length-1;i>=0;i--){if(active(names[i],config.states[names[i]]||{}))return names[i]}return'standard'}function apply(){var name=current(),state=config.states[name]||{},standard=config.states.standard||{},inherit=state.inheritContent!==false,text=state.text||(inherit?standard.text:''),icon=state.icon||(inherit?standard.icon:''),asset=state.assetData||(inherit?standard.assetData:'');if(text)textTarget.textContent=text;else if(hasStateText)textTarget.textContent=originalText;if(iconTarget)iconTarget.textContent=icon||originalIcon;if(target.tagName==='IMG'){if(asset)target.src=asset}else if(asset)target.style.backgroundImage='url("'+String(asset).replace(/"/g,'\\"')+'")'}target.addEventListener('pointerdown',function(){pressed=true;target.classList.add('composer-pressed');apply()});['pointerup','pointercancel','pointerleave'].forEach(function(eventName){target.addEventListener(eventName,function(){pressed=false;target.classList.remove('composer-pressed');apply()})});new MutationObserver(apply).observe(target,{attributes:true});window.addEventListener('message',function(event){if(event.data&&event.data.type==='composer-state-simulate'){forced=event.data.state||'';apply()}});apply()}document.querySelectorAll(config.selector).forEach(setup)})();<\/script>`;
+  }
+  function customAdapterBlocks() {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const blocks = [];
+    (customWorkbenchDraft.properties || []).filter((mapping) => !["legacy-adapter-rules", "authored-token"].includes(mapping.target?.kind)).forEach((mapping) => {
+      const base = customScopedPropertyTypes.find((entry) => entry.value === mapping.capability),
+        definition = base ? { ...base, type: mapping.type || base.type, targetName: mapping.target?.name || base.targetName, unit: mapping.unit || base.unit || "" } : null,
+        selectors = (mapping.targets?.length ? mapping.targets : [mapping.target]).map((target) => target?.selector).filter(Boolean);
+      if (!definition) return;
+      blocks.push({ id: mapping.id, mappingId: mapping.id, kind: "property", title: `Property · ${mapping.label || mapping.key}`, css: selectors.map((selector) => customScopedPropertyCss(definition, selector, mapping.key)).filter(Boolean).join("\n"), javascript: selectors.map((selector) => customScopedPropertyJavascript(definition, selector, mapping.key)).filter(Boolean).join("\n") });
+    });
+    (customWorkbenchDraft.connections || []).filter((mapping) => !["legacy-adapter-rules", "authored-runtime"].includes(mapping.target?.kind)).forEach((mapping) => {
+      // Rehydrate the generator from the normalized Workbench mapping. The
+      // row's legacy connectionConfig is not authoritative after editing.
+      const config = {
+          ...(mapping.connectionConfig || {}),
+          mapping: structuredClone(mapping.mapping || mapping.connectionConfig?.mapping || null),
+          holdDuration: mapping.holdDuration ?? mapping.connectionConfig?.holdDuration,
+          pulseDuration: mapping.pulseDuration ?? mapping.connectionConfig?.pulseDuration,
+          exclusive: mapping.exclusive ?? mapping.connectionConfig?.exclusive,
+          perItem: mapping.perItem ?? mapping.connectionConfig?.perItem,
+          zeroBased: mapping.zeroBased ?? mapping.connectionConfig?.zeroBased,
+          parameter: mapping.target?.parameter || mapping.connectionConfig?.parameter || "",
+        },
+        selector = mapping.target?.selector || config.selector || "";
+      blocks.push({ id: mapping.id, mappingId: mapping.id, kind: "connection", title: `Connection · ${mapping.label || mapping.key}`, css: "", javascript: selector ? customScopedSignalJavascript(mapping.type, mapping.direction, mapping.action, selector, mapping.key, { ...config, selector, key: mapping.key }) : "" });
+    });
+    const stateConfig = collectCustomStateStyles();
+    if (stateConfig) blocks.push({ id: "states", mappingId: "states", kind: "states", title: "States & Modes", css: customStateCss(stateConfig), javascript: customStateRuntime(stateConfig) });
+    return blocks;
+  }
+  function customGeneratedAdapter() {
+    const blocks = customAdapterBlocks();
+    return { version: 1, blocks, css: blocks.map((block) => block.css ? `/* ADAPTER ${block.id} */\n${block.css}` : "").filter(Boolean).join("\n\n"), javascript: blocks.map((block) => block.javascript ? `/* ADAPTER ${block.id} */\n${block.javascript}` : "").filter(Boolean).join("\n\n") };
+  }
+  function customAdapterRuntimeMarkup(javascript) {
+    const body = String(javascript || "")
+      // Some legacy generators returned complete script elements while the
+      // newer Workbench mappings return JavaScript bodies. Normalize both to
+      // one executable block so generated code can never become visible text.
+      .replace(/<script\b[^>]*>/gi, "")
+      .replace(/<\/script\s*>/gi, "")
+      .trim();
+    return body
+      ? `<script data-composer-adapter-runtime>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`
+      : "";
+  }
+  function customAdapterCollisions(adapter) {
+    const css = $("custom-source-css").value, javascript = $("custom-source-javascript").value, findings = [];
+    adapter.blocks.forEach((block) => {
+      const mapping = [...(customWorkbenchDraft?.properties || []), ...(customWorkbenchDraft?.connections || [])].find((entry) => entry.id === block.mappingId), selector = mapping?.target?.selector;
+      if (block.css && selector && css.includes(selector)) findings.push(`${block.title}: authored CSS and the adapter both target ${selector}. Verify which declaration should win.`);
+      if (block.javascript && mapping?.key && javascript.includes(mapping.key)) findings.push(`${block.title}: authored JavaScript also references “${mapping.key}”. Verify it will not publish or subscribe twice.`);
+    });
+    return [...new Set(findings)];
+  }
+  function focusCustomAdapterMapping(mappingId, fromAdapter = false) {
+    document.querySelectorAll(".custom-adapter-block,.custom-property-mapping-card").forEach((node) => node.classList.remove("active", "adapter-active"));
+    const escaped = CSS.escape(mappingId), block = $("custom-adapter-blocks")?.querySelector(`[data-mapping-id="${escaped}"]`), card = document.querySelector(`.custom-property-mapping-card[data-mapping-id="${escaped}"]`);
+    block?.classList.add("active"); card?.classList.add("adapter-active");
+    if (fromAdapter) card?.scrollIntoView({ block: "center", behavior: "smooth" });
+    else { switchCustomSourceTab("adapter"); block?.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  }
+  function renderCustomGeneratedAdapter() {
+    const adapter = customGeneratedAdapter(), host = $("custom-adapter-blocks"), collisionHost = $("custom-adapter-collisions");
+    if (!host || !collisionHost) return adapter;
+    host.innerHTML = ""; collisionHost.innerHTML = "";
+    const collisions = customAdapterCollisions(adapter);
+    collisions.forEach((finding) => { const row = document.createElement("div"); row.className = "custom-adapter-collision"; row.textContent = `Review — ${finding}`; collisionHost.appendChild(row); });
+    if (!collisions.length) collisionHost.textContent = "No authored/generated behavior collisions detected.";
+    adapter.blocks.forEach((block) => { const section = document.createElement("section"), button = document.createElement("button"), code = document.createElement("pre"); section.className = "custom-adapter-block"; section.dataset.mappingId = block.mappingId; button.type = "button"; button.textContent = block.title; button.onclick = () => focusCustomAdapterMapping(block.mappingId, true); code.textContent = [block.css && `CSS\n${block.css}`, block.javascript && `JavaScript\n${block.javascript}`].filter(Boolean).join("\n\n") || "No adapter code required."; section.append(button, code); host.appendChild(section); });
+    return adapter;
   }
   function refreshCustomGeneratedCode() {
     const rules = collectCustomBehaviors(),
@@ -18281,6 +19981,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     $("custom-generated-javascript").value =
       customBehaviorRuntime(rules, properties) ||
       "// No generated JavaScript behaviors yet.";
+    renderCustomGeneratedAdapter();
   }
   function renderCustomPlainLanguageReview() {
     const host = $("custom-behavior-review");
@@ -18666,6 +20367,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           .filter((rule) => rule.enabled !== false && rule.source === "property")
           .map((rule) => rule.key),
       ),
+      mappedPropertyKeys = new Set((customWorkbenchDraft?.properties || []).map((property) => property.key)),
       runtimeProperties = new Set([
       "bindingMode",
       "visibilityEnabled",
@@ -18678,6 +20380,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     properties.forEach((property) => {
       if (
         !runtimeProperties.has(property.key) &&
+        !mappedPropertyKeys.has(property.key) &&
         !behaviorPropertyKeys.has(property.key) &&
         !completeSource.includes(`{{${property.key}}}`) &&
         !completeSource.includes(`{{${property.key}Json}}`)
@@ -18719,6 +20422,129 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (signals.some((signal) => signal.key === selected))
       $("custom-preview-signal").value = selected;
     $("custom-preview-send").disabled = !signals.length;
+    renderCustomSignalSimulator();
+  }
+  function sendCustomSimulatorInput(signal, value) {
+    $("custom-component-preview").contentWindow?.postMessage(
+      { type: "composer-signal", key: signal.key, value },
+      "*",
+    );
+    $("custom-preview-log").textContent +=
+      `\nFeedback ${signal.key} = ${JSON.stringify(value)}`;
+  }
+  function customSimulatorAnalogScale(signal) {
+    const mapping = signal?.connectionConfig?.mapping ||
+        customWorkbenchDraft?.connections?.find(
+          (connection) => connection.key === signal?.key,
+        )?.mapping,
+      finite = (value, fallback) =>
+        Number.isFinite(Number(value)) ? Number(value) : fallback;
+    if (!mapping) return null;
+    const inputMin = finite(mapping.inputMin, 0),
+      inputMax = finite(mapping.inputMax, 65535),
+      outputMin = inputMin,
+      outputMax = inputMax;
+    if (inputMax === inputMin) return null;
+    return {
+      inputMin,
+      inputMax,
+      outputMin,
+      outputMax,
+      invert: !!mapping.invert,
+      unit: String(mapping.unit || ""),
+    };
+  }
+  function renderCustomSignalSimulator() {
+    const inputHost = $("custom-simulator-inputs"),
+      outputHost = $("custom-simulator-outputs"),
+      target = $("custom-simulator-target"),
+      stateSelect = $("custom-simulator-state");
+    if (!inputHost || !outputHost || !target || !stateSelect) return;
+    const signals = collectCustomSignals(),
+      inputs = signals.filter((signal) => signal.direction === "input"),
+      outputs = signals.filter((signal) => signal.direction === "output"),
+      makeTitle = (signal) => {
+        const label = document.createElement("label"), strong = document.createElement("strong"), small = document.createElement("small");
+        strong.textContent = signal.name || signal.key;
+        small.textContent = `${signal.type} ${signal.direction || "input"} · ${signal.key}`;
+        label.append(strong, small);
+        return label;
+      };
+    inputHost.innerHTML = "";
+    inputs.forEach((signal) => {
+      const row = document.createElement("div"), control = document.createElement("div"), send = document.createElement("button");
+      row.className = "custom-simulator-row";
+      send.type = "button";
+      send.textContent = "Send";
+      if (signal.type === "digital") {
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.onchange = () => sendCustomSimulatorInput(signal, checkbox.checked);
+        control.append(checkbox, document.createTextNode(" TRUE / selected"));
+        send.onclick = () => sendCustomSimulatorInput(signal, checkbox.checked);
+      } else if (signal.type === "analog") {
+        const pair = document.createElement("div"), range = document.createElement("input"), number = document.createElement("input"), scale = customSimulatorAnalogScale(signal), minimum = scale?.inputMin ?? 0, maximum = scale?.inputMax ?? 65535, initial = minimum;
+        pair.className = "custom-simulator-value-pair";
+        range.type = "range"; range.min = String(minimum); range.max = String(maximum); range.value = String(initial);
+        number.type = "number"; number.min = String(minimum); number.max = String(maximum); number.value = String(initial);
+        if (scale) {
+          const hint = document.createElement("small");
+          hint.className = "hint";
+          hint.textContent = `Crestron input: ${minimum}–${maximum}${scale.unit ? ` ${scale.unit}` : ""}`;
+          pair.append(hint);
+        }
+        const bounded = () => Math.max(minimum, Math.min(maximum, Number(number.value) || minimum));
+        range.oninput = () => { number.value = range.value; sendCustomSimulatorInput(signal, bounded()); };
+        number.oninput = () => { range.value = String(bounded()); };
+        send.onclick = () => sendCustomSimulatorInput(signal, bounded());
+        pair.append(range, number); control.append(pair);
+      } else {
+        const textInput = document.createElement("input");
+        textInput.type = "text"; textInput.placeholder = "Serial feedback text";
+        textInput.onkeydown = (event) => { if (event.key === "Enter") sendCustomSimulatorInput(signal, textInput.value); };
+        send.onclick = () => sendCustomSimulatorInput(signal, textInput.value);
+        control.append(textInput);
+      }
+      row.append(makeTitle(signal), control, send);
+      inputHost.appendChild(row);
+    });
+    if (!inputs.length) inputHost.innerHTML = '<small class="hint">No Crestron input connections are defined.</small>';
+    outputHost.innerHTML = "";
+    outputs.forEach((signal) => {
+      const row = document.createElement("div"), label = makeTitle(signal), value = document.createElement("output");
+      row.className = "custom-simulator-row";
+      row.dataset.outputKey = signal.key;
+      value.className = "custom-simulator-output";
+      value.textContent = "Waiting for output…";
+      row.append(label, value);
+      outputHost.appendChild(row);
+    });
+    if (!outputs.length) outputHost.innerHTML = '<small class="hint">No Crestron output connections are defined.</small>';
+    const targets = new Map();
+    collectCustomBehaviors()
+      .filter((rule) => rule.enabled !== false && rule.source === "signal-output" && rule.selector)
+      .forEach((rule) => targets.set(rule.selector, rule.name || rule.key || rule.selector));
+    (customWorkbenchDraft?.connections || [])
+      .filter((connection) => connection.direction === "output" && connection.target?.selector)
+      .forEach((connection) => targets.set(connection.target.selector, connection.label || connection.key));
+    target.replaceChildren();
+    if (targets.size)
+      [...targets].forEach(([selector, label]) =>
+        target.add(new Option(`${label} — ${selector}`, selector)),
+      );
+    else target.add(new Option("No interaction target", ""));
+    const states = customWorkbenchDraft?.states || [];
+    stateSelect.replaceChildren();
+    if (states.length)
+      states.forEach((stateDefinition) =>
+        stateSelect.add(
+          new Option(
+            `${stateDefinition.name || stateDefinition.id}${stateDefinition.modeIndex != null ? ` · mode ${stateDefinition.modeIndex}` : ""}`,
+            String(stateDefinition.id || stateDefinition.name).replace(/^state-/, ""),
+          ),
+        ),
+      );
+    else stateSelect.add(new Option("No mapped states or modes", ""));
   }
   function refreshCustomPreview() {
     const previewProperties = Object.fromEntries(
@@ -18730,14 +20556,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           : property.defaultValue,
       ]),
     );
+    const adapter = customGeneratedAdapter();
     let source =
       composeCustomSource(true) +
       customRepeatedFrameRuntime(collectCustomRepeatedItems()).replace(
         /\{\{([A-Za-z_$][\w$]*)\}\}/g,
         (_, key) => String(previewProperties[key] ?? ""),
       ) +
-      `<style data-composer-states>${customStateCss(collectCustomStateStyles())}</style>` +
-      customStateRuntime(collectCustomStateStyles()) +
+      (adapter.css ? `<style data-composer-adapter>${adapter.css}</style>` : "") +
+      customAdapterRuntimeMarkup(adapter.javascript) +
       `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
       customBehaviorRuntime(collectCustomBehaviors(), previewProperties);
     collectCustomProperties().forEach((property) => {
@@ -18755,11 +20582,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           String(previewProperties[property.key] ?? ""),
         );
     });
-    let previewBridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-self-test')return;var missing=[],pending=[];(event.data.rules||[]).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}var fire=function(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))};if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='hold'){fire('pointerdown');pending.push(new Promise(function(resolve){setTimeout(function(){fire('pointerup');resolve()},Math.min(3000,Math.max(1,Number(rule.parameter)||1000)+25))}))}else{fire('pointerdown');fire('pointerup')}});Promise.all(pending).then(function(){parent.postMessage({type:'composer-self-test-complete',missing:missing},'*')})});${customElementPickerActive ? `var pickedStyle=document.createElement('style');pickedStyle.textContent='.composer-picked{outline:2px solid #ffd84d!important;outline-offset:2px!important;cursor:crosshair!important}';document.head.appendChild(pickedStyle);document.addEventListener('pointerover',function(event){document.querySelectorAll('.composer-picked').forEach(function(node){node.classList.remove('composer-picked')});event.target.classList.add('composer-picked')},true);document.addEventListener('pointerdown',function(event){event.preventDefault();event.stopImmediatePropagation();var element=event.target,original=element,selector;if(element.id)selector='#'+CSS.escape(element.id);else{var parts=[];while(element&&element!==document.body){var part=element.tagName.toLowerCase(),classes=Array.from(element.classList||[]).filter(function(name){return name!=='composer-picked'});if(classes.length)part+='.'+classes.map(CSS.escape).join('.');else if(element.parentElement){var siblings=Array.from(element.parentElement.children).filter(function(node){return node.tagName===element.tagName});if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(element)+1)+')'}parts.unshift(part);element=element.parentElement}selector=parts.join(' > ')}parent.postMessage({type:'composer-element-picked',selector:selector,element:{tag:original.tagName.toLowerCase(),inputType:original.type||'',role:original.getAttribute('role')||'',id:original.id||'',className:Array.from(original.classList||[]).filter(function(name){return name!=='composer-picked'}).join(' '),ariaLabel:original.getAttribute('aria-label')||'',text:(original.textContent||'').trim().slice(0,120),childCount:original.children.length}},'*')},true);` : ""}})();<\/script>`;
+    let previewBridge = `<script>(function(){if(!window.ComposerSignals){var callbacks={};window.ComposerSignals={publish:function(key,value){parent.postMessage({type:'composer-custom-publish',key:key,value:value},'*')},subscribe:function(key,callback){(callbacks[key]||(callbacks[key]=[])).push(callback)}};window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-signal')return;(callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)})})}window.ComposerComponent={publish:window.ComposerSignals.publish};window.addEventListener('error',function(e){parent.postMessage({type:'composer-preview-error',message:e.message},'*')});window.addEventListener('message',function(event){if(!event.data||event.data.type!=='composer-self-test')return;var missing=[],pending=[];(event.data.rules||[]).forEach(function(rule){var target;try{target=document.querySelector(rule.selector)}catch(error){}if(!target){missing.push(rule.selector);return}var fire=function(name){target.dispatchEvent(new Event(name,{bubbles:true,cancelable:true}))};if(rule.action==='click')target.click();else if(rule.action==='release')fire('pointerup');else if(rule.action==='hold'){fire('pointerdown');pending.push(new Promise(function(resolve){setTimeout(function(){fire('pointerup');resolve()},Math.min(3000,Math.max(1,Number(rule.parameter)||1000)+25))}))}else{fire('pointerdown');fire('pointerup')}});Promise.all(pending).then(function(){parent.postMessage({type:'composer-self-test-complete',missing:missing},'*')})});${customElementPickerActive ? `var pickedStyle=document.createElement('style');pickedStyle.textContent='.composer-picked{outline:2px solid #ffd84d!important;outline-offset:2px!important;cursor:crosshair!important}';document.head.appendChild(pickedStyle);function visualElementAt(x,y,outerLevel){var candidates=Array.from(document.querySelectorAll('body *')).map(function(node){var rect=node.getBoundingClientRect(),style=getComputedStyle(node),depth=0,parentNode=node;while(parentNode&&parentNode!==document.body){depth++;parentNode=parentNode.parentElement}return{node:node,rect:rect,style:style,depth:depth,area:rect.width*rect.height}}).filter(function(item){return item.rect.width>1&&item.rect.height>1&&x>=item.rect.left&&x<=item.rect.right&&y>=item.rect.top&&y<=item.rect.bottom&&item.style.display!=='none'&&item.style.visibility!=='hidden'&&Number(item.style.opacity||1)>0});candidates.sort(function(a,b){return a.area-b.area||b.depth-a.depth});return candidates.length?candidates[Math.min(Math.max(0,Number(outerLevel)||0),candidates.length-1)].node:document.body}function markPickedAt(event){document.querySelectorAll('.composer-picked').forEach(function(node){node.classList.remove('composer-picked')});var target=visualElementAt(event.clientX,event.clientY,event.shiftKey?1:0);if(target&&target!==document.body)target.classList.add('composer-picked');return target}document.addEventListener('pointermove',markPickedAt,true);document.addEventListener('pointerdown',function(event){event.preventDefault();event.stopImmediatePropagation();var element=markPickedAt(event);if(!element||element===document.body)return;var original=element,selector;if(element.id)selector='#'+CSS.escape(element.id);else{var parts=[];while(element&&element!==document.body){var part=element.tagName.toLowerCase(),classes=Array.from(element.classList||[]).filter(function(name){return name!=='composer-picked'});if(classes.length)part+='.'+classes.map(CSS.escape).join('.');else if(element.parentElement){var siblings=Array.from(element.parentElement.children).filter(function(node){return node.tagName===element.tagName});if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(element)+1)+')'}parts.unshift(part);element=element.parentElement}selector=parts.join(' > ')}var style=getComputedStyle(original),attributes={};Array.from(original.attributes||[]).forEach(function(attribute){if(attribute.name!=='style')attributes[attribute.name]=attribute.value});parent.postMessage({type:'composer-element-picked',selector:selector,element:{tag:original.tagName.toLowerCase(),inputType:original.type||'',role:original.getAttribute('role')||'',id:original.id||'',className:Array.from(original.classList||[]).filter(function(name){return name!=='composer-picked'}).join(' '),ariaLabel:original.getAttribute('aria-label')||'',text:(original.textContent||'').trim().slice(0,120),childCount:original.children.length,attributes:attributes,computed:{display:style.display,position:style.position,width:style.width,height:style.height,color:style.color,backgroundColor:style.backgroundColor,borderRadius:style.borderRadius,boxShadow:style.boxShadow,fontSize:style.fontSize}}},'*')},true);` : ""}})();<\/script>`;
     previewBridge = previewBridge.replace(
       "else{fire('pointerdown');fire('pointerup')}",
-      "else if(rule.action==='input'||rule.action==='change'){if(target.type==='checkbox')target.checked=!target.checked;else if('value'in target)target.value=target.type==='range'||target.type==='number'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup')}",
+      "else if(rule.action==='input'||rule.action==='change'){if(target.type==='checkbox')target.checked=!target.checked;else if('value'in target)target.value=target.type==='range'||target.type==='number'?String((Number(target.min||0)+Number(target.max||100))/2):'SELF_TEST';fire(rule.action)}else{fire('pointerdown');fire('pointerup');fire('pointerdown');fire('pointercancel')}",
     );
+    previewBridge += `<script>(function(){function fire(target,name){var event;try{event=new PointerEvent(name,{bubbles:true,cancelable:true,pointerId:1,pointerType:'touch',isPrimary:true})}catch(error){event=new Event(name,{bubbles:true,cancelable:true})}target.dispatchEvent(event)}window.addEventListener('message',function(event){var data=event.data;if(!data||data.type!=='composer-pointer-simulate')return;var target;try{target=document.querySelector(data.selector)}catch(error){}if(!target)return;if(data.lifecycle==='press')fire(target,'pointerdown');else if(data.lifecycle==='release')fire(target,'pointerup');else if(data.lifecycle==='cancel')fire(target,'pointercancel');else if(data.lifecycle==='hold'){fire(target,'pointerdown');setTimeout(function(){fire(target,'pointerup')},Math.max(50,Number(data.duration)||1000))}})})();<\/script>`;
     const previewFrame = $("custom-component-preview"),
       previewPanel = previewFrame.closest(".custom-source-panel"),
       // Disabled alongside the placed-widget escape in registerCustomComponent -
@@ -18801,6 +20629,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           }
         : null,
     );
+    previewFrame.onload = () => {
+      renderCustomWorkbenchParts();
+    };
     previewFrame.srcdoc = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
         previewBridge +
@@ -19232,6 +21063,88 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       javascript: "",
     },
   };
+  function customStarterRootSelector(template = {}) {
+    const classMatch = String(template.html || "").match(/class=["']([^"']+)["']/i),
+      firstClass = classMatch?.[1]?.trim().split(/\s+/)[0];
+    if (firstClass) return `.${firstClass.replace(/[^A-Za-z0-9_-]/g, "")}`;
+    const idMatch = String(template.html || "").match(/id=["']([^"']+)["']/i);
+    if (idMatch?.[1]) return `#${idMatch[1].replace(/[^A-Za-z0-9_-]/g, "")}`;
+    return "body > :first-child";
+  }
+  function populateCustomWorkbenchFromStarterTemplate(template = {}, templateKey = "blank") {
+    const selector = customStarterRootSelector(template),
+      propertyDefinitions = collectCustomProperties(),
+      signalDefinitions = collectCustomSignals(),
+      role = {
+        button: "button",
+        toggle: "toggle",
+        slider: "slider",
+        gauge: "gauge",
+        text: "textInput",
+        repeated: "repeated",
+      }[templateKey] || "element",
+      part = {
+        id: "part-component-root",
+        name: templateKey === "repeated" ? "Repeated item collection" : "Component root",
+        selector,
+        role,
+        multiple: false,
+        metadata: { starterTemplate: templateKey, authored: true },
+      },
+      properties = propertyDefinitions.map((property, index) => ({
+        id: `property-${property.key || index + 1}`,
+        key: property.key,
+        label: property.name || property.key,
+        type: property.type || "text",
+        defaultValue: structuredClone(property.defaultValue),
+        ...(property.min != null ? { min: property.min } : {}),
+        ...(property.max != null ? { max: property.max } : {}),
+        ...(property.step != null ? { step: property.step } : {}),
+        ...(property.unit ? { unit: property.unit } : {}),
+        target: { kind: "authored-token", partId: part.id, selector, name: `{{${property.key}}}` },
+        targets: [{ kind: "authored-token", partId: part.id, selector, name: `{{${property.key}}}` }],
+        capability: "authoredToken",
+        starterTemplate: true,
+      })),
+      connections = signalDefinitions.map((signal, index) => ({
+        id: `connection-${signal.key || index + 1}`,
+        key: signal.key,
+        label: signal.name || signal.key,
+        type: signal.type || "digital",
+        direction: signal.direction || "input",
+        defaultValue: signal.defaultValue || "",
+        action: "authoredRuntime",
+        target: { kind: "authored-runtime", partId: part.id, selector, parameter: signal.key },
+        ...(signal.range ? { range: structuredClone(signal.range) } : {}),
+        starterTemplate: true,
+      })),
+      states = templateKey === "toggle"
+        ? [
+            { id: "state-standard", name: "Standard", target: { partId: part.id }, activation: { kind: "standard", value: "" }, definition: { preserveAuthored: true } },
+            { id: "state-selected", name: "Selected", target: { partId: part.id }, activation: { kind: "class", value: "active" }, definition: { preserveAuthored: true } },
+          ]
+        : [];
+    customWorkbenchDraft = window.ComposerComponentWorkbench.normalize({
+      schemaVersion: 1,
+      parts: [part],
+      properties,
+      connections,
+      states,
+      repeatedCollections: template.repeatedItems ? [structuredClone(template.repeatedItems)] : [],
+      adapter: { version: 1, rules: [] },
+      authoredSource: {
+        field: "html",
+        originalSourceField: "originalSource",
+        preserveLocalBehavior: true,
+        starterTemplate: templateKey,
+      },
+    });
+    renderCustomWorkbenchParts();
+    renderCustomPropertyMappings();
+    renderCustomConnectionMappings();
+    renderCustomGeneratedAdapter();
+    return customWorkbenchDraft;
+  }
   function applyCustomStarterTemplate(
     key,
     refresh = true,
@@ -19267,6 +21180,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       repeatedItemProperties(template.repeatedItems).forEach(addCustomPropertyRow);
       repeatedItemSignals(template.repeatedItems).forEach(addCustomSignalRow);
     }
+    populateCustomWorkbenchFromStarterTemplate(template, key);
     if (refresh) refreshCustomPreview();
   }
   function setCustomRepeatedControls(config) {
@@ -19378,8 +21292,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-wizard-next").hidden = customWizardStep === 2;
     if (customWizardStep === 1) analyzeCustomElements();
     if (customWizardStep === 1) {
+      setCustomCapabilityPage(customCapabilityPage || "properties");
       refreshCustomPropertyCreator();
       refreshCustomSignalCreator();
+      renderCustomPropertyMappings();
+      renderCustomConnectionMappings();
       renderCustomVisualParts();
       refreshCustomGeneratedCode();
     }
@@ -19390,17 +21307,56 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
     dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
+  function setCustomCapabilityPage(page = "properties") {
+    const dialog = $("custom-component-dialog"),
+      valid = new Set(["properties", "connections", "states", "repeated", "code", "advanced"]);
+    customCapabilityPage = valid.has(page) ? page : "properties";
+    dialog.querySelectorAll("[data-custom-capability-page]").forEach((button) => {
+      const active = button.dataset.customCapabilityPage === customCapabilityPage;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+    });
+    dialog.querySelectorAll("[data-capability-panel]").forEach((panel) => {
+      const active = panel.dataset.capabilityPanel === customCapabilityPage;
+      panel.hidden = !active;
+      if (active && panel.tagName === "DETAILS") panel.open = true;
+    });
+    if (customCapabilityPage === "properties") {
+      $("custom-property-creator").hidden = false;
+      $("custom-signal-creator").hidden = true;
+      refreshCustomPropertyCreator();
+      renderCustomPropertyMappings();
+    } else if (customCapabilityPage === "connections") {
+      $("custom-property-creator").hidden = true;
+      $("custom-signal-creator").hidden = false;
+      refreshCustomSignalCreator();
+      renderCustomConnectionMappings();
+    } else if (customCapabilityPage === "code") {
+      switchCustomSourceTab(document.querySelector("[data-custom-tab].active")?.dataset.customTab || "html");
+    } else if (customCapabilityPage === "advanced") {
+      renderCustomWorkbenchParts();
+      renderCustomGeneratedAdapter();
+    } else if (customCapabilityPage === "states") {
+      renderCustomStatePartOptions();
+      ensureCustomStateRowsEnhanced();
+    }
+    dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
+  }
   function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
     customEditingId = entry?.id || "";
     customBuilderSourceItemId = item?.id || "";
     customDraftNaturalSize = null;
     customElementPickerActive = false;
+    $("custom-component-dialog").classList.remove("custom-picker-active");
+    $("custom-preview-picker-close").hidden = true;
+    $("custom-picker-instruction").hidden = true;
     customAnalyzedElements = [];
     customSavedElementRoles = structuredClone(entry?.elementRoles || []);
     customPreservedRelationships = structuredClone(
       entry?.preservedRelationships || [],
     );
     customPickedElement = null;
+    ensureCustomWorkbenchDraft(entry);
     $("custom-element-selector").value = "";
     $("custom-element-classifier").hidden = true;
     $("custom-element-result").textContent =
@@ -19504,7 +21460,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     loadCustomOriginalSource(entry);
     refreshCustomPreview();
     analyzeCustomElements();
+    seedCustomWorkbenchParts(customAnalyzedElements);
+    renderCustomWorkbenchParts();
     customWizardStep = 0;
+    customCapabilityPage = "properties";
     setCustomWizardStep(0);
     $("custom-component-dialog").showModal();
   }
@@ -19522,6 +21481,48 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("new-custom-component").onclick = openComponentCreator;
   $("new-custom-component-menu").onclick = openComponentCreator;
   $("custom-package-menu").onclick = () => $("custom-package-file").click();
+  $("export-component-menu").onclick = () => {
+    const host = $("export-component-list");
+    host.innerHTML = "";
+    if (!state.customComponents.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "No custom components are installed yet.";
+      host.appendChild(empty);
+    } else
+      [...state.customComponents]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((entry) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.innerHTML = `<strong></strong><span></span>`;
+          button.querySelector("strong").textContent = entry.name;
+          button.querySelector("span").textContent = `${entry.category || "Custom"} · v${entry.version || "1.0.0"}`;
+          button.onclick = () => {
+            exportCustomComponentEntry(entry);
+            $("export-component-dialog").close();
+          };
+          host.appendChild(button);
+        });
+    $("export-component-dialog").showModal();
+  };
+  $("export-component-library-menu").onclick = () => {
+    if (!state.customComponents.length) {
+      alert("There are no custom components to export.");
+      return;
+    }
+    const library = componentLibraryDocument();
+    library.format = "crestron-ui-composer-component-library";
+    library.name = "Composer Component Library";
+    download(
+      "Composer-Component-Library.cuicomponents",
+      JSON.stringify(library, null, 2),
+      "application/json",
+    );
+    setStatus(`Exported ${library.components.length} installed component${library.components.length === 1 ? "" : "s"}`);
+  };
+  $("import-component-library-menu").onclick = () =>
+    $("component-library-file").click();
   $("creator-import-code").onclick = () => {
     $("component-creator-dialog").close();
     openTranslateImport();
@@ -19569,6 +21570,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   document.querySelectorAll("[data-custom-wizard-step]").forEach((button) => {
     button.onclick = () => setCustomWizardStep(button.dataset.customWizardStep);
   });
+  document.querySelectorAll("[data-custom-capability-page]").forEach((button) => {
+    button.onclick = () => setCustomCapabilityPage(button.dataset.customCapabilityPage);
+  });
   $("custom-behavior-add").onclick = () => addCustomBehaviorRow();
   $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
   $("custom-scope-add-property").onclick = () => openCustomScopeCreator("property");
@@ -19589,8 +21593,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     delete $("custom-property-label").dataset.edited;
     refreshCustomPropertyCreator();
   };
-  ["custom-property-key", "custom-property-label", "custom-property-default"].forEach(
-    (id) => ($(id).oninput = () => ($(id).dataset.edited = "true")),
+  $("custom-property-additional-targets").onchange = refreshCustomPropertyCreator;
+  [
+    "custom-property-key",
+    "custom-property-label",
+    "custom-property-default",
+    "custom-property-target-name",
+    "custom-property-unit",
+    "custom-property-min",
+    "custom-property-max",
+    "custom-property-step",
+    "custom-property-value-type",
+  ].forEach(
+    (id) => ($(id).oninput = () => {
+      $(id).dataset.edited = "true";
+      refreshCustomPropertyCreator();
+    }),
   );
   $("custom-property-create").onclick = createScopedCustomProperty;
   ["custom-signal-capability-type", "custom-signal-capability-direction"].forEach(
@@ -19613,51 +21631,117 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     "custom-signal-capability-key",
     "custom-signal-capability-label",
     "custom-signal-capability-address",
-  ].forEach((id) => ($(id).oninput = () => ($(id).dataset.edited = "true")));
+    "custom-signal-parameter",
+    "custom-signal-hold-duration",
+    "custom-signal-pulse-duration",
+    "custom-signal-input-min",
+    "custom-signal-input-max",
+    "custom-signal-unit",
+  ].forEach((id) => ($(id).oninput = () => {
+    $(id).dataset.edited = "true";
+    refreshCustomSignalCreator();
+  }));
+  [
+    "custom-signal-exclusive",
+    "custom-signal-invert",
+    "custom-signal-clamp",
+    "custom-signal-zero-based",
+    "custom-signal-per-item",
+  ].forEach((id) => ($(id).onchange = refreshCustomSignalCreator));
   $("custom-signal-create").onclick = createScopedCustomSignal;
+  function addCustomStateConnection({ key, label, type, direction, address, selector, action, parameter = "", outputMax = 65535 }) {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const signal = { key, name: label, type, direction, defaultValue: address },
+      config = {
+        type, direction, action, selector, key, label, address, parameter,
+        holdDuration: 3000, pulseDuration: 100, exclusive: true,
+        perItem: false, zeroBased: true,
+        mapping: { enabled: type === "analog", inputMin: 0, inputMax: outputMax, outputMin: 0, outputMax, unit: "", invert: false, clamp: true },
+      };
+    ensureCustomSignal(signal);
+    const script = customScopedSignalJavascript(type, direction, action, selector, key, config),
+      id = `connection-${key}`,
+      sourceId = `signal-${id}`;
+    // State connection code is generated in the separate adapter.
+    const partId = customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "",
+      mapping = { id, key, label, type, direction, defaultValue: address, target: { kind: "generated-adapter", partId, selector }, action, parameter, connectionConfig: config, generatedSourceId: sourceId };
+    const index = customWorkbenchDraft.connections.findIndex((entry) => entry.key === key);
+    if (index >= 0) customWorkbenchDraft.connections[index] = mapping;
+    else customWorkbenchDraft.connections.push(mapping);
+  }
   $("custom-state-signals").onclick = () => {
     const selector = $("custom-state-selector").value.trim();
     if (!selector) {
       alert("Pick an element or enter the state target selector first.");
       return;
     }
-    const base = customContractBase(),
-      definitions = [
-        {
-          signal: { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: `${base}.Selected` },
-          action: "selectedClass",
-        },
-      ];
-    definitions.forEach(({ signal, action }) => {
-      ensureCustomSignal(signal);
-      const exists = collectCustomBehaviors().some(
-        (rule) =>
-          rule.source === "signal-input" &&
-          rule.key === signal.key &&
-          rule.selector === selector &&
-          rule.action === action,
-      );
-      if (!exists)
-        addCustomBehaviorRow({
-          source: "signal-input",
-          key: signal.key,
-          selector,
-          action,
-        });
+    const base = customContractBase(), config = collectCustomStateStyles(), entries = Object.entries(config?.states || {}),
+      analogModes = entries.filter(([, definition]) => definition.activation?.kind === "analog-index"),
+      digitalStates = entries.filter(([name, definition]) => !["standard", "pressed", "selected", "disabled"].includes(name) && definition.activation?.kind !== "analog-index");
+    addCustomStateConnection({ key: "selected", label: "Selected", type: "digital", direction: "input", address: `${base}.Selected`, selector, action: "selectedClass" });
+    digitalStates.forEach(([name, definition]) => {
+      const key = normalizeCustomKey(name) || "state";
+      addCustomStateConnection({ key, label: `${name.replace(/[-_]+/g, " ")} Selected`, type: "digital", direction: "input", address: `${base}.${key}.Selected`, selector, action: "classState", parameter: definition.activation?.value || name });
     });
+    if (analogModes.length) {
+      const maximum = Math.max(...analogModes.map(([, definition]) => Number(definition.modeIndex) || 0), 0);
+      addCustomStateConnection({ key: "state", label: "State", type: "analog", direction: "input", address: `${base}.State`, selector, action: "stateIndex", outputMax: maximum });
+      addCustomStateConnection({ key: "stateFeedback", label: "State Feedback", type: "analog", direction: "output", address: `${base}.StateFeedback`, selector, action: "selectedIndex", outputMax: maximum });
+    }
+    renderCustomConnectionMappings();
+    refreshCustomSignalTester();
+    $("custom-state-summary").textContent = `Added Selected${digitalStates.length ? `, ${digitalStates.length} custom digital state${digitalStates.length === 1 ? "" : "s"}` : ""}${analogModes.length ? ", and analog State/Feedback" : ""} connections.`;
     refreshCustomPreview();
   };
   $("custom-state-enabled").onchange = () => {
     const enabled = $("custom-state-enabled").checked;
     $("custom-state-controls").hidden = !enabled;
+    if (enabled) {
+      renderCustomStatePartOptions();
+      ensureCustomStateRowsEnhanced();
+    }
+    collectCustomStateStyles();
     refreshCustomPreview();
   };
-  $("custom-state-selector").oninput = refreshCustomPreview;
-  $("custom-state-grid")
-    .querySelectorAll("input,select")
-    .forEach((input) => (input.oninput = refreshCustomPreview));
+  $("custom-state-selector").oninput = () => {
+    const matched = (customWorkbenchDraft?.parts || []).find((part) => part.selector === $("custom-state-selector").value.trim());
+    $("custom-state-part").value = matched?.id || "";
+    updateCustomStateSimulationAvailability();
+    collectCustomStateStyles();
+    refreshCustomPreview();
+  };
+  $("custom-state-part").onchange = () => {
+    const option = $("custom-state-part").selectedOptions[0];
+    $("custom-state-selector").value = option?.dataset.selector || "";
+    updateCustomStateSimulationAvailability();
+    collectCustomStateStyles();
+    refreshCustomGeneratedCode();
+    refreshCustomPreview();
+  };
+  $("custom-state-highlight").onclick = () => {
+    const selector = $("custom-state-selector").value.trim(),
+      part = (customWorkbenchDraft?.parts || []).find((entry) => entry.selector === selector);
+    if (!part) {
+      $("custom-state-target-status").textContent = "Choose a component part first.";
+      return;
+    }
+    highlightCustomWorkbenchPart(part);
+  };
+  $("custom-state-grid").oninput = () => {
+    collectCustomStateStyles();
+    refreshCustomGeneratedCode();
+    refreshCustomPreview();
+  };
+  $("custom-state-grid").onchange = $("custom-state-grid").oninput;
+  $("custom-state-add").onclick = () => addCustomStateRow("digital");
+  $("custom-mode-add").onclick = () => addCustomStateRow("analog");
   $("custom-element-picker").onclick = () => {
     customElementPickerActive = !customElementPickerActive;
+    $("custom-component-dialog").classList.toggle("custom-picker-active", customElementPickerActive);
+    $("custom-preview-picker-close").hidden = !customElementPickerActive;
+    $("custom-preview-picker-close").textContent = "Cancel picking";
+    $("custom-picker-instruction").hidden = !customElementPickerActive;
+    $("custom-picker-instruction").textContent = "Move over the component to highlight a part, then click it. Hold Shift while clicking to select the next outer layer.";
     $("custom-element-picker").classList.toggle(
       "active",
       customElementPickerActive,
@@ -19666,6 +21750,49 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ? "Click an element…"
       : "Pick preview element";
     refreshCustomPreview();
+  };
+  $("custom-part-picker").onclick = () => {
+    customElementPickerActive = !customElementPickerActive;
+    $("custom-component-dialog").classList.toggle("custom-picker-active", customElementPickerActive);
+    $("custom-preview-picker-close").hidden = !customElementPickerActive;
+    $("custom-preview-picker-close").textContent = "Cancel picking";
+    $("custom-picker-instruction").hidden = !customElementPickerActive;
+    $("custom-picker-instruction").textContent = "Move over the component to highlight a part, then click it. Hold Shift while clicking to select the next outer layer.";
+    $("custom-part-picker").classList.toggle("active", customElementPickerActive);
+    $("custom-part-picker").textContent = customElementPickerActive
+      ? "Click a part in preview…"
+      : "Pick part from preview";
+    refreshCustomPreview();
+  };
+  $("custom-preview-picker-close").onclick = () => {
+    customElementPickerActive = false;
+    $("custom-component-dialog").classList.remove("custom-picker-active");
+    $("custom-preview-picker-close").hidden = true;
+    $("custom-preview-picker-close").textContent = "Cancel picking";
+    $("custom-picker-instruction").hidden = true;
+    $("custom-element-picker").classList.remove("active");
+    $("custom-element-picker").textContent = "Pick preview element";
+    $("custom-part-picker").classList.remove("active");
+    $("custom-part-picker").textContent = "Pick part from preview";
+    refreshCustomPreview();
+  };
+  $("custom-part-add").onclick = () => {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const part = {
+      id: customPartId("part"),
+      name: "New part",
+      selector: "",
+      role: "element",
+      multiple: false,
+    };
+    customWorkbenchDraft.parts.push(part);
+    renderCustomWorkbenchParts();
+    $("custom-part-list").lastElementChild?.querySelector("input")?.focus();
+  };
+  $("custom-part-rescan").onclick = () => {
+    const inventory = analyzeCustomElements();
+    seedCustomWorkbenchParts(inventory, true);
+    setStatus(`Rescanned source and found ${inventory.length} meaningful element${inventory.length === 1 ? "" : "s"}`);
   };
   $("custom-element-apply-role").onclick = applyCustomElementRole;
   $("custom-analyze-elements").onclick = analyzeCustomElements;
@@ -19731,6 +21858,28 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-preview-log").textContent +=
       `\nFeedback ${key} = ${JSON.stringify(value)}`;
   };
+  function simulateCustomPointerLifecycle(lifecycle) {
+    const selector = $("custom-simulator-target").value;
+    if (!selector) return;
+    const matching = collectCustomBehaviors().find(
+        (rule) => rule.selector === selector && rule.action === "hold",
+      ),
+      duration = Math.max(50, Math.round(Number(matching?.parameter) || 1000));
+    $("custom-component-preview").contentWindow?.postMessage(
+      { type: "composer-pointer-simulate", selector, lifecycle, duration },
+      "*",
+    );
+    $("custom-preview-log").textContent += `\nSimulate ${lifecycle}: ${selector}`;
+  }
+  $("custom-simulate-press").onclick = () => simulateCustomPointerLifecycle("press");
+  $("custom-simulate-release").onclick = () => simulateCustomPointerLifecycle("release");
+  $("custom-simulate-cancel").onclick = () => simulateCustomPointerLifecycle("cancel");
+  $("custom-simulate-hold").onclick = () => simulateCustomPointerLifecycle("hold");
+  $("custom-simulate-state").onclick = () => {
+    const name = $("custom-simulator-state").value;
+    if (name) simulateCustomState(name);
+  };
+  $("custom-simulate-standard").onclick = () => simulateCustomState("standard");
   function runCustomCompatibilityProbe() {
     const token = `custom-probe-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       source = composeCustomSource(true),
@@ -19801,6 +21950,34 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       }
       return;
     }
+    if (/javascript syntax|runtime error|exported html runtime/i.test(message)) {
+      setCustomWizardStep(1);
+      switchCustomSourceTab("javascript");
+      const editor = $("custom-source-javascript");
+      editor.classList.add("custom-readiness-highlight");
+      editor.scrollIntoView({ behavior: "smooth", block: "center" });
+      editor.focus();
+      return;
+    }
+    const signalMatch = String(message).match(/(?:published for|output was published for|output was published for:|published for:|for:)\s*([A-Za-z0-9_$-]+)$/i);
+    if (signalMatch) {
+      setCustomWizardStep(1);
+      const mapping = customWorkbenchDraft?.connections.find((entry) => entry.key === signalMatch[1]);
+      if (mapping) {
+        const card = document.querySelector(`.custom-property-mapping-card[data-mapping-id="${CSS.escape(mapping.id)}"]`);
+        card?.classList.add("custom-readiness-highlight");
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+    }
+    if (/target not found|selector is invalid|element role/i.test(message)) {
+      setCustomWizardStep(1);
+      const parts = document.querySelector(".custom-workbench-parts");
+      parts?.setAttribute("open", "");
+      parts?.classList.add("custom-readiness-highlight");
+      parts?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     if (/compatibility|viewport|resize|touch|mouse|instance|global id/i.test(message)) {
       setCustomWizardStep(2);
       const audit = document.querySelector(".custom-compatibility-audit");
@@ -19824,10 +22001,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   function renderCustomReadinessFindings(readiness) {
     const host = $("custom-readiness-findings"),
       list = $("custom-readiness-finding-list"),
-      findings = (readiness?.failures || []).map((message) => ({
-        message,
-        error: true,
-      }));
+      findings = [
+        ...(readiness?.failures || []).map((message) => ({ message, error: true })),
+        ...(readiness?.warnings || []).map((message) => ({ message, error: false })),
+      ];
     host.hidden = !findings.length;
     list.innerHTML = "";
     findings.forEach((finding) => {
@@ -19839,7 +22016,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         tokenInCss = token && $("custom-source-css").value.includes(`{{${token}}}`);
       row.className = `custom-readiness-finding${finding.error ? " error" : ""}`;
       kind.className = "finding-kind";
-      kind.textContent = "FIX";
+      kind.textContent = finding.error ? "FIX" : "REVIEW";
       message.className = "finding-message";
       title.textContent = undefinedToken
         ? `Composer found {{${token}}}, but no matching property exists.`
@@ -19848,14 +22025,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         ? tokenInCss
           ? "This is an unresolved CSS placeholder. Remove its unused CSS rule, or go back and add a matching editable property if the component really needs it."
           : "Add a matching editable property or remove the placeholder from the imported source."
-        : "Use Show location to open the exact section containing the blocking problem.";
+        : finding.error
+          ? "Open the exact editor section that owns this blocking problem, correct it, then run the self-test again."
+          : "This is not blocking. Open its source or mapping to verify the behavior is intentional.";
       message.append(title, help);
       button.type = "button";
       button.textContent = undefinedToken
         ? tokenInCss
           ? "Remove unused rule"
           : "Add missing property"
-        : "Show location";
+        : "Open repair location";
       button.onclick = () => {
         if (undefinedToken && tokenInCss) {
           const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
@@ -19885,7 +22064,47 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     });
     if (findings.length) host.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+  function repairMissingTranslatedTargetMarkers() {
+    const editor = $("custom-source-html"), source = String(editor?.value || "");
+    if (!editor || !source) return false;
+    const parsed = new DOMParser().parseFromString(source, "text/html"),
+      body = parsed.body,
+      behaviors = collectCustomBehaviors().filter((rule) => rule.enabled !== false),
+      connections = customWorkbenchDraft?.connections || [],
+      selectors = [
+        ...behaviors.map((rule) => rule.selector),
+        ...connections.map((connection) => connection.target?.selector),
+      ].filter(Boolean),
+      buttonIndexes = new Set(), textKeys = new Set();
+    selectors.forEach((selector) => {
+      const button = String(selector).match(/^\[data-translated-button=["']?(\d+)["']?\]$/);
+      if (button) buttonIndexes.add(Number(button[1]));
+      const text = String(selector).match(/^\[data-translated-text=["']([^"']+)["']\]$/);
+      if (text) textKeys.add(text[1]);
+    });
+    let changed = false;
+    const buttons = [...body.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"],input[type="reset"],input[type="checkbox"],input[type="radio"],[role="switch"],.btn,.button')];
+    buttonIndexes.forEach((index) => {
+      if (body.querySelector(`[data-translated-button="${index}"]`)) return;
+      const target = buttons[index];
+      if (target) {
+        target.setAttribute("data-translated-button", String(index));
+        changed = true;
+      }
+    });
+    textKeys.forEach((key) => {
+      if (body.querySelector(`[data-translated-text="${CSS.escape(key)}"]`)) return;
+      const target = body.querySelector('[data-translated-generated-label],[data-custom-text],.label,.text,.value,button,span');
+      if (target) {
+        target.setAttribute("data-translated-text", key);
+        changed = true;
+      }
+    });
+    if (changed) editor.value = body.innerHTML.trim();
+    return changed;
+  }
   async function runCustomComponentSelfTest() {
+    if (repairMissingTranslatedTargetMarkers()) refreshCustomPreview();
     const button = $("custom-self-test"),
       report = $("custom-self-test-report"),
       sourceBeforeTest = currentCustomSourceSnapshot(),
@@ -19918,11 +22137,39 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const frame = $("custom-component-preview"),
       signals = collectCustomSignals(),
       inputs = signals.filter((signal) => signal.direction === "input"),
-      outputRules = collectCustomBehaviors().filter(
-        (rule) => rule.enabled !== false && rule.source === "signal-output",
-      ),
-      testableOutputRules = outputRules.filter(
-        (rule) => rule.action !== "hold" || (Number(rule.parameter) || 1000) <= 2900,
+      authoredOutputRules = (customWorkbenchDraft?.connections || [])
+        .filter((connection) => connection.direction === "output" && connection.target?.selector)
+        .map((connection) => ({
+          enabled: true,
+          source: "signal-output",
+          key: connection.key,
+          selector: connection.target.selector,
+          action: connection.action === "authoredRuntime"
+            ? /hold/i.test(connection.key) ? "hold"
+              : /release/i.test(connection.key) ? "release"
+                : connection.type === "serial" || connection.type === "analog" ? "input"
+                  : "press"
+            : connection.action,
+          parameter: connection.holdDuration
+            ? Math.round(Number(connection.holdDuration) * 1000)
+            : connection.target?.parameter || "",
+        })),
+      outputRules = [
+        ...collectCustomBehaviors().filter(
+          (rule) => rule.enabled !== false && rule.source === "signal-output",
+        ),
+        ...authoredOutputRules.filter((candidate) =>
+          !collectCustomBehaviors().some(
+            (rule) => rule.enabled !== false && rule.source === "signal-output" && rule.key === candidate.key,
+          ),
+        ),
+      ],
+      testableOutputRules = outputRules,
+      maximumHoldDuration = Math.max(
+        0,
+        ...testableOutputRules
+          .filter((rule) => rule.action === "hold")
+          .map((rule) => Number(rule.parameter) || 1000),
       );
     inputs.forEach((signal) => {
       const values =
@@ -19949,7 +22196,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           customSelfTestResolve = null;
           resolve({ missing: [], timedOut: true });
         }
-      }, 3600);
+      }, Math.min(12000, Math.max(3600, maximumHoldDuration + 1200)));
     });
     await new Promise((resolve) => setTimeout(resolve, 80));
     const compatibilityProbe = await runCustomCompatibilityProbe(),
@@ -20101,7 +22348,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         "",
         `Input signals exercised: ${inputs.length}`,
         `Output behaviors exercised: ${testableOutputRules.length}`,
-        `Long hold behaviors skipped: ${outputRules.length - testableOutputRules.length}`,
+        `Pointer lifecycle: press, release, cancellation, and ${outputRules.some((rule) => rule.action === "hold") ? "configured hold duration" : "no hold mapping"}`,
         `Published output keys: ${publishedKeys.size}`,
         `Embedded package assets: ${dependencyReport.assets.length}`,
         `Review items: ${reviewWarnings.length}`,
@@ -20131,7 +22378,47 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     renderCustomReadinessFindings(readiness);
     return readiness;
   }
-  $("custom-self-test").onclick = runCustomComponentSelfTest;
+  async function runCustomComponentSelfTestSafely() {
+    const button = $("custom-self-test"),
+      report = $("custom-self-test-report"),
+      timeoutMessage = "Component validation exceeded 18 seconds and was stopped.";
+    try {
+      return await Promise.race([
+        runCustomComponentSelfTest(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(timeoutMessage)), 18000),
+        ),
+      ]);
+    } catch (error) {
+      const message = `Component validation could not finish: ${error?.message || error}`,
+        readiness = {
+          passed: false,
+          failures: [message],
+          warnings: [],
+          confidence: 0,
+          instanceSafe: false,
+          responsiveSafe: false,
+          touchSafe: false,
+          selectorCoverage: false,
+          selectorCount: 0,
+          sourcePreserved: true,
+          generatedPropertyCount: collectCustomProperties().length,
+          generatedSignalCount: collectCustomSignals().length,
+          authoredAnimations: [],
+          reportText: `COMPONENT READINESS — FAILED\n\nERROR: ${message}`,
+        };
+      customSelfTestResolve = null;
+      report.hidden = false;
+      report.classList.add("failed");
+      report.textContent = readiness.reportText;
+      renderCustomReadinessFindings(readiness);
+      console.error("Component validation failed", error);
+      return readiness;
+    } finally {
+      button.disabled = false;
+    }
+  }
+  $("custom-self-test").onclick = runCustomComponentSelfTestSafely;
   window.addEventListener("message", (event) => {
     if (event.source !== $("custom-component-preview").contentWindow) return;
     if (
@@ -20140,9 +22427,19 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       )
     )
       customPreviewEvents.push(event.data);
-    if (event.data?.type === "composer-custom-publish")
+    if (event.data?.type === "composer-custom-publish") {
       $("custom-preview-log").textContent +=
         `\nPublish ${event.data.key} = ${JSON.stringify(event.data.value)}`;
+      const outputRow = [...document.querySelectorAll("#custom-simulator-outputs [data-output-key]")]
+        .find((row) => row.dataset.outputKey === event.data.key),
+        output = outputRow?.querySelector("output");
+      if (output) {
+        output.textContent = JSON.stringify(event.data.value);
+        output.classList.toggle("active", event.data.value === true || Number(event.data.value) > 0 || String(event.data.value || "").length > 0);
+        output.dataset.updatedAt = new Date().toLocaleTimeString();
+        output.title = `Last output at ${output.dataset.updatedAt}`;
+      }
+    }
     if (event.data?.type === "composer-preview-error")
       $("custom-preview-log").textContent += `\nERROR: ${event.data.message}`;
     if (event.data?.type === "composer-self-test-complete") {
@@ -20154,27 +22451,37 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       $("custom-element-selector").value = event.data.selector || "";
       customPickedElement = event.data.element || {};
       const inference = inferCustomElementRole(customPickedElement);
+      const pickedPart = addPickedCustomWorkbenchPart(
+        event.data.selector || "",
+        customPickedElement,
+        inference.role,
+      );
       $("custom-element-role").value = inference.role;
       $("custom-element-summary").textContent = `${String(customPickedElement.tag || "element").toUpperCase()} · ${event.data.selector || "selected element"}`;
       $("custom-element-reason").textContent = inference.reason;
       $("custom-element-result").textContent =
         "Review the recommended role, then apply it to generate the standard setup.";
       $("custom-element-classifier").hidden = false;
-      if (!$("custom-state-selector").value)
+      if (!$("custom-state-selector").value) {
         $("custom-state-selector").value = event.data.selector || "";
+        renderCustomStatePartOptions();
+      }
       customElementPickerActive = false;
+      $("custom-component-dialog").classList.remove("custom-picker-active");
+      $("custom-preview-picker-close").hidden = true;
+      $("custom-picker-instruction").hidden = true;
       $("custom-element-picker").classList.remove("active");
       $("custom-element-picker").textContent = "Pick preview element";
+      $("custom-part-picker").classList.remove("active");
+      $("custom-part-picker").textContent = "Pick part from preview";
       $("custom-preview-log").textContent +=
         `\nPicked ${event.data.selector || "element"}`;
       refreshCustomPreview();
+      focusPickedCustomWorkbenchPart(pickedPart);
     }
     $("custom-preview-log").scrollTop = $("custom-preview-log").scrollHeight;
   });
-  $("custom-component-export").onclick = () => {
-    const entry = state.customComponents.find(
-      (candidate) => candidate.id === customEditingId,
-    );
+  function exportCustomComponentEntry(entry) {
     if (!entry) return;
     const dependencyReport = customComponentDependencyReport(entry);
     if (dependencyReport.errors.length) {
@@ -20190,6 +22497,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       "application/json",
     );
     setStatus(`Exported component package “${entry.name}”`);
+  }
+  $("custom-component-export").onclick = () => {
+    const entry = state.customComponents.find(
+      (candidate) => candidate.id === customEditingId,
+    );
+    exportCustomComponentEntry(entry);
   };
   function createCustomComponentPackage(entry, assetCatalog = state.assets) {
     const dependencyReport = customComponentDependencyReport(
@@ -20245,7 +22558,24 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       throw new Error(
         "This is not a valid Crestron UI Composer component package.",
       );
-    const entry = structuredClone(imported);
+    const entry = structuredClone(imported),
+      importedWorkbenchVersion = Number(entry.workbench?.schemaVersion) || 0;
+    entry.workbench = window.ComposerComponentWorkbench.normalize(
+      importedWorkbenchVersion
+        ? entry.workbench
+        : window.ComposerComponentWorkbench.migrate(entry),
+    );
+    const workbenchValidation = window.ComposerComponentWorkbench.validate(entry.workbench);
+    if (!workbenchValidation.valid)
+      throw new Error(
+        `The component's Workbench mappings are invalid:\n${workbenchValidation.errors.join("\n")}`,
+      );
+    entry.packageMigration = {
+      importedPackageVersion: packageValue.version,
+      importedWorkbenchVersion,
+      currentWorkbenchVersion: entry.workbench.schemaVersion,
+      migratedLegacyMappings: !importedWorkbenchVersion,
+    };
     if (entry.readiness) {
       const validStatuses = new Set([
           "passed",
@@ -20255,6 +22585,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         ]),
         validKeys = new Set([
           "editor",
+          "preview",
           "pointer",
           "multiInstance",
           "responsive",
@@ -20262,6 +22593,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           "widgetList",
           "exportedHtml",
           "ch5Package",
+          "definitionParity",
           "ch5Desktop",
           "touchPanel",
         ]);
@@ -20291,7 +22623,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
     return entry;
   }
-  function customComponentAssetReferences(entry) {
+  function customComponentAssetReferences(entry, assetCatalog = state.assets) {
     const references = new Set();
     (entry.properties || []).forEach((property) => {
       if (property.type === "asset" && property.defaultValue)
@@ -20300,7 +22632,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     Object.values(entry.stateStyles?.states || {}).forEach((stateStyle) => {
       if (stateStyle.asset) references.add(stateStyle.asset);
     });
-    state.assets.forEach((asset) => {
+    (entry.workbench?.properties || []).forEach((mapping) => {
+      if (
+        [mapping.type, mapping.inspector?.control].includes("asset") &&
+        mapping.defaultValue
+      )
+        references.add(mapping.defaultValue);
+    });
+    (entry.workbench?.states || []).forEach((stateDefinition) => {
+      const asset = stateDefinition.asset || stateDefinition.appearance?.asset;
+      if (asset) references.add(asset);
+    });
+    assetCatalog.forEach((asset) => {
       if (
         entry.html?.includes(asset.dataUrl) ||
         (entry.behaviors || []).some(
@@ -20314,13 +22657,13 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     return [...references];
   }
   function customComponentDependencies(entry, assetCatalog = state.assets) {
-    const references = new Set(customComponentAssetReferences(entry));
+    const references = new Set(customComponentAssetReferences(entry, assetCatalog));
     return assetCatalog
       .filter((asset) => references.has(asset.id))
       .map((asset) => structuredClone(asset));
   }
   function customComponentDependencyReport(entry, assetCatalog = state.assets) {
-    const references = customComponentAssetReferences(entry),
+    const references = customComponentAssetReferences(entry, assetCatalog),
       assets = customComponentDependencies(entry, assetCatalog),
       found = new Set(assets.map((asset) => asset.id)),
       errors = [],
@@ -20354,6 +22697,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       behaviors: entry?.behaviors || [],
       stateStyles: entry?.stateStyles || null,
       elementRoles: entry?.elementRoles || [],
+      generatedAdapter: entry?.generatedAdapter || null,
+      workbench: entry?.workbench || null,
     });
   }
   function restoreCustomComponentDependencies(
@@ -20381,6 +22726,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       if (property.type === "asset" && idMap.has(property.defaultValue))
         property.defaultValue = idMap.get(property.defaultValue);
     });
+    (entry.workbench?.properties || []).forEach((mapping) => {
+      if (idMap.has(mapping.defaultValue))
+        mapping.defaultValue = idMap.get(mapping.defaultValue);
+    });
+    (entry.workbench?.states || []).forEach((stateDefinition) => {
+      if (idMap.has(stateDefinition.asset))
+        stateDefinition.asset = idMap.get(stateDefinition.asset);
+      if (idMap.has(stateDefinition.appearance?.asset))
+        stateDefinition.appearance.asset = idMap.get(stateDefinition.appearance.asset);
+    });
     Object.values(entry.stateStyles?.states || {}).forEach((stateStyle) => {
       if (idMap.has(stateStyle.asset)) stateStyle.asset = idMap.get(stateStyle.asset);
     });
@@ -20393,7 +22748,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     if (
       !confirm(
-        `Delete “${entry.name}” from the palette${instances.length ? ` and remove its ${instances.length} canvas instance${instances.length === 1 ? "" : "s"}` : ""}?`,
+        `Delete “${entry.name}” from the Composer-wide component library${instances.length ? ` and remove its ${instances.length} canvas instance${instances.length === 1 ? "" : "s"}` : ""}? It will no longer appear in new projects.`,
       )
     )
       return;
@@ -20409,8 +22764,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     customEditingId = "";
     renderComponentLibrary();
     renderPage();
+    scheduleComponentLibrarySave();
     commitHistory();
-    setStatus(`Deleted custom component “${entry.name}”`);
+    setStatus(`Deleted custom component “${entry.name}” from the Composer library`);
   }
   $("custom-component-delete").onclick = () => {
     const entry = state.customComponents.find(
@@ -20425,6 +22781,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   ].forEach(
     (id) =>
       ($(id).oninput = () => {
+        renderCustomGeneratedAdapter();
         refreshCustomPreview();
         if (customWizardStep === 1) {
           renderCustomVisualParts();
@@ -20442,16 +22799,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   ].forEach((id) => ($(id).oninput = validateCustomComponent));
   document.querySelectorAll("[data-custom-tab]").forEach((button) => {
     button.onclick = () => {
-      document
-        .querySelectorAll("[data-custom-tab]")
-        .forEach((entry) => entry.classList.toggle("active", entry === button));
-      ["html", "css", "javascript"].forEach(
-        (name) =>
-          ($("custom-source-" + name).hidden =
-            button.dataset.customTab !== name),
-      );
+      switchCustomSourceTab(button.dataset.customTab);
     };
   });
+  $("custom-adapter-refresh").onclick = renderCustomGeneratedAdapter;
   $("custom-component-save").onclick = async (event) => {
     event.preventDefault();
     const item =
@@ -20464,11 +22815,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const saveButton = $("custom-component-save");
     saveButton.disabled = true;
     saveButton.textContent = "Validating…";
-    const readiness = await runCustomComponentSelfTest();
-    saveButton.disabled = false;
-    saveButton.textContent = customEditingId
-      ? "Validate & update component"
-      : "Validate & create component";
+    let readiness;
+    try {
+      readiness = await runCustomComponentSelfTestSafely();
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = customEditingId
+        ? "Validate & update component"
+        : "Validate & create component";
+    }
     if (!readiness.passed) {
       setCustomWizardStep(2);
       alert("The component was not saved. Fix the failures in Component Readiness, then try again.");
@@ -20499,6 +22854,48 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         collectCustomSignals(),
         repeatedItemSignals(repeatedItems),
       );
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft(entry);
+    const propertyKeys = new Set(customProperties.map((property) => property.key));
+    customWorkbenchDraft.properties = customWorkbenchDraft.properties
+      .filter((mapping) => propertyKeys.has(mapping.key))
+      .map((mapping) => {
+        const property = customProperties.find((candidate) => candidate.key === mapping.key);
+        return {
+          ...mapping,
+          label: property?.name || mapping.label,
+          type: property?.type || mapping.type,
+          defaultValue: property?.defaultValue ?? mapping.defaultValue,
+          ...(property?.min != null ? { min: property.min } : {}),
+          ...(property?.max != null ? { max: property.max } : {}),
+          ...(property?.step != null ? { step: property.step } : {}),
+          ...(property?.unit ? { unit: property.unit } : {}),
+        };
+      });
+    const signalKeys = new Set(customSignals.map((signal) => signal.key));
+    customWorkbenchDraft.connections = customWorkbenchDraft.connections
+      .filter((mapping) => signalKeys.has(mapping.key))
+      .map((mapping) => {
+        const signal = customSignals.find((candidate) => candidate.key === mapping.key);
+        return {
+          ...mapping,
+          label: signal?.name || mapping.label,
+          type: signal?.type || mapping.type,
+          direction: signal?.direction || mapping.direction,
+          defaultValue: signal?.defaultValue || mapping.defaultValue,
+          ...(signal?.range ? { range: signal.range } : {}),
+        };
+      });
+    const generatedAdapter = customGeneratedAdapter();
+    customWorkbenchDraft.adapter = {
+      version: generatedAdapter.version,
+      rules: generatedAdapter.blocks.map((block) => ({
+        id: block.id,
+        mappingId: block.mappingId,
+        kind: block.kind,
+      })),
+      css: generatedAdapter.css,
+      javascript: generatedAdapter.javascript,
+    };
     Object.assign(entry, {
       name,
       category: $("custom-component-category").value.trim() || "Custom",
@@ -20523,6 +22920,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       rangeBindings: repeatedItemRanges(repeatedItems),
       behaviors: collectCustomBehaviors(),
       stateStyles: collectCustomStateStyles(),
+      generatedAdapter,
       elementRoles: customAnalyzedElements.map(({ selector, role, controlOwner }) => ({
         selector,
         role,
@@ -20530,6 +22928,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       })),
       preservedRelationships: structuredClone(customPreservedRelationships),
       originalSource: preservedOriginalSource,
+      workbench: window.ComposerComponentWorkbench.normalize(customWorkbenchDraft),
     });
     entry.readiness = {
       testedAt: new Date().toISOString(),
@@ -20583,6 +22982,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
                 widgetListInstances: 0,
                 exportedRuntime: false,
                 remountRuntime: false,
+                definitionParity: false,
+                ch5Structure: false,
               }),
             10000,
           ),
@@ -20596,6 +22997,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         widgetListInstances: 0,
         exportedRuntime: false,
         remountRuntime: false,
+        definitionParity: false,
+        ch5Structure: false,
       };
     }
     const widgetListReady = syncWidgetListCustomOptions();
@@ -20616,12 +23019,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       registeredRuntime.widgetListInstances === 2;
     entry.readiness.checks.exportedRuntime = registeredRuntime.exportedRuntime;
     entry.readiness.checks.pageRemount = registeredRuntime.remountRuntime;
+    entry.readiness.checks.definitionParity = registeredRuntime.definitionParity;
+    entry.readiness.checks.ch5Structure = registeredRuntime.ch5Structure;
     entry.readiness.reportText = readiness.reportText.replace(
       "PENDING  Registered Composer runtime and Widget List are verified immediately after save",
       [
         `${registeredRuntime.passed ? "PASS" : "FAIL"}  Registered Composer runtime`,
         `${registeredRuntime.widgetListInstances === 2 ? "PASS" : "FAIL"}  Widget List runtime with two nested instances`,
         `${registeredRuntime.exportedRuntime ? "PASS" : "FAIL"}  Exported HTML / CH5 package runtime`,
+        `${registeredRuntime.definitionParity ? "PASS" : "FAIL"}  Shared Component Workbench definition across registered and exported runtimes`,
+        `${registeredRuntime.ch5Structure ? "PASS" : "FAIL"}  CH5 payload runtime and instance structure`,
         `${registeredRuntime.remountRuntime ? "PASS" : "FAIL"}  Page remount with retained Crestron feedback`,
       ].join("\n"),
     );
@@ -20630,6 +23037,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         key: "editor",
         label: "Editor / guided preview",
         status: readiness.passed ? "passed" : "failed",
+        automated: true,
+      },
+      {
+        key: "preview",
+        label: "Preview registered runtime",
+        status: registeredRuntime.passed ? "passed" : "failed",
         automated: true,
       },
       {
@@ -20675,9 +23088,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       {
         key: "ch5Package",
         label: "CH5 package content compatibility",
-        status: registeredRuntime.exportedRuntime ? "passed" : "failed",
+        status: registeredRuntime.ch5Structure ? "passed" : "failed",
         automated: true,
-        note: "Uses the same exported runtime bundled into the CH5Z.",
+        note: "Confirms the exported payload contains CrComLib, the component definition fingerprint, and its mounted instance structure.",
+      },
+      {
+        key: "definitionParity",
+        label: "One shared component definition across runtimes",
+        status: registeredRuntime.definitionParity ? "passed" : "failed",
+        automated: true,
       },
       {
         key: "ch5Desktop",
@@ -20722,6 +23141,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       .filter((candidate) => candidate.componentId === entry.id)
       .forEach(renderItem);
     renderComponentLibrary();
+    scheduleComponentLibrarySave();
     if (!registeredRuntime.passed) {
       alert(
         `The component was saved for correction, but its registered runtime test failed:\n\n${registeredRuntime.errors.join("\n")}`,
@@ -20773,16 +23193,85 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         .filter((item) => item.componentId === entry.id)
         .forEach(renderItem);
       renderComponentLibrary();
+      await persistComponentLibrary();
       commitHistory();
       const readinessStatus = customComponentReadinessStatus(entry),
         importedReadiness = entry.readiness?.testedAt
           ? ` · readiness ${readinessStatus.key === "outdated" ? "requires retest" : readinessStatus.label.toLowerCase()}`
           : " · readiness not included";
       setStatus(
-        `Imported component package “${entry.name}” with ${restoredDependencies} embedded asset${restoredDependencies === 1 ? "" : "s"}${importedReadiness}`,
+        `Installed “${entry.name}” permanently in Composer with ${restoredDependencies} embedded asset${restoredDependencies === 1 ? "" : "s"}${importedReadiness}`,
       );
+      openCustomBuilder(null, entry);
     } catch (error) {
       alert(`Component package import failed.\n\n${error.message}`);
+    }
+  };
+  $("component-library-file").onchange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const library = JSON.parse(await file.text());
+      if (
+        library?.format !== "crestron-ui-composer-component-library" ||
+        library.version !== 1 ||
+        !Array.isArray(library.components) ||
+        !Array.isArray(library.assets)
+      )
+        throw new Error("This is not a Composer component-library package.");
+      let installed = 0,
+        replaced = 0,
+        skipped = 0;
+      for (const source of library.components) {
+        const entry = structuredClone(source),
+          existingIndex = state.customComponents.findIndex(
+            (candidate) => candidate.id === entry.id,
+          );
+        if (!entry?.id || !entry?.name || typeof entry.html !== "string")
+          throw new Error("The component library contains an invalid component entry.");
+        const importedWorkbenchVersion = Number(entry.workbench?.schemaVersion) || 0;
+        entry.workbench = window.ComposerComponentWorkbench.normalize(
+          importedWorkbenchVersion
+            ? entry.workbench
+            : window.ComposerComponentWorkbench.migrate(entry),
+        );
+        const workbenchValidation = window.ComposerComponentWorkbench.validate(entry.workbench);
+        if (!workbenchValidation.valid)
+          throw new Error(
+            `Component “${entry.name}” has invalid Workbench mappings:\n${workbenchValidation.errors.join("\n")}`,
+          );
+        entry.packageMigration = {
+          importedPackageVersion: library.version,
+          importedWorkbenchVersion,
+          currentWorkbenchVersion: entry.workbench.schemaVersion,
+          migratedLegacyMappings: !importedWorkbenchVersion,
+        };
+        if (existingIndex >= 0) {
+          if (!confirm(`Replace the installed component “${entry.name}” with the version from this library?`)) {
+            skipped++;
+            continue;
+          }
+          replaced++;
+        } else installed++;
+        restoreCustomComponentDependencies(
+          { dependencies: { assets: customComponentDependencies(entry, library.assets) } },
+          entry,
+        );
+        if (existingIndex >= 0) state.customComponents[existingIndex] = entry;
+        else state.customComponents.push(entry);
+        registerCustomComponent(entry);
+      }
+      renderAssets();
+      renderComponentLibrary();
+      syncWidgetListCustomOptions();
+      await persistComponentLibrary();
+      commitHistory();
+      setStatus(
+        `Installed component library · ${installed} new · ${replaced} updated${skipped ? ` · ${skipped} skipped` : ""}`,
+      );
+    } catch (error) {
+      alert(`Component library installation failed.\n\n${error.message}`);
     }
   };
   $("apply-source").onclick = () => {
@@ -21007,9 +23496,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     state.pageTemplates = p.pageTemplates || [];
     state.subpages = p.subpages || [];
     state.themes = p.themes || [];
-    state.customComponents = p.customComponents || [];
+    mergeGlobalCustomComponents(p.customComponents || [], p.assets || []);
     state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
-    state.customComponents.forEach(registerCustomComponent);
+    scheduleComponentLibrarySave();
     state.contract = { ...state.contract, ...(p.contract || {}) };
     state.pages = p.pages || [
       { ...firstPage, background: p.background || firstPage.background },
@@ -21998,17 +24487,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
   };
   function clearProjectForStarter() {
-    const customIds = new Set(state.customComponents.map((entry) => entry.id));
-    state.components = state.components.filter(
-      (component) => !customIds.has(component.componentId),
-    );
     state.items = [];
-    state.assets = [];
+    state.assets = structuredClone(globalComponentLibrary.assets || []);
     state.reusables = [];
     state.pageTemplates = [];
     state.subpages = [];
     state.themes = [];
-    state.customComponents = [];
+    state.customComponents = structuredClone(globalComponentLibrary.components || []);
+    state.customComponents.forEach(registerCustomComponent);
     state.acceptance = { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.contract = {
       name: "MyCrestronUI",
@@ -22479,5 +24965,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   renderPages();
   renderPageInspector();
   commitHistory(false);
-  Promise.all([loadDevices(), loadKnown()]).then(recoverAutosave);
+  Promise.all([loadDevices(), loadKnown()])
+    .then(loadComponentLibrary)
+    .then(recoverAutosave);
 })();

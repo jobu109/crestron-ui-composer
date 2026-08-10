@@ -826,7 +826,10 @@ run("isolated custom component documents retain local ids and document selectors
   assert.ok(editor.includes("window.innerHeight-safeInset*2"));
   assert.ok(editor.includes("Math.min(window.innerWidth,window.innerHeight)*.1"));
   assert.ok(!editor.includes("event.preventDefault();window.ComposerSignals.publish(rule.key,true)"));
-  assert.ok(editor.includes('generatedLabel.textContent = "Toggle"'));
+  assert.ok(
+    !editor.includes('generatedLabel.textContent = "Toggle"'),
+    "Import should not invent a visible Toggle caption that was absent from the authored component",
+  );
   assert.ok(editor.includes("[data-translated-generated-label]{position:absolute"));
   assert.ok(editor.includes("[data-translated-text],[data-translated-generated-label]"));
   assert.ok(editor.includes("!(detected.toggleButtonIndexes || []).includes(index)"));
@@ -953,7 +956,9 @@ run(
 run("visual state overrides are explicit and preserve imported CSS by default", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
   assert.ok(html.includes('id="custom-state-enabled"'));
-  assert.ok(html.includes("the original visual states with Composer states"));
+  assert.ok(html.includes("Authored CSS transitions"));
+  assert.ok(html.includes('id="custom-state-add"'));
+  assert.ok(html.includes('id="custom-mode-add"'));
   assert.ok(html.includes('id="custom-state-controls" hidden'));
   assert.ok(editor.includes("if (!$('custom-state-enabled').checked) return null;"));
   assert.ok(editor.includes('$("custom-state-controls").hidden = !enabled;'));
@@ -1635,7 +1640,7 @@ run("palette preferences hide built-in and custom components non-destructively",
   assert.ok(editor.includes('crestron-ui-composer-palette-preferences-v1'));
   assert.ok(editor.includes('function componentPreferenceId(component)'));
   assert.ok(editor.includes('!hiddenPaletteComponents.has(componentPreferenceId(c))'));
-  assert.ok(editor.includes('state.customComponents.map((entry) => entry.id)'));
+  assert.ok(editor.includes('return component.componentId || `file:${component.name}`'));
   assert.ok(editor.includes('kind.textContent = customEntry'));
   assert.ok(editor.includes('savePalettePreferences();'));
   assert.ok(editor.includes('renderComponentLibrary();'));
@@ -1647,12 +1652,14 @@ run("palette preferences hide built-in and custom components non-destructively",
 run("Import and Translate dialog uses non-overlapping responsive flow", () => {
   const css = read("editor.css"), html = read("editor.html");
   assert.ok(html.includes('id="translate-snippet-dialog"'));
+  assert.ok(html.includes('aria-label="Close Import and Translate"'));
   assert.ok(css.includes('#translate-snippet-dialog form'));
+  assert.ok(css.includes('#custom-component-dialog,\n#translate-snippet-dialog {'));
   assert.ok(css.includes('display: block;'));
   assert.ok(css.includes('#translate-snippet-dialog .translate-builder-layout'));
   assert.ok(css.includes('#translate-snippet-dialog .translate-review-layout'));
   assert.ok(css.includes('#translate-snippet-dialog .dialog-actions'));
-  assert.ok(css.includes('position: static;'));
+  assert.ok(css.includes('position: sticky;'));
   assert.ok(css.includes('@media (max-width: 1050px)'));
   assert.ok(css.includes('grid-template-columns: minmax(0, 1fr);'));
 });
@@ -2198,7 +2205,7 @@ run("custom component creation is gated by blocking automated errors", () => {
   assert.ok(editor.includes("changed after its ${new Date(readiness.testedAt).toLocaleString()} readiness test"));
   assert.ok(editor.includes("Matching mouse and touchscreen input"));
   assert.ok(editor.includes("Package export/import and dependencies"));
-  assert.ok(editor.includes("const readiness = await runCustomComponentSelfTest()"));
+  assert.ok(editor.includes("readiness = await runCustomComponentSelfTestSafely()"));
   assert.ok(editor.includes("if (!readiness.passed)"));
   assert.ok(editor.includes("parseCustomComponentPackage(JSON.parse(JSON.stringify(probe)))"));
 });
@@ -2234,12 +2241,14 @@ run("component scoping creates real Composer properties and Crestron connections
   assert.ok(editor.includes("__COMPOSER_PROPERTY_TOKEN_"));
   assert.ok(editor.includes("restoreTokens(entry[2].trim())"));
   assert.ok(editor.includes("function createScopedCustomSignal()"));
-  assert.ok(editor.includes("addCustomPropertyRow({ key, name, type: definition.type, defaultValue })"));
-  assert.ok(editor.includes("addCustomSignalRow({ key, name, type, direction, defaultValue })"));
+  assert.ok(editor.includes("addCustomPropertyRow(propertyDefinition)"));
+  assert.ok(editor.includes("customWorkbenchDraft.properties.push(mapping)"));
+  assert.ok(editor.includes("addCustomSignalRow(signalDefinition)"));
+  assert.ok(editor.includes("connectionConfig: config"));
   assert.ok(editor.includes("COMPOSER MANAGED ${safeId} START"));
   assert.ok(editor.includes("window.ComposerSignals.subscribe"));
   assert.ok(editor.includes("window.ComposerSignals.publish"));
-  assert.ok(editor.includes("target.style.opacity=String(ratio)"));
+  assert.ok(editor.includes("target.style.opacity=String(mapped>1?mapped/100:mapped)"));
   assert.ok(editor.includes("node.style.transitionDuration=scaleDurations(transitionBase)"));
   assert.ok(editor.includes("node.style.animationDuration=scaleDurations(animationBase)"));
   assert.ok(editor.includes("durationScale=4-(ratio*3.8)"));
@@ -2352,6 +2361,28 @@ run("visibility and disabled are optional Composer capabilities, not translated"
   assert.ok(!html.includes("Add Selected &amp; Disabled signals"));
   assert.ok(!editor.includes('defaultValue: "CustomButton.Visibility"'));
   assert.ok(editor.includes('signal.key !== "visibility" && signal.key !== "disabled"'));
+});
+
+run("custom components persist in the application-wide Composer library", () => {
+  const editor = read("editor.js"), html = read("editor.html"), desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
+  assert.ok(editor.includes('nativeRequest("readComponentLibrary")'));
+  assert.ok(editor.includes('nativeRequest("writeComponentLibrary", serialized)'));
+  assert.ok(editor.includes("function mergeGlobalCustomComponents("));
+  assert.ok(editor.includes("globalComponentLibrary.components"));
+  assert.ok(editor.includes("state.customComponents = structuredClone(globalComponentLibrary.components || [])"));
+  assert.ok(editor.includes(".then(loadComponentLibrary)"));
+  assert.ok(desktop.includes('case "readComponentLibrary"'));
+  assert.ok(desktop.includes('case "writeComponentLibrary"'));
+  assert.ok(desktop.includes('"Composer Component Library"'));
+  assert.ok(desktop.includes('"custom-components.json"'));
+  assert.ok(html.includes('id="export-component-menu"'));
+  assert.ok(html.includes('id="export-component-library-menu"'));
+  assert.ok(html.includes('id="import-component-library-menu"'));
+  assert.ok(html.includes('accept=".cuicomponents,application/json"'));
+  assert.ok(editor.includes('"crestron-ui-composer-component-library"'));
+  assert.ok(editor.includes("function exportCustomComponentEntry(entry)"));
+  assert.ok(editor.includes("Installed component library"));
+  assert.ok(editor.includes("Installed “${entry.name}” permanently in Composer"));
 });
 
 if (process.exitCode) process.exit(process.exitCode);

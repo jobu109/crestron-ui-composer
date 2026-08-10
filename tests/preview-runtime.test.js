@@ -170,6 +170,10 @@ const editorSource = read("editor.js"),
     editorSource,
     "describeSelectorStateRole",
   ),
+  describeSelectorVisualPart = extractFunction(
+    editorSource,
+    "describeSelectorVisualPart",
+  ),
   enclosingSelectorAt = extractFunction(editorSource, "enclosingSelectorAt"),
   detectLoopingAnimation = extractFunction(
     editorSource,
@@ -201,6 +205,7 @@ const editorSource = read("editor.js"),
 global.translatorKey = translatorKey;
 global.domLookupToSelector = domLookupToSelector;
 global.describeSelectorStateRole = describeSelectorStateRole;
+global.describeSelectorVisualPart = describeSelectorVisualPart;
 global.enclosingSelectorAt = enclosingSelectorAt;
 global.hexToRgb = hexToRgb;
 const inferSnippetBehaviors = extractFunction(editorSource, "inferSnippetBehaviors");
@@ -512,12 +517,7 @@ run("detectLiteralColorEditables correctly roles every layer of a multi-layer bo
   assert.equal(byValue("rgba(0, 0, 0, 0.55)").label, "Shadow color 3");
 });
 
-run("detectLiteralColorEditables marks only the first color per state (across all roles) as checked by default, to avoid overwhelming the checklist", () => {
-  // A single state can legitimately touch a dozen literal colors (a
-  // gradient, a layered glow, a separate status pill, its own shadow) —
-  // all real, all distinct, but too many to sensibly pre-select at once.
-  // Only the first color found for a given state should default to
-  // checked; the rest stay available (via "Select all") but unchecked.
+run("detectLiteralColorEditables checks every detected authored color by default", () => {
   const styles = `
     .widget.state-idle { background: rgb(37, 99, 235); box-shadow: 0 0 10px rgba(37, 99, 235, 0.5), 0 0 20px rgba(37, 99, 235, 0.2); }
     .widget.state-paired { background: rgb(14, 165, 233); box-shadow: 0 0 10px rgba(14, 165, 233, 0.5); }
@@ -525,19 +525,35 @@ run("detectLiteralColorEditables marks only the first color per state (across al
     entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
     byValue = (value) => entries.find((entry) => entry.source.toLowerCase() === value);
   assert.equal(byValue("rgb(37, 99, 235)").checkedByDefault, true);
-  assert.equal(byValue("rgba(37, 99, 235, 0.5)").checkedByDefault, false);
-  assert.equal(byValue("rgba(37, 99, 235, 0.2)").checkedByDefault, false);
-  assert.equal(byValue("rgb(14, 165, 233)").checkedByDefault, true, "each state gets its own independently-checked first color");
-  assert.equal(byValue("rgba(14, 165, 233, 0.5)").checkedByDefault, false);
+  assert.equal(byValue("rgba(37, 99, 235, 0.5)").checkedByDefault, true);
+  assert.equal(byValue("rgba(37, 99, 235, 0.2)").checkedByDefault, true);
+  assert.equal(byValue("rgb(14, 165, 233)").checkedByDefault, true);
+  assert.equal(byValue("rgba(14, 165, 233, 0.5)").checkedByDefault, true);
 });
 
-run("detectLiteralColorEditables also only pre-checks the first state-independent color (e.g. a constant, non-state-varying gradient)", () => {
+run("detectLiteralColorEditables checks all state-independent colors too", () => {
   const styles = `.face { background: radial-gradient(circle, #242424 0%, #111111 50%, #020202 100%); }`,
     entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
     byValue = (value) => entries.find((entry) => entry.source.toLowerCase() === value);
   assert.equal(byValue("#242424").checkedByDefault, true);
-  assert.equal(byValue("#111111").checkedByDefault, false);
-  assert.equal(byValue("#020202").checkedByDefault, false);
+  assert.equal(byValue("#111111").checkedByDefault, true);
+  assert.equal(byValue("#020202").checkedByDefault, true);
+});
+
+run("detectLiteralColorEditables names toggle track and handle colors by part on initial import", () => {
+  const styles = `
+    .track { background: #4a4f5c; }
+    input:checked + .track { background: #14b8a6; }
+    .knob { background: #ffffff; }
+    input:checked ~ .knob { color: #eeeeee; }
+  `,
+    entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
+    labels = entries.map((entry) => entry.label);
+  assert.ok(labels.includes("Track color"));
+  assert.ok(labels.includes("Selected state — Track color"));
+  assert.ok(labels.includes("Handle / knob color"));
+  assert.ok(labels.includes("Selected state — Handle / knob color"));
+  assert.ok(entries.every((entry) => entry.checkedByDefault));
 });
 
 run("detectLiteralColorEditables preserves original casing for reliable replacement", () => {
@@ -587,7 +603,7 @@ run("detectLiteralColorEditables labels a color inside a detected state rule wit
   `,
     entries = detectLiteralColorEditables(styles, new Set(), translatorKey),
     labels = entries.map((entry) => entry.label).sort();
-  assert.deepEqual(labels, ["Idle border color", "Paired border color", "Pairing border color"]);
+  assert.deepEqual(labels, ["Idle state — Border color", "Paired state — Border color", "Pairing state — Border color"]);
 });
 
 run("detectLiteralColorEditables falls back to plain role numbering when no state context is detected (regression check)", () => {

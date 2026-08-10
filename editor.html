@@ -196,6 +196,9 @@
             <span class="menu-separator"></span>
             <button id="new-custom-component-menu">Create Component</button>
             <button id="custom-package-menu">Install Component Package</button>
+            <button id="export-component-menu">Export Component Package</button>
+            <button id="export-component-library-menu">Export Component Library</button>
+            <button id="import-component-library-menu">Import Component Library</button>
             <button id="export">Export HTML</button>
           </div>
         </details>
@@ -289,6 +292,12 @@
           id="custom-package-file"
           type="file"
           accept=".cuicomponent,application/json"
+          hidden
+        />
+        <input
+          id="component-library-file"
+          type="file"
+          accept=".cuicomponents,application/json"
           hidden
         />
         <button id="new-custom-component" type="button" class="primary">
@@ -1366,6 +1375,18 @@
         </div>
       </form>
     </dialog>
+    <dialog id="export-component-dialog" class="component-creator-dialog">
+      <form method="dialog">
+        <div class="component-creator-header">
+          <div>
+            <h2>Export Component Package</h2>
+            <p class="hint">Choose a component to transfer permanently to another Composer installation.</p>
+          </div>
+          <button value="cancel" class="dialog-close" aria-label="Close">×</button>
+        </div>
+        <div id="export-component-list" class="creator-template-list"></div>
+      </form>
+    </dialog>
     <dialog id="custom-component-dialog" class="custom-component-dialog">
       <form method="dialog">
         <h2 id="custom-component-title">Create palette component</h2>
@@ -1373,6 +1394,14 @@
           <button type="button" data-custom-wizard-step="0"><strong>1</strong><span>Imported setup</span></button>
           <button type="button" data-custom-wizard-step="1"><strong>2</strong><span>Add capabilities &amp; edit code</span></button>
           <button type="button" data-custom-wizard-step="2"><strong>3</strong><span>Test &amp; create</span></button>
+        </nav>
+        <nav id="custom-capability-nav" class="custom-capability-nav custom-step-capabilities" aria-label="Component capability pages">
+          <button type="button" data-custom-capability-page="properties">Editable properties</button>
+          <button type="button" data-custom-capability-page="connections">Crestron connections</button>
+          <button type="button" data-custom-capability-page="states">States &amp; modes</button>
+          <button type="button" data-custom-capability-page="repeated">Repeated items</button>
+          <button type="button" data-custom-capability-page="code">HTML / CSS / JavaScript</button>
+          <button type="button" data-custom-capability-page="advanced">Advanced</button>
         </nav>
         <div class="custom-builder-layout">
           <section class="custom-builder-controls">
@@ -1449,19 +1478,36 @@
                 <button id="custom-scope-add-property" type="button" class="primary">+ Add editable property</button>
                 <button id="custom-scope-add-signal" type="button" class="primary">+ Add Crestron connection</button>
               </div>
-              <section id="custom-property-creator" class="custom-scope-creator" hidden>
+              <section id="custom-property-creator" class="custom-scope-creator" data-capability-panel="properties" hidden>
                 <div class="custom-builder-heading"><h2>Add editable property</h2><button type="button" data-close-scope-creator>×</button></div>
                 <div class="custom-scope-grid">
                   <label>Property<select id="custom-property-capability"></select></label>
+                  <label>Inspector control<select id="custom-property-value-type"><option value="text">Text</option><option value="number">Number</option><option value="color">Color</option><option value="color-alpha">Color + opacity</option><option value="checkbox">Checkbox</option><option value="asset">Asset</option></select></label>
                   <label>Apply to<select id="custom-property-target"></select></label>
+                  <fieldset class="custom-scope-wide custom-additional-target-field">
+                    <legend>Also apply to additional parts (optional)</legend>
+                    <p class="hint">Check another part only when this one Inspector property should control several elements together.</p>
+                    <div id="custom-property-additional-target-checks" class="custom-additional-target-checks"></div>
+                    <select id="custom-property-additional-targets" multiple hidden aria-hidden="true"></select>
+                  </fieldset>
                   <label>Composer label<input id="custom-property-label"></label>
                   <label>Property key<input id="custom-property-key"></label>
                   <label>Default value<input id="custom-property-default"></label>
+                  <label id="custom-property-target-name-row" hidden>CSS/DOM name<input id="custom-property-target-name" placeholder="Example: box-shadow or aria-label"></label>
+                  <label id="custom-property-unit-row" hidden>Unit<input id="custom-property-unit" placeholder="px, %, deg, ms"></label>
+                  <label id="custom-property-min-row" hidden>Minimum<input id="custom-property-min" type="number"></label>
+                  <label id="custom-property-max-row" hidden>Maximum<input id="custom-property-max" type="number"></label>
+                  <label id="custom-property-step-row" hidden>Step<input id="custom-property-step" type="number"></label>
                 </div>
                 <p id="custom-property-capability-help" class="hint"></p>
+                <div class="custom-property-generation-preview">
+                  <strong>What Composer will add</strong>
+                  <pre id="custom-property-generation-preview">Choose a part and property.</pre>
+                </div>
                 <button id="custom-property-create" type="button" class="primary">Add property to Composer and source</button>
               </section>
-              <section id="custom-signal-creator" class="custom-scope-creator" hidden>
+              <div id="custom-property-mapping-list" class="custom-property-mapping-list" data-capability-panel="properties"></div>
+              <section id="custom-signal-creator" class="custom-scope-creator" data-capability-panel="connections" hidden>
                 <div class="custom-builder-heading"><h2>Add Crestron connection</h2><button type="button" data-close-scope-creator>×</button></div>
                 <div class="custom-scope-grid">
                   <label>Signal type<select id="custom-signal-capability-type"><option value="digital">Digital</option><option value="analog">Analog</option><option value="serial">Serial</option></select></label>
@@ -1471,13 +1517,40 @@
                   <label>Composer label<input id="custom-signal-capability-label"></label>
                   <label>Signal key<input id="custom-signal-capability-key"></label>
                   <label>Contract name / join<input id="custom-signal-capability-address"></label>
+                  <label id="custom-signal-parameter-row" hidden><span id="custom-signal-parameter-label">Class/property/action detail</span><input id="custom-signal-parameter" placeholder="Example: active"></label>
+                  <label id="custom-signal-hold-row" hidden>Held duration (seconds)<input id="custom-signal-hold-duration" type="number" min="0.1" max="30" step="0.1" value="3"></label>
+                  <label id="custom-signal-pulse-row" hidden>Pulse duration (ms)<input id="custom-signal-pulse-duration" type="number" min="20" max="5000" step="10" value="50"></label>
+                  <label id="custom-signal-exclusive-row" hidden><input id="custom-signal-exclusive" type="checkbox" checked> Press fires only when released before Held duration</label>
+                  <label id="custom-signal-input-min-row" hidden>Incoming minimum<input id="custom-signal-input-min" type="number" value="0"></label>
+                  <label id="custom-signal-input-max-row" hidden>Incoming maximum<input id="custom-signal-input-max" type="number" value="65535"></label>
+                  <label id="custom-signal-unit-row" hidden>Unit<input id="custom-signal-unit" placeholder="px, %, ms, deg"></label>
+                  <label id="custom-signal-invert-row" hidden><input id="custom-signal-invert" type="checkbox"> Invert range</label>
+                  <label id="custom-signal-clamp-row" hidden><input id="custom-signal-clamp" type="checkbox" checked> Clamp to range</label>
+                  <label id="custom-signal-zero-row" hidden><input id="custom-signal-zero-based" type="checkbox"> Zero-based item indexing</label>
+                  <label id="custom-signal-per-item-row" hidden><input id="custom-signal-per-item" type="checkbox"> Create a per-item zero-based signal range</label>
                 </div>
                 <p id="custom-signal-capability-help" class="hint"></p>
+                <div class="custom-property-generation-preview">
+                  <strong>What Composer will add</strong>
+                  <pre id="custom-signal-generation-preview">Choose a connection type and target part.</pre>
+                </div>
                 <button id="custom-signal-create" type="button" class="primary">Add connection to Composer and source</button>
               </section>
-              <details class="custom-technical-mappings">
+              <div id="custom-connection-mapping-list" class="custom-property-mapping-list" data-capability-panel="connections"></div>
+              <details class="custom-technical-mappings" data-capability-panel="advanced">
                 <summary>Technical mappings and compatibility tools</summary>
                 <p class="hint">Existing imported mappings remain editable here. Most components do not require this section.</p>
+              <details class="custom-workbench-parts" open>
+                <summary>Component parts</summary>
+                <p class="hint">Name the meaningful pieces of this component once. Editable properties, Crestron connections, and states can target these parts in later steps.</p>
+                <div class="custom-part-actions">
+                  <button id="custom-part-picker" type="button">Pick part from preview</button>
+                  <button id="custom-part-add" type="button">Add selector manually</button>
+                  <button id="custom-part-rescan" type="button">Rescan source</button>
+                </div>
+                <div id="custom-part-list" class="custom-part-list"></div>
+                <div id="custom-part-validation" class="custom-part-validation"></div>
+              </details>
               <details class="custom-detection-details">
                 <summary>Manual element mapping</summary>
                 <p class="hint">Composer analyzes the source automatically. Open this only to correct what a specific HTML element represents.</p>
@@ -1584,7 +1657,7 @@
                 Digital-state mapping can assign separate Standard and Selected
                 values from false/true feedback.</small
               >
-              <details class="custom-generated-code" open>
+              <details class="custom-generated-code" hidden>
                 <summary>Composer-generated CSS / JavaScript (live)</summary>
                 <label
                   >Generated CSS<textarea
@@ -1600,23 +1673,32 @@
               </details>
               </details>
             </details>
-            <details class="custom-state-builder custom-step-capabilities">
-              <summary>Optional Composer visual-state override</summary>
+            <details class="custom-state-builder custom-step-capabilities" data-capability-panel="states" open>
+              <summary>States &amp; Modes</summary>
               <p class="hint">
-                Leave this disabled to preserve the component’s original CSS.
-                Enable it only when you want Composer to replace the selected
-                element’s Standard, Pressed, Selected, and Disabled appearance.
+                Choose which visible part changes, then define how it should look
+                in each state. Use Simulate to test the result before creating the
+                component. Authored CSS transitions and animations remain active.
               </p>
               <label class="custom-state-enable"
-                ><input id="custom-state-enabled" type="checkbox" /> Replace
-                the original visual states with Composer states</label
+                ><input id="custom-state-enabled" type="checkbox" /> Use
+                Standard, Pressed, Selected, and Disabled appearances</label
               >
               <div id="custom-state-controls" hidden>
-              <label
-                >Target selector<input
-                  id="custom-state-selector"
-                  placeholder="Pick an element or enter .button"
-              /></label>
+              <div class="custom-state-target">
+                <label>Which part changes appearance?
+                  <select id="custom-state-part">
+                    <option value="">Choose a component part</option>
+                  </select>
+                </label>
+                <button id="custom-state-highlight" type="button">Highlight chosen part</button>
+                <span id="custom-state-target-status" class="hint">Choose a part before simulating a state.</span>
+              </div>
+              <details class="custom-state-advanced-target">
+                <summary>Advanced target</summary>
+                <p class="hint">Only use this when the required element is not listed above.</p>
+                <label>CSS selector<input id="custom-state-selector" placeholder="Example: .button-face" /></label>
+              </details>
               <div id="custom-state-grid" class="custom-state-grid">
                 <div class="custom-state-row" data-state="standard">
                   <strong>Standard</strong><label>Label<input data-style="text" placeholder="Keep component text"></label><label>Asset<select data-style="asset"><option value="">No state asset</option></select></label><label>Background<input data-style="background" value="#263b3c"></label><label>Text color<input data-style="color" value="#ffffff"></label><label>Border<input data-style="border" value="#7ba7a3"></label><label>Glow<input data-style="glow" value="#00e5c3"></label><label>Opacity %<input data-style="opacity" type="number" min="0" max="100" value="100"></label><label>Scale %<input data-style="scale" type="number" min="0" max="200" value="100"></label>
@@ -1631,12 +1713,15 @@
                   <strong>Disabled</strong><label>Label<input data-style="text" placeholder="Use Standard label"></label><label>Asset<select data-style="asset"><option value="">Use Standard asset</option></select></label><label>Background<input data-style="background" value="#303838"></label><label>Text color<input data-style="color" value="#888888"></label><label>Border<input data-style="border" value="#555555"></label><label>Glow<input data-style="glow" value="#000000"></label><label>Opacity %<input data-style="opacity" type="number" min="0" max="100" value="55"></label><label>Scale %<input data-style="scale" type="number" min="0" max="200" value="100"></label>
                 </div>
               </div>
-              <button id="custom-state-signals" type="button">
-                Add Selected signal
-              </button>
+              <div class="custom-state-actions">
+                <button id="custom-state-add" type="button">+ Custom digital state</button>
+                <button id="custom-mode-add" type="button">+ Analog-indexed mode</button>
+                <button id="custom-state-signals" type="button">Add state connections</button>
+              </div>
+              <p id="custom-state-summary" class="hint"></p>
               </div>
             </details>
-            <details class="custom-repeated-items custom-step-capabilities">
+            <details class="custom-repeated-items custom-step-capabilities" data-capability-panel="repeated">
               <summary>Repeated sub-items</summary>
               <p class="hint">
                 Generate a local default count, analog count override, and
@@ -1697,7 +1782,7 @@
                 Namespace.Items[{index}].Press / Selected / Name.</small
               >
             </details>
-            <section class="custom-source-code custom-step-capabilities">
+            <section class="custom-source-code custom-step-capabilities" data-capability-panel="code">
               <div class="custom-builder-heading">
                 <div>
                   <h2>Component source</h2>
@@ -1708,34 +1793,68 @@
                 <button type="button" data-custom-tab="html" class="active">HTML</button>
                 <button type="button" data-custom-tab="css">CSS</button>
                 <button type="button" data-custom-tab="javascript">JavaScript</button>
+                <button type="button" data-custom-tab="adapter">Generated Adapter</button>
               </div>
               <textarea id="custom-source-html" class="custom-source-editor"></textarea>
               <textarea id="custom-source-css" class="custom-source-editor" hidden></textarea>
               <textarea id="custom-source-javascript" class="custom-source-editor" hidden></textarea>
+              <div id="custom-source-adapter" class="custom-source-editor custom-adapter-editor" hidden>
+                <div class="custom-adapter-toolbar"><span>Generated only from mappings. Authored source is never changed.</span><button id="custom-adapter-refresh" type="button">Regenerate adapter</button></div>
+                <div id="custom-adapter-collisions" class="custom-adapter-collisions"></div>
+                <div id="custom-adapter-blocks" class="custom-adapter-blocks"></div>
+              </div>
             </section>
           </section>
           <section class="custom-source-panel custom-step-review">
             <div class="custom-preview-heading">
-              <h2>Live preview</h2>
-              <button id="custom-preview-refresh" type="button">Refresh</button>
+              <div>
+                <h2>Live preview</h2>
+                <p id="custom-picker-instruction" class="hint" hidden>Move over the component to highlight a part, then click it. Hold Shift while clicking to select the next outer layer.</p>
+              </div>
+              <div class="custom-preview-heading-actions">
+                <button id="custom-preview-picker-close" type="button" hidden>Cancel picking</button>
+                <button id="custom-preview-refresh" type="button">Refresh</button>
+              </div>
             </div>
-            <iframe
-              id="custom-component-preview"
-              sandbox="allow-scripts allow-same-origin"
-            ></iframe>
-            <div class="custom-preview-test">
-              <select id="custom-preview-signal"></select>
-              <input id="custom-preview-value" placeholder="Feedback value" />
-              <button id="custom-preview-send" type="button">
-                Send feedback
-              </button>
+            <div class="custom-test-workspace">
+              <div class="custom-test-preview-pane">
+                <iframe
+                  id="custom-component-preview"
+                  sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+                <div class="custom-preview-test">
+                  <select id="custom-preview-signal"></select>
+                  <input id="custom-preview-value" placeholder="Feedback value" />
+                  <button id="custom-preview-send" type="button">
+                    Send feedback
+                  </button>
+                </div>
+                <pre id="custom-preview-log" class="custom-preview-log">Preview signal activity appears here.</pre>
+              </div>
+              <section class="custom-signal-simulator" aria-label="Component signal simulator">
+                <div class="custom-simulator-heading">
+                  <strong>Crestron values &amp; interactions</strong>
+                  <small>Inputs drive the component; outputs show presses and pulses.</small>
+                </div>
+                <div id="custom-simulator-inputs" class="custom-simulator-grid"></div>
+                <div class="custom-simulator-lifecycle">
+                  <label>Interaction target<select id="custom-simulator-target"></select></label>
+                  <button id="custom-simulate-press" type="button">Press</button>
+                  <button id="custom-simulate-release" type="button">Release</button>
+                  <button id="custom-simulate-cancel" type="button">Cancel</button>
+                  <button id="custom-simulate-hold" type="button">Hold</button>
+                </div>
+                <div class="custom-simulator-lifecycle">
+                  <label>State / mode<select id="custom-simulator-state"></select></label>
+                  <button id="custom-simulate-state" type="button">Apply state</button>
+                  <button id="custom-simulate-standard" type="button">Return to Standard</button>
+                </div>
+                <div id="custom-simulator-outputs" class="custom-simulator-grid custom-simulator-output-grid"></div>
+              </section>
             </div>
-            <pre id="custom-preview-log" class="custom-preview-log">
-Preview signal activity appears here.</pre
-            >
           </section>
         </div>
-        <details class="custom-compatibility-audit custom-step-review" open>
+        <details class="custom-compatibility-audit custom-step-review">
           <summary>Compatibility &amp; instance-safety audit</summary>
           <p class="hint">Checks imported code for touch-only failures, viewport leakage, global selectors, duplicate IDs, external assets, and browser APIs that may differ on a TSW panel.</p>
           <div class="custom-audit-actions">
@@ -1745,7 +1864,7 @@ Preview signal activity appears here.</pre
           </div>
           <div id="custom-audit-report" class="custom-audit-report" aria-live="polite"></div>
         </details>
-        <details class="custom-behavior-review custom-step-review" open>
+        <details class="custom-behavior-review custom-step-review">
           <summary>Plain-language component review</summary>
           <p class="hint">
             Confirm what Composer will make editable and how Crestron signals
@@ -1820,12 +1939,17 @@ Preview signal activity appears here.</pre
     </dialog>
     <dialog id="translate-snippet-dialog" class="custom-component-dialog">
       <form method="dialog">
-        <h2>Import &amp; Translate Snippet</h2>
-        <p class="hint">
-          Choose only what Composer should make editable and which Crestron
-          connections it should expose. The imported appearance and behavior
-          remain unchanged unless you explicitly select an appearance override.
-        </p>
+        <div class="component-creator-header">
+          <div>
+            <h2>Import &amp; Translate Snippet</h2>
+            <p class="hint">
+              Choose only what Composer should make editable and which Crestron
+              connections it should expose. The imported appearance and behavior
+              remain unchanged unless you explicitly select an appearance override.
+            </p>
+          </div>
+          <button value="cancel" class="dialog-close" aria-label="Close Import and Translate">×</button>
+        </div>
         <div class="grid2">
           <label>Component name<input id="translate-name" /></label>
           <label
@@ -1906,7 +2030,7 @@ Preview signal activity appears here.</pre
         <div class="dialog-actions">
           <button value="cancel">Cancel</button
           ><button id="translate-continue" type="button" class="primary">
-            Continue to final setup
+            Continue to Component Workbench
           </button>
         </div>
       </form>
@@ -2223,14 +2347,27 @@ Preview signal activity appears here.</pre
           </section>
 
           <section id="manual-custom">
-            <h3>9. Custom components and reusable designs</h3>
+            <h3>9. Component Workbench, packages, and reusable designs</h3>
+            <p><strong>File → Create component</strong> opens one Workbench for imported HTML/CSS/JavaScript, blank authored components, starter templates, installed components, and `.cuicomponent` packages. Handwritten source remains authoritative; Composer stores generated adapter behavior separately.</p>
+            <ol>
+              <li><strong>Imported setup:</strong> review detected parts, editable properties, states, repeated collections, and Crestron connections. Remove anything the component does not need.</li>
+              <li><strong>Add capabilities &amp; edit code:</strong> name Component Parts with stable CSS selectors, add Inspector properties or signal mappings, and review HTML, CSS, JavaScript, and Generated Adapter tabs.</li>
+              <li><strong>Test &amp; create:</strong> simulate typed feedback, outputs, press/release/cancel/hold, states, and modes. Fix blocking findings, then record CH5 Desktop and TSW verification after physical testing.</li>
+            </ol>
+            <p><strong>Common walkthroughs</strong></p>
+            <dl>
+              <dt>Button with Press</dt><dd>Name the clickable surface as a Part, add a Digital Output connection using Press, then use the pointer simulator to verify TRUE/FALSE pulse activity.</dd>
+              <dt>Selected toggle</dt><dd>Add Standard and Selected states, map the authored checked/class state, and add a Digital Input named Selected. State simulation should move in both directions without replacing authored transitions.</dd>
+              <dt>Serial label</dt><dd>Name the label Part, add a Serial Input using Text/Name, send normal and empty strings in the simulator, and confirm empty feedback preserves the configured fallback when intended.</dd>
+              <dt>Analog gauge or slider</dt><dd>Map an Analog Input to Value/Feedback with a 0–65535 range. For an interactive slider also add an Analog Output using Value Set; a read-only gauge needs only feedback.</dd>
+              <dt>Repeated list</dt><dd>Name the container and item-template Parts, set the zero-based default/max count, then add per-item Press, Selected, Name, and optional analog ranges. Test at least two Widget List instances.</dd>
+            </dl>
+            <p><strong>Portability:</strong> a created component is saved permanently in the machine-wide Composer library and is also embedded in projects that use it. Export one component as `.cuicomponent` or the complete installed collection as `.cuicomponents`; both formats include Workbench mappings, authored source, generated adapter, states, repeated definitions, acceptance evidence, and referenced embedded assets.</p>
+            <p><strong>Older packages:</strong> package versions 1–3 remain supported. When an older package has no Workbench schema, Composer migrates its legacy properties, behaviors, signals, states, and repeated settings into named Workbench mappings. Review migrated selectors and rerun the self-test before deploying. Import never replaces an installed component without confirmation.</p>
             <ul>
-              <li><strong>Import &amp; translate:</strong> analyzes HTML snippets and proposes editable text, button behavior, analog values, signals, and standard appearance properties.</li>
-              <li><strong>Create custom component:</strong> starts from Button, Slider/Gauge, Text/Input, Repeated List, or Blank templates.</li>
-              <li><strong>Visual behavior builder:</strong> connects properties/signals to selected HTML elements while preserving handwritten code.</li>
               <li><strong>Reusable designs:</strong> create a master whose instances update together while allowing selected property and signal overrides.</li>
               <li><strong>Subpages:</strong> turn a source page into a linked header, footer, sidebar, or overlay master. Configure its cropped size, placement, excluded pages, and optional Visibility signal; editing the source master updates every deployed instance.</li>
-              <li><strong>Design libraries:</strong> export/import versioned `.cuilibrary` packages without replacing built-in widgets.</li>
+              <li><strong>Design libraries:</strong> export/import versioned `.cuilibrary` project designs. Component libraries use `.cuicomponents` and do not replace built-in widgets.</li>
             </ul>
           </section>
 
@@ -2619,6 +2756,7 @@ Preview signal activity appears here.</pre
       Delete selected component
     </button>
     <script src="exporter.js"></script>
+    <script src="component-workbench.js"></script>
     <script src="editor.js"></script>
   </body>
 </html>

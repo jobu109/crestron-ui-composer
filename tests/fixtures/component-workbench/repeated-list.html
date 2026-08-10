@@ -1,0 +1,5 @@
+<!doctype html><html><head><style>
+html,body{margin:0;width:100%;height:100%;background:transparent}.list{display:grid;gap:8px}.item{padding:14px;border:1px solid #50706d;border-radius:10px;background:#253436;color:#fff}.item.selected{background:#04aa8e}
+</style></head><body><div class="list"></div><script>
+const list=document.querySelector('.list');for(let index=0;index<5;index++){const item=document.createElement('button');item.className='item';item.dataset.index=index;item.textContent='Item '+index;item.addEventListener('pointerup',()=>item.classList.toggle('selected'));list.appendChild(item)}
+</script></body></html>

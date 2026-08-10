@@ -1,0 +1,30 @@
+{
+  "format": "crestron-ui-composer-component",
+  "version": 3,
+  "exportedAt": "2026-08-08T00:00:00.000Z",
+  "component": {
+    "id": "custom-baseline-toggle",
+    "name": "Baseline Toggle",
+    "category": "Toggle Buttons",
+    "icon": "Toggle",
+    "version": "1.0.0",
+    "author": "Regression Fixture",
+    "description": "Current pre-workbench package schema fixture.",
+    "html": "<!doctype html><html><body><button class=\"toggle\"><span class=\"label\">Toggle</span></button></body></html>",
+    "defaultSize": { "width": 220, "height": 120 },
+    "properties": [
+      { "key": "text", "name": "Text", "type": "text", "defaultValue": "Toggle" },
+      { "key": "trackColor", "name": "Track color", "type": "color", "defaultValue": "#253436" }
+    ],
+    "signals": [
+      { "key": "press", "name": "Press", "type": "digital", "direction": "output", "defaultValue": "BaselineToggle.Press" },
+      { "key": "selected", "name": "Selected", "type": "digital", "direction": "input", "defaultValue": "BaselineToggle.Selected" },
+      { "key": "name", "name": "Name", "type": "serial", "direction": "input", "defaultValue": "BaselineToggle.Name" }
+    ],
+    "behaviors": [],
+    "stateStyles": { "selector": ".toggle", "states": { "standard": {}, "selected": {} } },
+    "elementRoles": [{ "selector": ".toggle", "role": "toggle" }],
+    "repeatedItems": []
+  },
+  "dependencies": { "assets": [], "manifest": { "assetCount": 0 } }
+}

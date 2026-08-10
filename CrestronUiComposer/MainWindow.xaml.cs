@@ -240,6 +240,12 @@ public partial class MainWindow : Window
                 case "deleteProjectPreset":
                     DeleteProjectPreset(id, root.GetProperty("payload"));
                     break;
+                case "readComponentLibrary":
+                    ReadComponentLibrary(id);
+                    break;
+                case "writeComponentLibrary":
+                    WriteComponentLibrary(id, root.GetProperty("payload").GetString() ?? "");
+                    break;
                 case "getStorageSettings":
                     GetStorageSettings(id);
                     break;
@@ -634,6 +640,31 @@ public partial class MainWindow : Window
 
     private static string StorageSettingsPath() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "storage-settings.json");
+
+    private static string ComponentLibraryPath()
+    {
+        var folder = Path.Combine(LoadStorageSettings()["templates"], "Composer Component Library");
+        Directory.CreateDirectory(folder);
+        return Path.Combine(folder, "custom-components.json");
+    }
+
+    private void ReadComponentLibrary(string id)
+    {
+        var path = ComponentLibraryPath();
+        Respond(id, true, File.Exists(path) ? File.ReadAllText(path) : "", null);
+    }
+
+    private void WriteComponentLibrary(string id, string contents)
+    {
+        if (string.IsNullOrWhiteSpace(contents))
+            throw new InvalidOperationException("The component library cannot be empty.");
+        using (JsonDocument.Parse(contents)) { }
+        var path = ComponentLibraryPath();
+        var temporaryPath = path + ".tmp";
+        File.WriteAllText(temporaryPath, contents);
+        File.Move(temporaryPath, path, true);
+        Respond(id, true, path, null);
+    }
 
     private static Dictionary<string, string> DefaultStorageSettings()
     {

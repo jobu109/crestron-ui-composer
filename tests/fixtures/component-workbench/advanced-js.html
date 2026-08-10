@@ -1,0 +1,5 @@
+<!doctype html><html><head><style>
+html,body{margin:0;width:100%;height:100%;display:grid;place-items:center;background:transparent}.orb{width:120px;height:120px;border-radius:50%;background:conic-gradient(#04dcb9 var(--level),#253436 0);filter:drop-shadow(0 0 12px #04dcb9);transition:transform var(--speed)}.orb.active{animation:pulse 1.2s infinite alternate}@keyframes pulse{to{transform:scale(1.12) rotate(18deg)}}
+</style></head><body><button class="orb" style="--level:65%;--speed:.4s"></button><script>
+(()=>{const root=document.querySelector('.orb');let timer=0;const activate=()=>{clearTimeout(timer);root.classList.add('active');timer=setTimeout(()=>root.classList.remove('active'),1800)};root.addEventListener('pointerup',activate);new ResizeObserver(()=>root.dataset.width=Math.round(root.getBoundingClientRect().width)).observe(root)})();
+</script></body></html>

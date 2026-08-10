@@ -1,0 +1,5 @@
+<!doctype html><html><head><style>
+html,body{margin:0;width:100%;height:100%;display:grid;place-items:center;background:transparent}.control{display:grid;gap:10px;color:#fff;font:700 18px Segoe UI}.track{width:260px;height:18px;border-radius:10px;background:#303838;overflow:hidden}.fill{height:100%;width:45%;background:#04aa8e}
+</style></head><body><label class="control"><span class="value">45%</span><input class="slider" type="range" min="0" max="100" value="45"><span class="track"><span class="fill"></span></span></label><script>
+const slider=document.querySelector('.slider'),fill=document.querySelector('.fill'),value=document.querySelector('.value');slider.addEventListener('input',()=>{fill.style.width=slider.value+'%';value.textContent=slider.value+'%'});
+</script></body></html>
