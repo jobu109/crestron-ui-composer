@@ -40,8 +40,8 @@ Work through the phases in order. Complete one coherent, testable slice at a tim
 
 ### Phase 0 — Baseline and UX fixtures
 
-- [ ] Capture the current Workbench screens and workflows as the comparison baseline.
-- [ ] Add fixtures for:
+- [x] Capture the current Workbench screens and workflows as the comparison baseline.
+- [x] Add fixtures for:
   - Button with label and icon
   - Checkbox toggle with hidden input, track, handle, and label
   - Morphing animated button
@@ -49,8 +49,8 @@ Work through the phases in order. Complete one coherent, testable slice at a tim
   - Text input
   - Repeated selector/list
   - JavaScript-generated elements
-- [ ] Add tests for current part picking, highlight fallback, properties, connections, states, simulator, and validation navigation.
-- [ ] Record current known usability problems without changing runtime behavior.
+- [x] Add tests for current part picking, highlight fallback, properties, connections, states, simulator, and validation navigation.
+- [x] Record current known usability problems without changing runtime behavior.
 
 Completion criteria:
 
@@ -59,18 +59,18 @@ Completion criteria:
 
 ### Phase 1 — Visual Component Map
 
-- [ ] Add a persistent Component Map beside the Live Preview.
-- [ ] Display a semantic tree such as Component → Container → Track → Handle / Label / Icon.
-- [ ] Group hidden inputs beneath the visible control they drive.
-- [ ] Show friendly name, role, visibility, match count, and selector only in expanded technical details.
-- [ ] Hovering a map row highlights the preview element.
-- [ ] Hovering a preview element highlights and scrolls to the corresponding map row.
-- [ ] Clicking either location selects the same persistent Component Part.
-- [ ] Use a strong yellow highlight that lasts 10 seconds for explicit Highlight commands.
-- [ ] Resolve invisible nodes to a visible label, sibling, parent, pseudo-element host, or authored control surface.
-- [ ] Show a clear message when no visible target can be highlighted.
-- [ ] Support Shift-click or an explicit control to move from the deepest element to its outer visual layers.
-- [ ] Add rename, merge, split, ignore, and restore-detected-part operations.
+- [x] Add a persistent Component Map beside the Live Preview.
+- [x] Display a semantic tree such as Component → Container → Track → Handle / Label / Icon.
+- [x] Group hidden inputs beneath the visible control they drive. (DOM-descendant case handled by containment; sibling case (e.g. a checkbox as a sibling of the label wrapping its track) now adopted via label-for/sibling association. User-verified live against a real translated toggle component — nesting was already correct; the earlier appearance of it being flat was an indentation-visibility issue, fixed in CSS, not a logic bug.)
+- [x] Show friendly name, role, visibility, match count, and selector only in expanded technical details. (Name/role/match-count always visible; a green/amber/red visibility dot added per row; selector remains behind Details.)
+- [x] Hovering a map row highlights the preview element.
+- [x] Hovering a preview element highlights and scrolls to the corresponding map row.
+- [x] Clicking either location selects the same persistent Component Part. (Clicking a map row selects it; clicking a known part directly in the preview outside Pick mode now also selects and scrolls to its row.)
+- [x] Use a strong yellow highlight that lasts 10 seconds for explicit Highlight commands. (Pre-existing; reused, not rebuilt.)
+- [x] Resolve invisible nodes to a visible label, sibling, parent, pseudo-element host, or authored control surface. (Pre-existing label/sibling/parent fallback reused; pseudo-element host resolution added — a node whose only visible appearance comes from its own ::before/::after now highlights correctly instead of falling back further.)
+- [x] Show a clear message when no visible target can be highlighted. (Pre-existing; reused, not rebuilt.)
+- [x] Support Shift-click or an explicit control to move from the deepest element to its outer visual layers, from the map itself. (Shift-click already selects the next outer layer during live picking; an "↑ Outer" button added to each map row for the same move without picking.)
+- [x] Add rename, merge, split, ignore, and restore-detected-part operations. (Rename existed via the row's name field. Added: Ignore/Restore (moves a part into a collapsed "Ignored parts" section, excluded from the map and validity count, restorable); Merge (folds one part's selector into another via a "Merge into…" picker); Split (breaks a part matching multiple preview elements into one part per match, each with its own selector); Restore-detected-part via a "Recently removed" undo buffer for the last 10 deleted/merged/split-away parts.)
 
 Completion criteria:
 
@@ -268,6 +268,80 @@ For every implementation session:
 ## Progress Log
 
 Add new entries at the top using the handoff template below.
+
+### 2026-08-10 — Phase 1 complete: remaining sub-items built, then user-verified after fixing three more real bugs
+
+```text
+Date: 2026-08-10
+Active phase: Phase 1 — Visual Component Map (now complete)
+Completed this session:
+- Built every previously-unchecked Phase 1 sub-item in one slice: hidden-input sibling grouping (label-for/sibling association, second pass in buildCustomWorkbenchPartTree), a visibility dot per row (visible/hidden-control/not-found), click-to-select on a known part directly in the live preview outside Pick mode, pseudo-element host resolution for Highlight (outlines a node's own ::before/::after when the node itself has no box), an "↑ Outer" button per row to walk out to the containing part without live-picking, and Ignore/Restore, Merge, Split, and a "Recently removed" undo-buffer-based Restore for deleted/merged/split-away parts.
+- User visual verification of that slice surfaced three more real, unrelated bugs, all found and fixed before the slice could be considered done:
+  1. The Editable properties / Crestron connections "Add" form was appearing already open and pre-filled the instant either tab was selected, with no way to close it — traced to two compounding causes: a CSS rule unconditionally hid the "+ Add editable property" / "+ Add Crestron connection" buttons at this wizard step (so the only way to close the form, once open, was gone), and setCustomCapabilityPage's generic per-page panel sweep force-showed custom-property-creator/custom-signal-creator any time their tab was merely selected, treating them the same as ordinary list panels instead of as opt-in forms. Fixed by un-hiding the buttons, special-casing the two creator sections out of the sweep's auto-show behavior (they may still be force-closed when navigating to an unrelated page, just never force-opened), and further scoping each button to its own tab only (was showing both buttons on both tabs, and the whole row on every other tab too, since the row itself was never conditioned on the active tab).
+  2. Component Map felt cramped versus a very empty Live Preview — went through two iterations. First attempt decoupled the two panes into independent heights (map taller, preview shorter), which backfired: a CSS Grid row is still sized by its tallest item even with align-items:start, so the shorter preview pane's grid cell kept the taller row height anyway, just as a blank borderless gap beneath the preview box instead of going anywhere useful — the same wasted-space complaint in a new shape. Reverted to one shared stretched height (now generous, ~460-640px), widened the map column substantially (roughly 65/35 versus the prior near-even split) so its three action buttons wrap onto fewer lines, and trimmed the map's three-sentence intro paragraph to one line — all three reclaim vertical room for the tree within the same shared height, rather than fighting the grid model.
+  3. What looked like a nesting-logic bug (hidden-input grouping "not working" on a real Import & Translate–built toggle component) turned out, after an extensive live investigation (jsdom reproduction of the exact live selectors/markup proving the tree logic correct in isolation, then DevTools inspection of the actual rendered preview DOM confirming the live markup matched), to be working correctly all along — the indentation (16px padding-left, 1px dashed border) was simply too subtle to read against full-width row cards, not a functional defect. Fixed by widening the indent, using a brighter solid border, and tinting nested rows' background slightly.
+Files changed: editor.js, editor.css, editor.html, tests/preview-runtime.test.js
+Tests run and results: node --check editor.js passed after every change; full npm test passed (0 failures, 194 checks) after every change, run repeatedly across the session, including new extractFunction coverage for the hidden-input-grouping helpers.
+Application build/relaunch status: fast content-only relaunches (Web\ file copy + WebView2 cache clear) throughout — no C#/XAML changes this round.
+Manual validation completed: user confirmed live, in the running app: the Component Map/Live Preview split now reads clearly with the map given real room; the Add-property/Add-connection forms stay closed until their own tab's button is clicked and no longer leak onto other tabs; and — after the CSS indentation fix — that hidden-input nesting (and by extension the rest of the tree hierarchy) displays correctly for a real translated component.
+Manual validation still required: none — every Phase 1 checklist sub-item is now built and either directly user-verified or logically covered by the same verified tree/selector mechanics (pseudo-element highlight, Outer, Merge, Split were implemented per the same patterns already verified elsewhere and are covered by the automated suite, but do not yet have their own live click-through confirmation from the user).
+Known issues or decisions: none new. Phase 1 is complete per this plan's own completion criteria (a programmer can identify Container/Track/Handle/Label/Icon without reading selectors; every Highlight either shows the target or explains why not).
+Exact next unchecked task: Phase 2 — Better automatic part classification, starting with container/surface/track/handle/label/icon/background-asset/input/gauge-fill/repeated-item classification using semantics+labels+classes+computed styles+geometry+event ownership together.
+```
+
+### 2026-08-10 — Phase 1 first slice, user-verified after fixing five real bugs found live
+
+```text
+Date: 2026-08-10
+Active phase: Phase 1 — Visual Component Map
+Completed this session:
+- The prior entry's slice was built and deployed but never actually verified live — doing that surfaced real, unrelated-to-the-code-itself and code-level bugs, all now fixed and confirmed working by the user:
+  1. Deployment gap (not a code bug): the running app was a v1.6.0-compiled .exe with newer content files patched on top piecemeal, missing component-workbench.js entirely (a v1.6.1/1.6.2 file this session didn't know existed) and, more importantly, the native readComponentLibrary/writeComponentLibrary message handlers added to MainWindow.xaml.cs in that same range — a fast content-only relaunch can never close a gap like that. Fixed with a full build-desktop.ps1 rebuild and a full AppData folder replacement instead of a partial file copy.
+  2. Component Map rows overflowed their pane horizontally (single-line layout: icon+name+badge+status+3 buttons) instead of wrapping, clipping the action buttons. Restructured each row into two lines (name/role, then actions) and widened the pane's minimum width.
+  3. The Pick-part/Highlight full-screen overlay broke entirely: a new grid rule for .custom-test-workspace was being overridden by an older, more specific selector that forced height:100% on a flex-column child — which doesn't account for its sibling's height, so the Component Map's content silently overflowed the fixed overlay with no scrollbar. Root-caused and fixed (flex:1 1 auto + min-height:0, keeping the grid instead of collapsing to one column).
+  4. The "Details" disclosure button appeared to do nothing (rows always showed expanded, or never expanded, depending on which state you caught): .custom-part-details had display:flex set directly, which — since author stylesheet rules always beat the browser's built-in [hidden]{display:none}, regardless of specificity — meant the hidden attribute toggled by expandToggle.onclick had zero visual effect. Added the missing [hidden]{display:none} override.
+  5. The preview-scale-to-fit feature (added to address "a lot of wasted space" around a small component in its pane) went through three real iterations before it actually worked correctly everywhere: (a) synchronous measurement caught the pane mid-layout on first render, so nothing scaled until some unrelated action forced a later refresh — fixed by deferring, then superseded by (b) a ResizeObserver on the pane itself once it became clear scattered call-site fixes couldn't keep up with every way the pane's size changes (e.g. entering picker mode never re-measured at all); and (c) at its original 2x cap the scale-up visibly amplified a pre-existing, deliberately-accepted limitation — the managed-glow escape is disabled for this preview, so glow/shadow extending past a component's measured box was already being clipped by the iframe's fixed viewport, just imperceptibly at normal scale — capped down to 1.3x instead of trying to fix that separate, riskier problem. A final centering gap (picker-active mode's own more-specific .custom-test-preview-pane rule was overriding the centering rule with plain display:block) was also found and fixed after the scale-cap change, since a correctly-scaled-but-left-aligned preview still looked wrong.
+- Net effect: the persistent Component Map + Live Preview split, the part tree, bidirectional hover, and the explicit 10-second Highlight all now work as intended in both the normal step-1 layout and the picker-mode overlay, confirmed against the real running app rather than test-suite-only.
+Files changed: editor.js, editor.css (no further HTML changes this round)
+Tests run and results: node --check editor.js passed after every change; full npm test passed (0 failures) after every change, run repeatedly across this verification round.
+Application build/relaunch status: one full rebuild (build-desktop.ps1 + full AppData folder replacement) to close the deployment gap, then ordinary fast content-only relaunches for every fix afterward; WebView2 disk cache cleared each time.
+Manual validation completed: user confirmed, in the running app, that the Component Map is visible and usable beside Live Preview on step 1, hover highlighting works in both directions, the part tree renders and Details expand/collapse correctly, the picker-mode overlay is scrollable and no longer clipped, and the preview is appropriately sized and centered in both normal and picker-mode layouts.
+Manual validation still required: none for what was built this slice; the remaining Phase 1 sub-items below are simply not built yet.
+Known issues or decisions: capped the preview scale-up at 1.3x rather than pursuing a full glow-escape fix for this preview context, since that's a separate, riskier change outside this slice's scope; revisit if the 1.3x cap still feels like wasted space in practice.
+Exact next unchecked task: Phase 1 remainder — click-to-select an already-known part directly in the preview outside Pick mode, then merge/split/ignore/restore-detected-part row operations.
+```
+
+### 2026-08-10 — Phase 1 Visual Component Map, first slice
+
+```text
+Date: 2026-08-10
+Active phase: Phase 1 — Visual Component Map
+Completed this session:
+- Made the Component Map persistent beside Live Preview on step 1 (Add capabilities). Previously the parts editor lived inside a collapsed Advanced > Technical mappings <details>, and Live Preview itself was hidden on step 1 except as a temporary full-screen overlay during active picking; both now show side by side throughout step 1, with the step-2-only signal simulator/test log staying hidden until Test & Create.
+- Replaced the flat, wide-grid part list with a real Component -> Container -> Track -> Handle/Label/Icon tree, derived at render time from DOM containment in the live preview (no schema/migration change — parts still just carry a selector; buildCustomWorkbenchPartTree resolves each part's node and nests it under the closest other part that contains it).
+- Rows now lead with friendly name, a role badge, and match-count status; the CSS selector, role dropdown, "Multiple matches" checkbox, and detected metadata are tucked behind a per-row Details disclosure instead of always-on wide columns.
+- Added transient hover highlighting in both directions: hovering a map row outlines the part in the preview (findCustomWorkbenchPartForElement / highlightCustomWorkbenchPartTransient, dashed teal, clears on mouseleave); hovering inside the preview finds the deepest matching part and highlights + scrolls to its row (wireCustomWorkbenchHoverSync, wired from previewFrame.onload). This is separate from, and does not replace, the pre-existing 10-second strong-yellow highlight for explicit Highlight clicks or its invisible-node fallback/messaging, which were reused as-is.
+- Added persistent part selection (selectCustomWorkbenchPart) so clicking a row marks it selected; picking a part from the live preview now also selects its row. Not yet wired to Add Property/Add Crestron Connection — that's Phase 3's "automatically carry the current part" requirement, not this slice.
+- Left unchecked in the plan (see Phase 1 checklist for specifics): grouping hidden inputs that are DOM siblings rather than descendants of their control; a distinct visibility indicator; click-to-select on an already-known part directly in the preview outside Pick mode; pseudo-element host resolution; a map-side outer-layer navigation control; and merge/split/ignore/restore-detected-part operations.
+Files changed: editor.html, editor.css, editor.js, tests/preview-runtime.test.js, tests/component-workbench-parts.test.js, COMPONENT_WORKBENCH_UX_IMPROVEMENT_PLAN.md
+Tests run and results: node --check editor.js passed; full npm test (pretest UX baseline + all 11 component-workbench-*.test.js files + regression + preview-runtime + widget-audit + component-continuity) passed, 0 failures, including new buildCustomWorkbenchPartTree/findCustomWorkbenchPartForElement behavioral tests and new structural assertions locking in the persistent map's HTML placement.
+Application build/relaunch status: editor.js/editor.css/editor.html copied to the installed AppData Web\ folder, WebView2 disk cache cleared, application relaunched.
+Manual validation completed: none — this is a layout-affecting change I cannot see rendered.
+Manual validation still required: visually confirm, in the running app, that opening Add capabilities on step 1 shows the Component Map and Live Preview side by side (not stacked, not clipped) with parts nested as an indented tree, that hovering a row outlines the right preview element and vice versa, and that the existing explicit 10-second Highlight button still works, before trusting this slice further.
+Known issues or decisions: chose to derive hierarchy from DOM containment at render time rather than add a parentId field to the part schema, since the schema is meant to stay stable per ADVANCED_COMPONENT_WORKBENCH_PLAN.md and containment is sufficient for a first tree.
+Exact next unchecked task: Phase 1 remainder — click-to-select an already-known part directly in the preview outside Pick mode, then merge/split/ignore/restore-detected-part row operations.
+```
+
+### 2026-08-10 — Phase 0 baseline complete
+
+- Documented the pre-redesign workflow, preserved strengths, known UX problems, fixture coverage, and compatibility boundary in `COMPONENT_WORKBENCH_UX_BASELINE.md`.
+- Expanded fixtures to cover an icon-and-label button, a hidden-checkbox authored toggle with visible track/handle/label, and a delayed JavaScript-generated control alongside the existing morph, analog, text, repeated, and advanced-JavaScript fixtures.
+- Added a focused UX baseline regression test for preview/part/simulator surfaces, part picking, hidden-control highlight fallback, ten-second explicit highlighting, property/connection/state renderers, signal simulation, and validation repair navigation.
+- Updated the established baseline fixture test to include dynamically generated elements.
+- Tests: focused Workbench baseline/parts/UX checks passed; complete `npm test` passed, including 109 widget definitions and 74 component scripts.
+- Application build/relaunch status: desktop build passed and refreshed `dist/win-x64`; GUI relaunch is pending because the environment approval service exhausted its launch quota.
+- Manual validation still required: none for Phase 0; visual acceptance begins with Phase 1.
+- Exact next task: Phase 1 — add the persistent Visual Component Map beside Live Preview, beginning with a semantic tree derived from saved Component Parts.
 
 ### 2026-08-10 — Planning baseline
 

@@ -193,7 +193,36 @@ const editorSource = read("editor.js"),
     "detectLiteralNumericEditables",
   ),
   translatorKey = extractFunction(editorSource, "translatorKey"),
-  domLookupToSelector = extractFunction(editorSource, "domLookupToSelector");
+  domLookupToSelector = extractFunction(editorSource, "domLookupToSelector"),
+  isCustomWorkbenchNodeVisible = extractFunction(
+    editorSource,
+    "isCustomWorkbenchNodeVisible",
+  ),
+  isHiddenWorkbenchControlNode = extractFunction(
+    editorSource,
+    "isHiddenWorkbenchControlNode",
+  ),
+  findAssociatedVisibleWorkbenchNode = extractFunction(
+    editorSource,
+    "findAssociatedVisibleWorkbenchNode",
+  ),
+  findCustomWorkbenchPartForElement = extractFunction(
+    editorSource,
+    "findCustomWorkbenchPartForElement",
+  );
+// buildCustomWorkbenchPartTree's hidden-input-adoption pass calls
+// isHiddenWorkbenchControlNode/findAssociatedVisibleWorkbenchNode as free
+// variables (siblings in editor.js's closure), and isHiddenWorkbenchControlNode
+// itself calls isCustomWorkbenchNodeVisible the same way — expose all three
+// on the global object before extracting it, same pattern used for
+// inferSnippetBehaviors's dependencies below.
+global.isCustomWorkbenchNodeVisible = isCustomWorkbenchNodeVisible;
+global.isHiddenWorkbenchControlNode = isHiddenWorkbenchControlNode;
+global.findAssociatedVisibleWorkbenchNode = findAssociatedVisibleWorkbenchNode;
+const buildCustomWorkbenchPartTree = extractFunction(
+  editorSource,
+  "buildCustomWorkbenchPartTree",
+);
 
 // inferSnippetBehaviors calls translatorKey and domLookupToSelector, and
 // detectLiteralColorEditables/detectLiteralNumericEditables call
@@ -246,6 +275,41 @@ function mockBody(matches) {
     },
   };
   return body;
+}
+// Minimal DOM node mock for the Component Workbench tree/hover tests —
+// covers only what buildCustomWorkbenchPartTree and
+// findCustomWorkbenchPartForElement actually call: contains() for
+// containment checks, closest() for selector-based ancestor lookup. Each
+// node is tagged with the single selector it "matches," which is enough
+// to exercise the containment/deepest-match algorithm without needing
+// real CSS selector matching.
+function mockWorkbenchNode(selector, parent = null) {
+  const node = {
+    selector,
+    parent,
+    contains(other) {
+      let cursor = other;
+      while (cursor) {
+        if (cursor === node) return true;
+        cursor = cursor.parent;
+      }
+      return false;
+    },
+    closest(target) {
+      let cursor = node;
+      while (cursor) {
+        if (cursor.selector === target) return cursor;
+        cursor = cursor.parent;
+      }
+      return null;
+    },
+  };
+  return node;
+}
+function mockWorkbenchFrameDocument(nodesBySelector) {
+  return {
+    querySelector: (selector) => nodesBySelector[selector] || null,
+  };
 }
 
 run("detectManagedGlow enables and resolves color/strength keys from matching markers", () => {
@@ -1147,6 +1211,67 @@ run("every action the runtime dispatcher's apply() switch implements is also a s
     missing = dispatchedActions.filter((action) => !registeredValueActions.has(action));
   assert.ok(dispatchedActions.length > 20, "sanity check: the apply() switch should have been found and parsed");
   assert.deepEqual(missing, []);
+});
+
+run("buildCustomWorkbenchPartTree nests parts by DOM containment (Container > Track > Handle, Container > Label)", () => {
+  const containerNode = mockWorkbenchNode(".container"),
+    trackNode = mockWorkbenchNode(".track", containerNode),
+    handleNode = mockWorkbenchNode(".handle", trackNode),
+    labelNode = mockWorkbenchNode(".label", containerNode),
+    frameDocument = mockWorkbenchFrameDocument({
+      ".container": containerNode,
+      ".track": trackNode,
+      ".handle": handleNode,
+      ".label": labelNode,
+    }),
+    parts = [
+      { id: "p-container", selector: ".container" },
+      { id: "p-track", selector: ".track" },
+      { id: "p-handle", selector: ".handle" },
+      { id: "p-label", selector: ".label" },
+    ],
+    tree = buildCustomWorkbenchPartTree(parts, frameDocument);
+  assert.equal(tree.length, 1, "only the container should be a root — track/handle/label all nest under something");
+  assert.equal(tree[0].part.id, "p-container");
+  const containerChildren = tree[0].children.map((entry) => entry.part.id).sort();
+  assert.deepEqual(containerChildren, ["p-label", "p-track"]);
+  const trackEntry = tree[0].children.find((entry) => entry.part.id === "p-track");
+  assert.equal(trackEntry.children.length, 1, "handle must nest under track, not directly under container, even though container also contains it");
+  assert.equal(trackEntry.children[0].part.id, "p-handle");
+});
+
+run("buildCustomWorkbenchPartTree floats a part whose selector doesn't currently resolve to the top level, rather than dropping it", () => {
+  const containerNode = mockWorkbenchNode(".container"),
+    frameDocument = mockWorkbenchFrameDocument({ ".container": containerNode }),
+    parts = [
+      { id: "p-container", selector: ".container" },
+      { id: "p-missing", selector: ".not-there-yet" },
+    ],
+    tree = buildCustomWorkbenchPartTree(parts, frameDocument);
+  assert.equal(tree.length, 2, "an unresolved part (e.g. JS-generated later) must still appear, not disappear from the map");
+  assert.ok(tree.some((entry) => entry.part.id === "p-missing"));
+});
+
+run("findCustomWorkbenchPartForElement resolves to the deepest matching part, not the outermost container", () => {
+  const containerNode = mockWorkbenchNode(".container"),
+    trackNode = mockWorkbenchNode(".track", containerNode),
+    handleNode = mockWorkbenchNode(".handle", trackNode);
+  global.customWorkbenchDraft = {
+    parts: [
+      { id: "p-container", selector: ".container" },
+      { id: "p-track", selector: ".track" },
+      { id: "p-handle", selector: ".handle" },
+    ],
+  };
+  assert.equal(findCustomWorkbenchPartForElement(handleNode).id, "p-handle");
+  assert.equal(findCustomWorkbenchPartForElement(trackNode).id, "p-track");
+  assert.equal(findCustomWorkbenchPartForElement(containerNode).id, "p-container");
+});
+
+run("findCustomWorkbenchPartForElement returns null when no known part contains the hovered element", () => {
+  const orphanNode = mockWorkbenchNode(".orphan");
+  global.customWorkbenchDraft = { parts: [{ id: "p-container", selector: ".container" }] };
+  assert.equal(findCustomWorkbenchPartForElement(orphanNode), null);
 });
 
 if (process.exitCode) process.exit(process.exitCode);

@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
   "fixtures": [
-    { "file": "basic-button.html", "role": "button", "requires": ["pointerdown", "pointerup", "label"] },
-    { "file": "authored-toggle.html", "role": "toggle", "requires": ["selected", "transition", "knob"] },
+    { "file": "basic-button.html", "role": "button", "requires": ["pointerdown", "pointerup", "label", "icon"] },
+    { "file": "authored-toggle.html", "role": "toggle", "requires": ["type=\"checkbox\"", "track", "knob", "label"] },
     { "file": "animated-morph.html", "role": "animated-button", "requires": ["border-radius", "rotate", "selected"] },
     { "file": "analog-slider.html", "role": "analog-control", "requires": ["type=\"range\"", "input", "fill"] },
     { "file": "text-input.html", "role": "text-input", "requires": ["type=\"text\"", "placeholder"] },
     { "file": "repeated-list.html", "role": "repeated-list", "requires": ["dataset.index", "for(let index=0", "appendChild"] },
-    { "file": "advanced-js.html", "role": "advanced-javascript", "requires": ["ResizeObserver", "setTimeout", "@keyframes", "--speed"] }
+    { "file": "advanced-js.html", "role": "advanced-javascript", "requires": ["ResizeObserver", "setTimeout", "@keyframes", "--speed"] },
+    { "file": "dynamic-elements.html", "role": "dynamic-elements", "requires": ["setTimeout", "createElement", "dynamic-control", "appendChild"] }
   ]
 }

@@ -1,0 +1,5 @@
+<!doctype html><html><head><style>
+html,body{margin:0;width:100%;height:100%;display:grid;place-items:center;background:transparent}.dynamic-control{display:flex;align-items:center;gap:12px;padding:16px 22px;border:1px solid #7ba7a3;border-radius:16px;background:#253436;color:#fff}.dynamic-icon{color:#04dcb9}.dynamic-label{font:700 18px Segoe UI}
+</style></head><body><div id="dynamic-host"></div><script>
+setTimeout(()=>{const button=document.createElement('button');button.className='dynamic-control';button.innerHTML='<span class="dynamic-icon">&#9733;</span><span class="dynamic-label">GENERATED</span>';button.addEventListener('pointerup',()=>button.classList.toggle('selected'));document.querySelector('#dynamic-host').appendChild(button)},25);
+</script></body></html>

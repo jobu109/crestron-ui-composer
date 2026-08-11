@@ -16,6 +16,35 @@ assert.match(editorJs, /function renderCustomWorkbenchParts\(/);
 assert.match(editorJs, /function addPickedCustomWorkbenchPart\(/);
 assert.match(editorJs, /workbench: window\.ComposerComponentWorkbench\.normalize\(customWorkbenchDraft\)/);
 
+// UX plan Phase 1: the Component Map must be a persistent panel beside
+// Live Preview, not a collapsed <details> buried under Advanced ->
+// Technical mappings. Assert both the removal of the old location and the
+// presence of the new one, so a future edit can't silently reintroduce
+// the buried layout.
+assert.doesNotMatch(
+  editorHtml,
+  /<details class="custom-workbench-parts"/,
+  "the Component Map must not live inside a collapsed <details> under Technical mappings anymore",
+);
+assert.match(
+  editorHtml,
+  /<section class="custom-workbench-map-pane"[^>]*>[\s\S]*?id="custom-part-list"/,
+  "the Component Map must render inside its own persistent pane",
+);
+assert.match(
+  editorHtml,
+  /custom-test-workspace">\s*<section class="custom-workbench-map-pane"/,
+  "the Component Map pane must be a direct sibling of the preview pane, i.e. genuinely beside Live Preview",
+);
+
+// Bidirectional hover highlighting and persistent selection (also Phase 1).
+assert.match(editorJs, /function findCustomWorkbenchPartForElement\(/);
+assert.match(editorJs, /function buildCustomWorkbenchPartTree\(/);
+assert.match(editorJs, /function highlightCustomWorkbenchPartTransient\(/);
+assert.match(editorJs, /function wireCustomWorkbenchHoverSync\(/);
+assert.match(editorJs, /function selectCustomWorkbenchPart\(/);
+assert.match(editorJs, /wireCustomWorkbenchHoverSync\(\);/);
+
 const definition = workbench.normalize({
   schemaVersion: 1,
   parts: [{

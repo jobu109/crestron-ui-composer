@@ -92,6 +92,11 @@
   let customAnalyzedElements = [],
     customSavedElementRoles = [];
   let customWorkbenchDraft = null;
+  let customWorkbenchSelectedPartId = "";
+  // Ephemeral (not persisted with the draft) undo buffer for deleted/merged/
+  // split-away parts, so "restore-detected-part" can bring back one specific
+  // removed part without forcing a full Rescan of the whole source.
+  let customWorkbenchRemovedParts = [];
   let customOriginalSourceSnapshot = null;
   let customBuilderSourceItemId = "";
   let customPreviewEvents = [];
@@ -18298,6 +18303,90 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       return { count: 0, error: "Invalid selector" };
     }
   }
+  // Shared by the 10-second explicit Highlight and the transient hover
+  // highlight so both reuse the same injected stylesheet instead of each
+  // maintaining its own copy.
+  function ensureCustomWorkbenchHighlightStyle(frameDocument) {
+    if (frameDocument.getElementById("composer-workbench-highlight-style")) return;
+    const style = frameDocument.createElement("style");
+    style.id = "composer-workbench-highlight-style";
+    style.textContent =
+      ".composer-workbench-highlight{outline:4px solid #ffd84d!important;outline-offset:3px!important;box-shadow:0 0 0 3px #ffd84d88,0 0 18px #ffd84dcc!important;}" +
+      // Pseudo-elements can't be selected by class the way real nodes can, but a
+      // CSS rule can still target ::before/::after *on* a class-marked host, so a
+      // node whose entire visible appearance comes from a pseudo (e.g. an icon
+      // drawn via ::before, or a styled checkbox's ::after checkmark) still gets
+      // an outline even though the host element itself has no visible box.
+      ".composer-workbench-highlight::before,.composer-workbench-highlight::after{outline:3px solid #ffd84d!important;outline-offset:1px!important;}" +
+      ".composer-workbench-hover{outline:2px dashed #6fd7c4!important;outline-offset:2px!important;}" +
+      ".composer-workbench-hover::before,.composer-workbench-hover::after{outline:2px dashed #6fd7c4!important;outline-offset:1px!important;}";
+    frameDocument.head.appendChild(style);
+  }
+  // Shared visibility/pseudo-content checks used by both the explicit
+  // Highlight fallback chain and the Component Map's visibility indicator,
+  // so "is this node actually showing something" is judged the same way
+  // everywhere instead of drifting between two ad-hoc implementations.
+  function isCustomWorkbenchNodeVisible(node, frameDocument) {
+    if (!node?.getBoundingClientRect) return false;
+    const rect = node.getBoundingClientRect(),
+      style = frameDocument?.defaultView?.getComputedStyle(node);
+    return rect.width > 1 && rect.height > 1 && style?.display !== "none" &&
+      style?.visibility !== "hidden" && Number(style?.opacity ?? 1) > 0;
+  }
+  function customWorkbenchNodeHasPseudoContent(node, frameDocument) {
+    if (!node || !frameDocument?.defaultView) return false;
+    const hasContent = (style) =>
+      !!style && style.content !== "none" && style.content !== "" &&
+      style.content !== "normal" && style.display !== "none";
+    try {
+      return hasContent(frameDocument.defaultView.getComputedStyle(node, "::before")) ||
+        hasContent(frameDocument.defaultView.getComputedStyle(node, "::after"));
+    } catch (_) {
+      return false;
+    }
+  }
+  // Generates a stable-enough CSS selector for a specific live preview node,
+  // mirroring the id-or-tag/class/nth-of-type chain the in-iframe live
+  // picker already uses when a user clicks an element directly, so a
+  // parent-side operation (Split) that needs one selector per matched node
+  // produces selectors consistent with ones a manual pick would generate.
+  function cssSelectorForCustomWorkbenchNode(node, frameDocument) {
+    if (!node || node === frameDocument?.body) return "";
+    if (node.id) return `#${CSS.escape(node.id)}`;
+    const parts = [];
+    let element = node;
+    while (element && element !== frameDocument.body) {
+      let part = element.tagName.toLowerCase();
+      const classes = [...(element.classList || [])];
+      if (classes.length) {
+        part += "." + classes.map((name) => CSS.escape(name)).join(".");
+      } else if (element.parentElement) {
+        const siblings = [...element.parentElement.children].filter(
+          (sibling) => sibling.tagName === element.tagName,
+        );
+        if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(element) + 1})`;
+      }
+      parts.unshift(part);
+      element = element.parentElement;
+    }
+    return parts.join(" > ");
+  }
+  // A hidden form control (e.g. a checkbox/radio driving a styled toggle
+  // track) has no box of its own but still needs a Component Map home
+  // beneath the visible surface it drives, so its DOM position relative to
+  // that visible control is used to find the association.
+  function isHiddenWorkbenchControlNode(node, frameDocument) {
+    if (!["input", "select", "textarea"].includes(node?.tagName?.toLowerCase())) return false;
+    return !isCustomWorkbenchNodeVisible(node, frameDocument);
+  }
+  function findAssociatedVisibleWorkbenchNode(node, frameDocument) {
+    const id = node.id ? String(node.id).replace(/(["\\])/g, "\\$1") : "";
+    return (id && frameDocument.querySelector(`label[for="${id}"]`)) ||
+      node.closest?.("label") ||
+      node.nextElementSibling ||
+      node.previousElementSibling ||
+      null;
+  }
   function highlightCustomWorkbenchPart(part) {
     const frameDocument = $("custom-component-preview")?.contentDocument;
     if (!frameDocument) return { matched: 0, visible: 0 };
@@ -18306,19 +18395,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     );
     let nodes;
     try { nodes = [...frameDocument.querySelectorAll(part.selector)]; } catch (_) { return { matched: 0, visible: 0 }; }
-    if (!frameDocument.getElementById("composer-workbench-highlight-style")) {
-      const style = frameDocument.createElement("style");
-      style.id = "composer-workbench-highlight-style";
-      style.textContent = ".composer-workbench-highlight{outline:4px solid #ffd84d!important;outline-offset:3px!important;box-shadow:0 0 0 3px #ffd84d88,0 0 18px #ffd84dcc!important;}";
-      frameDocument.head.appendChild(style);
-    }
-    const isVisible = (node) => {
-        if (!node?.getBoundingClientRect) return false;
-        const rect = node.getBoundingClientRect(),
-          style = frameDocument.defaultView?.getComputedStyle(node);
-        return rect.width > 1 && rect.height > 1 && style?.display !== "none" &&
-          style?.visibility !== "hidden" && Number(style?.opacity ?? 1) > 0;
-      },
+    ensureCustomWorkbenchHighlightStyle(frameDocument);
+    const isVisible = (node) =>
+        isCustomWorkbenchNodeVisible(node, frameDocument) ||
+        customWorkbenchNodeHasPseudoContent(node, frameDocument),
       visibleNodes = [];
     nodes.forEach((node) => {
       if (isVisible(node)) {
@@ -18341,6 +18421,105 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     setTimeout(() => uniqueVisibleNodes.forEach((node) => node.classList.remove("composer-workbench-highlight")), 10000);
     return { matched: nodes.length, visible: uniqueVisibleNodes.length };
   }
+  // Lighter-weight counterpart to highlightCustomWorkbenchPart for hover:
+  // no 10-second timer (it clears on mouseleave instead), no invisible-node
+  // fallback resolution (hover is transient and low-stakes; the explicit
+  // Highlight button remains the reliable "find it for me" action), and a
+  // visually distinct dashed teal outline so it never gets confused with an
+  // explicit highlight in progress.
+  function highlightCustomWorkbenchPartTransient(part, on) {
+    const frameDocument = $("custom-component-preview")?.contentDocument;
+    if (!frameDocument) return;
+    if (!on) {
+      frameDocument.querySelectorAll(".composer-workbench-hover").forEach((node) =>
+        node.classList.remove("composer-workbench-hover"),
+      );
+      return;
+    }
+    ensureCustomWorkbenchHighlightStyle(frameDocument);
+    try {
+      frameDocument.querySelectorAll(part.selector).forEach((node) =>
+        node.classList.add("composer-workbench-hover"),
+      );
+    } catch (_) {}
+  }
+  // Finds which known Component Part most specifically contains a given
+  // preview element — the deepest matching part wins, so hovering a label
+  // inside a button inside a container highlights "Label," not "Container."
+  function findCustomWorkbenchPartForElement(element) {
+    if (!customWorkbenchDraft || !element) return null;
+    const matches = [];
+    customWorkbenchDraft.parts.forEach((part) => {
+      if (!part.selector) return;
+      let node = null;
+      try { node = element.closest(part.selector); } catch (_) {}
+      if (node) matches.push({ part, node });
+    });
+    if (!matches.length) return null;
+    matches.sort((a, b) => (a.node === b.node ? 0 : a.node.contains(b.node) ? 1 : -1));
+    return matches[0].part;
+  }
+  // Derives a Component → Container → Track → Handle/Label/Icon tree from
+  // DOM containment in the live preview, rather than persisting a
+  // parent/child field on the part schema — parts already carry a selector,
+  // and the preview is the one place that selector's real position in the
+  // document is unambiguous. A part whose selector doesn't currently
+  // resolve (JS-generated later, or briefly broken while being edited)
+  // floats to the top level rather than disappearing.
+  function buildCustomWorkbenchPartTree(parts, frameDocument) {
+    const resolved = parts.map((part) => {
+      let node = null;
+      if (frameDocument && part.selector) {
+        try { node = frameDocument.querySelector(part.selector); } catch (_) {}
+      }
+      return { part, node, children: [] };
+    });
+    const roots = [];
+    resolved.forEach((entry) => {
+      if (!entry.node) {
+        roots.push(entry);
+        return;
+      }
+      let bestParent = null;
+      resolved.forEach((candidate) => {
+        if (candidate === entry || !candidate.node || candidate.node === entry.node) return;
+        if (candidate.node.contains(entry.node)) {
+          if (!bestParent || bestParent.node.contains(candidate.node)) bestParent = candidate;
+        }
+      });
+      (bestParent ? bestParent.children : roots).push(entry);
+    });
+    // Second pass: a hidden form control (e.g. a checkbox driving a styled
+    // toggle) is rarely a DOM descendant of the visible track/label it
+    // drives — containment alone leaves it floating at the top level. Adopt
+    // it beneath whichever known part contains (or is) its associated
+    // label/sibling instead, same association logic the Highlight fallback
+    // already uses for that control.
+    if (frameDocument) {
+      for (let index = roots.length - 1; index >= 0; index--) {
+        const entry = roots[index];
+        if (!entry.node || !isHiddenWorkbenchControlNode(entry.node, frameDocument)) continue;
+        const associated = findAssociatedVisibleWorkbenchNode(entry.node, frameDocument);
+        if (!associated) continue;
+        const host = resolved.find((candidate) =>
+          candidate !== entry && candidate.node &&
+          (candidate.node === associated || candidate.node.contains(associated)) &&
+          !candidate.node.contains(entry.node) && !entry.node.contains(candidate.node),
+        );
+        if (host) {
+          roots.splice(index, 1);
+          host.children.push(entry);
+        }
+      }
+    }
+    return roots;
+  }
+  function selectCustomWorkbenchPart(partId) {
+    customWorkbenchSelectedPartId = partId || "";
+    document.querySelectorAll(".custom-part-row").forEach((row) => {
+      row.classList.toggle("selected", row.dataset.partId === customWorkbenchSelectedPartId);
+    });
+  }
   function showCustomWorkbenchPartHighlight(part) {
     if (!part) return;
     customElementPickerActive = false;
@@ -18355,108 +18534,372 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         ? `${part.name || part.selector || "This part"} has no visible box. Composer could not find a visible parent or sibling to outline.`
         : `No preview element currently matches ${part.selector || "this part's selector"}.`;
   }
+  const customWorkbenchRoleIcons = {
+    button: "▭", toggle: "◧", text: "T", textInput: "⌷", icon: "◆",
+    backgroundAsset: "▦", selected: "✓", gauge: "◔", slider: "●",
+    sliderHandle: "●", repeated: "≡", decorative: "✺", "mapped-target": "→",
+  };
+  // Removes a part but keeps a snapshot in the ephemeral undo buffer so
+  // "restore-detected-part" can bring back exactly that one part later,
+  // without requiring a full Rescan (which would also re-add every other
+  // newly detectable part, not just the one the programmer wanted back).
+  function removeCustomWorkbenchPart(part) {
+    customWorkbenchDraft.parts = customWorkbenchDraft.parts.filter((candidate) => candidate !== part);
+    customWorkbenchRemovedParts.unshift(part);
+    customWorkbenchRemovedParts.length = Math.min(customWorkbenchRemovedParts.length, 10);
+  }
+  function restoreCustomWorkbenchRemovedPart(part) {
+    customWorkbenchRemovedParts = customWorkbenchRemovedParts.filter((candidate) => candidate !== part);
+    customWorkbenchDraft.parts.push(part);
+    renderCustomWorkbenchParts();
+    selectCustomWorkbenchPart(part.id);
+  }
+  // Combines two parts that turned out to refer to the same visual role
+  // into one, rather than requiring the programmer to delete one by hand
+  // and re-type a combined selector: querySelectorAll already treats a
+  // comma-joined selector as a union of both, so no new selector syntax is
+  // introduced.
+  function mergeCustomWorkbenchParts(source, targetId) {
+    const target = customWorkbenchDraft.parts.find((part) => part.id === targetId);
+    if (!target || target === source) return;
+    target.selector = [target.selector, source.selector].filter(Boolean).join(", ");
+    target.multiple = true;
+    removeCustomWorkbenchPart(source);
+    renderCustomWorkbenchParts();
+    selectCustomWorkbenchPart(target.id);
+  }
+  // Splits a part whose selector currently matches several distinct preview
+  // nodes (e.g. a repeated-item selector, or two parts merged earlier) into
+  // one part per matched node, each with its own specific selector so it
+  // can be mapped individually going forward.
+  function splitCustomWorkbenchPart(part) {
+    const frameDocument = $("custom-component-preview")?.contentDocument;
+    if (!frameDocument) return;
+    let matchedNodes;
+    try { matchedNodes = [...frameDocument.querySelectorAll(part.selector)]; } catch (_) { return; }
+    if (matchedNodes.length < 2) return;
+    removeCustomWorkbenchPart(part);
+    matchedNodes.forEach((node, index) => {
+      const selector = cssSelectorForCustomWorkbenchNode(node, frameDocument);
+      if (!selector) return;
+      customWorkbenchDraft.parts.push({
+        id: customPartId(`${part.name || "Part"} ${index + 1}`),
+        name: `${part.name || "Part"} ${index + 1}`,
+        selector,
+        role: part.role || "element",
+        multiple: false,
+        metadata: structuredClone(part.metadata || {}),
+      });
+    });
+    renderCustomWorkbenchParts();
+  }
+  // Builds one tree row plus its collapsed-by-default technical-details
+  // panel, then recurses into entry.children so a part's descendants (e.g.
+  // a hidden checkbox input nested inside its visible track) render
+  // indented beneath it via nested .custom-part-children containers —
+  // indentation comes from that DOM nesting, not from a depth counter.
+  function renderCustomWorkbenchPartNode(entry, parentPart = null) {
+    const { part } = entry,
+      node = document.createElement("div"),
+      row = document.createElement("div"),
+      roleIcon = document.createElement("span"),
+      name = document.createElement("input"),
+      roleBadge = document.createElement("span"),
+      status = document.createElement("span"),
+      highlight = document.createElement("button"),
+      expandToggle = document.createElement("button"),
+      remove = document.createElement("button"),
+      visibilityDot = document.createElement("span"),
+      outerLayerBtn = document.createElement("button"),
+      ignoreBtn = document.createElement("button"),
+      splitBtn = document.createElement("button"),
+      mergeSelect = document.createElement("select"),
+      details = document.createElement("div"),
+      selectorLabel = document.createElement("label"),
+      selectorInput = document.createElement("input"),
+      roleLabel = document.createElement("label"),
+      roleSelect = document.createElement("select"),
+      multipleLabel = document.createElement("label"),
+      multiple = document.createElement("input"),
+      metadata = document.createElement("small"),
+      roles = ["element", "button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated", "decorative", "mapped-target"],
+      friendlyRole = (value) => (value || "element").replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+    node.className = "custom-part-node";
+    row.className = "custom-part-row";
+    row.dataset.partId = part.id || "";
+    roleIcon.className = "custom-part-role-icon";
+    roleIcon.textContent = customWorkbenchRoleIcons[part.role] || "▫";
+    roleIcon.setAttribute("aria-hidden", "true");
+    name.className = "custom-part-name";
+    name.value = part.name || "Part";
+    name.placeholder = "Friendly name";
+    roleBadge.className = "custom-part-role-badge";
+    roleBadge.textContent = friendlyRole(part.role);
+    status.className = "custom-part-status";
+    highlight.type = expandToggle.type = remove.type = "button";
+    highlight.textContent = "Highlight";
+    highlight.title = "Outline this part in the preview for 10 seconds";
+    expandToggle.textContent = "Details";
+    expandToggle.className = "custom-part-expand";
+    expandToggle.setAttribute("aria-expanded", "false");
+    remove.textContent = "Delete";
+    remove.className = "custom-part-delete";
+    const frameDocumentForNode = entry.node?.ownerDocument || null,
+      nodeIsVisible = !!entry.node && (
+        isCustomWorkbenchNodeVisible(entry.node, frameDocumentForNode) ||
+        customWorkbenchNodeHasPseudoContent(entry.node, frameDocumentForNode)
+      );
+    visibilityDot.className = "custom-part-visibility";
+    visibilityDot.classList.add(!entry.node ? "not-found" : nodeIsVisible ? "visible" : "hidden-control");
+    visibilityDot.setAttribute("aria-hidden", "true");
+    visibilityDot.title = !entry.node
+      ? "No preview element currently matches this selector"
+      : nodeIsVisible
+        ? "Visible in the preview"
+        : "Present but not visibly rendered (hidden control, or zero size)";
+    outerLayerBtn.type = "button";
+    outerLayerBtn.textContent = "↑ Outer";
+    outerLayerBtn.className = "custom-part-outer";
+    outerLayerBtn.disabled = !parentPart;
+    outerLayerBtn.title = parentPart
+      ? `Select and highlight the containing part (${parentPart.name || parentPart.selector})`
+      : "This part has no known containing part";
+    outerLayerBtn.onclick = (event) => {
+      event.stopPropagation();
+      if (!parentPart) return;
+      selectCustomWorkbenchPart(parentPart.id);
+      showCustomWorkbenchPartHighlight(parentPart);
+    };
+    ignoreBtn.type = "button";
+    ignoreBtn.textContent = "Ignore";
+    ignoreBtn.className = "custom-part-ignore";
+    ignoreBtn.title = "Hide this part from the map and validation without deleting it";
+    ignoreBtn.onclick = (event) => {
+      event.stopPropagation();
+      part.ignored = true;
+      renderCustomWorkbenchParts();
+    };
+    splitBtn.type = "button";
+    splitBtn.textContent = "Split";
+    splitBtn.className = "custom-part-split";
+    const splitMatchCount = customPreviewSelectorCount(part.selector).count;
+    splitBtn.disabled = splitMatchCount < 2;
+    splitBtn.title = splitMatchCount < 2
+      ? "Split is available once this part's selector matches more than one preview element"
+      : `Split into ${splitMatchCount} separate parts, one per matched element`;
+    splitBtn.onclick = (event) => {
+      event.stopPropagation();
+      splitCustomWorkbenchPart(part);
+    };
+    mergeSelect.className = "custom-part-merge-target";
+    mergeSelect.title = "Merge this part's selector into another part";
+    mergeSelect.appendChild(new Option("Merge into…", ""));
+    customWorkbenchDraft.parts
+      .filter((candidate) => candidate !== part && !candidate.ignored)
+      .forEach((candidate) => mergeSelect.appendChild(
+        new Option(candidate.name || candidate.selector || candidate.id, candidate.id),
+      ));
+    mergeSelect.onclick = (event) => event.stopPropagation();
+    mergeSelect.onchange = (event) => {
+      event.stopPropagation();
+      if (!mergeSelect.value) return;
+      mergeCustomWorkbenchParts(part, mergeSelect.value);
+    };
+    details.className = "custom-part-details";
+    details.hidden = true;
+    selectorLabel.textContent = "Selector";
+    selectorInput.value = part.selector || "";
+    selectorInput.placeholder = "CSS selector, e.g. .toggle-track";
+    selectorLabel.appendChild(selectorInput);
+    roleLabel.textContent = "Role";
+    roles.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = friendlyRole(value);
+      option.selected = value === part.role;
+      roleSelect.appendChild(option);
+    });
+    roleLabel.appendChild(roleSelect);
+    multiple.type = "checkbox";
+    multiple.checked = !!part.multiple;
+    multipleLabel.className = "custom-part-multiple";
+    multipleLabel.append(multiple, document.createTextNode("Multiple matches"));
+    metadata.className = "custom-part-metadata";
+    metadata.textContent = [
+      part.metadata?.tag ? `<${part.metadata.tag}>` : "",
+      part.metadata?.id ? `#${part.metadata.id}` : "",
+      part.metadata?.className ? `.${String(part.metadata.className).trim().replace(/\s+/g, ".")}` : "",
+      part.metadata?.ariaLabel ? `aria-label=“${part.metadata.ariaLabel}”` : "",
+      part.metadata?.text ? `text=“${String(part.metadata.text).slice(0, 80)}”` : "",
+      part.metadata?.computed?.width && part.metadata?.computed?.height
+        ? `${part.metadata.computed.width} × ${part.metadata.computed.height}`
+        : "",
+      part.metadata?.computed?.backgroundColor
+        ? `background ${part.metadata.computed.backgroundColor}`
+        : "",
+      part.metadata?.computed?.color
+        ? `text ${part.metadata.computed.color}`
+        : "",
+      part.metadata?.computed?.fontSize
+        ? `font ${part.metadata.computed.fontSize}`
+        : "",
+    ].filter(Boolean).join(" · ") || "Manual selector";
+    const extraAttributes = Object.entries(part.metadata?.attributes || {})
+      .filter(([key]) => !["id", "class", "aria-label"].includes(key))
+      .map(([key, value]) => `${key}=“${String(value).slice(0, 60)}”`)
+      .join(" · ");
+    if (extraAttributes) metadata.textContent += ` · ${extraAttributes}`;
+    details.append(selectorLabel, roleLabel, multipleLabel, metadata);
+    const validate = () => {
+      const result = customPreviewSelectorCount(part.selector);
+      const valid = !result.error && result.count > 0 && (part.multiple || result.count === 1);
+      row.classList.toggle("invalid", !valid);
+      status.textContent = result.error || (result.count ? `${result.count} match${result.count === 1 ? "" : "es"}` : "Not found");
+      status.title = !part.multiple && result.count > 1 ? "Enable Multiple matches or use a more specific selector." : "";
+      renderCustomWorkbenchPartSummary();
+    };
+    name.oninput = () => { part.name = name.value; };
+    selectorInput.oninput = () => { part.selector = selectorInput.value.trim(); validate(); renderCustomWorkbenchParts(); };
+    roleSelect.onchange = () => {
+      part.role = roleSelect.value;
+      roleIcon.textContent = customWorkbenchRoleIcons[part.role] || "▫";
+      roleBadge.textContent = friendlyRole(part.role);
+    };
+    multiple.onchange = () => { part.multiple = multiple.checked; validate(); };
+    highlight.onclick = (event) => { event.stopPropagation(); showCustomWorkbenchPartHighlight(part); };
+    expandToggle.onclick = (event) => {
+      event.stopPropagation();
+      details.hidden = !details.hidden;
+      expandToggle.setAttribute("aria-expanded", String(!details.hidden));
+    };
+    remove.onclick = (event) => {
+      event.stopPropagation();
+      removeCustomWorkbenchPart(part);
+      renderCustomWorkbenchParts();
+    };
+    row.onclick = () => selectCustomWorkbenchPart(part.id);
+    row.onmouseenter = () => highlightCustomWorkbenchPartTransient(part, true);
+    row.onmouseleave = () => highlightCustomWorkbenchPartTransient(part, false);
+    row.classList.toggle("selected", part.id === customWorkbenchSelectedPartId);
+    // Two lines rather than one wide one: the Component Map pane is
+    // narrower than the old full-width Advanced-panel list ever was, and a
+    // single flex row of icon + name + badge + status + three buttons
+    // reliably overflowed it, clipping the action buttons instead of
+    // wrapping them.
+    const mainLine = document.createElement("div"),
+      actionsLine = document.createElement("div"),
+      // A third line for merge/split/ignore/outer-layer: cramming these
+      // into actionsLine alongside Highlight/Details/Delete reproduced the
+      // exact row-overflow bug fixed for the first two lines.
+      opsLine = document.createElement("div");
+    mainLine.className = "custom-part-row-main";
+    actionsLine.className = "custom-part-row-actions";
+    opsLine.className = "custom-part-row-ops";
+    mainLine.append(roleIcon, visibilityDot, name, roleBadge);
+    actionsLine.append(status, highlight, expandToggle, remove);
+    opsLine.append(outerLayerBtn, ignoreBtn, splitBtn, mergeSelect);
+    row.append(mainLine, actionsLine, opsLine);
+    node.append(row, details);
+    if (entry.children.length) {
+      const childrenHost = document.createElement("div");
+      childrenHost.className = "custom-part-children";
+      entry.children.forEach((child) => childrenHost.appendChild(renderCustomWorkbenchPartNode(child, part)));
+      node.appendChild(childrenHost);
+    }
+    const initial = customPreviewSelectorCount(part.selector);
+    row.classList.toggle("invalid", initial.error || !initial.count || (!part.multiple && initial.count > 1));
+    status.textContent = initial.error || (initial.count ? `${initial.count} match${initial.count === 1 ? "" : "es"}` : "Not found");
+    return node;
+  }
   function renderCustomWorkbenchParts() {
     const host = $("custom-part-list"),
       summary = $("custom-part-validation");
     if (!host || !summary) return;
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
     host.innerHTML = "";
+    const frameDocument = $("custom-component-preview")?.contentDocument,
+      activeParts = customWorkbenchDraft.parts.filter((part) => !part.ignored),
+      ignoredParts = customWorkbenchDraft.parts.filter((part) => part.ignored),
+      tree = buildCustomWorkbenchPartTree(activeParts, frameDocument);
+    tree.forEach((entry) => host.appendChild(renderCustomWorkbenchPartNode(entry)));
+    if (ignoredParts.length) host.appendChild(renderCustomWorkbenchIgnoredSection(ignoredParts));
+    if (customWorkbenchRemovedParts.length) host.appendChild(renderCustomWorkbenchRemovedSection());
     let invalid = 0;
-    customWorkbenchDraft.parts.forEach((part) => {
-      const row = document.createElement("div"),
-        name = document.createElement("input"),
-        selector = document.createElement("input"),
-        role = document.createElement("select"),
-        multipleLabel = document.createElement("label"),
-        multiple = document.createElement("input"),
-        status = document.createElement("span"),
-        highlight = document.createElement("button"),
-        remove = document.createElement("button"),
-        metadata = document.createElement("small"),
-        roles = ["element", "button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated", "decorative", "mapped-target"];
-      row.className = "custom-part-row";
-      row.dataset.partId = part.id || "";
-      name.value = part.name || "Part";
-      name.placeholder = "Friendly name";
-      selector.value = part.selector || "";
-      selector.placeholder = "CSS selector, e.g. .toggle-track";
-      roles.forEach((value) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
-        option.selected = value === part.role;
-        role.appendChild(option);
-      });
-      multiple.type = "checkbox";
-      multiple.checked = !!part.multiple;
-      multipleLabel.className = "custom-part-multiple";
-      multipleLabel.append(multiple, document.createTextNode("Multiple matches"));
-      status.className = "custom-part-status";
-      highlight.type = remove.type = "button";
-      highlight.textContent = "Highlight";
-      remove.textContent = "Delete";
-      remove.className = "custom-part-delete";
-      metadata.className = "custom-part-metadata";
-      metadata.textContent = [
-        part.metadata?.tag ? `<${part.metadata.tag}>` : "",
-        part.metadata?.id ? `#${part.metadata.id}` : "",
-        part.metadata?.className ? `.${String(part.metadata.className).trim().replace(/\s+/g, ".")}` : "",
-        part.metadata?.ariaLabel ? `aria-label=“${part.metadata.ariaLabel}”` : "",
-        part.metadata?.text ? `text=“${String(part.metadata.text).slice(0, 80)}”` : "",
-        part.metadata?.computed?.width && part.metadata?.computed?.height
-          ? `${part.metadata.computed.width} × ${part.metadata.computed.height}`
-          : "",
-        part.metadata?.computed?.backgroundColor
-          ? `background ${part.metadata.computed.backgroundColor}`
-          : "",
-        part.metadata?.computed?.color
-          ? `text ${part.metadata.computed.color}`
-          : "",
-        part.metadata?.computed?.fontSize
-          ? `font ${part.metadata.computed.fontSize}`
-          : "",
-      ].filter(Boolean).join(" · ") || "Manual selector";
-      const extraAttributes = Object.entries(part.metadata?.attributes || {})
-        .filter(([key]) => !["id", "class", "aria-label"].includes(key))
-        .map(([key, value]) => `${key}=“${String(value).slice(0, 60)}”`)
-        .join(" · ");
-      if (extraAttributes) metadata.textContent += ` · ${extraAttributes}`;
-      const validate = () => {
-        const result = customPreviewSelectorCount(part.selector);
-        const valid = !result.error && result.count > 0 && (part.multiple || result.count === 1);
-        row.classList.toggle("invalid", !valid);
-        status.textContent = result.error || (result.count ? `${result.count} match${result.count === 1 ? "" : "es"}` : "Not found");
-        status.title = !part.multiple && result.count > 1 ? "Enable Multiple matches or use a more specific selector." : "";
-        renderCustomWorkbenchPartSummary();
-      };
-      name.oninput = () => { part.name = name.value; };
-      selector.oninput = () => { part.selector = selector.value.trim(); validate(); };
-      role.onchange = () => { part.role = role.value; };
-      multiple.onchange = () => { part.multiple = multiple.checked; validate(); };
-      highlight.onclick = () => showCustomWorkbenchPartHighlight(part);
-      remove.onclick = () => {
-        customWorkbenchDraft.parts = customWorkbenchDraft.parts.filter((candidate) => candidate !== part);
-        renderCustomWorkbenchParts();
-      };
-      row.append(name, selector, role, multipleLabel, status, highlight, remove, metadata);
-      host.appendChild(row);
-      const initial = customPreviewSelectorCount(part.selector);
-      if (initial.error || !initial.count || (!part.multiple && initial.count > 1)) invalid++;
-      row.classList.toggle("invalid", initial.error || !initial.count || (!part.multiple && initial.count > 1));
-      status.textContent = initial.error || (initial.count ? `${initial.count} match${initial.count === 1 ? "" : "es"}` : "Not found");
+    activeParts.forEach((part) => {
+      const result = customPreviewSelectorCount(part.selector);
+      if (result.error || !result.count || (!part.multiple && result.count > 1)) invalid++;
     });
     summary.dataset.invalid = String(invalid);
     renderCustomWorkbenchPartSummary();
     renderCustomStatePartOptions();
   }
+  // Ignored parts stay out of the map/validation but are never deleted, so
+  // "Restore" simply flips the flag back; removed (deleted/merged/split-
+  // away) parts are gone from customWorkbenchDraft.parts entirely and only
+  // exist in the ephemeral customWorkbenchRemovedParts undo buffer.
+  function renderCustomWorkbenchIgnoredSection(ignoredParts) {
+    const section = document.createElement("details");
+    section.className = "custom-part-ignored-section";
+    const summaryEl = document.createElement("summary");
+    summaryEl.textContent = `Ignored parts (${ignoredParts.length})`;
+    section.appendChild(summaryEl);
+    ignoredParts.forEach((part) => {
+      const row = document.createElement("div"),
+        label = document.createElement("span"),
+        restore = document.createElement("button"),
+        del = document.createElement("button");
+      row.className = "custom-part-ignored-row";
+      label.textContent = part.name || part.selector || "Part";
+      restore.type = del.type = "button";
+      restore.textContent = "Restore";
+      restore.onclick = () => {
+        part.ignored = false;
+        renderCustomWorkbenchParts();
+        selectCustomWorkbenchPart(part.id);
+      };
+      del.textContent = "Delete";
+      del.onclick = () => {
+        removeCustomWorkbenchPart(part);
+        renderCustomWorkbenchParts();
+      };
+      row.append(label, restore, del);
+      section.appendChild(row);
+    });
+    return section;
+  }
+  function renderCustomWorkbenchRemovedSection() {
+    const section = document.createElement("details");
+    section.className = "custom-part-removed-section";
+    const summaryEl = document.createElement("summary");
+    summaryEl.textContent = `Recently removed (${customWorkbenchRemovedParts.length})`;
+    section.appendChild(summaryEl);
+    customWorkbenchRemovedParts.forEach((part) => {
+      const row = document.createElement("div"),
+        label = document.createElement("span"),
+        restore = document.createElement("button");
+      row.className = "custom-part-removed-row";
+      label.textContent = part.name || part.selector || "Part";
+      restore.type = "button";
+      restore.textContent = "Restore";
+      restore.title = "Bring this detected/added part back";
+      restore.onclick = () => restoreCustomWorkbenchRemovedPart(part);
+      row.append(label, restore);
+      section.appendChild(row);
+    });
+    return section;
+  }
   function renderCustomWorkbenchPartSummary() {
     const summary = $("custom-part-validation");
     if (!summary || !customWorkbenchDraft) return;
-    const results = customWorkbenchDraft.parts.map((part) => ({ part, ...customPreviewSelectorCount(part.selector) })),
-      invalid = results.filter((result) => result.error || !result.count || (!result.part.multiple && result.count > 1)).length;
-    summary.textContent = customWorkbenchDraft.parts.length
-      ? `${customWorkbenchDraft.parts.length} part${customWorkbenchDraft.parts.length === 1 ? "" : "s"} · ${invalid ? `${invalid} needs attention` : "all selectors valid"}`
-      : "No parts defined yet. Pick a preview element or rescan the source.";
+    const activeParts = customWorkbenchDraft.parts.filter((part) => !part.ignored),
+      results = activeParts.map((part) => ({ part, ...customPreviewSelectorCount(part.selector) })),
+      invalid = results.filter((result) => result.error || !result.count || (!result.part.multiple && result.count > 1)).length,
+      ignoredCount = customWorkbenchDraft.parts.length - activeParts.length;
+    summary.textContent = activeParts.length
+      ? `${activeParts.length} part${activeParts.length === 1 ? "" : "s"} · ${invalid ? `${invalid} needs attention` : "all selectors valid"}${ignoredCount ? ` · ${ignoredCount} ignored` : ""}`
+      : ignoredCount
+        ? `${ignoredCount} part${ignoredCount === 1 ? "" : "s"} ignored. Restore one, pick a preview element, or rescan the source.`
+        : "No parts defined yet. Pick a preview element or rescan the source.";
     summary.style.color = invalid ? "#ffb36c" : "#75e7d1";
   }
   function addPickedCustomWorkbenchPart(selector, element = {}, role = "element") {
@@ -18465,6 +18908,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (existing) {
       existing.role = existing.role || role;
       renderCustomWorkbenchParts();
+      selectCustomWorkbenchPart(existing.id);
       highlightCustomWorkbenchPart(existing);
       return existing;
     }
@@ -18472,15 +18916,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const part = { id: customPartId(name), name, selector, role, multiple: false, metadata: structuredClone(element) };
     customWorkbenchDraft.parts.push(part);
     renderCustomWorkbenchParts();
+    selectCustomWorkbenchPart(part.id);
     highlightCustomWorkbenchPart(part);
     return part;
   }
   function focusPickedCustomWorkbenchPart(part) {
     if (!part) return;
-    const technicalTools = document.querySelector(".custom-technical-mappings"),
-      partsSection = document.querySelector(".custom-workbench-parts");
-    if (technicalTools) technicalTools.open = true;
-    if (partsSection) partsSection.open = true;
+    selectCustomWorkbenchPart(part.id);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const row = [...document.querySelectorAll(".custom-part-row")].find(
         (candidate) => candidate.dataset.partId === String(part.id || ""),
@@ -18494,6 +18936,133 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       row.querySelector("input")?.focus({ preventScroll: true });
       setTimeout(() => row.classList.remove("picked"), 10000);
     }));
+  }
+  // Reverse direction of highlightCustomWorkbenchPartTransient: hovering
+  // inside the live preview highlights and scrolls to the matching
+  // Component Map row. Uses allow-same-origin direct DOM access from the
+  // parent (the same access highlightCustomWorkbenchPart already relies
+  // on) rather than injecting a postMessage round trip into the preview
+  // srcdoc, so it needs no changes to the generated preview script itself.
+  // Guarded per-document since refreshCustomPreview() rebuilds a fresh
+  // srcdoc (and therefore a fresh document) on every call.
+  function wireCustomWorkbenchHoverSync() {
+    const frameDocument = $("custom-component-preview")?.contentDocument;
+    if (!frameDocument?.body || frameDocument.body.dataset.workbenchHoverWired === "1") return;
+    frameDocument.body.dataset.workbenchHoverWired = "1";
+    let lastPartId = null;
+    const clear = () => {
+      frameDocument.querySelectorAll(".composer-workbench-hover").forEach((node) =>
+        node.classList.remove("composer-workbench-hover"),
+      );
+      document.querySelectorAll(".custom-part-row.hover-linked").forEach((row) =>
+        row.classList.remove("hover-linked"),
+      );
+      lastPartId = null;
+    };
+    frameDocument.body.addEventListener("pointerover", (event) => {
+      const part = findCustomWorkbenchPartForElement(event.target);
+      if ((part?.id || null) === lastPartId) return;
+      clear();
+      if (!part) return;
+      lastPartId = part.id;
+      ensureCustomWorkbenchHighlightStyle(frameDocument);
+      try {
+        frameDocument.querySelectorAll(part.selector).forEach((node) =>
+          node.classList.add("composer-workbench-hover"),
+        );
+      } catch (_) {}
+      const row = [...document.querySelectorAll(".custom-part-row")].find(
+        (candidate) => candidate.dataset.partId === String(part.id || ""),
+      );
+      if (row) {
+        row.classList.add("hover-linked");
+        row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }, true);
+    frameDocument.body.addEventListener("pointerleave", clear, true);
+    // Clicking an already-known part directly in the preview selects it in
+    // the map the same way clicking its row does — but only outside Pick
+    // mode, where a click instead means "add this as a new part" and is
+    // handled by the picker's own in-iframe pointerdown listener.
+    frameDocument.body.addEventListener("click", (event) => {
+      if (customElementPickerActive) return;
+      const part = findCustomWorkbenchPartForElement(event.target);
+      if (!part) return;
+      selectCustomWorkbenchPart(part.id);
+      focusPickedCustomWorkbenchPart(part);
+    }, true);
+  }
+  // The preview iframe is deliberately sized to the component's true pixel
+  // dimensions (see sizePreviewFrameToNaturalContent) so its on-screen size
+  // is trustworthy, not stretched — but the persistent step-1 layout gives
+  // it a fixed-height pane sized for typical components, so a small one
+  // (e.g. a compact button) can look lost in mostly-empty space. This
+  // scales the iframe visually up to better fill that pane without
+  // changing its actual pixel dimensions (still used for sizing math
+  // elsewhere) — capped so it never shrinks a component that already
+  // fills its pane, and never blows a small one up past a blurry 2x.
+  //
+  // The pane's own size changes for reasons that don't all run through
+  // one call site — the initial handoff, closing the part picker, and
+  // *entering* the picker (which makes the pane much bigger, via CSS,
+  // with nothing re-measuring at that moment) all leave the iframe sized
+  // for whatever pane size happened to exist last. A ResizeObserver on
+  // the pane itself is the one mechanism that reliably catches all of
+  // these — including ones this code doesn't know about — instead of
+  // requiring every trigger to be found and called out individually.
+  let customWorkbenchPreviewResizeObserver = null;
+  function applyCustomWorkbenchPreviewFit(previewFrame, pane) {
+    if (customWizardStep !== 1 || !previewFrame.isConnected) {
+      previewFrame.style.transform = "";
+      return;
+    }
+    const paneRect = pane.getBoundingClientRect(),
+      frameWidth = parseFloat(previewFrame.style.width) || previewFrame.offsetWidth,
+      frameHeight = parseFloat(previewFrame.style.height) || previewFrame.offsetHeight;
+    if (!frameWidth || !frameHeight || !paneRect.width || !paneRect.height) {
+      previewFrame.style.transform = "";
+      return;
+    }
+    // Capped well short of "fill the pane exactly": the managed-glow
+    // escape that normally protects effects extending past a component's
+    // measured box is deliberately disabled for this preview (see
+    // registerCustomComponent), so anything like a button's glow/shadow
+    // that reaches past its own natural-size box is already being
+    // clipped by the iframe's fixed viewport, just imperceptibly at
+    // normal scale — magnifying that further than this makes a
+    // pre-existing, accepted limitation look like a new rendering bug.
+    const scale = Math.min(
+      1.3,
+      Math.max(1, Math.min(
+        (paneRect.width - 40) / frameWidth,
+        (paneRect.height - 40) / frameHeight,
+      )),
+    );
+    if (scale > 1.02) {
+      previewFrame.style.transform = `scale(${scale.toFixed(2)})`;
+      previewFrame.style.transformOrigin = "center center";
+    } else {
+      previewFrame.style.transform = "";
+    }
+  }
+  function fitCustomWorkbenchPreviewToPane(previewFrame) {
+    const pane = previewFrame.closest(".custom-test-preview-pane");
+    if (!pane) {
+      previewFrame.style.transform = "";
+      return;
+    }
+    if (!customWorkbenchPreviewResizeObserver)
+      customWorkbenchPreviewResizeObserver = new ResizeObserver(() =>
+        applyCustomWorkbenchPreviewFit(previewFrame, pane),
+      );
+    customWorkbenchPreviewResizeObserver.disconnect();
+    customWorkbenchPreviewResizeObserver.observe(pane);
+    applyCustomWorkbenchPreviewFit(previewFrame, pane);
+    // Measuring synchronously here can still catch the pane mid-transition
+    // (e.g. right as CSS that makes it visible is applied but not yet
+    // painted); the observer's own first callback — which fires shortly
+    // after observe() regardless — catches the real settled size even if
+    // this immediate call read a stale/zero rect.
   }
   function renderCustomCapabilityQuestions(inventory = customAnalyzedElements) {
     const roles = new Set((inventory || []).map((entry) => entry.role)),
@@ -20629,8 +21198,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           }
         : null,
     );
+    fitCustomWorkbenchPreviewToPane(previewFrame);
     previewFrame.onload = () => {
       renderCustomWorkbenchParts();
+      wireCustomWorkbenchHoverSync();
     };
     previewFrame.srcdoc = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
@@ -21299,6 +21870,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       renderCustomConnectionMappings();
       renderCustomVisualParts();
       refreshCustomGeneratedCode();
+      // The initial handoff into this dialog calls refreshCustomPreview()
+      // while customWizardStep is still 0 (fitCustomWorkbenchPreviewToPane
+      // bails out for any step but 1), and switching steps afterward never
+      // re-ran it — so the preview stayed at its unscaled size until some
+      // unrelated action (e.g. closing the part picker) happened to call
+      // refreshCustomPreview() again while actually on step 1. Re-fit here
+      // too, every time step 1 becomes active, not just when the preview
+      // itself gets rebuilt.
+      fitCustomWorkbenchPreviewToPane($("custom-component-preview"));
     }
     if (customWizardStep === 2) {
       refreshCustomGeneratedCode();
@@ -21316,19 +21896,34 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       button.classList.toggle("active", active);
       button.setAttribute("aria-current", active ? "page" : "false");
     });
+    // custom-property-creator/custom-signal-creator also carry
+    // data-capability-panel (so they still get force-closed when the
+    // programmer leaves their page), but must never be force-opened just
+    // because their page became active — only their own "+ Add..." button
+    // (openCustomScopeCreator) or a prior explicit open should show them.
+    const scopeCreatorIds = new Set(["custom-property-creator", "custom-signal-creator"]);
     dialog.querySelectorAll("[data-capability-panel]").forEach((panel) => {
       const active = panel.dataset.capabilityPanel === customCapabilityPage;
+      if (scopeCreatorIds.has(panel.id)) {
+        if (!active) panel.hidden = true;
+        return;
+      }
       panel.hidden = !active;
       if (active && panel.tagName === "DETAILS") panel.open = true;
     });
+    // The "+ Add" buttons live in one shared row (.custom-scope-actions)
+    // that both properties and connections happen to reuse, rather than
+    // one per data-capability-panel — so unlike the panels above, each
+    // button's visibility is set directly here: only its own tab's button
+    // shows, and the whole row disappears on every other tab.
+    const scopeActionsRow = document.querySelector(".custom-scope-actions");
+    if (scopeActionsRow) scopeActionsRow.hidden = !["properties", "connections"].includes(customCapabilityPage);
+    $("custom-scope-add-property").hidden = customCapabilityPage !== "properties";
+    $("custom-scope-add-signal").hidden = customCapabilityPage !== "connections";
     if (customCapabilityPage === "properties") {
-      $("custom-property-creator").hidden = false;
-      $("custom-signal-creator").hidden = true;
       refreshCustomPropertyCreator();
       renderCustomPropertyMappings();
     } else if (customCapabilityPage === "connections") {
-      $("custom-property-creator").hidden = true;
-      $("custom-signal-creator").hidden = false;
       refreshCustomSignalCreator();
       renderCustomConnectionMappings();
     } else if (customCapabilityPage === "code") {

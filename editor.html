@@ -1540,17 +1540,6 @@
               <details class="custom-technical-mappings" data-capability-panel="advanced">
                 <summary>Technical mappings and compatibility tools</summary>
                 <p class="hint">Existing imported mappings remain editable here. Most components do not require this section.</p>
-              <details class="custom-workbench-parts" open>
-                <summary>Component parts</summary>
-                <p class="hint">Name the meaningful pieces of this component once. Editable properties, Crestron connections, and states can target these parts in later steps.</p>
-                <div class="custom-part-actions">
-                  <button id="custom-part-picker" type="button">Pick part from preview</button>
-                  <button id="custom-part-add" type="button">Add selector manually</button>
-                  <button id="custom-part-rescan" type="button">Rescan source</button>
-                </div>
-                <div id="custom-part-list" class="custom-part-list"></div>
-                <div id="custom-part-validation" class="custom-part-validation"></div>
-              </details>
               <details class="custom-detection-details">
                 <summary>Manual element mapping</summary>
                 <p class="hint">Composer analyzes the source automatically. Open this only to correct what a specific HTML element represents.</p>
@@ -1817,6 +1806,19 @@
               </div>
             </div>
             <div class="custom-test-workspace">
+              <section class="custom-workbench-map-pane" aria-label="Component map">
+                <div class="custom-builder-heading">
+                  <h2>Component map</h2>
+                </div>
+                <p class="hint">Name each meaningful part once. Hover a row (or the preview) to find the other side.</p>
+                <div class="custom-part-actions">
+                  <button id="custom-part-picker" type="button">Pick part from preview</button>
+                  <button id="custom-part-add" type="button">Add selector manually</button>
+                  <button id="custom-part-rescan" type="button">Rescan source</button>
+                </div>
+                <div id="custom-part-list" class="custom-part-tree"></div>
+                <div id="custom-part-validation" class="custom-part-validation"></div>
+              </section>
               <div class="custom-test-preview-pane">
                 <iframe
                   id="custom-component-preview"

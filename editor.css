@@ -899,36 +899,145 @@ h2 {
   color: #fff;
 }
 .custom-builder-mode small { margin-left: 5px; color: #9eb8b8; }
-.custom-workbench-parts {
-  margin: 10px 0;
-  padding: 10px;
-  border: 1px solid #355456;
-  border-radius: 8px;
-  background: #0d191b;
+.custom-part-actions { display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px; }
+.custom-part-tree { display:flex;flex-direction:column;gap:4px; }
+.custom-part-node { display:flex;flex-direction:column; }
+/* A 16px padding-left with a 1px dashed border read as basically flat next
+   to full-width row cards with their own borders — the nesting was real
+   (confirmed live) but not visible. Wider indent, a solid brighter border
+   pulled slightly off the edge, and a subtle background tint on nested rows
+   make parent/child unambiguous at a glance. */
+.custom-part-node > .custom-part-children {
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin-top:4px;
+  margin-left:8px;
+  padding-left:22px;
+  border-left:2px solid #3a6360;
 }
-.custom-part-actions { display:flex;flex-wrap:wrap;gap:8px;margin:10px 0; }
-.custom-part-list { display:grid;gap:8px; }
+.custom-part-node > .custom-part-children .custom-part-row { background:#0c1a1c; }
 .custom-part-row {
-  display:grid;
-  grid-template-columns:minmax(120px,.8fr) minmax(220px,1.7fr) minmax(130px,.8fr) auto auto auto auto;
-  gap:7px;
-  align-items:center;
-  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  padding:6px 8px;
   border:1px solid #294547;
   border-radius:6px;
   background:#101e20;
+  min-width:0;
 }
 .custom-part-row.invalid { border-color:#a84c4c;background:#27191a; }
-.custom-part-row.picked {
+.custom-part-row.picked,
+.custom-part-row.selected {
   border-color:#ffd84d;
   background:#2b2818;
   box-shadow:0 0 0 2px #ffd84d55,0 0 16px #ffd84d44;
 }
-.custom-part-row .custom-part-multiple { display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:11px;color:#b6cac8; }
-.custom-part-row .custom-part-multiple input { width:auto;margin:0; }
-.custom-part-status { min-width:72px;color:#75e7d1;font-size:11px;text-align:center; }
+.custom-part-row.hover-linked { border-color:#6fd7c4;box-shadow:0 0 0 2px #6fd7c455; }
+.custom-part-row-main { display:flex;align-items:center;gap:6px;min-width:0; }
+.custom-part-row-actions { display:flex;align-items:center;flex-wrap:wrap;gap:5px; }
+.custom-part-row-actions button {
+  flex:0 0 auto;
+  padding:3px 7px;
+  font-size:11px;
+  border:1px solid #46605f;
+  border-radius:4px;
+  background:#253436;
+  color:#fff;
+}
+.custom-part-role-icon { flex:0 0 auto;font-size:13px;opacity:.8; }
+.custom-part-name { flex:1 1 auto;min-width:0; }
+.custom-part-role-badge {
+  flex:0 0 auto;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#1c3234;
+  color:#9adfd2;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  white-space:nowrap;
+}
+.custom-part-status { flex:0 0 auto;color:#75e7d1;font-size:11px; }
 .custom-part-row.invalid .custom-part-status { color:#ff9e9e; }
 .custom-part-delete { color:#ff9e9e; }
+.custom-part-visibility {
+  flex:0 0 auto;
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#556;
+}
+.custom-part-visibility.visible { background:#4fd9a9; }
+.custom-part-visibility.hidden-control { background:#e0a94c; }
+.custom-part-visibility.not-found { background:#ff8080; }
+.custom-part-row-ops { display:flex;align-items:center;flex-wrap:wrap;gap:5px; }
+.custom-part-row-ops button,
+.custom-part-row-ops select {
+  flex:0 0 auto;
+  padding:3px 7px;
+  font-size:11px;
+  border:1px solid #46605f;
+  border-radius:4px;
+  background:#182a2c;
+  color:#a9bfbd;
+  max-width:110px;
+}
+.custom-part-row-ops button:disabled { opacity:.4; }
+.custom-part-row-ops .custom-part-ignore { color:#e0a94c; }
+.custom-part-ignored-section,
+.custom-part-removed-section {
+  margin-top:6px;
+  padding:6px 8px;
+  border:1px dashed #3a5254;
+  border-radius:6px;
+  background:#0d1a1b;
+  font-size:11px;
+  color:#9eb8b8;
+}
+.custom-part-ignored-section summary,
+.custom-part-removed-section summary { cursor:pointer;color:#9adfd2; }
+.custom-part-ignored-row,
+.custom-part-removed-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:4px 0;
+  border-top:1px solid #1e3234;
+}
+.custom-part-ignored-row button,
+.custom-part-removed-row button {
+  flex:0 0 auto;
+  padding:2px 7px;
+  font-size:11px;
+  border:1px solid #46605f;
+  border-radius:4px;
+  background:#182a2c;
+  color:#a9bfbd;
+}
+.custom-part-details {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin:5px 0 2px;
+  padding:8px;
+  border:1px solid #223b3d;
+  border-radius:6px;
+  background:#0b1517;
+  min-width:0;
+}
+/* An author-stylesheet `display` on an element also toggled via the
+   `hidden` attribute always wins over the browser's built-in
+   [hidden]{display:none} rule (author origin beats user-agent origin
+   regardless of specificity) — without this, expandToggle's
+   details.hidden = true/false had no visual effect at all, since the
+   details panel stayed display:flex, always visible, no matter what. */
+.custom-part-details[hidden] { display:none; }
+.custom-part-details label { display:flex;flex-direction:column;gap:2px;font-size:11px;color:#a9bfbd; }
+.custom-part-details .custom-part-multiple { flex-direction:row;align-items:center;gap:5px; }
+.custom-part-details .custom-part-multiple input { width:auto;margin:0; }
 .custom-part-metadata { grid-column:1/-1;color:#8fa9a7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .custom-part-validation { margin-top:8px;color:#a9bfbd;font-size:12px; }
 .custom-property-generation-preview { margin:10px 0;padding:10px;border:1px solid #294547;border-radius:6px;background:#091315; }
@@ -938,9 +1047,6 @@ h2 {
 .custom-property-mapping-card { display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto auto;gap:7px;align-items:center;padding:9px;border:1px solid #294547;border-radius:6px;background:#101e20; }
 .custom-property-mapping-card strong,.custom-property-mapping-card small { display:block; }
 .custom-property-mapping-card small { margin-top:3px;color:#91aaa8; }
-@media (max-width: 1000px) {
-  .custom-part-row { grid-template-columns:minmax(120px,1fr) minmax(200px,1.5fr); }
-}
 /* Manual controls remain available in Guided mode so every generated choice can be inspected and edited. */
 .custom-wizard-nav {
   display: grid;
@@ -1008,10 +1114,15 @@ h2 {
   background: transparent;
 }
 #custom-component-dialog.custom-wizard-step-1 .custom-behavior-builder > summary,
-#custom-component-dialog.custom-wizard-step-1 .custom-behavior-builder > .hint,
-#custom-component-dialog.custom-wizard-step-1 .custom-behavior-builder > .custom-scope-actions {
+#custom-component-dialog.custom-wizard-step-1 .custom-behavior-builder > .hint {
   display: none;
 }
+/* .custom-scope-actions (the "+ Add editable property" / "+ Add Crestron
+   connection" buttons) used to be hidden here too, which — combined with
+   setCustomCapabilityPage's panel sweep force-showing custom-property-creator/
+   custom-signal-creator whenever their tab was merely active — meant the Add
+   form appeared automatically with no visible control to open or close it.
+   The buttons must stay visible so opening the form is an explicit action. */
 #custom-component-dialog [data-capability-panel][hidden] { display: none !important; }
 #custom-component-dialog .custom-scope-creator[data-capability-panel] {
   margin-top: 0;
@@ -1026,13 +1137,17 @@ h2 {
 .custom-component-dialog.custom-wizard-step-0 .custom-step-capabilities,
 .custom-component-dialog.custom-wizard-step-0 .custom-step-review,
 .custom-component-dialog.custom-wizard-step-1 .custom-step-imported,
-.custom-component-dialog.custom-wizard-step-1 .custom-step-review,
+/* .custom-source-panel also carries .custom-step-review (it holds the Live
+   Preview + persistent Component Map), but Phase 1 of the UX plan requires
+   it to stay visible on step 1 too, beside the capability builder — only
+   the step-2-only review/validation sections (audit, plain-language
+   review, readiness findings) should still hide here. */
+.custom-component-dialog.custom-wizard-step-1 .custom-step-review:not(.custom-source-panel),
 .custom-component-dialog.custom-wizard-step-2 .custom-step-imported,
 .custom-component-dialog.custom-wizard-step-2 .custom-step-capabilities {
   display: none !important;
 }
 .custom-component-dialog.custom-wizard-step-0 .custom-builder-layout,
-.custom-component-dialog.custom-wizard-step-1 .custom-builder-layout,
 .custom-component-dialog.custom-wizard-step-2 .custom-builder-layout {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -1246,20 +1361,35 @@ h2 {
   background: #111e20;
   box-shadow: 0 20px 80px #000c;
 }
+/* flex:1 1 auto + min-height:0 (not height:100%) so this correctly fills
+   only the space actually left over after its flex-column sibling
+   (.custom-preview-heading) — height:100% ignored that sibling's height
+   and let the Component Map's content push past the fixed overlay's
+   bottom edge with no scrollbar, since the map pane never received a
+   real height to constrain its own internal scroll region against. The
+   map keeps its own tree/preview grid here too (narrower than normal,
+   since picking is preview-focused), rather than collapsing to a single
+   block column. */
 #custom-component-dialog.custom-wizard-step-1.custom-picker-active .custom-test-workspace {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(240px, 0.6fr) minmax(320px, 1.4fr);
+  gap: 12px;
+  flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
 }
 #custom-component-dialog.custom-wizard-step-1.custom-picker-active .custom-test-preview-pane {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 #custom-component-dialog.custom-wizard-step-1.custom-picker-active #custom-component-preview {
   display: block;
   width: 100%;
   height: calc(100% - 62px);
-  min-height: 300px;
+  min-height: 200px;
 }
 #custom-component-dialog.custom-wizard-step-1.custom-picker-active .custom-preview-test,
 #custom-component-dialog.custom-wizard-step-1.custom-picker-active .custom-preview-log,
@@ -1300,8 +1430,12 @@ h2 {
   cursor: pointer;
 }
 .custom-scope-actions {
+  /* Only one of the two buttons is ever visible at a time (each tab shows
+     just its own "+ Add..." button) — a single column, not a fixed 2-up
+     grid, so the visible button fills the row instead of sitting in a
+     half-width cell beside permanently empty space. */
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 12px 0;
 }
@@ -2033,6 +2167,65 @@ h2 {
   }
   .custom-component-dialog.custom-wizard-step-2 .custom-signal-simulator {
     max-height: 440px;
+  }
+}
+
+/* Phase 1 of the Workbench UX plan: the Component Map (the persistent part
+   tree) sits beside Live Preview throughout step 1, in place of the
+   step-2-only signal simulator/test log, which stay hidden until Test &
+   Create. */
+/* Giving the map and preview independent heights (an earlier attempt at
+   this) backfired: since the map naturally needed more height than a
+   small preview, the *shorter* preview column still reserved the taller
+   row's full track height (that's how a CSS Grid row works even with
+   align-items:start) — so a blank, borderless gap opened up beneath the
+   preview box instead of the extra room going anywhere useful. Back to
+   one shared `stretch`ed height, but now: sized generously so the map
+   pane's tree can actually grow into it via flex, and with the map column
+   given most of the width — the preview only ever needs to fit a single
+   (often small) component, while the map regularly lists several parts
+   and reads better wide. */
+.custom-component-dialog.custom-wizard-step-1 .custom-test-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.4fr) minmax(220px, 0.75fr);
+  gap: 12px;
+  align-items: stretch;
+  height: clamp(460px, 60vh, 640px);
+  min-height: 400px;
+  max-height: none;
+  overflow: hidden;
+}
+.custom-component-dialog.custom-wizard-step-1 .custom-signal-simulator,
+.custom-component-dialog.custom-wizard-step-1 .custom-preview-test,
+.custom-component-dialog.custom-wizard-step-1 .custom-preview-log {
+  display: none;
+}
+/* Only the iframe is visible in this pane on step 1 (test controls/log
+   above are hidden). Centering it here gives fitCustomWorkbenchPreviewToPane's
+   scale-up something symmetric to grow from, instead of the iframe sitting
+   at the grid cell's start corner while empty space accumulates opposite it. */
+.custom-component-dialog.custom-wizard-step-1 .custom-test-preview-pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.custom-workbench-map-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.custom-workbench-map-pane .custom-part-actions { flex: 0 0 auto; }
+.custom-workbench-map-pane .custom-part-tree { flex: 1 1 auto; overflow: auto; min-height: 0; }
+@media (max-width: 1050px) {
+  .custom-component-dialog.custom-wizard-step-1 .custom-test-workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
   }
 }
 .custom-source-panel.custom-preview-glow-active {

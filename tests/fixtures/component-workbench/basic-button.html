@@ -1,5 +1,5 @@
 <!doctype html><html><head><style>
 html,body{margin:0;width:100%;height:100%;background:transparent}.button{width:180px;height:72px;border:1px solid #7ba7a3;border-radius:18px;background:#253436;color:#fff;box-shadow:0 0 12px #04dcb9;font:700 20px Segoe UI}
-</style></head><body><button class="button"><span class="label">PRESS</span></button><script>
+</style></head><body><button class="button"><span class="icon" aria-hidden="true">&#9654;</span><span class="label">PRESS</span></button><script>
 const button=document.querySelector('.button');button.addEventListener('pointerdown',()=>button.classList.add('pressed'));button.addEventListener('pointerup',()=>button.classList.remove('pressed'));
 </script></body></html>

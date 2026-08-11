@@ -13,7 +13,7 @@ function run(name, test) {
 
 run("advanced workbench fixtures cover every baseline component role", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(fixtureRoot, "fixture-manifest.json"), "utf8")),
-    expectedRoles = new Set(["button", "toggle", "animated-button", "analog-control", "text-input", "repeated-list", "advanced-javascript"]);
+    expectedRoles = new Set(["button", "toggle", "animated-button", "analog-control", "text-input", "repeated-list", "advanced-javascript", "dynamic-elements"]);
   assert.equal(manifest.schemaVersion, 1);
   assert.deepEqual(new Set(manifest.fixtures.map((fixture) => fixture.role)), expectedRoles);
   manifest.fixtures.forEach((fixture) => {
