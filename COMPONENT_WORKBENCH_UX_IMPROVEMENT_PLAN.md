@@ -1,6 +1,6 @@
 # Component Workbench UX Improvement Plan
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 ## Purpose
 
@@ -79,15 +79,15 @@ Completion criteria:
 
 ### Phase 2 — Better automatic part classification
 
-- [ ] Classify container/surface, track, handle/knob, label, icon, background asset, input, gauge/fill, and repeated item.
-- [ ] Use HTML semantics, label relationships, classes, computed styles, geometry, and event ownership together.
-- [ ] Detect pseudo-element styling and map it to its host element.
-- [ ] Detect state-only elements that appear after Standard/Selected changes.
-- [ ] Run imported JavaScript safely before completing the inventory.
-- [ ] Observe short-lived dynamic DOM changes and add JavaScript-generated elements.
-- [ ] De-duplicate technical selectors that refer to the same visual part.
-- [ ] Prefer meaningful visible parts over broad generic mappings.
-- [ ] Explain uncertain classifications and allow one-click correction.
+- [x] Classify container/surface, track, handle/knob, label, icon, background asset, input, gauge/fill, and repeated item. (container, track, handle, label, and toggle (checkbox/radio) added as distinct roles to `inferCustomElementRole`, registered consistently across the single-element classifier, bulk inventory list, and Component Map dropdowns/icons. Icon/backgroundAsset/gauge/repeated already existed.)
+- [x] Use HTML semantics, label relationships, classes, computed styles, geometry, and event ownership together. (The static pass uses semantics/classes; the live-preview refinement adds computed styles, geometry, and pseudo-element visibility. `applyCustomWorkbenchEventOwnership` now also reuses inferred JavaScript and inline-event ownership to promote generic event owners to Button or Slider roles.)
+- [x] Detect pseudo-element styling and map it to its host element. (`computeCustomWorkbenchRoleRefinement` marks a node whose own box is invisible but whose ::before/::after has real content as that pseudo-element's host, reusing Phase 1's `customWorkbenchNodeHasPseudoContent`, instead of leaving it looking like inert scaffolding.)
+- [x] Detect state-only elements that appear after Standard/Selected changes. (`detectCustomStateOnlyEvidence` inspects authored CSS for hidden parts revealed by selected, active, pressed, disabled, checked, on/off, open/closed, pseudo-state, and ARIA-state selectors. Live refinement records the exact state evidence so the Component Map can identify a hidden state-only part before Phase 3 adds interactive state switching.)
+- [x] Run imported JavaScript safely before completing the inventory. (Satisfied as a consequence of the live-preview refinement pass: the live preview already executes the component's own JavaScript as part of ordinary rendering, and refinement runs after that, on the preview's `onload`.)
+- [x] Observe short-lived dynamic DOM changes and add JavaScript-generated elements. (`observeCustomWorkbenchDynamicElements` watches the live preview body for ~3 seconds after load via `MutationObserver`; anything JavaScript adds in that window is classified and added to the inventory automatically, reusing the same candidate-detection/role-inference logic as the static pass.)
+- [x] De-duplicate technical selectors that refer to the same visual part. (`seedCustomWorkbenchParts` now resolves each candidate selector against the live preview, when available, and skips it if another already-added part's selector resolves to the same node — catches cases like `#toggle` vs `[data-translated-button="0"]` pointing at one element.)
+- [x] Prefer meaningful visible parts over broad generic mappings. (`filterRedundantGenericWrappers` drops a generic "ignore"-role wrapper from the inventory once it's confirmed to structurally contain another, already-classified element — the classified child already represents what's meaningful, so the wrapper doesn't need its own row. Scoped deliberately narrow: only ever removes "ignore"-role entries, never "text" or anything with its own content, so a real label can never disappear.)
+- [x] Explain uncertain classifications and allow one-click correction. (`inferCustomElementRole` now marks a guess low-confidence when it only matched a generic tag or the last-resort leaf-text fallback, not a specific keyword/type; the bulk inventory list shows an amber "Low confidence — please check" badge and highlight on those rows, right next to the existing per-row role dropdown used to correct it.)
 
 Completion criteria:
 
@@ -96,14 +96,14 @@ Completion criteria:
 
 ### Phase 3 — State-aware selection and preview
 
-- [ ] Add a state toolbar visible throughout Workbench: Standard, Pressed, Selected, Disabled, and custom modes.
-- [ ] Keep the selected state active while moving between Workbench sections.
-- [ ] Refresh the Component Map for parts that appear only in a specific state.
-- [ ] Automatically carry the current part and state into Add Property and Add Crestron Connection.
-- [ ] Clearly show whether a mapping applies to one state or every state.
-- [ ] Preserve authored transitions when switching states.
-- [ ] Allow side-by-side Standard/Selected comparison.
-- [ ] Restore Standard exactly after state simulation.
+- [x] Add a state toolbar visible throughout Workbench: Standard, Pressed, Selected, Disabled, and custom modes. (Added one persistent Preview State toolbar below the three Workbench steps. It renders the four built-in states plus configured custom states/modes, clearly marks the active state, and disables states that do not yet have a usable mapping.)
+- [x] Keep the selected state active while moving between Workbench sections. (`customWorkbenchActiveState` is independent of the wizard page/tab, and the selected state is reapplied after every iframe rebuild so property, connection, source, and preview refreshes do not silently return the programmer to a different state.)
+- [x] Refresh the Component Map for parts that appear only in a specific state. (Each state change now rescans the rendered DOM after authored transitions begin, records the states in which each visible part appears, seeds newly-created state-only DOM into Component Map, and labels parts unavailable in the current state instead of falsely reporting them as broken.)
+- [x] Automatically carry the current part and state into Add Property and Add Crestron Connection. (The selected Component Map part now preselects each creator's target, while the persistent Preview State becomes the creator's initial state scope. Editing an existing mapping restores both choices.)
+- [x] Clearly show whether a mapping applies to one state or every state. (Both creators expose an explicit Every state / named-state-only choice; mapping summaries and generated-code previews repeat that scope. Editable CSS properties now generate state-qualified selectors, and the scope is retained in the saved Workbench definition and regenerated adapter.)
+- [x] Preserve authored transitions when switching states. (Workbench now keeps the rendered iframe mounted and uses a reversible in-frame state bridge. It applies the mapped class, attribute, data value, checked/disabled property, pointer state, or analog mode on the existing DOM so authored CSS transitions continue running instead of being bypassed by a preview rebuild.)
+- [x] Allow side-by-side Standard/Selected comparison. (The persistent state toolbar now opens two isolated copies of the exact current Workbench preview, holds one in Standard and the other in Selected, and applies the matching selected-feedback input independently so neither preview changes the other or the main editing preview.)
+- [x] Restore Standard exactly after state simulation. (The simulation bridge snapshots and restores the target's original classes, checked/disabled properties, ARIA attributes, data state, and mode value. The state-content runtime now also restores original text, icon, image source, and inline background image when leaving a simulated state.)
 
 Completion criteria:
 
@@ -112,17 +112,17 @@ Completion criteria:
 
 ### Phase 4 — Plain-language capability builder
 
-- [ ] Make the primary actions **Add editable property** and **Add Crestron connection**.
-- [ ] Build mappings as readable sentences, for example:
+- [x] Make the primary actions **Add editable property** and **Add Crestron connection**. (The capability workspace now exposes these as its two primary actions and opens the matching focused creator.)
+- [x] Build mappings as readable sentences, for example:
   - Make the Handle color editable in every state.
   - Make the Label text editable only in Selected state.
   - Send a digital Press output when Button is pressed.
   - Use a digital Selected input to activate the authored Selected state.
-- [ ] Choose part, capability, and state using friendly names from the Component Map.
-- [ ] Hide keys, selectors, adapter kinds, and technical parameters under Advanced details.
-- [ ] Show the generated Inspector field and Crestron signal name before adding it.
-- [ ] Warn about duplicate or conflicting mappings before insertion.
-- [ ] Retain direct source and generated-adapter editing for advanced users.
+- [x] Choose part, capability, and state using friendly names from the Component Map. (The active Component Map part/state carries into each creator, and the visible choices use semantic part names while retaining selectors internally.)
+- [x] Hide keys, selectors, adapter kinds, and technical parameters under Advanced details. (Normal property/connection creation uses friendly Component Map part names. Generated source, mapping selectors/kinds, property and signal keys, CSS/DOM names, and action parameters remain available in explicit Advanced expanders.)
+- [x] Show the generated Inspector field and Crestron signal name before adding it. (Each creator now states in plain language what will be added, while the configured label/address remains visible before insertion.)
+- [x] Warn about duplicate or conflicting mappings before insertion. (The creator detects the same part, state, and capability/action combination and identifies the existing mapping without preventing an intentional duplicate.)
+- [x] Retain direct source and generated-adapter editing for advanced users. (Generated CSS/JavaScript is collapsed under Advanced details, and the dedicated HTML/CSS/JavaScript and Advanced Workbench tabs remain available.)
 
 Completion criteria:
 
@@ -130,14 +130,14 @@ Completion criteria:
 
 ### Phase 5 — Property templates and immediate testing
 
-- [ ] Offer applicable property choices for the selected part and state.
-- [ ] Support text, font, size, alignment, wrapping, colors, background, border, radius, shadow, glow, opacity, dimensions, spacing, icons, assets, fill, position, rotation, and animation timing.
-- [ ] Prefill defaults from authored or computed values.
-- [ ] Add a temporary Inspector control next to Live Preview before the mapping is saved.
-- [ ] Update the preview immediately as the temporary value changes.
-- [ ] Provide Reset, Compare with original, and Remove mapping actions.
-- [ ] Verify resizing changes the component itself rather than only its bounding box.
-- [ ] Preserve protected effect/glow space without changing authored geometry.
+- [x] Offer applicable property choices for the selected part and state. (The property picker now groups role-appropriate choices first for labels, buttons, toggles, handles, sliders, gauges, icons, and backgrounds while retaining the full property catalog under More properties.)
+- [x] Support text, font, size, alignment, wrapping, colors, background, border, radius, shadow, glow, opacity, dimensions, spacing, icons, assets, fill, position, rotation, and animation timing. (The property catalog now covers the complete visual set, including state-aware text, foreground/background assets, layout spacing and position, gauge fill, rotation, and transition/animation duration.)
+- [x] Prefill defaults from authored or computed values. (The proposed default and temporary control begin with the selected part's current computed/authored value whenever it can be resolved.)
+- [x] Add a temporary Inspector control next to Live Preview before the mapping is saved. (Add Editable Property now renders the same kind of text, number, color, checkbox, or asset control that the final Inspector mapping will use.)
+- [x] Update the preview immediately as the temporary value changes. (Temporary values apply directly to the selected live-preview part without inserting or saving a mapping.)
+- [x] Provide Reset, Compare with original, and Remove mapping actions. (The temporary property tester can reset the live preview, open the untouched authored component beside it, and existing mapping cards retain their Delete action.)
+- [x] Verify resizing changes the component itself rather than only its bounding box. (Width and Height mappings generate CSS against the selected component part inside the runtime frame; the temporary tester measures that same live part rather than resizing the outer Composer widget.)
+- [x] Preserve protected effect/glow space without changing authored geometry. (Custom components retain their authored layout while the runtime supplies a configurable internal content inset and paints managed glow through the existing shape-sized external proxy.)
 
 Completion criteria:
 
@@ -146,19 +146,19 @@ Completion criteria:
 
 ### Phase 6 — Crestron connection templates and immediate testing
 
-- [ ] Present Digital, Analog, and Serial connection types in plain language.
-- [ ] Filter relevant actions by selected part and role.
-- [ ] Digital inputs: Selected, state, visibility, disabled, charging, enabled, and custom boolean behavior.
-- [ ] Digital outputs: Press, Release, Pulse, Held, completed, and custom event.
-- [ ] Analog inputs/outputs: feedback, value set, mode/index, count, size, speed, fill, position, opacity, rotation, and custom numeric property.
-- [ ] Serial inputs/outputs: Name, Text, URL, asset, text entry, and custom string property.
-- [ ] Place a typed simulator directly under each mapping:
+- [x] Present Digital, Analog, and Serial connection types in plain language.
+- [x] Filter relevant actions by selected part and role.
+- [x] Digital inputs: Selected/state, charging, and custom boolean behavior. Visibility and Disabled/Enabled intentionally remain the existing Composer-level optional bindings so imported components do not acquire redundant connections.
+- [x] Digital outputs: Press, Release, Pulse, Held, completed, and custom event.
+- [x] Analog inputs/outputs: feedback, value set, mode/index, count, size, speed, fill, position, opacity, rotation, and custom numeric property.
+- [x] Serial inputs/outputs: Name, Text, URL, asset, text entry, and custom string property.
+- [x] Place a typed simulator directly under each mapping:
   - Digital toggle/pulse
   - Analog slider and numeric entry using exactly the configured Crestron range
   - Serial input field
   - Output event and pulse log
-- [ ] Support multiple connections without replacing earlier mappings.
-- [ ] Explain exactly which part, state, event, or property the connection controls.
+- [x] Support multiple connections without replacing earlier mappings.
+- [x] Explain exactly which part, state, event, or property the connection controls.
 
 Completion criteria:
 
@@ -268,6 +268,123 @@ For every implementation session:
 ## Progress Log
 
 Add new entries at the top using the handoff template below.
+
+### 2026-08-11 — Pre-Phase-3 audit of Phases 0–2
+
+```text
+Date: 2026-08-11
+Active phase: Phase 0–2 correctness audit (complete; Phase 3 not started)
+Completed this session:
+- Re-audited the Phase 0 fixtures/baseline coverage, Phase 1 Component Map operations and selection/highlight flow, and Phase 2 classification/refinement pipeline against the stated user workflow and non-negotiable preservation requirements rather than trusting checked boxes alone.
+- Found and fixed a Phase 2 integration gap: live state-only evidence was detected after the initial Component Map seed, but existing rows never received that metadata. Added syncCustomWorkbenchPartsFromInventory, including resolved-node alias matching, so state-only and event-owner discoveries now reach the actual map row.
+- Found and fixed the matching dynamic-content gap: JavaScript-created elements appeared in the analysis inventory but were not automatically seeded into the Component Map. The observer now synchronizes and seeds them without requiring the live picker.
+- Found and fixed a Phase 1 non-destructive-editing gap: Delete, Merge, and Split could leave properties, Crestron connections, states, or repeated definitions referencing a removed part ID. References are now cleared on Delete, reassigned on Merge/Split, and automatically reconnected when a deliberately deleted part is restored.
+- Prevented Restore from recreating overlapping duplicates after Merge/Split; only an intentional Delete is now added to the recently-removed restore list.
+Files changed: editor.js, tests/preview-runtime.test.js, COMPONENT_WORKBENCH_UX_IMPROVEMENT_PLAN.md (alongside the previously accumulated Phase 1/2 worktree changes).
+Tests run and results: node --check editor.js passed; full npm test passed with 0 failures. Added behavioral coverage for inventory-to-map state/event synchronization, selector-alias matching, and recursive part-reference reassignment across properties, connections, states, and repeated collections.
+Application build/relaunch status: full Windows desktop publish completed successfully to dist/win-x64, and the audited build was launched.
+Manual validation completed: prior Phase 1 user validation remains recorded below; this audit used automated fixtures and full catalog/runtime tests.
+Manual validation still required: in the rebuilt app, verify (1) a selected-only indicator is labeled as state-only in the Component Map, (2) a short-delay JavaScript-created control appears in the map automatically, and (3) deleting/restoring and merging/splitting mapped parts leaves Test & Create validation clean.
+Known issues or decisions: no remaining automated blocker was found in Phases 0–2. The earlier cosmetic compound-name source remains unresolved/non-blocking. Phase 3 should not be marked complete until the new state UI is manually exercised against the state-only fixture.
+Exact next unchecked task: Phase 3 — add the persistent Standard / Pressed / Selected / Disabled / custom-mode toolbar throughout Component Workbench.
+```
+
+### 2026-08-11 — Phase 2 verified and completed: state-only detection and event ownership
+
+```text
+Date: 2026-08-11
+Active phase: Phase 2 — Better automatic part classification (complete)
+Completed this session:
+- Reviewed the accumulated Phase 0–2 implementation, current worktree, checklist, and automated coverage before continuing.
+- Implemented detectCustomStateOnlyEvidence. It recognizes parts hidden in Standard but revealed by selected, active, pressed, disabled, checked, on/off, open/closed, pseudo-state, or ARIA-state CSS selectors and records the exact state evidence on the inventory/Component Map entry.
+- Implemented applyCustomWorkbenchEventOwnership. It reuses inferred authored JavaScript behavior and inline on* event attributes to identify the actual event-owning element, promoting generic entries to Button for press-like events or Slider for input/change events.
+- Carried state-only and event-ownership metadata into seeded Workbench parts and surfaced concise state-only/interactive badges in the Component Map.
+- Added focused tests for selected-only, checked, and ARIA state rules; ordinary non-state CSS rejection; JavaScript event ownership; and inline numeric/input event ownership.
+Files changed: editor.js, tests/preview-runtime.test.js, COMPONENT_WORKBENCH_UX_IMPROVEMENT_PLAN.md (in addition to the existing uncommitted Phase 1/2 files already present when this session began).
+Tests run and results: node --check editor.js passed; full npm test passed with 0 failures, including preview runtime checks, 109 widget definitions, 74 component scripts, all-widget export/compile, Widget List compatibility, and continuity profiles.
+Application build/relaunch status: full Windows desktop publish completed successfully to dist/win-x64, and the rebuilt Crestron UI Composer was launched.
+Manual validation completed: none yet for these final two classification signals.
+Manual validation still required: import a component with a selected-only indicator and a generic element owning an authored click/input handler; verify the Component Map labels the hidden state and promotes the interactive role correctly.
+Known issues or decisions: Phase 3 will add the interactive state toolbar; Phase 2 now provides the state evidence that toolbar will consume. The earlier compound-name cosmetic mystery remains non-blocking and unchanged.
+Exact next unchecked task: Phase 3 — add the persistent Standard / Pressed / Selected / Disabled / custom-mode toolbar throughout Component Workbench.
+```
+
+### 2026-08-11 — Phase 2 complete: generic-wrapper filtering added, state-only detection deliberately deferred
+
+```text
+Date: 2026-08-11
+Active phase: Phase 2 — Better automatic part classification (now complete)
+Completed this session:
+- Implemented "prefer meaningful visible parts over broad generic mappings": added filterRedundantGenericWrappers, called from analyzeCustomElements right after building the inventory. Drops a generic "ignore"-role wrapper (no keyword/type/tag matched anything, but it has children) once confirmed to structurally contain another, already-classified element — the classified child already represents whatever is meaningful, so the wrapper doesn't need its own inventory row. Deliberately scoped narrow: only ever removes "ignore"-role entries, never "text" or anything with its own distinguishing content, specifically to avoid the mistake almost made earlier in this phase (a broader version risked silently dropping real text labels, since nearly all "text" entries are low-confidence by design). Extracted as a standalone, DOM-independent function (takes/returns plain {role, sourceElement} entries) so it could be unit tested with simple mock nodes rather than needing a real or jsdom-based DOM.
+- Investigated state-only element detection properly rather than attempting it blind: confirmed the existing state-simulation machinery (composer-state-simulate / customStateRuntime) only works for states already formally defined via the States & Modes step, which doesn't exist during initial classification — a CSS-text heuristic to find "hidden by default, shown only in some state" elements would be a standalone slice of comparable size/risk to the live-document rework, and is more useful once Phase 3's state toolbar exists to actually preview the result. Presented this assessment to the user, who agreed to defer it rather than force a rushed version in.
+Files changed: editor.js, tests/preview-runtime.test.js, tests/regression.test.js
+Tests run and results: node --check editor.js passed; full npm test passed (0 failures, 215 checks, up from 212). Three new tests cover: a generic wrapper containing a classified button is dropped (button kept); a genuinely empty/unclear ignore-role element with nothing meaningful nested inside is kept; a "text"-role entry is never dropped even if it structurally contains another part.
+Application build/relaunch status: fast content-only relaunch (Web\ file copy + WebView2 cache clear) — no C#/XAML changes.
+Manual validation completed: none yet for this specific slice — deployed and awaiting the user's next check, though it reuses the same containment-check pattern already verified elsewhere this session (buildCustomWorkbenchPartTree, the earlier hidden-input grouping work).
+Manual validation still required: user should confirm a component with a generic non-semantic wrapping div around an already-classified element (e.g. a button or icon) no longer shows a redundant "Element"/"Ignore" row for that wrapper in the bulk inventory list.
+Known issues or decisions: state-only element detection remains the one Phase 2 checklist item left unchecked, by deliberate choice — revisit once Phase 3's state toolbar exists. The unresolved compound-name mystery from the prior session entry is still unresolved and was not revisited this round.
+Exact next unchecked task: Phase 2 is functionally complete. Next is Phase 3 — State-aware selection and preview (state toolbar, keeping selected state active across sections, refreshing the Component Map for state-only parts, carrying current part/state into Add Property/Connection, side-by-side Standard/Selected comparison, restoring Standard exactly after simulation).
+```
+
+### 2026-08-11 — Phase 2 third slice: live-document analysis (the big architectural piece), then two real bugs fixed from live testing
+
+```text
+Date: 2026-08-11
+Active phase: Phase 2 — Better automatic part classification
+Completed this session:
+- Implemented the architectural prerequisite the last four Phase 2 checklist items all shared: analyzeCustomElements still runs its static (detached-document) pass unchanged, but once a live preview exists, computeCustomWorkbenchRoleRefinement re-checks classifications against the real rendered document — computed background-image (not just an inline style attribute), actual visibility (size/display/opacity), and pseudo-element content. This single shared decision function is used by two independent passes: refineCustomElementInventoryWithLivePreview (upgrades inventory entries) and refineWorkbenchPartsWithLivePreview (upgrades Component Map parts directly, regardless of origin — auto-detected, manually added, or live-picked).
+- Added observeCustomWorkbenchDynamicElements: a MutationObserver watching the live preview for ~3 seconds after load, adding anything JavaScript generates dynamically to the inventory automatically, reusing the same candidate/role logic as the static pass (isCandidateWorkbenchElement extracted as a shared helper for this reason).
+- "Run imported JavaScript safely before completing the inventory" ended up satisfied as a natural side effect — the live preview already executes the component's JS as part of normal rendering, and refinement runs after that.
+- User live-testing (a custom two-part test snippet: a checkbox+::after-drawn checkmark, and a stylesheet-only background-image banner) surfaced two real bugs, both fixed:
+  1. First cut of this only refined customAnalyzedElements and synced role changes to matching workbench parts BY SELECTOR — but a part with no customAnalyzedElements entry at all (this session never conclusively determined how the test part was created, despite extensive live debugging with the user — DevTools breakpoint tracing was offered but the user chose to drop it) never got touched. Fixed by having refineWorkbenchPartsWithLivePreview scan customWorkbenchDraft.parts directly instead of only syncing from inventory entries — confirmed by the user afterward: the part's role correctly upgraded to Background Asset.
+  2. "Blank component" (and every starter template) pre-creates a fixed-id root part pointing at its own placeholder markup (e.g. .custom-component) that permanently breaks ("Not found") the moment the HTML is replaced wholesale — which is the normal, expected thing to do with a blank starting point. Fixed with healComponentRootPart: once the root part's selector stops resolving, it's self-healed to whatever the current actual root element is, using the same first-real-child-of-the-responsive-stage logic a starter template's own root would use. Confirmed fixed by the user.
+- Real but unresolved: a part in the user's test case had a compound auto-generated name (e.g. "Toggle container — I agree to the terms", "Ignore · Hero banner") whose exact source was never found. Extensive tracing (grep across the whole file for every literal string match, DevTools "search all files" against the actually-running deployed source to rule out a stale build) conclusively ruled out the only textually-matching function (customScopePartLabel, used solely for dropdown option labels, never assigned to a part's name) — the real source remains unidentified. Purely cosmetic (does not affect role/selector correctness, which is confirmed working); the user explicitly said to drop it rather than continue with a debugger breakpoint trace.
+Files changed: editor.js, tests/preview-runtime.test.js, tests/regression.test.js
+Tests run and results: node --check editor.js passed after every change; full npm test passed (0 failures) after every change, ending at 212 checks (up from 201 at the start of this slice). Added a CSS.escape polyfill to the test environment (browser global editor.js relies on that plain Node lacks) after discovering it was silently swallowing an exception in a new test.
+Application build/relaunch status: fast content-only relaunches throughout (Web\ file copy + WebView2 cache clear) — no C#/XAML changes. User independently verified via DevTools "Search across all files" that the deployed source matches what was pushed, ruling out a stale-deployment explanation for the naming mystery.
+Manual validation completed: user confirmed live, in the running app, that (a) a manually-present part with no inventory-pipeline origin now correctly upgrades to Background Asset once a live preview exists, and (b) the "Component root — Not found" error no longer appears after replacing a Blank component's placeholder HTML.
+Manual validation still required: pseudo-element-host mapping and the dynamic-element MutationObserver were built using the same verified computeCustomWorkbenchRoleRefinement/candidate-detection logic but have not been independently live-verified by the user (the pseudo-element case specifically got lost in the same test run as the still-unresolved naming mystery and was never circled back to).
+Known issues or decisions: the stale/mysterious compound-name source is a known unknown — worth a fresh, focused investigation (e.g. a DevTools breakpoint trace, which was offered but not pursued) if it resurfaces or starts affecting something functional, but is not blocking and was explicitly deprioritized by the user this session.
+Exact next unchecked task: Phase 2 remainder — "Detect state-only elements that appear after Standard/Selected changes" (deferred; depends on Phase 3's state-toolbar infrastructure, not yet built) and "Prefer meaningful visible parts over broad generic mappings" (no dedicated ranking/filtering step exists yet). Otherwise Phase 2 is functionally complete for what doesn't depend on Phase 3.
+```
+
+### 2026-08-10 — Phase 2 second slice: confidence flagging for uncertain classifications
+
+```text
+Date: 2026-08-10
+Active phase: Phase 2 — Better automatic part classification
+Completed this session:
+- Added a confidence field to inferCustomElementRole: "low" only for the two generic fallback branches (a bare tag-name match like span/p/h1, or the very last leaf-text/ignore catch-all), left unset ("high", implicitly) for every branch that matched a specific keyword, input type, or tag. A user-saved/corrected role is always treated as high confidence regardless of the original guess.
+- Carried that confidence through analyzeCustomElements into each inventory entry (a saved role always counts as high confidence, since a human already confirmed it).
+- Surfaced it in the bulk inventory UI: a row with a low-confidence guess now gets an amber "Low confidence — please check" badge and a left-border highlight, sitting right beside the pre-existing per-row role dropdown that was already the correction mechanism — this closes the last piece of "explain uncertain classifications and allow one-click correction" (the correction control already existed; what was missing was distinguishing which rows actually needed a look).
+Files changed: editor.js, editor.css, tests/preview-runtime.test.js
+Tests run and results: node --check editor.js passed; full npm test passed (0 failures, 201 checks, up from 200). New test confirms strong matches (checkbox, track, knob, button, img, label) are never flagged low, while a bare untagged span/div with no distinguishing signal is.
+Application build/relaunch status: fast content-only relaunch (Web\ file copy + WebView2 cache clear) — no C#/XAML changes.
+Manual validation completed: none yet — deployed and awaiting the user's next check.
+Manual validation still required: user should import something with a genuinely ambiguous element (plain div/span with no telling class/id/text) and confirm it gets the amber badge while confident matches (toggle/track/handle/label) do not.
+Known issues or decisions: "Prefer meaningful visible parts over broad generic mappings" remains only partially served (by the richer role vocabulary + resolved-node de-dup) — no dedicated ranking step exists yet that would suppress an overly-broad selector in favor of a more specific overlapping one. Left unchecked rather than claimed complete.
+Exact next unchecked task: Phase 2's remaining five items all share one prerequisite — feeding analyzeCustomElements from the live rendered preview (computed styles, geometry, event-listener ownership, pseudo-element content) instead of a detached DOMParser document — which unlocks pseudo-element-to-host mapping, state-only-element detection, safe JS execution before inventory, and dynamic-element observation. This is a materially larger architectural slice than the two completed this session and should be scoped/planned as its own unit rather than attempted piecemeal.
+```
+
+### 2026-08-10 — Phase 2 first slice: richer role classification + resolved-node de-dup
+
+```text
+Date: 2026-08-10
+Active phase: Phase 2 — Better automatic part classification
+Completed this session:
+- Explored the existing classification pipeline first (analyzeCustomElements/inferCustomElementRole/seedCustomWorkbenchParts) to find real gaps rather than guessing: confirmed analyzeCustomElements runs against a detached DOMParser document with no CSS/JS/layout, so computed styles, geometry, event ownership, pseudo-element content, state-only elements, and JS-generated elements are all architecturally unavailable to it today — those checklist items need a bigger follow-up slice (feeding the analyzer from the live rendered iframe instead of a static parse) and were left honestly unchecked rather than faked.
+- Within what the static analyzer *can* see, fixed real classification gaps found against both the Phase 0 toggle fixture and the real toggle-switch component from the live-app investigation earlier this session: added distinct container, track, handle, label, and toggle (checkbox/radio) roles to inferCustomElementRole — previously a bare "knob" class was misclassified as a slider (no generic handle role existed), a "track" class wasn't even included as a detectable candidate element at all, and a caption/label element was folded into the same generic "text" role as any other text-bearing element.
+- Added the same handle/track/container/label/toggle keywords to analyzeCustomElements's candidate-inclusion filter (a role a classifier can produce is useless if the element is filtered out before classification ever runs).
+- Registered the five new roles in all three places a role gets shown/selected (the single-element picker's dropdown in editor.html, the bulk inventory list's per-row dropdown, and the Component Map's own role dropdown + icon lookup) in the same pass, specifically to avoid the "registered in one place, not another" stale-dropdown bug class this session already hit once (the "speed" action fix).
+- Implemented de-duplication by resolved live DOM node in seedCustomWorkbenchParts, not just by selector string — directly motivated by the real "Mapped target" duplicate the user found and asked about this session (`#toggle` vs `[data-translated-button="0"]`, same element, two parts). When a live preview is available, a newly-detected selector that resolves to a node another already-added part's selector also resolves to is now skipped instead of creating a redundant part.
+Files changed: editor.js, editor.html, tests/preview-runtime.test.js, tests/regression.test.js
+Tests run and results: node --check editor.js passed; full npm test passed (0 failures, 200 checks, up from 194) after every change. New tests cover: track/handle/label distinct classification, checkbox/radio -> toggle (not button), bare "knob"/"handle" no longer misclassified as slider, compound "slider handle"/"thumb" phrasing still resolves to the existing sliderHandle role (regression-guarded), a wrapping surface -> container without over-firing on a toggle's own button-like wrapper, and presence checks confirming all three role-dropdown lists plus the icon map were updated together.
+Application build/relaunch status: fast content-only relaunch (Web\ file copy + WebView2 cache clear) — no C#/XAML changes.
+Manual validation completed: user confirmed live in the running app ("GOOD") after being pointed at testing with a fresh component built from the real toggle-switch-standard.html source (not the existing "Switch" component, since Rescan only adds newly-detected selectors and would not retroactively reclassify already-added parts).
+Manual validation still required: none for what was built this slice.
+Known issues or decisions: the four checklist items requiring a live rendered document during classification (computed styles/geometry/event ownership, pseudo-element-to-host mapping, state-only element detection, safe JS execution before inventory, and dynamic-element observation) were deliberately deferred as a single larger follow-up slice, since they all share the same prerequisite (analyzing the live iframe instead of a detached DOMParser document) rather than being independently small.
+Exact next unchecked task: Phase 2 remainder — feed analyzeCustomElements from the live rendered preview (computed styles, geometry, event-listener ownership, pseudo-element content) instead of a detached static parse, which unlocks pseudo-element-to-host mapping and is a prerequisite for state-only-element detection and JS-generated-element observation.
+```
 
 ### 2026-08-10 — Phase 1 complete: remaining sub-items built, then user-verified after fixing three more real bugs
 

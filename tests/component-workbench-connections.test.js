@@ -54,6 +54,11 @@ assert.ok(
   connectionRenderer.includes('[edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"))'),
   "connection mapping actions must not submit and close the Workbench dialog",
 );
+assert.ok(connectionRenderer.includes("customConnectionInlineTester(mapping)"));
+assert.ok(connectionRenderer.includes("Number(mapping.mapping?.inputMin)"));
+assert.ok(connectionRenderer.includes("Number(mapping.mapping?.inputMax)"));
+assert.ok(javascript.includes("data.lifecycle==='press-release'"));
+assert.ok(javascript.includes("[data-inline-output-key]"));
 
 assert.ok(!javascript.includes('["visibility", "Visibility feedback"'));
 assert.ok(!javascript.includes('["disabled", "Disabled feedback"'));

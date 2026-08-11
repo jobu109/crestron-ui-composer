@@ -1395,6 +1395,27 @@
           <button type="button" data-custom-wizard-step="1"><strong>2</strong><span>Add capabilities &amp; edit code</span></button>
           <button type="button" data-custom-wizard-step="2"><strong>3</strong><span>Test &amp; create</span></button>
         </nav>
+        <section id="custom-workbench-state-toolbar" class="custom-workbench-state-toolbar" aria-label="Workbench preview state">
+          <div class="custom-workbench-state-heading">
+            <strong>Preview state</strong>
+            <span>Stays active while you move through Workbench.</span>
+          </div>
+          <div id="custom-workbench-state-buttons" class="custom-workbench-state-buttons" role="toolbar" aria-label="Choose preview state"></div>
+          <div class="custom-workbench-state-tools">
+            <span id="custom-workbench-state-status" class="custom-workbench-state-status" aria-live="polite"></span>
+            <button id="custom-workbench-state-compare" type="button" aria-pressed="false">Compare Standard / Selected</button>
+          </div>
+        </section>
+        <section id="custom-workbench-state-comparison" class="custom-workbench-state-comparison" hidden aria-label="Standard and Selected comparison">
+          <article>
+            <header><strong>Standard</strong><span>Independent preview</span></header>
+            <iframe id="custom-workbench-compare-standard" sandbox="allow-scripts allow-same-origin" title="Standard state preview"></iframe>
+          </article>
+          <article>
+            <header><strong>Selected</strong><span>Independent preview</span></header>
+            <iframe id="custom-workbench-compare-selected" sandbox="allow-scripts allow-same-origin" title="Selected state preview"></iframe>
+          </article>
+        </section>
         <nav id="custom-capability-nav" class="custom-capability-nav custom-step-capabilities" aria-label="Component capability pages">
           <button type="button" data-custom-capability-page="properties">Editable properties</button>
           <button type="button" data-custom-capability-page="connections">Crestron connections</button>
@@ -1480,10 +1501,12 @@
               </div>
               <section id="custom-property-creator" class="custom-scope-creator" data-capability-panel="properties" hidden>
                 <div class="custom-builder-heading"><h2>Add editable property</h2><button type="button" data-close-scope-creator>×</button></div>
+                <div id="custom-property-context" class="custom-scope-context"></div>
                 <div class="custom-scope-grid">
-                  <label>Property<select id="custom-property-capability"></select></label>
-                  <label>Inspector control<select id="custom-property-value-type"><option value="text">Text</option><option value="number">Number</option><option value="color">Color</option><option value="color-alpha">Color + opacity</option><option value="checkbox">Checkbox</option><option value="asset">Asset</option></select></label>
-                  <label>Apply to<select id="custom-property-target"></select></label>
+                  <label>What should be editable?<select id="custom-property-capability"></select></label>
+                  <label>Inspector control<select id="custom-property-value-type"><option value="text">Text</option><option value="number">Number</option><option value="color">Color</option><option value="color-alpha">Color + opacity</option><option value="checkbox">Checkbox</option><option value="select">Dropdown</option><option value="asset">Asset</option></select></label>
+                  <label>Which part?<select id="custom-property-target"></select></label>
+                  <label>In which state?<select id="custom-property-state-scope"></select></label>
                   <fieldset class="custom-scope-wide custom-additional-target-field">
                     <legend>Also apply to additional parts (optional)</legend>
                     <p class="hint">Check another part only when this one Inspector property should control several elements together.</p>
@@ -1491,33 +1514,54 @@
                     <select id="custom-property-additional-targets" multiple hidden aria-hidden="true"></select>
                   </fieldset>
                   <label>Composer label<input id="custom-property-label"></label>
-                  <label>Property key<input id="custom-property-key"></label>
                   <label>Default value<input id="custom-property-default"></label>
-                  <label id="custom-property-target-name-row" hidden>CSS/DOM name<input id="custom-property-target-name" placeholder="Example: box-shadow or aria-label"></label>
                   <label id="custom-property-unit-row" hidden>Unit<input id="custom-property-unit" placeholder="px, %, deg, ms"></label>
                   <label id="custom-property-min-row" hidden>Minimum<input id="custom-property-min" type="number"></label>
                   <label id="custom-property-max-row" hidden>Maximum<input id="custom-property-max" type="number"></label>
                   <label id="custom-property-step-row" hidden>Step<input id="custom-property-step" type="number"></label>
+                  <details class="custom-scope-wide custom-mapping-advanced">
+                    <summary>Advanced mapping details</summary>
+                    <div class="custom-scope-grid">
+                      <label>Property key<input id="custom-property-key"></label>
+                      <label id="custom-property-target-name-row" hidden>CSS/DOM name<input id="custom-property-target-name" placeholder="Example: box-shadow or aria-label"></label>
+                    </div>
+                    <p class="hint">These identifiers are generated automatically. Change them only when integrating with handwritten component source.</p>
+                  </details>
                 </div>
                 <p id="custom-property-capability-help" class="hint"></p>
-                <div class="custom-property-generation-preview">
-                  <strong>What Composer will add</strong>
+                <div id="custom-property-sentence" class="custom-mapping-sentence" aria-live="polite"></div>
+                <div id="custom-property-conflict" class="custom-mapping-warning" hidden></div>
+                <section class="custom-property-live-test" aria-label="Test proposed Inspector property">
+                  <div>
+                    <strong>Test before adding</strong>
+                    <small>This temporary control changes the Live Preview only. It does not modify the component until you add the property.</small>
+                  </div>
+                  <label><span id="custom-property-test-label">Test value</span><span id="custom-property-test-control"></span></label>
+                  <button id="custom-property-test-compare" type="button" aria-pressed="false">Compare with original</button>
+                  <button id="custom-property-test-reset" type="button">Reset preview</button>
+                  <div id="custom-property-original-comparison" class="custom-property-original-comparison" hidden>
+                    <strong>Original authored component</strong>
+                    <iframe id="custom-property-original-preview" sandbox="allow-scripts allow-same-origin" title="Original component before proposed property"></iframe>
+                  </div>
+                </section>
+                <details class="custom-property-generation-preview custom-generated-details">
+                  <summary>Advanced: generated CSS / JavaScript</summary>
                   <pre id="custom-property-generation-preview">Choose a part and property.</pre>
-                </div>
+                </details>
                 <button id="custom-property-create" type="button" class="primary">Add property to Composer and source</button>
               </section>
               <div id="custom-property-mapping-list" class="custom-property-mapping-list" data-capability-panel="properties"></div>
               <section id="custom-signal-creator" class="custom-scope-creator" data-capability-panel="connections" hidden>
                 <div class="custom-builder-heading"><h2>Add Crestron connection</h2><button type="button" data-close-scope-creator>×</button></div>
+                <div id="custom-signal-context" class="custom-scope-context"></div>
                 <div class="custom-scope-grid">
-                  <label>Signal type<select id="custom-signal-capability-type"><option value="digital">Digital</option><option value="analog">Analog</option><option value="serial">Serial</option></select></label>
-                  <label>Direction<select id="custom-signal-capability-direction"><option value="input">Input from Crestron</option><option value="output">Output to Crestron</option></select></label>
-                  <label>What it controls<select id="custom-signal-capability-action"></select></label>
-                  <label>Apply to<select id="custom-signal-target"></select></label>
+                  <label>Connection type<select id="custom-signal-capability-type"><option value="digital">Digital — true / false</option><option value="analog">Analog — number</option><option value="serial">Serial — text</option></select></label>
+                  <label>Direction<select id="custom-signal-capability-direction"><option value="input">Input — Crestron controls the component</option><option value="output">Output — component sends to Crestron</option></select></label>
+                  <label>What should it do?<select id="custom-signal-capability-action"></select></label>
+                  <label>Which part?<select id="custom-signal-target"></select></label>
+                  <label>In which state?<select id="custom-signal-state-scope"></select></label>
                   <label>Composer label<input id="custom-signal-capability-label"></label>
-                  <label>Signal key<input id="custom-signal-capability-key"></label>
                   <label>Contract name / join<input id="custom-signal-capability-address"></label>
-                  <label id="custom-signal-parameter-row" hidden><span id="custom-signal-parameter-label">Class/property/action detail</span><input id="custom-signal-parameter" placeholder="Example: active"></label>
                   <label id="custom-signal-hold-row" hidden>Held duration (seconds)<input id="custom-signal-hold-duration" type="number" min="0.1" max="30" step="0.1" value="3"></label>
                   <label id="custom-signal-pulse-row" hidden>Pulse duration (ms)<input id="custom-signal-pulse-duration" type="number" min="20" max="5000" step="10" value="50"></label>
                   <label id="custom-signal-exclusive-row" hidden><input id="custom-signal-exclusive" type="checkbox" checked> Press fires only when released before Held duration</label>
@@ -1528,12 +1572,22 @@
                   <label id="custom-signal-clamp-row" hidden><input id="custom-signal-clamp" type="checkbox" checked> Clamp to range</label>
                   <label id="custom-signal-zero-row" hidden><input id="custom-signal-zero-based" type="checkbox"> Zero-based item indexing</label>
                   <label id="custom-signal-per-item-row" hidden><input id="custom-signal-per-item" type="checkbox"> Create a per-item zero-based signal range</label>
+                  <details class="custom-scope-wide custom-mapping-advanced">
+                    <summary>Advanced mapping details</summary>
+                    <div class="custom-scope-grid">
+                      <label>Signal key<input id="custom-signal-capability-key"></label>
+                      <label id="custom-signal-parameter-row" hidden><span id="custom-signal-parameter-label">Class/property/action detail</span><input id="custom-signal-parameter" placeholder="Example: active"></label>
+                    </div>
+                    <p class="hint">Composer generates these internal identifiers. Edit them only when connecting to specific authored JavaScript, CSS classes, or DOM properties.</p>
+                  </details>
                 </div>
                 <p id="custom-signal-capability-help" class="hint"></p>
-                <div class="custom-property-generation-preview">
-                  <strong>What Composer will add</strong>
+                <div id="custom-signal-sentence" class="custom-mapping-sentence" aria-live="polite"></div>
+                <div id="custom-signal-conflict" class="custom-mapping-warning" hidden></div>
+                <details class="custom-property-generation-preview custom-generated-details">
+                  <summary>Advanced: generated JavaScript</summary>
                   <pre id="custom-signal-generation-preview">Choose a connection type and target part.</pre>
-                </div>
+                </details>
                 <button id="custom-signal-create" type="button" class="primary">Add connection to Composer and source</button>
               </section>
               <div id="custom-connection-mapping-list" class="custom-property-mapping-list" data-capability-panel="connections"></div>
@@ -1580,6 +1634,11 @@
                 <label>Element role
                   <select id="custom-element-role">
                     <option value="button">Button surface</option>
+                    <option value="toggle">Checkbox / radio toggle control</option>
+                    <option value="container">Container or surface</option>
+                    <option value="track">Track or channel</option>
+                    <option value="handle">Handle or knob</option>
+                    <option value="label">Label or caption</option>
                     <option value="text">Text or label</option>
                     <option value="textInput">Text input</option>
                     <option value="icon">Icon or image</option>

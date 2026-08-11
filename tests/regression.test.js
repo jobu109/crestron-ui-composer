@@ -2023,6 +2023,103 @@ run("custom element picker classifies elements and generates standard capabiliti
   ["button", "text", "textInput", "icon", "selected", "gauge", "slider", "repeated", "ignore"].forEach((role) =>
     assert.ok(html.includes(`value="${role}"`)),
   );
+  // Phase 2: container/track/handle/label/toggle must be selectable
+  // everywhere a role can be assigned or displayed — the single-element
+  // classifier dropdown, the bulk inventory list's per-row dropdown, and
+  // the Component Map's own role dropdown + icon lookup — not just
+  // producible by inferCustomElementRole. A role inferCustomElementRole can
+  // return but that isn't registered in one of these renders as a stale
+  // blank/mismatched selection, the exact bug class the "speed" action
+  // dropdown mismatch was earlier this session.
+  ["container", "track", "handle", "label", "toggle"].forEach((role) => {
+    assert.ok(html.includes(`value="${role}"`), `custom-element-role select is missing ${role}`);
+    assert.ok(editor.includes(`["${role}", `), `renderCustomElementInventory's roles array is missing ${role}`);
+  });
+  assert.ok(editor.includes('roles = ["element", "container", "track", "handle", "label", "button", "toggle"'));
+  ["container: ", "track: ", "handle: ", "label: "].forEach((entry) =>
+    assert.ok(editor.includes(entry), `customWorkbenchRoleIcons is missing an icon for ${entry.trim()}`),
+  );
+  // Phase 2: seedCustomWorkbenchParts must de-dupe by the resolved live
+  // node, not just by exact selector string, so a translation-generated
+  // duplicate (same element, differently-written selector) doesn't create
+  // a second "Mapped target"-style part for something already named.
+  assert.ok(editor.includes("claimedNodes"), "seedCustomWorkbenchParts is missing resolved-node de-duplication");
+  assert.ok(editor.includes("function filterRedundantGenericWrappers(inventory)"));
+  assert.ok(editor.includes("inventory = filterRedundantGenericWrappers(inventory);"), "analyzeCustomElements must actually apply the generic-wrapper filter, not just define it");
+  // Phase 2: the live-preview refinement pass and dynamic-element observer
+  // only do anything useful if they're actually wired into the preview's
+  // lifecycle, not just defined and never called.
+  assert.ok(editor.includes("function computeCustomWorkbenchRoleRefinement(node, frameDocument, role, confidence)"));
+  assert.ok(editor.includes("function refineCustomElementInventoryWithLivePreview()"));
+  // refineWorkbenchPartsWithLivePreview refines Component Map parts
+  // directly (not just ones synced from the inventory pipeline) — required
+  // for a manually-added or live-picked part, which never has a
+  // customAnalyzedElements entry to sync from in the first place.
+  assert.ok(editor.includes("function refineWorkbenchPartsWithLivePreview()"));
+  assert.ok(editor.includes("function observeCustomWorkbenchDynamicElements(frameDocument)"));
+  assert.ok(editor.includes("function healComponentRootPart(frameDocument)"));
+  assert.ok(editor.includes("refineCustomElementInventoryWithLivePreview();\n      refineWorkbenchPartsWithLivePreview();\n      healComponentRootPart(previewFrame.contentDocument);\n      observeCustomWorkbenchDynamicElements(previewFrame.contentDocument);"));
+  // Phase 3: one state selector remains visible throughout Workbench and is
+  // reapplied after every live-preview rebuild.
+  assert.ok(html.includes('id="custom-workbench-state-toolbar"'));
+  assert.ok(html.includes('id="custom-workbench-state-buttons"'));
+  assert.ok(editor.includes('let customWorkbenchActiveState = "standard"'));
+  assert.ok(editor.includes("function setCustomWorkbenchActiveState(name"));
+  assert.ok(editor.includes("requestAnimationFrame(() => applyCustomWorkbenchActiveState())"));
+  assert.ok(editor.includes("function refreshCustomWorkbenchForActiveState()"));
+  assert.ok(editor.includes("setTimeout(refreshCustomWorkbenchForActiveState, 80)"));
+  assert.ok(editor.includes("function customWorkbenchStateSimulationMessage("));
+  assert.ok(editor.includes("function customWorkbenchStateSimulationBridge("));
+  assert.ok(editor.includes("data-composer-workbench-state-bridge"));
+  assert.ok(html.includes('id="custom-workbench-state-compare"'));
+  assert.ok(html.includes('id="custom-workbench-state-comparison"'));
+  assert.ok(html.includes('id="custom-workbench-compare-standard"'));
+  assert.ok(html.includes('id="custom-workbench-compare-selected"'));
+  assert.ok(editor.includes("function refreshCustomWorkbenchStateComparison("));
+  assert.ok(editor.includes("function applyCustomWorkbenchComparisonState("));
+  assert.ok(css.includes(".custom-workbench-state-comparison"));
+  assert.ok(html.includes('id="custom-property-context"'));
+  assert.ok(html.includes('id="custom-signal-context"'));
+  assert.ok(html.includes('id="custom-property-state-scope"'));
+  assert.ok(html.includes('id="custom-signal-state-scope"'));
+  assert.ok(editor.includes("target.dataset.preferPartId = customWorkbenchSelectedPartId"));
+  assert.ok(editor.includes("function fillCustomStateScopeSelect("));
+  assert.ok(editor.includes("function customStateScopedCssSelector("));
+  assert.ok(editor.includes("function customPropertySentence("));
+  assert.ok(editor.includes("function customConnectionSentence("));
+  assert.ok(editor.includes("function renderCustomMappingConflict("));
+  assert.ok(editor.includes("function customPropertyRoleRecommendations("));
+  assert.ok(editor.includes("function renderCustomPropertyLiveTest("));
+  assert.ok(editor.includes("function applyCustomTemporaryPropertyValue("));
+  assert.ok(html.includes('id="custom-property-sentence"'));
+  assert.ok(html.includes('id="custom-property-test-control"'));
+  assert.ok(html.includes('id="custom-property-test-reset"'));
+  assert.ok(html.includes('id="custom-property-test-compare"'));
+  assert.ok(html.includes('id="custom-property-original-preview"'));
+  assert.ok(html.includes('<option value="select">Dropdown</option>'));
+  assert.ok(html.includes('id="custom-signal-sentence"'));
+  assert.ok(html.includes("Digital — true / false"));
+  assert.ok(html.includes("Analog — number"));
+  assert.ok(html.includes("Serial — text"));
+  assert.ok(editor.includes("function customSignalActionApplies("));
+  assert.ok(editor.includes("function customConnectionInlineTester("));
+  assert.ok(css.includes(".custom-connection-inline-tester"));
+  ["charging", "completed", "customEvent", "positionX", "positionY", "name", "textEntry"].forEach((action) => assert.ok(editor.includes(`[\"${action}\"`)));
+  assert.ok(html.includes("Advanced: generated CSS / JavaScript"));
+  assert.ok(html.includes("Advanced mapping details"));
+  assert.ok(css.includes(".custom-mapping-sentence"));
+  assert.ok(css.includes(".custom-mapping-advanced"));
+  assert.ok(css.includes(".custom-property-live-test"));
+  assert.ok(css.includes(".custom-property-original-comparison"));
+  ["fontFamily", "fontWeight", "textAlign", "wrapText", "lineHeight", "letterSpacing", "shadowSize", "shadowColor", "padding", "margin", "positionX", "positionY", "rotation", "fill", "animationDuration", "transitionDuration"].forEach((capability) => assert.ok(editor.includes(`value: "${capability}"`)));
+  assert.ok(editor.includes('{ value: "width", label: "Width", type: "number", defaultValue: 100, css: "width"'));
+  assert.ok(editor.includes('{ value: "height", label: "Height", type: "number", defaultValue: 50, css: "height"'));
+  assert.ok(editor.includes("const position = [\"positionX\", \"positionY\"].includes(definition.value)"));
+  assert.ok(editor.includes("custom-component-glow-proxy"));
+  assert.ok(editor.includes("properties.contentInset"));
+  assert.ok(editor.includes('stateScope: definition.stateScope'));
+  assert.ok(editor.includes('stateScope: config.stateScope || "all"'));
+  assert.ok(editor.includes('stateScope: mapping.stateScope || "all"'));
   assert.ok(editor.includes("function inferCustomElementRole(element = {})"));
   assert.ok(editor.includes("function applyCustomElementRole("));
   assert.ok(editor.includes("Existing definitions were preserved"));
@@ -2234,7 +2331,7 @@ run("component scoping creates real Composer properties and Crestron connections
   assert.ok(html.includes('id="custom-property-creator"'));
   assert.ok(html.includes('id="custom-signal-creator"'));
   assert.ok(html.includes("Add an editable Composer property or a Crestron connection"));
-  assert.ok(html.includes("What it controls<select id=\"custom-signal-capability-action\""));
+  assert.ok(html.includes("What should it do?<select id=\"custom-signal-capability-action\""));
   assert.ok(editor.includes("function createScopedCustomProperty()"));
   assert.ok(editor.includes("function preferredCustomPropertyTarget(definition, select)"));
   assert.ok(editor.includes('part.title === "Track"'));

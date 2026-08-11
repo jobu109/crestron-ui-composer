@@ -160,6 +160,12 @@ function extractConstThroughFunction(source, constName, functionName) {
   )();
 }
 
+// CSS.escape is a browser global editor.js relies on (e.g. customElementSelector)
+// that plain Node has no built-in equivalent for — a minimal pass-through
+// stub is enough for these tests' purposes (none of the mocked selectors
+// contain characters that would actually need escaping).
+if (typeof global.CSS === "undefined") global.CSS = { escape: (value) => String(value) };
+
 const editorSource = read("editor.js"),
   detectManagedGlow = extractFunction(editorSource, "detectManagedGlow"),
   applyNaturalPreviewSize = extractFunction(
@@ -209,6 +215,11 @@ const editorSource = read("editor.js"),
   findCustomWorkbenchPartForElement = extractFunction(
     editorSource,
     "findCustomWorkbenchPartForElement",
+  ),
+  inferCustomElementRole = extractFunction(editorSource, "inferCustomElementRole"),
+  customWorkbenchNodeHasPseudoContent = extractFunction(
+    editorSource,
+    "customWorkbenchNodeHasPseudoContent",
   );
 // buildCustomWorkbenchPartTree's hidden-input-adoption pass calls
 // isHiddenWorkbenchControlNode/findAssociatedVisibleWorkbenchNode as free
@@ -219,9 +230,49 @@ const editorSource = read("editor.js"),
 global.isCustomWorkbenchNodeVisible = isCustomWorkbenchNodeVisible;
 global.isHiddenWorkbenchControlNode = isHiddenWorkbenchControlNode;
 global.findAssociatedVisibleWorkbenchNode = findAssociatedVisibleWorkbenchNode;
+global.customWorkbenchNodeHasPseudoContent = customWorkbenchNodeHasPseudoContent;
 const buildCustomWorkbenchPartTree = extractFunction(
   editorSource,
   "buildCustomWorkbenchPartTree",
+);
+// refineCustomElementInventoryWithLivePreview and
+// refineWorkbenchPartsWithLivePreview both call
+// computeCustomWorkbenchRoleRefinement as a free variable (extracted for
+// real, not mocked, so its actual upgrade-decision logic is what gets
+// exercised) — plus $(...), customAnalyzedElements/customWorkbenchDraft,
+// and the render callbacks, which are mocked per-test since their content
+// is what each test is actually varying.
+global.computeCustomWorkbenchRoleRefinement = extractFunction(
+  editorSource,
+  "computeCustomWorkbenchRoleRefinement",
+);
+const detectCustomStateOnlyEvidence = extractFunction(
+  editorSource,
+  "detectCustomStateOnlyEvidence",
+);
+global.detectCustomStateOnlyEvidence = detectCustomStateOnlyEvidence;
+// Live refinement synchronizes its discoveries back into the Component Map.
+// Most refinement tests below focus on classification itself, so start with
+// a no-op and test the real synchronization function independently.
+global.syncCustomWorkbenchPartsFromInventory = () => {};
+const refineCustomElementInventoryWithLivePreview = extractFunction(
+  editorSource,
+  "refineCustomElementInventoryWithLivePreview",
+);
+const refineWorkbenchPartsWithLivePreview = extractFunction(
+  editorSource,
+  "refineWorkbenchPartsWithLivePreview",
+);
+global.customElementSelector = extractFunction(editorSource, "customElementSelector");
+const healComponentRootPart = extractFunction(editorSource, "healComponentRootPart");
+const filterRedundantGenericWrappers = extractFunction(editorSource, "filterRedundantGenericWrappers");
+const syncCustomWorkbenchPartsFromInventory = extractFunction(
+  editorSource,
+  "syncCustomWorkbenchPartsFromInventory",
+);
+const reassignCustomWorkbenchPartReferences = extractFunction(
+  editorSource,
+  "reassignCustomWorkbenchPartReferences",
 );
 
 // inferSnippetBehaviors calls translatorKey and domLookupToSelector, and
@@ -238,6 +289,11 @@ global.describeSelectorVisualPart = describeSelectorVisualPart;
 global.enclosingSelectorAt = enclosingSelectorAt;
 global.hexToRgb = hexToRgb;
 const inferSnippetBehaviors = extractFunction(editorSource, "inferSnippetBehaviors");
+global.inferSnippetBehaviors = inferSnippetBehaviors;
+const applyCustomWorkbenchEventOwnership = extractFunction(
+  editorSource,
+  "applyCustomWorkbenchEventOwnership",
+);
 const { evaluateComponentRequirementRules } = extractConstThroughFunction(
   editorSource,
   "componentRequirementRules",
@@ -309,6 +365,38 @@ function mockWorkbenchNode(selector, parent = null) {
 function mockWorkbenchFrameDocument(nodesBySelector) {
   return {
     querySelector: (selector) => nodesBySelector[selector] || null,
+  };
+}
+// Mock for refineCustomElementInventoryWithLivePreview: covers only what it
+// actually reads — getBoundingClientRect() and computed style (own box and
+// ::before/::after) for visibility/pseudo-content checks, and backgroundImage
+// for the computed-background-image upgrade.
+function mockRefinableNode({
+  rect = { width: 0, height: 0 },
+  display = "block",
+  visibility = "visible",
+  opacity = "1",
+  backgroundImage = "none",
+  beforeContent = "none",
+  afterContent = "none",
+} = {}) {
+  return {
+    getBoundingClientRect: () => rect,
+    __style: { display, visibility, opacity, backgroundImage },
+    __beforeContent: beforeContent,
+    __afterContent: afterContent,
+  };
+}
+function mockRefinableFrameDocument(nodesBySelector) {
+  return {
+    querySelector: (selector) => nodesBySelector[selector] || null,
+    defaultView: {
+      getComputedStyle: (node, pseudo) => {
+        if (pseudo === "::before") return { content: node.__beforeContent, display: node.__beforeContent !== "none" ? "block" : "none" };
+        if (pseudo === "::after") return { content: node.__afterContent, display: node.__afterContent !== "none" ? "block" : "none" };
+        return node.__style;
+      },
+    },
   };
 }
 
@@ -1272,6 +1360,335 @@ run("findCustomWorkbenchPartForElement returns null when no known part contains 
   const orphanNode = mockWorkbenchNode(".orphan");
   global.customWorkbenchDraft = { parts: [{ id: "p-container", selector: ".container" }] };
   assert.equal(findCustomWorkbenchPartForElement(orphanNode), null);
+});
+
+// Phase 2 completion criterion: "The toggle fixture initially exposes
+// Track, Handle, Label, and Toggle control correctly." Exercised against
+// both the Phase 0 authored-toggle.html fixture's shape (.track/.knob/
+// .label under a label.toggle) and the real-world markup a user found
+// live (label.switch > input#toggle + span.slider, no .knob/.track
+// classes at all — a plain checkbox-driven CSS switch).
+run("inferCustomElementRole classifies a toggle switch's track, handle, and label distinctly, not as generic text/slider", () => {
+  assert.equal(inferCustomElementRole({ tag: "span", className: "track" }).role, "track");
+  assert.equal(inferCustomElementRole({ tag: "span", className: "knob" }).role, "handle");
+  assert.equal(inferCustomElementRole({ tag: "span", className: "label", text: "POWER", childCount: 0 }).role, "label");
+});
+
+run("inferCustomElementRole classifies a checkbox/radio input as toggle, not button", () => {
+  assert.equal(inferCustomElementRole({ tag: "input", inputType: "checkbox", id: "toggle" }).role, "toggle");
+  assert.equal(inferCustomElementRole({ tag: "input", inputType: "radio" }).role, "toggle");
+});
+
+run("inferCustomElementRole still classifies a real <button> as button, not toggle", () => {
+  assert.equal(inferCustomElementRole({ tag: "button", text: "Press" }).role, "button");
+});
+
+run("inferCustomElementRole no longer misclassifies a bare 'knob'/'handle' class as a slider", () => {
+  const result = inferCustomElementRole({ tag: "span", className: "knob" });
+  assert.notEqual(result.role, "slider");
+  assert.equal(result.role, "handle");
+});
+
+run("inferCustomElementRole keeps the compound slider-handle/thumb phrasing as sliderHandle, not the generic handle role", () => {
+  assert.equal(inferCustomElementRole({ tag: "span", className: "slider-handle" }).role, "sliderHandle");
+  assert.equal(inferCustomElementRole({ tag: "span", className: "thumb" }).role, "sliderHandle");
+});
+
+run("inferCustomElementRole flags only the generic tag/leaf-text fallback branches as low confidence", () => {
+  const strongMatches = [
+    { tag: "input", inputType: "checkbox" },
+    { tag: "span", className: "track" },
+    { tag: "span", className: "knob" },
+    { tag: "button", text: "Press" },
+    { tag: "img" },
+    { tag: "span", className: "label", text: "POWER", childCount: 0 },
+  ];
+  strongMatches.forEach((element) => {
+    const result = inferCustomElementRole(element);
+    assert.notEqual(result.confidence, "low", `expected a confident match for ${JSON.stringify(element)}, got role ${result.role}`);
+  });
+  // A childless <span> with no distinguishing keyword only reaches the
+  // generic tag-based text catch-all — a genuine loose guess.
+  assert.equal(inferCustomElementRole({ tag: "span", text: "Whatever", childCount: 0 }).confidence, "low");
+  // Nothing matched at all, down to the very last leaf-text fallback.
+  assert.equal(inferCustomElementRole({ tag: "div", text: "Whatever", childCount: 0 }).confidence, "low");
+  assert.equal(inferCustomElementRole({ tag: "div", childCount: 0 }).role, "ignore");
+});
+
+run("inferCustomElementRole classifies a generic wrapping surface as container, without over-firing on every 'toggle'/'switch' wrapper", () => {
+  assert.equal(inferCustomElementRole({ tag: "div", className: "panel-wrapper", childCount: 2 }).role, "container");
+  // A toggle's own outer label (e.g. label.switch, label.toggle) keeps the
+  // more useful "button" classification instead of collapsing to "container",
+  // since it matches the button-role keywords first.
+  assert.equal(inferCustomElementRole({ tag: "label", className: "switch", childCount: 2 }).role, "button");
+});
+
+run("detectCustomStateOnlyEvidence identifies a hidden part authored to appear in Selected", () => {
+  const evidence = detectCustomStateOnlyEvidence(
+    ".selected-label",
+    ".selected-label{display:none}.toggle.selected .selected-label{display:block;opacity:1}",
+  );
+  assert.equal(evidence.state, "selected");
+  assert.equal(evidence.selector, ".toggle.selected .selected-label");
+});
+
+run("detectCustomStateOnlyEvidence recognizes checked and aria state selectors", () => {
+  assert.equal(
+    detectCustomStateOnlyEvidence(".check", "input:checked + .check{visibility:visible}").state,
+    "checked",
+  );
+  assert.ok(
+    detectCustomStateOnlyEvidence(".status", '[aria-pressed="true"] .status{opacity:.8}'),
+  );
+});
+
+run("detectCustomStateOnlyEvidence ignores ordinary always-visible rules", () => {
+  assert.equal(detectCustomStateOnlyEvidence(".label", ".label{display:block;opacity:1}"), null);
+});
+
+run("applyCustomWorkbenchEventOwnership promotes a generic event owner to a button", () => {
+  const entry = {
+    selector: "#surface",
+    role: "ignore",
+    confidence: "low",
+    reason: "Generic element.",
+    metadata: { inlineEvents: [] },
+  };
+  applyCustomWorkbenchEventOwnership(
+    [entry],
+    "document.getElementById('surface').addEventListener('pointerdown', function(){});",
+    "",
+  );
+  assert.equal(entry.role, "button");
+  assert.equal(entry.eventOwner, true);
+  assert.deepEqual(entry.events, ["pointerdown"]);
+});
+
+run("applyCustomWorkbenchEventOwnership recognizes inline numeric ownership", () => {
+  const entry = {
+    selector: "#value",
+    role: "text",
+    confidence: "low",
+    reason: "Generic text.",
+    metadata: { inlineEvents: ["input"] },
+  };
+  applyCustomWorkbenchEventOwnership([entry], "", "");
+  assert.equal(entry.role, "slider");
+  assert.equal(entry.eventOwner, true);
+});
+
+run("syncCustomWorkbenchPartsFromInventory carries state-only and event ownership into an existing Component Map part", () => {
+  const node = {},
+    part = { selector: "#surface", role: "container", metadata: {} },
+    entry = {
+      selector: "[data-translated-button=\"0\"]",
+      role: "button",
+      stateOnly: "selected",
+      eventOwner: true,
+      events: ["pointerdown"],
+    },
+    frameDocument = {
+      querySelector: (selector) => selector === "#surface" || selector === entry.selector ? node : null,
+    };
+  global.customWorkbenchDraft = { parts: [part] };
+  global.$ = (id) => id === "custom-component-preview" ? { contentDocument: frameDocument } : null;
+  global.ensureCustomWorkbenchDraft = () => { throw new Error("draft already exists"); };
+  let seeded = null;
+  global.seedCustomWorkbenchParts = (inventory) => { seeded = inventory; };
+  syncCustomWorkbenchPartsFromInventory([entry]);
+  assert.equal(part.role, "button", "event ownership should promote a weak existing map role");
+  assert.equal(part.metadata.stateOnly, "selected");
+  assert.equal(part.metadata.eventOwner, true);
+  assert.deepEqual(part.metadata.events, ["pointerdown"]);
+  assert.equal(seeded[0], entry, "the same pass must seed any genuinely new inventory entries");
+});
+
+run("reassignCustomWorkbenchPartReferences prevents removed Component Map IDs from dangling in every mapping collection", () => {
+  global.customWorkbenchDraft = {
+    properties: [{ target: { partId: "old", selector: ".track" } }],
+    connections: [{ targets: [{ partId: "old", selector: ".track" }] }],
+    states: [{ target: { partId: "old", selector: ".track" } }],
+    repeatedCollections: [{ itemTarget: { partId: "old", selector: ".item" } }],
+  };
+  reassignCustomWorkbenchPartReferences("old", "merged");
+  assert.equal(global.customWorkbenchDraft.properties[0].target.partId, "merged");
+  assert.equal(global.customWorkbenchDraft.connections[0].targets[0].partId, "merged");
+  assert.equal(global.customWorkbenchDraft.states[0].target.partId, "merged");
+  assert.equal(global.customWorkbenchDraft.repeatedCollections[0].itemTarget.partId, "merged");
+});
+
+// Reset customWorkbenchDraft before this block so none of these tests
+// accidentally inherit a stale value left behind by an earlier, unrelated
+// test in this same file (they all run in one Node process sharing one
+// global object) — refineWorkbenchPartsWithLivePreview reads it as a free
+// variable a few tests down.
+global.customWorkbenchDraft = { parts: [] };
+run("refineCustomElementInventoryWithLivePreview upgrades a low-confidence guess to backgroundAsset once a computed (stylesheet-driven) background-image is visible", () => {
+  const node = mockRefinableNode({ rect: { width: 40, height: 40 }, backgroundImage: 'url("hero.png")' }),
+    entry = { selector: ".hero", role: "text", reason: "Detected a text or label element.", confidence: "low" };
+  global.customAnalyzedElements = [entry];
+  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ ".hero": node }) } : null);
+  global.renderCustomElementInventory = () => {};
+  refineCustomElementInventoryWithLivePreview();
+  assert.equal(entry.role, "backgroundAsset");
+  assert.equal(entry.confidence, "high");
+});
+
+run("refineCustomElementInventoryWithLivePreview maps a boxless node to its pseudo-element host instead of leaving it looking like dead weight", () => {
+  const node = mockRefinableNode({ rect: { width: 0, height: 0 }, beforeContent: '"\\2713"' }),
+    entry = { selector: ".checkmark", role: "ignore", reason: "No safe interactive behavior was identified; preserve it unchanged.", confidence: "low" };
+  global.customAnalyzedElements = [entry];
+  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ ".checkmark": node }) } : null);
+  global.renderCustomElementInventory = () => {};
+  refineCustomElementInventoryWithLivePreview();
+  assert.equal(entry.pseudoHost, true);
+  assert.match(entry.reason, /host for that visual content/);
+});
+
+run("refineCustomElementInventoryWithLivePreview flags a previously-confident part as low confidence once computed styles reveal it is never actually shown", () => {
+  const node = mockRefinableNode({ rect: { width: 0, height: 0 } }),
+    entry = { selector: ".ghost-button", role: "button", reason: "Detected an interactive button surface.", confidence: "high" };
+  global.customAnalyzedElements = [entry];
+  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ ".ghost-button": node }) } : null);
+  global.renderCustomElementInventory = () => {};
+  refineCustomElementInventoryWithLivePreview();
+  assert.equal(entry.confidence, "low");
+  assert.match(entry.reason, /Not currently visible/);
+});
+
+run("refineCustomElementInventoryWithLivePreview leaves a visible, confident entry untouched", () => {
+  const node = mockRefinableNode({ rect: { width: 120, height: 40 } }),
+    entry = { selector: "#toggle", role: "toggle", reason: "Detected a checkbox or radio control that switches between two states." };
+  global.customAnalyzedElements = [entry];
+  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ "#toggle": node }) } : null);
+  let rerendered = false;
+  global.renderCustomElementInventory = () => { rerendered = true; };
+  refineCustomElementInventoryWithLivePreview();
+  assert.equal(entry.role, "toggle");
+  assert.equal(rerendered, false, "a confident, visible entry needing no upgrade should not trigger a re-render");
+});
+
+run("refineWorkbenchPartsWithLivePreview upgrades a manually-added part with no matching inventory entry at all — the real bug this was built to fix", () => {
+  // .hero-banner here deliberately has NO corresponding customAnalyzedElements
+  // entry — exactly the case a manually-added ("Add selector manually") or
+  // live-picked part hits, since it never went through the static detection
+  // pass that populates customAnalyzedElements in the first place.
+  const bannerNode = mockRefinableNode({ rect: { width: 140, height: 60 }, backgroundImage: 'url("hero.png")' }),
+    weakPart = { selector: ".hero-banner", role: "element" };
+  global.customAnalyzedElements = [];
+  global.customWorkbenchDraft = { parts: [weakPart] };
+  global.$ = (id) => (id === "custom-component-preview"
+    ? { contentDocument: mockRefinableFrameDocument({ ".hero-banner": bannerNode }) }
+    : null);
+  let workbenchRerendered = false;
+  global.renderCustomWorkbenchParts = () => { workbenchRerendered = true; };
+  refineWorkbenchPartsWithLivePreview();
+  assert.equal(weakPart.role, "backgroundAsset");
+  assert.equal(workbenchRerendered, true);
+});
+
+run("refineWorkbenchPartsWithLivePreview never overwrites a part whose role is already specific", () => {
+  const node = mockRefinableNode({ rect: { width: 0, height: 0 } }),
+    strongPart = { selector: ".already-specific", role: "button" };
+  global.customAnalyzedElements = [];
+  global.customWorkbenchDraft = { parts: [strongPart] };
+  global.$ = (id) => (id === "custom-component-preview"
+    ? { contentDocument: mockRefinableFrameDocument({ ".already-specific": node }) }
+    : null);
+  global.renderCustomWorkbenchParts = () => { throw new Error("must not re-render when nothing eligible changed"); };
+  refineWorkbenchPartsWithLivePreview();
+  assert.equal(strongPart.role, "button");
+});
+
+run("refineCustomElementInventoryWithLivePreview is a safe no-op before any live preview exists", () => {
+  const entry = { selector: ".whatever", role: "text", confidence: "low" };
+  global.customAnalyzedElements = [entry];
+  global.$ = () => null;
+  global.renderCustomElementInventory = () => { throw new Error("must not render when there is nothing to refine"); };
+  refineCustomElementInventoryWithLivePreview();
+  assert.equal(entry.role, "text");
+});
+
+// Minimal mock for customElementSelector's needs: an id-bearing element
+// takes the fast `#id` path, so the mock never needs to implement
+// querySelectorAll/classList matching.
+function mockHealNode(id) {
+  return { id, tagName: "DIV", classList: [], parentElement: null };
+}
+function mockHealFrameDocument({ rootResolves = false, rootSelector = ".custom-component", stage = null, directChild = null } = {}) {
+  return {
+    body: {
+      querySelector: (selector) => {
+        if (selector === "[data-composer-responsive-stage]") return stage;
+        if (selector === ":scope > *:not(script):not(style)") return directChild;
+        return null;
+      },
+    },
+    querySelector: (selector) => (rootResolves && selector === rootSelector ? {} : null),
+  };
+}
+
+run("healComponentRootPart re-points a starter template's root part once its selector stops resolving", () => {
+  const newRoot = mockHealNode("card"),
+    rootPart = { id: "part-component-root", selector: ".custom-component" };
+  global.customWorkbenchDraft = { parts: [rootPart] };
+  let rerendered = false;
+  global.renderCustomWorkbenchParts = () => { rerendered = true; };
+  healComponentRootPart(mockHealFrameDocument({ rootResolves: false, directChild: newRoot }));
+  assert.equal(rootPart.selector, "#card", "should re-point at the new actual root once the old selector is dead");
+  assert.equal(rerendered, true);
+});
+
+run("healComponentRootPart leaves a still-resolving root part alone", () => {
+  const rootPart = { id: "part-component-root", selector: ".custom-component" };
+  global.customWorkbenchDraft = { parts: [rootPart] };
+  global.renderCustomWorkbenchParts = () => { throw new Error("must not re-render when the root still resolves fine"); };
+  healComponentRootPart(mockHealFrameDocument({ rootResolves: true, rootSelector: ".custom-component" }));
+  assert.equal(rootPart.selector, ".custom-component");
+});
+
+run("healComponentRootPart finds the replacement root inside the responsive-stage wrapper when one exists", () => {
+  const newRoot = mockHealNode("card"),
+    stage = { querySelector: (selector) => (selector === ":scope > *:not(script):not(style)" ? newRoot : null) },
+    rootPart = { id: "part-component-root", selector: ".custom-component" };
+  global.customWorkbenchDraft = { parts: [rootPart] };
+  let rerendered = false;
+  global.renderCustomWorkbenchParts = () => { rerendered = true; };
+  healComponentRootPart(mockHealFrameDocument({ rootResolves: false, stage }));
+  assert.equal(rootPart.selector, "#card");
+  assert.equal(rerendered, true);
+});
+
+run("filterRedundantGenericWrappers drops a generic wrapper that contains an already-classified child, but keeps the child", () => {
+  const wrapperNode = mockWorkbenchNode(".wrapper"),
+    buttonNode = mockWorkbenchNode(".btn", wrapperNode),
+    wrapperEntry = { role: "ignore", sourceElement: wrapperNode },
+    buttonEntry = { role: "button", sourceElement: buttonNode },
+    result = filterRedundantGenericWrappers([wrapperEntry, buttonEntry]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0], buttonEntry);
+});
+
+run("filterRedundantGenericWrappers keeps a generic wrapper that contains nothing else classified (e.g. a genuinely empty/unclear element)", () => {
+  const orphanNode = mockWorkbenchNode(".mystery"),
+    entry = { role: "ignore", sourceElement: orphanNode },
+    result = filterRedundantGenericWrappers([entry]);
+  assert.equal(result.length, 1, "an ignore-role entry with nothing meaningful nested inside it must not be dropped");
+});
+
+run("filterRedundantGenericWrappers never drops a 'text' role entry, even if it structurally contains another part", () => {
+  const labelNode = mockWorkbenchNode(".label"),
+    iconNode = mockWorkbenchNode(".icon", labelNode),
+    labelEntry = { role: "text", sourceElement: labelNode },
+    iconEntry = { role: "icon", sourceElement: iconNode },
+    result = filterRedundantGenericWrappers([labelEntry, iconEntry]);
+  assert.equal(result.length, 2, "only 'ignore'-role entries are ever eligible to be dropped — a real label must always survive");
+});
+
+run("healComponentRootPart does nothing when there is no component-root part at all", () => {
+  global.customWorkbenchDraft = { parts: [{ id: "p-other", selector: ".something" }] };
+  global.renderCustomWorkbenchParts = () => { throw new Error("must not render when there is no root part to heal"); };
+  healComponentRootPart(mockHealFrameDocument({ rootResolves: false }));
 });
 
 if (process.exitCode) process.exit(process.exitCode);
