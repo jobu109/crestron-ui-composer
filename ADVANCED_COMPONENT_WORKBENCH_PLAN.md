@@ -389,6 +389,17 @@ For every session:
 
 Add new entries at the top.
 
+### 2026-08-12 — Pre-physical 1.6.4 candidate audit complete
+
+- Audited the complete Workbench delta against the pre-Workbench baseline and reran the entire automated acceptance suite across all 109 shipped widgets.
+- Corrected custom-simulator Boolean parsing so string values such as `"false"` no longer appear as checked or Selected feedback.
+- Replaced the generated observer wrapper's `Reflect.construct` dependency with an older-Chromium-compatible native constructor while preserving per-instance observer cleanup.
+- Synchronized `package-lock.json` with the 1.6.4 application/package version and added focused regression assertions for the compatibility fixes.
+- Improved the isolated MSI upgrade test so every Windows Installer operation writes an actionable verbose log on failure.
+- Rebuilt the desktop executable, MSI, and portable ZIP. The complete test suite passes, and the isolated 1.6.3 → 1.6.4 MSI upgrade test passes with application files replaced and user data preserved.
+- Remaining release gate: verify this corrected candidate in CH5 Desktop and on a physical TSW, then record both results in Component Workbench verification before publishing the stable feature release.
+- Exact next task: publish/update the corrected 1.6.4 beta candidate, then perform the two physical runtime checks.
+
 ### 2026-08-09 — Import review to Workbench handoff repaired
 
 - Fixed WebView2 modal sequencing that could close Import & Translate after “Continue to final setup” without opening Component Workbench.

@@ -42,6 +42,27 @@ for (const cleanupMarker of [
   "observer.disconnect()",
 ]) assert.ok(editor.includes(cleanupMarker), `${cleanupMarker} runtime cleanup is missing`);
 
+assert.ok(
+  !editor.includes("Reflect.construct(NativeObserver,arguments)"),
+  "observer cleanup wrapper must not depend on Reflect.construct",
+);
+assert.ok(
+  editor.includes("new NativeObserver(callback,options)"),
+  "observer cleanup wrapper does not use the touch-panel-compatible constructor",
+);
+assert.ok(
+  editor.includes("function customSimulatorBoolean(value)"),
+  "custom simulator boolean normalization is missing",
+);
+assert.ok(
+  editor.includes('["true", "1", "yes", "on", "selected", "checked"]'),
+  "custom simulator boolean normalization does not recognize explicit true values",
+);
+assert.ok(
+  !editor.includes("checkbox.checked = !!customSimulatorSignalValues.get(signal.key)"),
+  'custom simulator must not treat the string "false" as selected feedback',
+);
+
 assert.ok(editor.includes("custom-acceptance-ch5-desktop"));
 assert.ok(editor.includes("custom-acceptance-touch-panel"));
 assert.ok(html.includes("CH5 Desktop &amp; touch-panel verification"));

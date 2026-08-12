@@ -32,12 +32,19 @@ function Build-TestMsi([string]$publish, [string]$version, [string]$output) {
 }
 
 function Invoke-Msi([string]$arguments) {
-  $process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -WindowStyle Hidden
+  $log = Join-Path $work ("msiexec-" + [guid]::NewGuid().ToString("N") + ".log")
+  $loggedArguments = "$arguments /L*v `"$log`""
+  $process = Start-Process msiexec.exe -ArgumentList $loggedArguments -PassThru -WindowStyle Hidden
   if (-not $process.WaitForExit(60000)) {
     try { $process.Kill($true) } catch {}
-    throw "msiexec timed out after 60 seconds: $arguments"
+    throw "msiexec timed out after 60 seconds: $arguments`nLog: $log"
   }
-  if ($process.ExitCode -notin 0, 1641, 3010) { throw "msiexec failed with exit code $($process.ExitCode): $arguments" }
+  if ($process.ExitCode -notin 0, 1641, 3010) {
+    $details = if (Test-Path -LiteralPath $log) {
+      (Get-Content -LiteralPath $log | Select-Object -Last 80) -join "`n"
+    } else { "No Windows Installer log was created." }
+    throw "msiexec failed with exit code $($process.ExitCode): $arguments`nLog: $log`n$details"
+  }
 }
 
 try {

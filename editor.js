@@ -16087,7 +16087,7 @@ function scopedClearTimeout(handle){timerHandles=timerHandles.filter(function(va
 function scopedClearInterval(handle){intervalHandles=intervalHandles.filter(function(value){return value!==handle});window.clearInterval(handle)}
 function scopedAnimationFrame(callback){var handle=window.requestAnimationFrame(function(time){animationFrameHandles=animationFrameHandles.filter(function(value){return value!==handle});callback(time)});animationFrameHandles.push(handle);return handle}
 function scopedCancelAnimationFrame(handle){animationFrameHandles=animationFrameHandles.filter(function(value){return value!==handle});window.cancelAnimationFrame(handle)}
-function scopedObserver(NativeObserver){if(typeof NativeObserver!=='function')return NativeObserver;function ManagedObserver(){var instance=Reflect.construct(NativeObserver,arguments);observerHandles.push(instance);return instance}ManagedObserver.prototype=NativeObserver.prototype;return ManagedObserver}
+function scopedObserver(NativeObserver){if(typeof NativeObserver!=='function')return NativeObserver;function ManagedObserver(callback,options){var instance=new NativeObserver(callback,options);observerHandles.push(instance);return instance}ManagedObserver.prototype=NativeObserver.prototype;return ManagedObserver}
 var ScopedResizeObserver=scopedObserver(window.ResizeObserver),ScopedMutationObserver=scopedObserver(window.MutationObserver),ScopedIntersectionObserver=scopedObserver(window.IntersectionObserver);
 var cleanup=(new Function('root','signals','setTimeout','setInterval','clearTimeout','clearInterval','requestAnimationFrame','cancelAnimationFrame','ResizeObserver','MutationObserver','IntersectionObserver',${JSON.stringify(String(javascript || ""))}))(document,signals,scopedTimeout,scopedInterval,scopedClearTimeout,scopedClearInterval,scopedAnimationFrame,scopedCancelAnimationFrame,ScopedResizeObserver,ScopedMutationObserver,ScopedIntersectionObserver);
 window.addEventListener('unload',function(){timerHandles.forEach(window.clearTimeout);intervalHandles.forEach(window.clearInterval);animationFrameHandles.forEach(window.cancelAnimationFrame);observerHandles.forEach(function(observer){try{observer.disconnect()}catch(error){}});if(typeof cleanup==='function')cleanup()},{once:true});
@@ -22215,6 +22215,13 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       unit: String(mapping.unit || ""),
     };
   }
+  function customSimulatorBoolean(value) {
+    if (typeof value === "string")
+      return ["true", "1", "yes", "on", "selected", "checked"].includes(
+        value.trim().toLowerCase(),
+      );
+    return value === true || value === 1;
+  }
   function renderCustomSignalSimulator() {
     const propertyHost = $("custom-simulator-properties"),
       inputHost = $("custom-simulator-inputs"),
@@ -22243,7 +22250,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       if (property.type === "checkbox") {
         input = document.createElement("input");
         input.type = "checkbox";
-        input.checked = customSimulatorPropertyValues.has(property.key) ? !!customSimulatorPropertyValues.get(property.key) : !!property.defaultValue;
+        input.checked = customSimulatorBoolean(
+          customSimulatorPropertyValues.has(property.key)
+            ? customSimulatorPropertyValues.get(property.key)
+            : property.defaultValue,
+        );
       } else if (property.type === "select" || property.type === "asset") {
         input = document.createElement("select");
         const options = property.type === "asset"
@@ -22280,7 +22291,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       if (signal.type === "digital") {
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
-        checkbox.checked = !!customSimulatorSignalValues.get(signal.key);
+        checkbox.checked = customSimulatorBoolean(
+          customSimulatorSignalValues.get(signal.key),
+        );
         checkbox.onchange = () => sendCustomSimulatorInput(signal, checkbox.checked);
         control.append(checkbox, document.createTextNode(" TRUE / selected"));
         send.onclick = () => sendCustomSimulatorInput(signal, checkbox.checked);
