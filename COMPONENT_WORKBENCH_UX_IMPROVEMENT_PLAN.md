@@ -167,19 +167,19 @@ Completion criteria:
 
 ### Phase 7 — Capability bundles and automatic suggestions
 
-- [ ] Add one-click capability bundles:
+- [x] Add one-click capability bundles:
   - Standard Button
   - Toggle
   - Slider / Gauge
   - Text / Input
   - Repeated Selector
-- [ ] Build bundles from the same individual property/connection builders.
-- [ ] Automatically select every confident detected capability initially.
-- [ ] Allow users to uncheck unwanted suggestions.
-- [ ] Explain every suggested property and connection in plain language.
-- [ ] Avoid redundant Name, Visibility, Disabled, Selected, or analog mappings.
-- [ ] Generate unique friendly names for multiple controls.
-- [ ] Provide **Apply all safe recommendations**.
+- [x] Build bundles from the same individual property/connection builders.
+- [x] Automatically select every confident detected capability initially.
+- [x] Allow users to uncheck unwanted suggestions.
+- [x] Explain every suggested property and connection in plain language.
+- [x] Avoid redundant Name, Visibility, Disabled, Selected, or analog mappings.
+- [x] Generate unique friendly names for multiple controls.
+- [x] Provide **Apply all safe recommendations**.
 
 Completion criteria:
 
@@ -188,16 +188,16 @@ Completion criteria:
 
 ### Phase 8 — Unified Test & Create workspace
 
-- [ ] Show Live Preview and Crestron values simultaneously without overlap.
-- [ ] Keep validation details compact until expanded.
-- [ ] Provide controls for every editable property, input signal, output event, state, and mode.
-- [ ] Add Original / Composer side-by-side comparison.
-- [ ] Test Standard, Pressed, Selected, Disabled, and custom states.
-- [ ] Test multiple sizes and responsive dimensions.
-- [ ] Test two simultaneously mounted instances.
-- [ ] Test remount/page-change feedback retention.
-- [ ] Test Widget List inclusion where supported.
-- [ ] Preserve test values while navigating between steps.
+- [x] Show Live Preview and Crestron values simultaneously without overlap.
+- [x] Keep validation details compact until expanded.
+- [x] Provide controls for every editable property, input signal, output event, state, and mode.
+- [x] Add Original / Composer side-by-side comparison.
+- [x] Test Standard, Pressed, Selected, Disabled, and custom states.
+- [x] Test multiple sizes and responsive dimensions.
+- [x] Test two simultaneously mounted instances.
+- [x] Test remount/page-change feedback retention.
+- [x] Test Widget List inclusion where supported.
+- [x] Preserve test values while navigating between steps.
 
 Completion criteria:
 
@@ -206,15 +206,15 @@ Completion criteria:
 
 ### Phase 9 — Actionable validation and repairs
 
-- [ ] Separate blocking errors from non-blocking review notes.
-- [ ] Remove all readiness scores and percentages.
-- [ ] Every finding identifies the affected part, property, connection, state, or source location.
-- [ ] Replace generic Go to behavior with **Open exact setting**, **Select part**, **Open source line**, **Apply safe repair**, or **Remove mapping**.
-- [ ] Highlight and scroll to the exact field after navigation.
-- [ ] Explain what is wrong, why it matters, and what a valid correction looks like.
-- [ ] Re-run only the affected validation immediately after a repair.
-- [ ] Prevent validation from becoming stuck in a permanent Validating state.
-- [ ] Keep creation blocked only for genuine runtime or unresolved-reference failures.
+- [x] Separate blocking errors from non-blocking review notes.
+- [x] Remove all readiness scores and percentages.
+- [x] Every finding identifies the affected part, property, connection, state, or source location.
+- [x] Replace generic Go to behavior with **Open exact setting**, **Select part**, **Open source line**, **Apply safe repair**, or **Remove mapping**.
+- [x] Highlight and scroll to the exact field after navigation.
+- [x] Explain what is wrong, why it matters, and what a valid correction looks like.
+- [x] Re-run only the affected validation immediately after a repair.
+- [x] Prevent validation from becoming stuck in a permanent Validating state.
+- [x] Keep creation blocked only for genuine runtime or unresolved-reference failures.
 
 Completion criteria:
 
@@ -223,16 +223,18 @@ Completion criteria:
 
 ### Phase 10 — Runtime parity and persistence acceptance
 
-- [ ] Verify properties, signals, states, and animations in Editor.
-- [ ] Verify the same definition in Preview.
-- [ ] Verify exported standalone HTML.
+- [x] Verify properties, signals, states, and animations in Editor.
+- [x] Verify the same definition in Preview.
+- [x] Verify exported standalone HTML.
 - [ ] Verify CH5 Desktop.
 - [ ] Verify a TSW-1070 touchscreen.
-- [ ] Verify responsive targets and Widget List.
-- [ ] Verify two instances, page unload/remount, and retained Crestron feedback.
-- [ ] Verify component library persistence across projects and Composer upgrades.
-- [ ] Verify `.cuicomponent` and `.cuicomponents` transfer to another machine.
-- [ ] Add performance safeguards for observers, timers, animations, and repeated effects.
+- [x] Verify responsive targets and Widget List.
+- [x] Verify two instances, page unload/remount, and retained Crestron feedback.
+- [x] Verify component library persistence across projects and Composer upgrades.
+- [x] Verify `.cuicomponent` and `.cuicomponents` transfer to another machine.
+- [x] Add performance safeguards for observers, timers, animations, and repeated effects.
+
+Automated acceptance covers Editor/Preview parity, exported runtime structure, responsive mounts, Widget List nesting, two simultaneous instances, remount feedback retention, library persistence, and component-package round trips. CH5 Desktop and TSW-1070 remain explicit physical acceptance checks and are intentionally not marked complete by automation.
 
 Completion criteria:
 
@@ -241,11 +243,11 @@ Completion criteria:
 
 ### Phase 11 — Documentation and release
 
-- [ ] Update the built-in user manual with the new visual workflow.
-- [ ] Add walkthroughs for button, toggle, serial state text, analog speed, slider/gauge, repeated list, and JavaScript-generated parts.
-- [ ] Include Original versus Composer troubleshooting examples.
-- [ ] Add migration notes for components created with the earlier Workbench UI.
-- [ ] Run clean-install and upgrade-install acceptance tests.
+- [x] Update the built-in user manual with the new visual workflow.
+- [x] Add walkthroughs for button, toggle, serial state text, analog speed, slider/gauge, repeated list, and JavaScript-generated parts.
+- [x] Include Original versus Composer troubleshooting examples.
+- [x] Add migration notes for components created with the earlier Workbench UI.
+- [x] Run clean-install and upgrade-install acceptance tests.
 - [ ] Publish a beta release for physical testing.
 - [ ] Promote to stable only after Preview, CH5 Desktop, and TSW validation pass.
 
@@ -268,6 +270,25 @@ For every implementation session:
 ## Progress Log
 
 Add new entries at the top using the handoff template below.
+
+### 2026-08-11 — Phase 10 automated acceptance and Phase 11 documentation
+
+```text
+Date: 2026-08-11
+Active phase: Phase 11 (documentation and isolated installer acceptance complete; physical release gates pending)
+Completed this session:
+- Confirmed automated runtime parity for Editor, Preview, exported HTML/CH5 structure, responsive sizes, Widget List, two simultaneous instances, page remount, retained Crestron feedback, component-library persistence, and .cuicomponent/.cuicomponents round trips.
+- Extended custom-component runtime cleanup to cancel per-instance requestAnimationFrame work and disconnect ResizeObserver, MutationObserver, and IntersectionObserver instances in addition to existing timer cleanup.
+- Expanded the built-in General user's manual with the full visual Workbench workflow; button, toggle, serial label, analog gauge/slider/speed, repeated-list, and JavaScript-generated-part walkthroughs; Original-versus-Composer troubleshooting; and older-Workbench migration steps.
+- Ran the isolated MSI acceptance workflow from test product 1.6.2 to 1.6.3. Baseline install, nested application-file replacement, preserved user data, upgraded executable presence, clean uninstall, and retained user data all passed.
+Files changed: editor.html, editor.css, editor.js, tests/component-workbench-runtime-parity.test.js, tests/component-workbench-simulator.test.js, tests/component-workbench-ux-baseline.test.js, tests/regression.test.js, COMPONENT_WORKBENCH_UX_IMPROVEMENT_PLAN.md.
+Tests run and results: node --check editor.js passed; full npm test passed with 0 failures across 109 widget definitions; isolated test-installer-upgrade.ps1 1.6.2 -> 1.6.3 passed.
+Application build/relaunch status: rebuilt Windows desktop application and relaunched it after validation.
+Manual validation completed: none added; prior user validations remain recorded.
+Manual validation still required: open the candidate CH5Z in CH5 Desktop and verify connection/signals; deploy the same candidate to TSW-1070 and verify visuals, digital/analog/serial feedback, touch/hold behavior, page remounts, and representative custom components.
+Known issues or decisions: physical CH5 Desktop and TSW acceptance cannot be marked complete by automation. Beta publication and stable promotion remain intentionally pending those results.
+Exact next unchecked task: complete and record CH5 Desktop and TSW-1070 acceptance, then publish the beta candidate; promote stable only after both pass.
+```
 
 ### 2026-08-11 — Pre-Phase-3 audit of Phases 0–2
 

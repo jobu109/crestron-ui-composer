@@ -42,6 +42,10 @@ assert.match(editorJs, /function renderCustomConnectionMappings\(/);
 assert.match(editorJs, /function renderCustomStatePartOptions\(/);
 assert.match(editorJs, /function renderCustomSignalSimulator\(/);
 assert.match(editorJs, /function renderCustomReadinessFindings\(/);
-assert.match(editorJs, /Open repair location/);
+assert.match(editorJs, /function customReadinessFindingAction\(/);
+assert.match(editorJs, /Open exact connection/);
+assert.match(editorJs, /Select component part/);
+assert.match(editorJs, /Open source line/);
+assert.doesNotMatch(editorJs, /Open repair location/);
 
 console.log("component-workbench-ux-baseline.test.js passed");

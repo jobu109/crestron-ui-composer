@@ -1488,6 +1488,24 @@
               ><span>Direction</span><span>Default</span><span></span>
             </div>
             <div id="custom-signal-list" class="custom-builder-list custom-step-imported"></div>
+            <section id="custom-capability-recommendations" class="custom-capability-recommendations custom-step-capabilities" hidden>
+              <div class="custom-builder-heading">
+                <div>
+                  <h2>Recommended capability setups</h2>
+                  <p class="hint">Composer selected the confident component parts automatically. Uncheck anything you do not want, or apply a familiar bundle to the currently selected Component Map part.</p>
+                </div>
+              </div>
+              <div class="custom-capability-bundles" aria-label="One-click capability bundles">
+                <button type="button" data-custom-capability-bundle="button">Standard Button</button>
+                <button type="button" data-custom-capability-bundle="toggle">Toggle</button>
+                <button type="button" data-custom-capability-bundle="slider">Slider / Gauge</button>
+                <button type="button" data-custom-capability-bundle="textInput">Text / Input</button>
+                <button type="button" data-custom-capability-bundle="repeated">Repeated Selector</button>
+              </div>
+              <div id="custom-capability-recommendation-list" class="custom-capability-recommendation-list"></div>
+              <button id="custom-apply-safe-recommendations" type="button" class="primary">Apply selected safe recommendations</button>
+              <p id="custom-capability-recommendation-status" class="hint" aria-live="polite"></p>
+            </section>
             <details class="custom-behavior-builder custom-step-capabilities" open>
               <summary>Add Composer capabilities</summary>
               <p class="hint">
@@ -1879,10 +1897,24 @@
                 <div id="custom-part-validation" class="custom-part-validation"></div>
               </section>
               <div class="custom-test-preview-pane">
-                <iframe
-                  id="custom-component-preview"
-                  sandbox="allow-scripts allow-same-origin"
-                ></iframe>
+                <div class="custom-preview-comparison">
+                  <section class="custom-preview-version custom-preview-original">
+                    <strong>Original authored component</strong>
+                    <iframe
+                      id="custom-component-original-preview"
+                      sandbox="allow-scripts allow-same-origin"
+                      title="Original authored component"
+                    ></iframe>
+                  </section>
+                  <section class="custom-preview-version">
+                    <strong>Composer component</strong>
+                    <iframe
+                      id="custom-component-preview"
+                      sandbox="allow-scripts allow-same-origin"
+                      title="Component with Composer capabilities"
+                    ></iframe>
+                  </section>
+                </div>
                 <div class="custom-preview-test">
                   <select id="custom-preview-signal"></select>
                   <input id="custom-preview-value" placeholder="Feedback value" />
@@ -1897,6 +1929,12 @@
                   <strong>Crestron values &amp; interactions</strong>
                   <small>Inputs drive the component; outputs show presses and pulses.</small>
                 </div>
+                <details class="custom-simulator-properties" open>
+                  <summary>Editable properties</summary>
+                  <small class="hint">Test the same controls that will appear in the Composer Inspector.</small>
+                  <div id="custom-simulator-properties" class="custom-simulator-grid"></div>
+                </details>
+                <strong class="custom-simulator-section-title">Crestron inputs</strong>
                 <div id="custom-simulator-inputs" class="custom-simulator-grid"></div>
                 <div class="custom-simulator-lifecycle">
                   <label>Interaction target<select id="custom-simulator-target"></select></label>
@@ -1940,8 +1978,8 @@
         ></div>
         <section id="custom-readiness-findings" class="custom-readiness-findings custom-step-review" hidden>
           <div class="custom-builder-heading">
-            <h2>Items requiring review</h2>
-            <small>Each item explains a readiness deduction and links to where it can be changed.</small>
+            <h2>Validation results</h2>
+            <small>Blocking errors must be corrected before creation. Review notes are optional checks and never reduce a score.</small>
           </div>
           <div id="custom-readiness-finding-list"></div>
         </section>
@@ -2422,9 +2460,31 @@
               <dt>Serial label</dt><dd>Name the label Part, add a Serial Input using Text/Name, send normal and empty strings in the simulator, and confirm empty feedback preserves the configured fallback when intended.</dd>
               <dt>Analog gauge or slider</dt><dd>Map an Analog Input to Value/Feedback with a 0–65535 range. For an interactive slider also add an Analog Output using Value Set; a read-only gauge needs only feedback.</dd>
               <dt>Repeated list</dt><dd>Name the container and item-template Parts, set the zero-based default/max count, then add per-item Press, Selected, Name, and optional analog ranges. Test at least two Widget List instances.</dd>
+              <dt>JavaScript-generated parts</dt><dd>Open the live preview and allow the authored script to create its controls. Composer observes the preview and adds newly created elements to the Component Map. If a part is still missing, use <strong>Pick part from preview</strong>, click the exact visible element, give it a meaningful name, then map properties or Crestron connections to that named Part. Retest after a page remount so the generated element and its mapping are recreated reliably.</dd>
             </dl>
+            <p><strong>Original versus Composer troubleshooting</strong></p>
+            <table class="manual-table"><thead><tr><th>View</th><th>What it means</th><th>Use it when…</th></tr></thead><tbody>
+              <tr><td>Original</td><td>The imported or handwritten HTML/CSS/JavaScript before Composer-generated adapters are applied.</td><td>You need to confirm whether a visual, animation, selector, or interaction existed in the authored source.</td></tr>
+              <tr><td>Composer</td><td>The same source with enabled editable properties, Crestron connections, state mappings, repeated-item behavior, and compatibility adapters.</td><td>You need to verify what will run after placement, Preview, export, remount, or processor feedback.</td></tr>
+            </tbody></table>
+            <ul>
+              <li>If Original is correct and Composer is wrong, inspect the exact generated property, connection, state, or adapter mapping; do not rewrite the authored effect first.</li>
+              <li>If both are wrong, correct the HTML/CSS/JavaScript source or restore the original import and begin again.</li>
+              <li>If a mapped part highlights nothing, repair its selector in the Component Map or repick the visible element from Preview.</li>
+              <li>If Preview works but exported runtime fails, open the exact Test &amp; Create finding and verify local assets, global IDs, browser APIs, instance cleanup, and the saved definition fingerprint.</li>
+              <li>If feedback disappears after navigation, rerun the remount test and confirm the connection is an input from Crestron rather than local-only state.</li>
+            </ul>
             <p><strong>Portability:</strong> a created component is saved permanently in the machine-wide Composer library and is also embedded in projects that use it. Export one component as `.cuicomponent` or the complete installed collection as `.cuicomponents`; both formats include Workbench mappings, authored source, generated adapter, states, repeated definitions, acceptance evidence, and referenced embedded assets.</p>
-            <p><strong>Older packages:</strong> package versions 1–3 remain supported. When an older package has no Workbench schema, Composer migrates its legacy properties, behaviors, signals, states, and repeated settings into named Workbench mappings. Review migrated selectors and rerun the self-test before deploying. Import never replaces an installed component without confirmation.</p>
+            <p><strong>Older packages:</strong> package versions 1–3 remain supported. When an older package has no current Workbench schema, Composer migrates its legacy properties, behaviors, signals, states, and repeated settings into named Workbench mappings. Import never replaces an installed component without confirmation.</p>
+            <p><strong>Migrating components made with the earlier Workbench</strong></p>
+            <ol>
+              <li>Import the old `.cuicomponent` or open the project containing it; keep the automatic backup.</li>
+              <li>Open Component Workbench and confirm every migrated Component Part highlights the intended visible element.</li>
+              <li>Review properties, connections, states/modes, and repeated collections for unresolved or duplicate mappings.</li>
+              <li>Compare Original and Composer views to ensure authored animations and shape changes were preserved.</li>
+              <li>Run Test &amp; Create, including two instances, remount feedback, responsive sizes, and Widget List when supported.</li>
+              <li>Export a new package only after validation passes; retain the older package until CH5 Desktop and TSW testing are complete.</li>
+            </ol>
             <ul>
               <li><strong>Reusable designs:</strong> create a master whose instances update together while allowing selected property and signal overrides.</li>
               <li><strong>Subpages:</strong> turn a source page into a linked header, footer, sidebar, or overlay master. Configure its cropped size, placement, excluded pages, and optional Visibility signal; editing the source master updates every deployed instance.</li>

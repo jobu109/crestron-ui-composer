@@ -68,6 +68,7 @@ const readiness = editor.slice(
   editor.indexOf("async function runCustomComponentSelfTest"),
 );
 assert.ok(readiness.includes("readiness?.warnings"), "Review notes are not actionable");
-assert.ok(readiness.includes("Open repair location"), "Readiness findings lack repair actions");
+assert.ok(readiness.includes("customReadinessFindingAction"), "Readiness findings lack exact repair actions");
+assert.ok(readiness.includes("customReadinessFindingHelp"), "Readiness findings lack correction guidance");
 
 console.log("component-workbench-simulator.test.js passed");

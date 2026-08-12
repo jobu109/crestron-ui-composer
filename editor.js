@@ -102,6 +102,8 @@
   let customOriginalSourceSnapshot = null;
   let customBuilderSourceItemId = "";
   let customPreviewEvents = [];
+  const customSimulatorPropertyValues = new Map(),
+    customSimulatorSignalValues = new Map();
   let customPreservedRelationships = [];
   let customSelfTestResolve = null;
   let sourceEditingComponent = false;
@@ -16078,13 +16080,17 @@ window.addEventListener('message',function(event){
   if(!event.data||event.data.type!=='composer-signal')return;
   (callbacks[event.data.key]||[]).slice().forEach(function(callback){callback(event.data.value)});
 });
-var timerHandles=[],intervalHandles=[];
+var timerHandles=[],intervalHandles=[],animationFrameHandles=[],observerHandles=[];
 function scopedTimeout(callback,delay){var args=Array.prototype.slice.call(arguments,2),handle=window.setTimeout(function(){timerHandles=timerHandles.filter(function(value){return value!==handle});if(typeof callback==='function')callback.apply(window,args);else(new Function(String(callback)))()},delay);timerHandles.push(handle);return handle}
 function scopedInterval(callback,delay){var args=Array.prototype.slice.call(arguments,2),handle=window.setInterval(function(){if(typeof callback==='function')callback.apply(window,args);else(new Function(String(callback)))()},delay);intervalHandles.push(handle);return handle}
 function scopedClearTimeout(handle){timerHandles=timerHandles.filter(function(value){return value!==handle});window.clearTimeout(handle)}
 function scopedClearInterval(handle){intervalHandles=intervalHandles.filter(function(value){return value!==handle});window.clearInterval(handle)}
-var cleanup=(new Function('root','signals','setTimeout','setInterval','clearTimeout','clearInterval',${JSON.stringify(String(javascript || ""))}))(document,signals,scopedTimeout,scopedInterval,scopedClearTimeout,scopedClearInterval);
-window.addEventListener('unload',function(){timerHandles.forEach(window.clearTimeout);intervalHandles.forEach(window.clearInterval);if(typeof cleanup==='function')cleanup()},{once:true});
+function scopedAnimationFrame(callback){var handle=window.requestAnimationFrame(function(time){animationFrameHandles=animationFrameHandles.filter(function(value){return value!==handle});callback(time)});animationFrameHandles.push(handle);return handle}
+function scopedCancelAnimationFrame(handle){animationFrameHandles=animationFrameHandles.filter(function(value){return value!==handle});window.cancelAnimationFrame(handle)}
+function scopedObserver(NativeObserver){if(typeof NativeObserver!=='function')return NativeObserver;function ManagedObserver(){var instance=Reflect.construct(NativeObserver,arguments);observerHandles.push(instance);return instance}ManagedObserver.prototype=NativeObserver.prototype;return ManagedObserver}
+var ScopedResizeObserver=scopedObserver(window.ResizeObserver),ScopedMutationObserver=scopedObserver(window.MutationObserver),ScopedIntersectionObserver=scopedObserver(window.IntersectionObserver);
+var cleanup=(new Function('root','signals','setTimeout','setInterval','clearTimeout','clearInterval','requestAnimationFrame','cancelAnimationFrame','ResizeObserver','MutationObserver','IntersectionObserver',${JSON.stringify(String(javascript || ""))}))(document,signals,scopedTimeout,scopedInterval,scopedClearTimeout,scopedClearInterval,scopedAnimationFrame,scopedCancelAnimationFrame,ScopedResizeObserver,ScopedMutationObserver,ScopedIntersectionObserver);
+window.addEventListener('unload',function(){timerHandles.forEach(window.clearTimeout);intervalHandles.forEach(window.clearInterval);animationFrameHandles.forEach(window.cancelAnimationFrame);observerHandles.forEach(function(observer){try{observer.disconnect()}catch(error){}});if(typeof cleanup==='function')cleanup()},{once:true});
 })();<\/script>`;
   }
   function addCustomPropertyRow(property = {}) {
@@ -16508,6 +16514,73 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (entry) => entry.key === signal.key,
     );
     if (!existing) addCustomSignalRow(signal);
+  }
+  function customWorkbenchPartIdForSelector(selector, label = "Mapped part") {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    let partId = customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "";
+    if (!partId)
+      partId = addPickedCustomWorkbenchPart(
+        selector,
+        { tag: "element", text: label },
+        "mapped-target",
+      ).id;
+    return partId;
+  }
+  function upsertCustomWorkbenchMapping(kind, mapping, replace = true) {
+    if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
+    const collection = kind === "property" ? customWorkbenchDraft.properties : customWorkbenchDraft.connections,
+      index = collection.findIndex((entry) => entry.key === mapping.key);
+    if (index >= 0) {
+      if (replace) collection[index] = { ...collection[index], ...mapping, id: collection[index].id || mapping.id };
+      return collection[index];
+    }
+    collection.push(mapping);
+    return mapping;
+  }
+  function registerCustomWorkbenchPropertyCapability(property, selector, rule = {}, replace = false) {
+    const partId = customWorkbenchPartIdForSelector(selector, property.name || property.key),
+      action = rule.action || "adapter-value",
+      targetKind = action === "cssVariable" ? "css-custom-property"
+        : ["cssProperty", "backgroundColor", "color", "borderColor", "borderRadius", "fontSize", "width", "height", "opacity"].includes(action)
+          ? "css-property"
+          : "adapter-value";
+    return upsertCustomWorkbenchMapping("property", {
+      id: `property-${property.key}`,
+      key: property.key,
+      label: property.name || property.key,
+      type: property.type || "text",
+      defaultValue: property.defaultValue,
+      ...(property.min != null ? { min: property.min } : {}),
+      ...(property.max != null ? { max: property.max } : {}),
+      ...(property.step != null ? { step: property.step } : {}),
+      ...(property.unit ? { unit: property.unit } : {}),
+      target: { kind: targetKind, partId, selector, name: rule.parameter || action },
+      targets: [{ kind: targetKind, partId, selector, name: rule.parameter || action }],
+      capability: action,
+      stateScope: rule.stateScope || "all",
+    }, replace);
+  }
+  function registerCustomWorkbenchConnectionCapability(signal, selector, rule = {}, replace = false) {
+    const partId = customWorkbenchPartIdForSelector(selector, signal.name || signal.key),
+      config = signal.connectionConfig || {};
+    return upsertCustomWorkbenchMapping("connection", {
+      id: `connection-${signal.key}`,
+      key: signal.key,
+      label: signal.name || signal.key,
+      type: signal.type,
+      direction: signal.direction,
+      defaultValue: signal.defaultValue,
+      action: rule.action || "signal",
+      stateScope: rule.stateScope || config.stateScope || "all",
+      target: { kind: rule.action || "signal", partId, selector, parameter: rule.parameter || "" },
+      mapping: rule.mapping || config.mapping,
+      holdDuration: rule.action === "hold" ? Number(rule.parameter) || config.holdDuration : config.holdDuration,
+      pulseDuration: config.pulseDuration,
+      exclusive: config.exclusive,
+      perItem: config.perItem,
+      zeroBased: config.zeroBased || config.perItem,
+      ...(signal.range ? { range: signal.range } : {}),
+    }, replace);
   }
   function customCssRuleInventory(css = "") {
     const rules = [], tokens = [],
@@ -18013,15 +18086,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // Generated CSS/JavaScript is retained in the workbench adapter instead
     // of being injected into the user's authored source editors.
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
-    const targetOption = $("custom-property-target").selectedOptions[0];
-    let partId = targetOption?.dataset.partId ||
-      customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "";
-    if (!partId)
-      partId = addPickedCustomWorkbenchPart(
+    const targetOption = $("custom-property-target").selectedOptions[0],
+      partId = targetOption?.dataset.partId || customWorkbenchPartIdForSelector(
         selector,
-        { tag: "element", text: targetOption?.textContent?.split(" — ")[0] || "Mapped part" },
-        "mapped-target",
-      ).id;
+        targetOption?.textContent?.split(" — ")[0] || "Mapped part",
+      );
     const
       targetKind = definition.value === "cssVariable"
         ? "css-custom-property"
@@ -18057,9 +18126,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         capability: definition.value,
         stateScope: definition.stateScope,
       };
-    const mappingIndex = customWorkbenchDraft.properties.findIndex((property) => property.key === key);
-    if (mappingIndex >= 0) customWorkbenchDraft.properties[mappingIndex] = mapping;
-    else customWorkbenchDraft.properties.push(mapping);
+    upsertCustomWorkbenchMapping("property", mapping, true);
     renderCustomPropertyMappings();
     refreshCustomPreview();
     $("custom-property-create").dataset.editingKey = "";
@@ -18109,10 +18176,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // Connection JavaScript is regenerated from this mapping in the separate
     // Generated Adapter tab; authored JavaScript remains untouched.
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
-    const option = $("custom-signal-target").selectedOptions[0];
-    let partId = option?.dataset.partId || customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "";
-    if (!partId)
-      partId = addPickedCustomWorkbenchPart(selector, { tag: "element", text: option?.textContent?.split(" — ")[0] || "Mapped part" }, "mapped-target").id;
+    const option = $("custom-signal-target").selectedOptions[0],
+      partId = option?.dataset.partId || customWorkbenchPartIdForSelector(
+        selector,
+        option?.textContent?.split(" — ")[0] || "Mapped part",
+      );
     const mapping = {
       id: customWorkbenchDraft.connections.find((connection) => connection.key === key)?.id || `connection-${key}`,
       key,
@@ -18131,9 +18199,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       zeroBased: config.zeroBased || config.perItem,
       ...(range ? { range } : {}),
     };
-    const mappingIndex = customWorkbenchDraft.connections.findIndex((connection) => connection.key === key);
-    if (mappingIndex >= 0) customWorkbenchDraft.connections[mappingIndex] = mapping;
-    else customWorkbenchDraft.connections.push(mapping);
+    upsertCustomWorkbenchMapping("connection", mapping, true);
     renderCustomConnectionMappings();
     refreshCustomPreview();
     // A completed mapping must leave edit mode. Otherwise the next use of
@@ -18724,6 +18790,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     host.hidden = !inventory.length;
     if (!inventory.length) {
       $("custom-apply-recommended").disabled = true;
+      renderCustomCapabilityRecommendations([]);
       const empty = document.createElement("small");
       empty.textContent = "No meaningful elements were detected in the current HTML.";
       host.appendChild(empty);
@@ -18785,6 +18852,112 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (entry) => entry.role !== "ignore",
     );
     renderCustomCapabilityQuestions(inventory);
+    renderCustomCapabilityRecommendations(inventory);
+  }
+  function customCapabilityRecommendationExplanation(entry = {}) {
+    const descriptions = {
+      button: "Editable button appearance plus Press and Selected connections.",
+      toggle: "Toggle appearance plus Press and Selected feedback using the authored checked state.",
+      slider: "Editable numeric control with Feedback and Value Set connections.",
+      gauge: "Editable numeric display with an analog Feedback connection.",
+      textInput: "Editable text input with serial text flow and familiar typography controls.",
+      text: "Editable label text, font, alignment, wrapping, and serial Name feedback.",
+      repeated: "A zero-based repeated collection with count, item labels, Press, Selected, Feedback, and Value Set where applicable.",
+      icon: "Editable icon or asset appearance while preserving the authored graphic.",
+      backgroundAsset: "Editable background asset while preserving the authored sizing and placement.",
+      selected: "Selected-state indicator connected to the related control's feedback.",
+      container: "Editable component surface and layout appearance.",
+      track: "Editable track appearance for the related control.",
+      handle: "Editable handle appearance for the related control.",
+      sliderHandle: "Editable numeric-control handle appearance.",
+      label: "Editable label text and typography.",
+    };
+    return descriptions[entry.role] || `Apply Composer's familiar ${friendlyRole(entry.role)} capabilities without replacing the authored source behavior.`;
+  }
+  function customSafeRecommendationEntries(inventory = customAnalyzedElements) {
+    const supportedRoles = new Set(["button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated"]);
+    return (inventory || []).filter((entry) =>
+      supportedRoles.has(entry.role) &&
+      !["ignore", "decorative"].includes(entry.role) &&
+      (!entry.repeatedOwner || entry.role === "repeated"),
+    );
+  }
+  function customRecommendationConfiguration(entry) {
+    if (entry.role !== "toggle") return entry;
+    const ownerSelector = entry.controlOwner || entry.selector,
+      owner = customAnalyzedElements.find((candidate) => candidate.selector === ownerSelector);
+    return {
+      ...entry,
+      selector: ownerSelector,
+      role: "button",
+      metadata: structuredClone(owner?.metadata || entry.metadata || {}),
+    };
+  }
+  function renderCustomCapabilityRecommendations(inventory = customAnalyzedElements) {
+    const panel = $("custom-capability-recommendations"),
+      host = $("custom-capability-recommendation-list"),
+      entries = customSafeRecommendationEntries(inventory);
+    if (!panel || !host) return;
+    panel.hidden = !entries.length;
+    host.innerHTML = "";
+    entries.forEach((entry, index) => {
+      if (typeof entry.recommendedEnabled !== "boolean")
+        entry.recommendedEnabled = entry.confidence !== "low";
+      const label = document.createElement("label"), checkbox = document.createElement("input"), copy = document.createElement("span"), title = document.createElement("strong"), detail = document.createElement("small");
+      label.className = "custom-capability-recommendation";
+      label.classList.toggle("low-confidence", entry.confidence === "low");
+      checkbox.type = "checkbox";
+      checkbox.checked = entry.recommendedEnabled;
+      checkbox.dataset.recommendationIndex = String(index);
+      checkbox.onchange = () => { entry.recommendedEnabled = checkbox.checked; };
+      title.textContent = `${friendlyCustomPartName(entry)} — ${friendlyRole(entry.role)}`;
+      detail.textContent = entry.confidence === "low"
+        ? `Review first: ${customCapabilityRecommendationExplanation(entry)}`
+        : customCapabilityRecommendationExplanation(entry);
+      copy.append(title, detail);
+      label.append(checkbox, copy);
+      host.appendChild(label);
+    });
+    $("custom-apply-safe-recommendations").disabled = !entries.some((entry) => entry.recommendedEnabled);
+  }
+  function applySelectedSafeCustomRecommendations() {
+    const entries = customSafeRecommendationEntries().filter((entry) => entry.recommendedEnabled);
+    if (!entries.length) {
+      $("custom-capability-recommendation-status").textContent = "Select at least one recommendation to apply.";
+      return;
+    }
+    let additions = 0;
+    entries.forEach((entry) => { additions += applyCustomElementRole(customRecommendationConfiguration(entry), true)?.length || 0; });
+    renderCustomPropertyMappings();
+    renderCustomConnectionMappings();
+    refreshCustomPreview();
+    renderCustomCapabilityRecommendations();
+    $("custom-capability-recommendation-status").textContent = `Applied ${entries.length} selected setup${entries.length === 1 ? "" : "s"}; added ${additions} non-duplicate properties and connections.`;
+  }
+  function applyCustomCapabilityBundle(bundle) {
+    const part = (customWorkbenchDraft?.parts || []).find((entry) => entry.id === customWorkbenchSelectedPartId);
+    if (!part) {
+      $("custom-capability-recommendation-status").textContent = "Select a part in the Component Map first, then choose its bundle.";
+      return;
+    }
+    const inventory = customAnalyzedElements.find((entry) => entry.selector === part.selector),
+      bundleTargetSelector = bundle === "toggle" && inventory?.controlOwner
+        ? inventory.controlOwner
+        : part.selector,
+      bundleInventory = customAnalyzedElements.find((entry) => entry.selector === bundleTargetSelector) || inventory,
+      role = bundle === "toggle" ? "button"
+        : bundle === "slider" ? (part.role === "gauge" ? "gauge" : "slider")
+          : bundle === "textInput" ? (["text", "label"].includes(part.role) ? "text" : "textInput")
+            : bundle,
+      configuration = {
+        selector: bundleTargetSelector,
+        role,
+        metadata: structuredClone(bundleInventory?.metadata || { tag: "div", text: part.name, className: "", id: "", ariaLabel: part.name }),
+      },
+      additions = applyCustomElementRole(configuration, false) || [];
+    renderCustomPropertyMappings();
+    renderCustomConnectionMappings();
+    $("custom-capability-recommendation-status").textContent = `${bundle === "toggle" ? "Toggle" : friendlyRole(role)} bundle applied to ${bundleInventory ? friendlyCustomPartName(bundleInventory) : part.name}; added ${additions.length} non-duplicate capabilities.`;
   }
   function customPartId(name = "part") {
     const base = `part-${String(name || "part").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "part"}`,
@@ -20374,10 +20547,23 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         reason: "Classified with the live element picker.",
       });
     const added = [],
+      scopedPropertyKeys = new Map(),
       property = (definition) => {
-        if (!collectCustomProperties().some((entry) => entry.key === definition.key)) {
-          ensureCustomProperty(definition);
-          added.push(definition.name);
+        const existingBehavior = collectCustomBehaviors().find(
+            (entry) => entry.source === "property" && entry.selector === selector &&
+              (entry.key === definition.key || entry.key.startsWith(definition.key)),
+          ),
+          resolvedKey = existingBehavior?.key || customElementPropertyKey(definition.key, selector),
+          suffix = resolvedKey === definition.key ? "" : friendlyCustomPartName({ metadata: customPickedElement, role }),
+          resolved = {
+            ...definition,
+            key: resolvedKey,
+            name: suffix ? `${suffix} — ${definition.name}` : definition.name,
+          };
+        scopedPropertyKeys.set(definition.key, resolvedKey);
+        if (!collectCustomProperties().some((entry) => entry.key === resolvedKey)) {
+          ensureCustomProperty(resolved);
+          added.push(resolved.name);
         }
       },
       signal = (definition) => {
@@ -20387,8 +20573,33 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         }
       },
       behavior = (definition, targetSelector = selector) => {
-        if (ensureCustomRoleBehavior({ ...definition, selector: targetSelector }))
+        let resolved = definition.source === "property" && scopedPropertyKeys.has(definition.key)
+          ? { ...definition, key: scopedPropertyKeys.get(definition.key) }
+          : definition;
+        if (resolved.booleanMapping) {
+          const translateTokens = (value) => typeof value === "string"
+            ? value.replace(/\{\{([^}]+)\}\}/g, (match, key) => `{{${scopedPropertyKeys.get(key) || key}}}`)
+            : value;
+          resolved = {
+            ...resolved,
+            booleanMapping: {
+              ...resolved.booleanMapping,
+              falseValue: translateTokens(resolved.booleanMapping.falseValue),
+              trueValue: translateTokens(resolved.booleanMapping.trueValue),
+            },
+          };
+        }
+        if (ensureCustomRoleBehavior({ ...resolved, selector: targetSelector }))
           added.push(`${definition.name || definition.action} behavior`);
+        if (resolved.source === "property") {
+          const propertyDefinition = collectCustomProperties().find((entry) => entry.key === resolved.key);
+          if (propertyDefinition)
+            registerCustomWorkbenchPropertyCapability(propertyDefinition, targetSelector, resolved, false);
+        } else if (["signal-input", "signal-output"].includes(resolved.source)) {
+          const signalDefinition = collectCustomSignals().find((entry) => entry.key === resolved.key);
+          if (signalDefinition)
+            registerCustomWorkbenchConnectionCapability(signalDefinition, targetSelector, resolved, false);
+        }
       };
     if (role === "button") {
       const pressKey = customElementSignalKey("press", selector),
@@ -21973,12 +22184,13 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-preview-send").disabled = !signals.length;
     renderCustomSignalSimulator();
   }
-  function sendCustomSimulatorInput(signal, value) {
+  function sendCustomSimulatorInput(signal, value, record = true) {
+    customSimulatorSignalValues.set(signal.key, value);
     $("custom-component-preview").contentWindow?.postMessage(
       { type: "composer-signal", key: signal.key, value },
       "*",
     );
-    $("custom-preview-log").textContent +=
+    if (record) $("custom-preview-log").textContent +=
       `\nFeedback ${signal.key} = ${JSON.stringify(value)}`;
   }
   function customSimulatorAnalogScale(signal) {
@@ -22004,12 +22216,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     };
   }
   function renderCustomSignalSimulator() {
-    const inputHost = $("custom-simulator-inputs"),
+    const propertyHost = $("custom-simulator-properties"),
+      inputHost = $("custom-simulator-inputs"),
       outputHost = $("custom-simulator-outputs"),
       target = $("custom-simulator-target"),
       stateSelect = $("custom-simulator-state");
-    if (!inputHost || !outputHost || !target || !stateSelect) return;
-    const signals = collectCustomSignals(),
+    if (!propertyHost || !inputHost || !outputHost || !target || !stateSelect) return;
+    const properties = collectCustomProperties(),
+      signals = collectCustomSignals(),
       inputs = signals.filter((signal) => signal.direction === "input"),
       outputs = signals.filter((signal) => signal.direction === "output"),
       makeTitle = (signal) => {
@@ -22019,6 +22233,44 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         label.append(strong, small);
         return label;
       };
+    propertyHost.innerHTML = "";
+    properties.forEach((property) => {
+      const row = document.createElement("div"), control = document.createElement("div"), reset = document.createElement("button"), title = makeTitle({ ...property, direction: "property" });
+      row.className = "custom-simulator-row";
+      reset.type = "button";
+      reset.textContent = "Default";
+      let input;
+      if (property.type === "checkbox") {
+        input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = customSimulatorPropertyValues.has(property.key) ? !!customSimulatorPropertyValues.get(property.key) : !!property.defaultValue;
+      } else if (property.type === "select" || property.type === "asset") {
+        input = document.createElement("select");
+        const options = property.type === "asset"
+          ? [{ value: "", label: "No asset" }, ...state.assets.map((asset) => ({ value: asset.id, label: asset.name || asset.id }))]
+          : property.options || [];
+        options.forEach((option) => input.add(new Option(option.label ?? option.value, option.value)));
+        input.value = String(customSimulatorPropertyValues.get(property.key) ?? property.defaultValue ?? "");
+      } else {
+        input = document.createElement("input");
+        input.type = property.type === "color" ? "color" : property.type === "number" ? "number" : "text";
+        if (property.min != null) input.min = String(property.min);
+        if (property.max != null) input.max = String(property.max);
+        if (property.step != null) input.step = String(property.step);
+        input.value = String(customSimulatorPropertyValues.get(property.key) ?? property.defaultValue ?? (property.type === "color" ? "#000000" : ""));
+      }
+      const apply = () => {
+        const value = property.type === "checkbox" ? input.checked : property.type === "number" ? Number(input.value) : input.value;
+        customSimulatorPropertyValues.set(property.key, value);
+        refreshCustomPreview();
+      };
+      input.onchange = apply;
+      reset.onclick = () => { customSimulatorPropertyValues.delete(property.key); refreshCustomPreview(); };
+      control.append(input);
+      row.append(title, control, reset);
+      propertyHost.appendChild(row);
+    });
+    if (!properties.length) propertyHost.innerHTML = '<small class="hint">No editable properties are defined.</small>';
     inputHost.innerHTML = "";
     inputs.forEach((signal) => {
       const row = document.createElement("div"), control = document.createElement("div"), send = document.createElement("button");
@@ -22028,11 +22280,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       if (signal.type === "digital") {
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
+        checkbox.checked = !!customSimulatorSignalValues.get(signal.key);
         checkbox.onchange = () => sendCustomSimulatorInput(signal, checkbox.checked);
         control.append(checkbox, document.createTextNode(" TRUE / selected"));
         send.onclick = () => sendCustomSimulatorInput(signal, checkbox.checked);
       } else if (signal.type === "analog") {
-        const pair = document.createElement("div"), range = document.createElement("input"), number = document.createElement("input"), scale = customSimulatorAnalogScale(signal), minimum = scale?.inputMin ?? 0, maximum = scale?.inputMax ?? 65535, initial = minimum;
+        const pair = document.createElement("div"), range = document.createElement("input"), number = document.createElement("input"), scale = customSimulatorAnalogScale(signal), minimum = scale?.inputMin ?? 0, maximum = scale?.inputMax ?? 65535, initial = customSimulatorSignalValues.get(signal.key) ?? minimum;
         pair.className = "custom-simulator-value-pair";
         range.type = "range"; range.min = String(minimum); range.max = String(maximum); range.value = String(initial);
         number.type = "number"; number.min = String(minimum); number.max = String(maximum); number.value = String(initial);
@@ -22050,6 +22303,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       } else {
         const textInput = document.createElement("input");
         textInput.type = "text"; textInput.placeholder = "Serial feedback text";
+        textInput.value = String(customSimulatorSignalValues.get(signal.key) ?? "");
         textInput.onkeydown = (event) => { if (event.key === "Enter") sendCustomSimulatorInput(signal, textInput.value); };
         send.onclick = () => sendCustomSimulatorInput(signal, textInput.value);
         control.append(textInput);
@@ -22099,7 +22353,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const previewProperties = Object.fromEntries(
       collectCustomProperties().map((property) => [
         property.key,
-        property.type === "asset"
+        customSimulatorPropertyValues.has(property.key)
+          ? customSimulatorPropertyValues.get(property.key)
+          : property.type === "asset"
           ? state.assets.find((asset) => asset.id === property.defaultValue)
               ?.dataUrl || property.defaultValue
           : property.defaultValue,
@@ -22139,12 +22395,23 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     previewBridge += `<script>(function(){function fire(target,name){var event;try{event=new PointerEvent(name,{bubbles:true,cancelable:true,pointerId:1,pointerType:'touch',isPrimary:true})}catch(error){event=new Event(name,{bubbles:true,cancelable:true})}target.dispatchEvent(event)}window.addEventListener('message',function(event){var data=event.data;if(!data||data.type!=='composer-pointer-simulate')return;var target;try{target=document.querySelector(data.selector)}catch(error){}if(!target)return;if(data.lifecycle==='press')fire(target,'pointerdown');else if(data.lifecycle==='release')fire(target,'pointerup');else if(data.lifecycle==='press-release'){fire(target,'pointerdown');fire(target,'pointerup')}else if(data.lifecycle==='cancel')fire(target,'pointercancel');else if(data.lifecycle==='hold'){fire(target,'pointerdown');setTimeout(function(){fire(target,'pointerup')},Math.max(50,Number(data.duration)||1000))}})})();<\/script>`;
     const previewFrame = $("custom-component-preview"),
+      originalFrame = $("custom-component-original-preview"),
       previewPanel = previewFrame.closest(".custom-source-panel"),
       // Disabled alongside the placed-widget escape in registerCustomComponent -
       // see the comment there for why.
       managedGlow = { ...detectManagedGlow(collectCustomProperties(), source), enabled: false },
       previewColor = (value, fallback) =>
         /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
+    if (originalFrame) {
+      const original = customOriginalSourceSnapshot || currentCustomSourceSnapshot(),
+        originalProperties = Object.fromEntries((original.properties || []).map((property) => [property.key, property.defaultValue ?? ""]));
+      let originalSource = `${original.css ? `<style>${original.css}</style>` : ""}${original.html || ""}${original.javascript ? customJavascriptRuntime(original.javascript) : ""}`;
+      Object.entries(originalProperties).forEach(([key, value]) => {
+        originalSource = originalSource.replaceAll(`{{${key}Json}}`, JSON.stringify(value));
+        originalSource = originalSource.replaceAll(`{{${key}}}`, String(value));
+      });
+      originalFrame.srcdoc = originalSource;
+    }
     if (managedGlow.enabled) {
       const isUnsetGlowValue = (value) =>
           value === undefined || value === null || value === "__preserve__",
@@ -22190,6 +22457,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       // Preview rebuilds are frequent while editing. Reapply the programmer's
       // chosen state after the authored and generated runtimes have mounted.
       requestAnimationFrame(() => applyCustomWorkbenchActiveState());
+      requestAnimationFrame(() => collectCustomSignals().filter((signal) => signal.direction === "input" && customSimulatorSignalValues.has(signal.key)).forEach((signal) => sendCustomSimulatorInput(signal, customSimulatorSignalValues.get(signal.key), false)));
     };
     customWorkbenchPreviewDocument = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
@@ -22931,6 +23199,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   }
   function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
     customEditingId = entry?.id || "";
+    customSimulatorPropertyValues.clear();
+    customSimulatorSignalValues.clear();
     customBuilderSourceItemId = item?.id || "";
     customDraftNaturalSize = null;
     customElementPickerActive = false;
@@ -23411,6 +23681,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("custom-element-apply-role").onclick = applyCustomElementRole;
   $("custom-analyze-elements").onclick = analyzeCustomElements;
   $("custom-apply-recommended").onclick = applyAllRecommendedCustomRoles;
+  $("custom-apply-safe-recommendations").onclick = applySelectedSafeCustomRecommendations;
+  document.querySelectorAll("[data-custom-capability-bundle]").forEach((button) => {
+    button.onclick = () => applyCustomCapabilityBundle(button.dataset.customCapabilityBundle);
+  });
   $("custom-audit-run").onclick = renderCustomCompatibilityAudit;
   $("custom-audit-repair").onclick = repairCustomSourceSafely;
   $("custom-audit-restore").onclick = () => {
@@ -23612,6 +23886,30 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
     details?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  function customReadinessFindingAction(message) {
+    const value = String(message || "");
+    if (/undefined property token/i.test(value)) return "Open exact property";
+    if (/javascript syntax|runtime error|exported html runtime/i.test(value)) return "Open source line";
+    if (/published for|output was published|no output/i.test(value)) return "Open exact connection";
+    if (/target not found|selector is invalid|element role/i.test(value)) return "Select component part";
+    if (/compatibility|viewport|resize|touch|mouse|instance|global id|overflow/i.test(value)) return "Open compatibility check";
+    if (/Property [“\"]|Behavior [“\"]/i.test(value)) return "Open exact setting";
+    return "Open exact setting";
+  }
+  function customReadinessFindingHelp(message, blocking) {
+    const value = String(message || "");
+    if (/target not found|selector is invalid/i.test(value))
+      return "The saved mapping points to a component part that no longer exists. Select the intended part or remove the obsolete mapping.";
+    if (/no output|published for/i.test(value))
+      return "The test exercised this output but nothing was published. Verify its target part and pointer/event mapping.";
+    if (/runtime error|javascript syntax|exported html runtime/i.test(value))
+      return "The component JavaScript cannot run safely. Open the source location, correct the reported code, and test again.";
+    if (/overflow|viewport|resize/i.test(value))
+      return "The component may escape or clip within its frame at some sizes. Review the compatibility setting and confirm the intended layout.";
+    return blocking
+      ? "This prevents a reliable Composer runtime. Open the exact owner, correct it, and run the test again."
+      : "This does not block creation. Open the exact owner only if you want to verify or improve the behavior.";
+  }
   function renderCustomReadinessFindings(readiness) {
     const host = $("custom-readiness-findings"),
       list = $("custom-readiness-finding-list"),
@@ -23621,7 +23919,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ];
     host.hidden = !findings.length;
     list.innerHTML = "";
-    findings.forEach((finding) => {
+    const groups = [
+      { key: "blocking", title: `Blocking errors (${findings.filter((finding) => finding.error).length})`, items: findings.filter((finding) => finding.error) },
+      { key: "review", title: `Review notes (${findings.filter((finding) => !finding.error).length})`, items: findings.filter((finding) => !finding.error) },
+    ].filter((group) => group.items.length);
+    groups.forEach((group) => {
+      const section = document.createElement("section"), heading = document.createElement("h3");
+      section.className = `custom-readiness-group ${group.key}`;
+      heading.textContent = group.title;
+      section.appendChild(heading);
+      group.items.forEach((finding) => {
       const row = document.createElement("div"), kind = document.createElement("span"),
         message = document.createElement("div"), title = document.createElement("strong"),
         help = document.createElement("small"), button = document.createElement("button"),
@@ -23639,16 +23946,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         ? tokenInCss
           ? "This is an unresolved CSS placeholder. Remove its unused CSS rule, or go back and add a matching editable property if the component really needs it."
           : "Add a matching editable property or remove the placeholder from the imported source."
-        : finding.error
-          ? "Open the exact editor section that owns this blocking problem, correct it, then run the self-test again."
-          : "This is not blocking. Open its source or mapping to verify the behavior is intentional.";
+        : customReadinessFindingHelp(finding.message, finding.error);
       message.append(title, help);
       button.type = "button";
       button.textContent = undefinedToken
         ? tokenInCss
           ? "Remove unused rule"
           : "Add missing property"
-        : "Open repair location";
+        : customReadinessFindingAction(finding.message);
       button.onclick = () => {
         if (undefinedToken && tokenInCss) {
           const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
@@ -23656,6 +23961,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           $("custom-source-css").value = $("custom-source-css").value.replace(rule, "");
           refreshCustomPreview();
           validateCustomComponent();
+          runCustomComponentSelfTestSafely();
           return;
         }
         if (undefinedToken) {
@@ -23669,12 +23975,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           setCustomWizardStep(0);
           refreshCustomPreview();
           validateCustomComponent();
+          runCustomComponentSelfTestSafely();
           return;
         }
         goToCustomReadinessFinding(finding.message);
       };
       row.append(kind, message, button);
-      list.appendChild(row);
+      section.appendChild(row);
+      });
+      list.appendChild(section);
     });
     if (findings.length) host.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -23939,11 +24248,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       generatedSignalCount = signals.length;
     if (!sourcePreserved)
       failures.push("Compatibility testing changed the authored component source.");
-    const confidence = Math.max(
-        0,
-        Math.min(100, 100 - failures.length * 25 - reviewWarnings.length * 3),
-      ),
-      lines = [
+    const lines = [
         `COMPONENT READINESS — ${failures.length ? "FAILED" : reviewWarnings.length ? "PASS WITH REVIEW ITEMS" : "PASSED"}`,
         `Generated: ${generatedPropertyCount} properties · ${generatedSignalCount} signals`,
         "",
@@ -23977,7 +24282,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       passed: !failures.length,
       failures,
       warnings: [...new Set(reviewWarnings)],
-      confidence,
       instanceSafe,
       responsiveSafe,
       touchSafe,
@@ -24009,7 +24313,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           passed: false,
           failures: [message],
           warnings: [],
-          confidence: 0,
           instanceSafe: false,
           responsiveSafe: false,
           touchSafe: false,
@@ -24146,7 +24449,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             ? {
                 testedAt: entry.readiness.testedAt,
                 passed: entry.readiness.passed !== false,
-                confidence: Number(entry.readiness.confidence) || 0,
                 fingerprint: entry.readiness.fingerprint || "",
                 currentFingerprint: customComponentReadinessFingerprint(entry),
                 current:
@@ -24552,7 +24854,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     entry.readiness = {
       testedAt: new Date().toISOString(),
       passed: readiness.passed,
-      confidence: readiness.confidence,
       warningCount: readiness.warnings.length,
       fingerprint: customComponentReadinessFingerprint(entry),
       checks: {
@@ -24626,10 +24927,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ? "Validate & update component"
       : "Validate & create component";
     entry.readiness.passed = entry.readiness.passed && registeredRuntime.passed;
-    entry.readiness.confidence = Math.max(
-      0,
-      entry.readiness.confidence - registeredRuntime.errors.length * 25,
-    );
     entry.readiness.warningCount += registeredRuntime.errors.length;
     entry.readiness.runtimeErrors = registeredRuntime.errors;
     entry.readiness.checks.registeredRuntime = registeredRuntime.passed;

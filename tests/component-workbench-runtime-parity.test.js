@@ -33,6 +33,15 @@ for (const performanceFinding of [
   assert.ok(editor.includes(`"${performanceFinding}": {`), `${performanceFinding} lacks a direct source action`);
 }
 
+for (const cleanupMarker of [
+  "animationFrameHandles=[]",
+  "observerHandles=[]",
+  "function scopedAnimationFrame(callback)",
+  "function scopedObserver(NativeObserver)",
+  "animationFrameHandles.forEach(window.cancelAnimationFrame)",
+  "observer.disconnect()",
+]) assert.ok(editor.includes(cleanupMarker), `${cleanupMarker} runtime cleanup is missing`);
+
 assert.ok(editor.includes("custom-acceptance-ch5-desktop"));
 assert.ok(editor.includes("custom-acceptance-touch-panel"));
 assert.ok(html.includes("CH5 Desktop &amp; touch-panel verification"));
