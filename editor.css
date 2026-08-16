@@ -680,7 +680,7 @@ h2 {
 }
 .widget iframe {
   width: 100%;
-  height: 100%;
+  height: 100% !important;
   border: 0;
   pointer-events: none;
 }
@@ -849,7 +849,7 @@ h2 {
 #custom-component-dialog form,
 #translate-snippet-dialog form {
   width: 100%;
-  height: 100%;
+  height: 100% !important;
   overflow: auto;
   padding: 16px 20px 0;
 }
@@ -1083,6 +1083,8 @@ h2 {
 .custom-capability-recommendation strong,.custom-capability-recommendation small{display:block}
 .custom-capability-recommendation small{margin-top:3px;color:#a8c7c3}
 .custom-capability-recommendation.low-confidence{border-color:#7d682b;background:#292615}
+.custom-capability-recommendation-status{margin:0;padding:10px 12px;border:1px solid #29756b;border-radius:6px;background:#0b302c;color:#c9fff7;font-weight:700}
+.custom-capability-recommendation-status.no-changes{border-color:#7d682b;background:#292615;color:#ffe7a3}
 .custom-connection-inline-controls { display:flex;align-items:center;gap:8px;min-width:0; }
 .custom-connection-inline-controls input[type="range"] { flex:1;min-width:120px; }
 .custom-connection-inline-controls input[type="number"] { width:110px; }
@@ -2230,16 +2232,34 @@ h2 {
 }
 .custom-component-dialog.custom-wizard-step-2 .custom-builder-layout {
   display: block;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 .custom-component-dialog.custom-wizard-step-2 .custom-test-workspace {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(460px, 1.15fr);
+  grid-template-columns: minmax(340px, 0.8fr) minmax(560px, 1.2fr);
+  grid-template-rows: minmax(230px, 0.8fr) minmax(280px, 1fr);
+  grid-template-areas:
+    "map preview"
+    "simulator preview";
   gap: 12px;
   align-items: stretch;
-  height: clamp(420px, 52vh, 560px);
-  min-height: 420px;
+  /* Leave room below the workbench for validation/review and the sticky
+     action bar. The old 64vh child overflowed its flex-shrunk parent and the
+     following sections painted over the final map and simulator rows. */
+  height: clamp(480px, calc(100vh - 470px), 620px);
+  min-height: 480px;
   max-height: none;
   overflow: hidden;
+}
+.custom-component-dialog.custom-wizard-step-2 .custom-workbench-map-pane {
+  grid-area: map;
+}
+.custom-component-dialog.custom-wizard-step-2 .custom-test-preview-pane {
+  grid-area: preview;
+}
+.custom-component-dialog.custom-wizard-step-2 .custom-signal-simulator {
+  grid-area: simulator;
 }
 .custom-test-preview-pane {
   display: grid;
@@ -2285,12 +2305,18 @@ h2 {
   width: 100%;
 }
 .custom-component-dialog.custom-wizard-step-2 #custom-component-preview {
+  width: 100% !important;
+  min-width: 0;
   min-height: 280px;
-  height: 100%;
+  height: 100% !important;
+  transform: none !important;
 }
 .custom-component-dialog.custom-wizard-step-2 #custom-component-original-preview {
+  width: 100% !important;
+  min-width: 0;
   min-height: 280px;
-  height: 100%;
+  height: 100% !important;
+  transform: none !important;
 }
 .custom-component-dialog.custom-wizard-step-2 .custom-signal-simulator {
   margin-top: 0;
@@ -2313,9 +2339,14 @@ h2 {
 .custom-component-dialog.custom-wizard-step-2 .custom-self-test-report {
   max-height: 110px;
 }
-@media (max-width: 1050px) {
+@media (max-width: 1200px) {
   .custom-component-dialog.custom-wizard-step-2 .custom-test-workspace {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      "preview"
+      "map"
+      "simulator";
     height: auto;
     min-height: 0;
     max-height: none;
@@ -2346,7 +2377,10 @@ h2 {
    and reads better wide. */
 .custom-component-dialog.custom-wizard-step-1 .custom-test-workspace {
   display: grid;
-  grid-template-columns: minmax(320px, 1.4fr) minmax(220px, 0.75fr);
+  /* The map and preview are equally important here.  Giving the map almost
+     twice the space left compact components with an iframe barely 90-100px
+     wide, even when the Workbench had hundreds of unused pixels available. */
+  grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.05fr);
   gap: 12px;
   align-items: stretch;
   height: clamp(460px, 60vh, 640px);
@@ -2367,7 +2401,28 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
+  padding: 8px;
   overflow: hidden;
+}
+.custom-component-dialog.custom-wizard-step-1 .custom-preview-comparison,
+.custom-component-dialog.custom-wizard-step-1 .custom-preview-version {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+/* Natural-size measurement is still used by the runtime *inside* the frame,
+   where the responsive stage preserves the component's proportions.  The
+   iframe itself must use the available preview viewport; otherwise a compact
+   control creates a compact iframe and clips its own label, glow, or animated
+   state. */
+.custom-component-dialog.custom-wizard-step-1 #custom-component-preview {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 260px;
+  transform: none !important;
 }
 .custom-workbench-map-pane {
   display: flex;

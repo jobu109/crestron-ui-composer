@@ -217,6 +217,10 @@ const editorSource = read("editor.js"),
     "findCustomWorkbenchPartForElement",
   ),
   inferCustomElementRole = extractFunction(editorSource, "inferCustomElementRole"),
+  isCandidateWorkbenchElement = extractFunction(
+    editorSource,
+    "isCandidateWorkbenchElement",
+  ),
   customWorkbenchNodeHasPseudoContent = extractFunction(
     editorSource,
     "customWorkbenchNodeHasPseudoContent",
@@ -1381,6 +1385,23 @@ run("inferCustomElementRole classifies a checkbox/radio input as toggle, not but
 
 run("inferCustomElementRole still classifies a real <button> as button, not toggle", () => {
   assert.equal(inferCustomElementRole({ tag: "button", text: "Press" }).role, "button");
+});
+
+run("Workbench inventory excludes document support tags from full HTML imports", () => {
+  global.customElementKeywordRegex = /button|label|text/;
+  const candidate = (tag, text = "") =>
+    isCandidateWorkbenchElement({
+      tagName: tag.toUpperCase(),
+      id: "",
+      className: "",
+      children: [],
+      textContent: text,
+      getAttribute: () => "",
+    });
+  ["script", "style", "link", "meta", "title", "head", "base", "template", "noscript"].forEach(
+    (tag) => assert.equal(candidate(tag, "button selected gauge text"), false, `${tag} must not be inventoried`),
+  );
+  assert.equal(candidate("span", "Visible label"), true);
 });
 
 run("inferCustomElementRole no longer misclassifies a bare 'knob'/'handle' class as a slider", () => {

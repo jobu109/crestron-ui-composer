@@ -781,6 +781,7 @@ run("Import & Translate exposes selector-aware toggle appearance", () => {
     "trackColor",
     "selectedTrackColor",
     "knobColor",
+    "selectedKnobColor",
     "trackWidth",
     "trackHeight",
     "knobWidth",
@@ -792,10 +793,16 @@ run("Import & Translate exposes selector-aware toggle appearance", () => {
     assert.ok(editor.includes(`\"${key}\"`), `missing ${key}`);
   assert.ok(editor.includes('kind: "css-declaration"'));
   assert.ok(editor.includes("function replaceTranslatedCssDeclaration"));
+  assert.ok(editor.includes("function reconcileImportedCssPropertyMappings"));
+  assert.ok(editor.includes('kind: "authored-token"'));
+  assert.ok(editor.includes("preserveAuthoredTarget"));
   assert.ok(editor.includes("selectorAwareToggle"));
   assert.ok(editor.includes("transparentCanvasColors"));
   assert.ok(editor.includes("renderTranslateSignals(false);"));
   assert.ok(editor.includes('properties.some((entry) => entry.key === "iconSize")'));
+  assert.ok(editor.includes('syntheticDeclaration: true'));
+  assert.ok(editor.includes('entry.syntheticDeclaration'));
+  assert.ok(editor.includes('? `{{${entry.key}}}`'));
 });
 
 run("component readiness findings explain and directly repair orphan tokens", () => {
@@ -2194,6 +2201,10 @@ run("custom components include reversible compatibility auditing and safe repair
   assert.ok(!editor.includes('selected.has("global-ids")'));
   assert.ok(editor.includes('selected.has("effect-clipping")'));
   assert.ok(editor.includes('name: "Glow-safe inset"'));
+  assert.ok(editor.includes('body{padding:{{contentInset}}px!important;}'));
+  assert.ok(editor.includes('!/composer-glow-safe-layout/.test(css)'));
+  assert.ok(editor.includes('renderCustomCompatibilityAudit();'));
+  assert.ok(editor.includes('if (customWizardStep === 2) runCustomComponentSelfTestSafely();'));
   assert.ok(editor.includes("customOriginalSourceSnapshot.properties.forEach(addCustomPropertyRow)"));
   assert.ok(editor.includes("function customLocalDependencyReferences(source)"));
   assert.ok(editor.includes("function customAssetForLocalReference(reference)"));
@@ -2292,7 +2303,7 @@ run("custom components include reversible compatibility auditing and safe repair
   assert.ok(editor.includes('add("fixed-root-size"'));
   assert.ok(editor.includes("composer-responsive-root"));
   assert.ok(editor.includes("composer-glow-safe-layout"));
-  assert.ok(editor.includes('name: "Glow-safe component inset"'));
+  assert.ok(editor.includes('body{padding:{{contentInset}}px!important;}'));
   assert.ok(editor.includes('add("duplicate-definitions"'));
   assert.ok(editor.includes('selected.has("duplicate-definitions")'));
   assert.ok(editor.includes('add("modern-browser-apis"'));

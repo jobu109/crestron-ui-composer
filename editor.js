@@ -3,6 +3,21 @@
   const $ = (id) => document.getElementById(id),
     stage = $("stage"),
     list = $("component-list");
+  const customWorkbenchRoleLabel = (value) =>
+    (value || "element")
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (letter) => letter.toUpperCase());
+  const escapeHtml = (value) =>
+    String(value ?? "").replace(
+      /[&<>"']/g,
+      (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character],
+    );
   const firstPage = {
     id: "page-home",
     name: "Home",
@@ -95,6 +110,14 @@
     customSavedElementRoles = [];
   let customWorkbenchDraft = null;
   let customWorkbenchSelectedPartId = "";
+  // The preview toolbar is allowed to change what the programmer is looking
+  // at, but it must not change the property mapping currently being edited.
+  // Keep that form state outside Component Map/preview rebuilds.
+  let customPropertyEditSession = null,
+    // Preview iframes load asynchronously.  Increment this whenever the open
+    // property changes so an older iframe can never restore its form snapshot
+    // over the mapping the programmer is currently editing.
+    customPropertyEditGeneration = 0;
   // Ephemeral (not persisted with the draft) undo buffer for deleted/merged/
   // split-away parts, so "restore-detected-part" can bring back one specific
   // removed part without forcing a full Rescan of the whole source.
@@ -103,6 +126,10 @@
   let customBuilderSourceItemId = "";
   let customPreviewEvents = [];
   const customSimulatorPropertyValues = new Map(),
+    // Values being tried in Step 2 are deliberately separate from Step 3's
+    // simulator values.  Each entry retains the mapping's state scope so a
+    // Standard-only edit cannot paint Selected (and vice versa).
+    customTemporaryPropertyValues = new Map(),
     customSimulatorSignalValues = new Map();
   let customPreservedRelationships = [];
   let customSelfTestResolve = null;
@@ -11454,6 +11481,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         `toggle editable ${key} was not generated`,
       ),
     );
+    const standardTrack = toggleAnalyzed.editables.find((entry) => entry.key === "trackColor"),
+      selectedTrack = toggleAnalyzed.editables.find((entry) => entry.key === "selectedTrackColor"),
+      knobColor = toggleAnalyzed.editables.find((entry) => entry.key === "knobColor");
+    expect(standardTrack?.selector === ".slider" && standardTrack?.stateScope === "standard", "standard track CSS ownership was not preserved");
+    expect(selectedTrack?.selector === "input:checked + .slider" && selectedTrack?.stateScope === "selected", "selected track CSS ownership was not preserved");
+    expect(knobColor?.selector === ".slider:before", "knob pseudo-element CSS ownership was not preserved");
     const packageAsset = {
         id: "translator-acceptance-asset",
         name: "acceptance.svg",
@@ -13050,7 +13083,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     });
     if (toggleElements.length) {
       const toggleDeclarations = [],
-        addToggleDeclaration = (key, label, property, value, type = "text") => {
+        addToggleDeclaration = (
+          key,
+          label,
+          property,
+          value,
+          type = "text",
+          selector = "",
+          stateScope = "all",
+        ) => {
           const raw = String(value || "").trim(),
             unit = type === "number" ? raw.match(/[a-z%]+$/i)?.[0] || "" : "",
             colorValue = type === "color"
@@ -13072,6 +13113,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             kind: "css-declaration",
             source: property,
             sourceValue: raw,
+            // A declaration value alone is ambiguous: a toggle commonly has
+            // the same property on its track, selected track, knob, and
+            // selected knob. Preserve its authored owner so Workbench never
+            // has to guess which visual part/state the property belongs to.
+            selector,
+            stateScope,
           });
         };
       for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -13089,18 +13136,32 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         const background = declarations["background-color"] || declarations.background;
         if (background)
           addToggleDeclaration(
-            isKnob ? "knobColor" : isSelected ? "selectedTrackColor" : "trackColor",
-            isKnob ? "Knob color" : isSelected ? "Selected track color" : "Standard track color",
+            isKnob
+              ? isSelected
+                ? "selectedKnobColor"
+                : "knobColor"
+              : isSelected
+                ? "selectedTrackColor"
+                : "trackColor",
+            isKnob
+              ? isSelected
+                ? "Selected knob color"
+                : "Standard knob color"
+              : isSelected
+                ? "Selected track color"
+                : "Standard track color",
             declarations["background-color"] ? "background-color" : "background",
             background,
             "color",
+            selector,
+            isSelected ? "selected" : "standard",
           );
         if (!isSelected && declarations.width)
-          addToggleDeclaration(isKnob ? "knobWidth" : "trackWidth", isKnob ? "Knob width" : "Toggle width", "width", declarations.width, "number");
+          addToggleDeclaration(isKnob ? "knobWidth" : "trackWidth", isKnob ? "Knob width" : "Toggle width", "width", declarations.width, "number", selector, "all");
         if (!isSelected && declarations.height)
-          addToggleDeclaration(isKnob ? "knobHeight" : "trackHeight", isKnob ? "Knob height" : "Toggle height", "height", declarations.height, "number");
+          addToggleDeclaration(isKnob ? "knobHeight" : "trackHeight", isKnob ? "Knob height" : "Toggle height", "height", declarations.height, "number", selector, "all");
         if (!isSelected && declarations["border-radius"])
-          addToggleDeclaration(isKnob ? "knobRadius" : "trackRadius", isKnob ? "Knob corner radius" : "Track corner radius", "border-radius", declarations["border-radius"], "number");
+          addToggleDeclaration(isKnob ? "knobRadius" : "trackRadius", isKnob ? "Knob corner radius" : "Track corner radius", "border-radius", declarations["border-radius"], "number", selector, "all");
         const travel = declarations.transform?.match(/translateX\(([-\d.]+)([a-z%]*)\)/i);
         if (isSelected && isKnob && travel) {
           add({
@@ -13112,8 +13173,37 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             kind: "css-declaration",
             source: "translateX",
             sourceValue: travel[1] + (travel[2] || ""),
+            selector,
+            stateScope: "selected",
           });
         }
+      }
+      // Many authored toggles move the knob in the checked rule but keep a
+      // single color declaration in the base ::before rule.  That is valid
+      // authored CSS, but Composer still needs an independent checked-state
+      // property when the user wants different Standard and Selected knob
+      // colors.  Create the missing capability from the checked knob selector;
+      // the translation step below will append the new declaration instead of
+      // rewriting the base knob token.
+      const standardKnobColor = editables.find((entry) => entry.key === "knobColor"),
+        selectedKnobColor = editables.find((entry) => entry.key === "selectedKnobColor"),
+        selectedKnobRule = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((rule) =>
+          /:checked|\[aria-checked\s*=\s*["']?true|\.selected|\.active/i.test(rule[1]) &&
+          /(?::before|::before|\.thumb|\.knob|\.handle)/i.test(rule[1]),
+        );
+      if (standardKnobColor && !selectedKnobColor && selectedKnobRule) {
+        add({
+          key: "selectedKnobColor",
+          label: "Selected knob color",
+          type: "color",
+          value: standardKnobColor.value,
+          kind: "css-declaration",
+          source: "background-color",
+          sourceValue: standardKnobColor.value,
+          selector: selectedKnobRule[1].trim().replace(/:before\b/g, "::before"),
+          stateScope: "selected",
+          syntheticDeclaration: true,
+        });
       }
       if (toggleDeclarations.length) {
         const semanticValues = new Set(toggleDeclarations);
@@ -13872,21 +13962,33 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     const escape = (value) =>
         String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       unit = entry.unit || "";
-    if (entry.source === "translateX")
-      return css.replace(
+    const replaceDeclaration = (block) => {
+      if (entry.source === "translateX")
+        return block.replace(
         new RegExp(
           `(translateX\\(\\s*)${escape(entry.sourceValue)}(\\s*\\))`,
           "g",
         ),
         `$1${replacement}${unit}$2`,
       );
-    return css.replace(
+      return block.replace(
       new RegExp(
         `(${escape(entry.source)}\\s*:\\s*)${escape(entry.sourceValue)}(?=\\s*(?:;|}))`,
         "g",
       ),
       `$1${replacement}${unit}`,
     );
+    };
+    if (!entry.selector) return replaceDeclaration(css);
+    const wanted = String(entry.selector).replace(/\s+/g, " ").trim();
+    return css.replace(/([^{}]+)\{([^{}]*)\}/g, (rule, selectorText, body) => {
+      const selectors = String(selectorText)
+        .split(",")
+        .map((selector) => selector.replace(/\s+/g, " ").trim());
+      return selectors.includes(wanted)
+        ? `${selectorText}{${replaceDeclaration(body)}}`
+        : rule;
+    });
   }
   function refreshTranslateSimulator() {
     if (!translateSource) return;
@@ -13914,7 +14016,9 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       else if (entry.kind === "literal")
         css = css.replaceAll(entry.source, String(entry.value));
       else if (entry.kind === "css-declaration")
-        css = replaceTranslatedCssDeclaration(css, entry, String(entry.value));
+        css = entry.syntheticDeclaration
+          ? `${css}\n${entry.selector}{${entry.source}:${String(entry.value)}${entry.unit || ""};}`
+          : replaceTranslatedCssDeclaration(css, entry, String(entry.value));
       else if (entry.kind === "text")
         html = html.replace(entry.source, String(entry.value));
     });
@@ -14581,7 +14685,9 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       else if (entry.kind === "literal")
         css = css.replaceAll(entry.source, `{{${entry.key}}}`);
       else if (entry.kind === "css-declaration")
-        css = replaceTranslatedCssDeclaration(css, entry, `{{${entry.key}}}`);
+        css = entry.syntheticDeclaration
+          ? `${css}\n${entry.selector}{${entry.source}:{{${entry.key}}}${entry.unit || ""};}`
+          : replaceTranslatedCssDeclaration(css, entry, `{{${entry.key}}}`);
       else if (entry.kind === "text")
         html = html.replace(entry.source, `{{${entry.key}}}`);
     });
@@ -14737,6 +14843,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       behaviors: collectCustomBehaviors(),
       repeatedItems: collectCustomRepeatedItems(),
     });
+        reconcileImportedCssPropertyMappings(properties);
         repairMissingTranslatedTargetMarkers();
         captureCustomOriginalSource();
         setStatus(`Opened “${$("translate-name").value}” in Component Workbench`);
@@ -15545,6 +15652,12 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     return { html: documentValue.body.innerHTML, css, javascript };
   }
   function composeCustomSource(runtime = false) {
+    // Authored-token mappings are intentionally not emitted through the
+    // generated adapter: the token in the user's CSS is their runtime. Keep
+    // that contract true even after a Workbench edit, state change, rescan,
+    // or package round trip. In particular, imported toggles often have no
+    // selected knob colour declaration until Composer creates one.
+    materializeCustomAuthoredCssMappings();
     const html = $("custom-source-html").value,
       css = $("custom-source-css").value,
       javascript = $("custom-source-javascript").value;
@@ -15696,7 +15809,11 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       add("css-inset", `${simpleInsets.length} CSS inset shorthand declaration${simpleInsets.length === 1 ? "" : "s"} can be expanded for older touch-panel browsers.`, { repairable: true });
     if (insetDeclarations.length > simpleInsets.length)
       add("complex-css-inset", "A calculated or complex CSS inset value needs manual compatibility review.");
-    if (/overflow\s*:\s*hidden/i.test(css) && /box-shadow|filter\s*:\s*(?:drop-shadow|blur)/i.test(css))
+    if (
+      /overflow\s*:\s*hidden/i.test(css) &&
+      /box-shadow|filter\s*:\s*(?:drop-shadow|blur)/i.test(css) &&
+      !/composer-glow-safe-layout/.test(css)
+    )
       add("effect-clipping", "Overflow clipping may cut off glow, shadows, or press effects. Add protected space inside the component boundary.", { repairable: true });
     const stateStyles = collectCustomStateStyles(),
       stateScales = Object.values(stateStyles?.states || {}).map(
@@ -16018,24 +16135,14 @@ if(!Object.hasOwn){Object.hasOwn=function(object,key){return Object.prototype.ha
           type: "number",
           defaultValue: 24,
         });
-      if (!collectCustomBehaviors().some(
-        (rule) =>
-          rule.source === "property" &&
-          rule.key === "contentInset" &&
-          rule.selector === "body" &&
-          rule.action === "cssProperty",
-      ))
-        addCustomBehaviorRow({
-          source: "property",
-          key: "contentInset",
-          selector: "body",
-          action: "cssProperty",
-          parameter: "padding",
-          mapping: { enabled: true, inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 100, unit: "px" },
-          name: "Glow-safe component inset",
-        });
-      if (!/composer-glow-safe-layout/.test($("custom-source-css").value))
-        $("custom-source-css").value += "\n/* composer-glow-safe-layout */\nhtml,body{box-sizing:border-box;overflow:hidden!important;}";
+      const safeLayoutRule =
+        "/* composer-glow-safe-layout */\nhtml,body{box-sizing:border-box;overflow:hidden!important;}body{padding:{{contentInset}}px!important;}";
+      if (/\/\* composer-glow-safe-layout \*\/[\s\S]*?(?=\/\* composer-|$)/.test($("custom-source-css").value))
+        $("custom-source-css").value = $("custom-source-css").value.replace(
+          /\/\* composer-glow-safe-layout \*\/[\s\S]*?(?=\/\* composer-|$)/,
+          safeLayoutRule + "\n",
+        );
+      else $("custom-source-css").value += `\n${safeLayoutRule}`;
     }
     if (selected.has("local-assets")) {
       const references = customLocalDependencyReferences(
@@ -16056,6 +16163,11 @@ if(!Object.hasOwn){Object.hasOwn=function(object,key){return Object.prototype.ha
     if (selected.has("duplicate-definitions"))
       removeExactCustomDefinitionDuplicates();
     refreshCustomPreview();
+    // A repair must immediately prove that it resolved the selected audit
+    // finding. Previously the source changed, but the old finding and the
+    // readiness result stayed on screen, which made the button appear inert.
+    renderCustomCompatibilityAudit();
+    if (customWizardStep === 2) runCustomComponentSelfTestSafely();
     setStatus(`Applied ${selected.size} reversible compatibility repair${selected.size === 1 ? "" : "s"}`);
   }
   function prepareCustomSource(source) {
@@ -16096,6 +16208,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function addCustomPropertyRow(property = {}) {
     const row = document.createElement("div");
     row.className = "custom-property-row";
+    // Keep the visible definition row tied to its complete Workbench mapping.
+    // The five visible fields are only the Inspector definition; selector,
+    // part, state, and authored-CSS ownership live on the mapping and must
+    // survive every collect/render/save cycle.
+    row.dataset.mappingId = property.id || "";
     row.dataset.preserveDefault = String(!!property.preserveDefault);
     row.dataset.suggestedValue = String(property.suggestedValue ?? property.defaultValue ?? "");
     row.dataset.min = property.min ?? "";
@@ -16151,6 +16268,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function addCustomSignalRow(signal = {}) {
     const row = document.createElement("div");
     row.className = "custom-signal-row";
+    // As with property rows, the visible signal fields are only a summary.
+    // Retain the complete Workbench connection (target/action/state/mapping)
+    // across render, preview, validation, and final component creation.
+    row.dataset.mappingId = signal.id || "";
     row.dataset.optionalProperty = signal.optionalProperty || "";
     row.dataset.connectionConfig = JSON.stringify(signal.connectionConfig || {});
     row.dataset.range = JSON.stringify(signal.range || null);
@@ -16215,11 +16336,22 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         const value = (key) => row.querySelector(`[data-field="${key}"]`).value,
           key = value("key").replace(/[^A-Za-z0-9_$]/g, "_"),
           type = value("type"),
-          rawDefault = value("defaultValue");
+          rawDefault = value("defaultValue"),
+          // Never reconstruct a scoped property from the visible definition
+          // fields alone. Doing so discarded target.selector, target.partId,
+          // stateScope, authoredCss, capability, and synthetic declarations;
+          // the next refresh then guessed a new target from the highlighted
+          // Component Map row and caused Track/Knob and state drift.
+          savedMapping = customWorkbenchDraft?.properties?.find((property) =>
+            (row.dataset.mappingId && property.id === row.dataset.mappingId) ||
+            (!row.dataset.mappingId && property.key === key),
+          ) || null;
         if (!key) return null;
         return {
+          ...(savedMapping ? structuredClone(savedMapping) : {}),
           key,
           name: value("name") || key,
+          ...(savedMapping?.label ? { label: value("name") || savedMapping.label || key } : {}),
           type,
           defaultValue:
             row.dataset.preserveDefault === "true"
@@ -16258,9 +16390,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return [...$("custom-signal-list").children]
       .map((row) => {
         const value = (key) => row.querySelector(`[data-field="${key}"]`).value,
-          key = value("key").replace(/[^A-Za-z0-9_$]/g, "_");
+          key = value("key").replace(/[^A-Za-z0-9_$]/g, "_"),
+          savedMapping = customWorkbenchDraft?.connections?.find((connection) =>
+            (row.dataset.mappingId && connection.id === row.dataset.mappingId) ||
+            (!row.dataset.mappingId && connection.key === key),
+          ) || null;
         return key
           ? {
+              ...(savedMapping ? structuredClone(savedMapping) : {}),
               key,
               name: value("name") || key,
               type: value("type"),
@@ -16517,7 +16654,20 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function customWorkbenchPartIdForSelector(selector, label = "Mapped part") {
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
-    let partId = customWorkbenchDraft.parts.find((part) => part.selector === selector)?.id || "";
+    const normalizedLabel = String(label || "").toLowerCase(),
+      stableSelector = stableCustomSelectorForAuthoredRule(selector),
+      candidates = customWorkbenchDraft.parts.filter((part) =>
+        part.selector === selector || stableCustomSelectorForAuthoredRule(part.selector) === stableSelector
+      ),
+      normalizePseudo = (value) => String(value || "").replace(/:before\b/gi, "::before").replace(/:after\b/gi, "::after").replace(/\s+/g, "").toLowerCase(),
+      exactMatch = candidates.find((part) => normalizePseudo(part.selector) === normalizePseudo(selector)),
+      semanticMatch = candidates.find((part) => {
+        const signature = `${part.name || ""} ${part.role || ""}`.toLowerCase();
+        if (/knob|handle/.test(normalizedLabel)) return /knob|handle/.test(signature);
+        if (/track/.test(normalizedLabel)) return /track|slider/.test(signature) && !/knob|handle/.test(signature);
+        return normalizedLabel && signature.includes(normalizedLabel);
+      });
+    let partId = exactMatch?.id || semanticMatch?.id || candidates[0]?.id || "";
     if (!partId)
       partId = addPickedCustomWorkbenchPart(
         selector,
@@ -16995,19 +17145,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       : roleLabel;
   }
   function customScopeTargets(includePseudo = true) {
-    const targets = [], seen = new Set(), nodeOwners = new Map(),
+    const targets = [], seen = new Set(),
       previewDocument = $("custom-component-preview")?.contentDocument,
       add = (label, selector, partId = "", advanced = false) => {
         const value = String(selector || "").trim();
-        if (!value || seen.has(value) || (!includePseudo && /::?(?:before|after)\b/i.test(value))) return;
-        let node = null;
-        try {
-          const matches = previewDocument ? previewDocument.querySelectorAll(value) : [];
-          if (matches.length === 1) node = matches[0];
-        } catch {}
-        if (node && nodeOwners.has(node)) return;
-        seen.add(value);
-        if (node) nodeOwners.set(node, value);
+        // Track and handle mappings can intentionally resolve to the same DOM
+        // element because a CSS pseudo-element is previewed through its owner.
+        // Keep those Component Map parts distinct and identify them by partId.
+        const identity = partId ? `part:${partId}` : `selector:${value}`;
+        if (!value || seen.has(identity) || (!includePseudo && /::?(?:before|after)\b/i.test(value))) return;
+        seen.add(identity);
         targets.push({ label, selector: value, partId, advanced });
       },
       parsed = new DOMParser().parseFromString($("custom-source-html").value, "text/html"),
@@ -17019,7 +17166,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       })
       .forEach((part) => {
         const advanced = part.role === "mapped-target" || /\[data-translated|,/.test(part.selector || "");
-        add(customScopePartLabel(part), part.selector, part.id, advanced);
+        // Pseudo-elements (for example a toggle knob rendered with ::before)
+        // are meaningful Component Map parts, but querySelector cannot select
+        // them. Keep the part identity while using its visible owner element
+        // as the preview/apply target. authoredCss retains the exact rule.
+        add(
+          customScopePartLabel(part),
+          stableCustomSelectorForAuthoredRule(part.selector),
+          part.id,
+          advanced,
+        );
       });
     if (root) {
       const rootSelector = root.id
@@ -17085,18 +17241,26 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       advanced.forEach((target) => append(group, target));
       select.appendChild(group);
     }
-    const preferredOption = [...select.options].find((option) => option.dataset.partId === preferredPartId);
-    if (preferredOption) select.value = preferredOption.value;
-    else if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+    const options = [...select.options],
+      preferredOption = options.find((option) => option.dataset.partId === preferredPartId),
+      previousOption = options.find((option) => option.value === previous);
+    // Do not assign select.value here: duplicate visual selectors are valid and
+    // value assignment always selects the first one (often Knob instead of Track).
+    if (preferredOption) select.selectedIndex = preferredOption.index;
+    else if (previousOption) select.selectedIndex = previousOption.index;
     delete select.dataset.preferPartId;
   }
   function customWorkbenchScopeContextText() {
     const part = (customWorkbenchDraft?.parts || []).find((entry) => entry.id === customWorkbenchSelectedPartId),
-      partName = part?.name || (part ? friendlyRole(part.role) : "No Component Map part selected"),
+      partName = part?.name || (part ? customWorkbenchRoleLabel(part.role) : "No Component Map part selected"),
       stateName = customWorkbenchActiveState.replace(/[-_]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());
     return `<strong>Current context:</strong> ${escapeHtml(partName)} · ${escapeHtml(stateName)} state. ${part ? "The Apply to field starts on this part." : "Select a part in Component Map to carry it here automatically."}`;
   }
   function updateCustomScopeCreatorContext() {
+    // A preview-state change must never rewrite the context of a property or
+    // signal that is already open for editing.  The open mapping owns that
+    // context until it is applied or closed.
+    if (!$('custom-property-creator')?.hidden || !$('custom-signal-creator')?.hidden) return;
     ["custom-property-context", "custom-signal-context"].forEach((id) => {
       const node = $(id);
       if (node) node.innerHTML = customWorkbenchScopeContextText();
@@ -17116,9 +17280,87 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function customStateScopeLabel(scope = "all") {
     return scope === "all" ? "every state" : `${String(scope).replace(/[-_]+/g, " ")} only`;
   }
+  function captureCustomPropertyEditSession() {
+    const creator = $("custom-property-creator"),
+      action = $("custom-property-create");
+    if (!creator || creator.hidden || (!action?.dataset.editingId && !action?.dataset.editingKey))
+      return customPropertyEditSession;
+    const target = $("custom-property-target"),
+      selected = target?.selectedOptions?.[0];
+    customPropertyEditSession = {
+      generation: customPropertyEditGeneration,
+      editingId: action.dataset.editingId || "",
+      editingKey: action.dataset.editingKey || "",
+      capability: $("custom-property-capability")?.value || "",
+      targetValue: target?.value || "",
+      targetPartId: selected?.dataset.partId || "",
+      targetLabel: selected?.textContent || "",
+      stateScope: $("custom-property-state-scope")?.value || "all",
+      // The property target wins over whatever row happens to be highlighted
+      // in Component Map.  The latter can change when preview state changes.
+      selectedPartId: selected?.dataset.partId || customWorkbenchSelectedPartId || "",
+      fields: Object.fromEntries([
+        "custom-property-value-type", "custom-property-label", "custom-property-key",
+        "custom-property-default", "custom-property-target-name", "custom-property-unit",
+        "custom-property-min", "custom-property-max", "custom-property-step",
+      ].map((id) => [id, $(id)?.value ?? ""])),
+      additional: [...($("custom-property-additional-targets")?.selectedOptions || [])].map((option) => option.value),
+    };
+    return customPropertyEditSession;
+  }
+  function restoreCustomPropertyEditSession(session = customPropertyEditSession) {
+    const creator = $("custom-property-creator"), action = $("custom-property-create");
+    if (!session || !creator || creator.hidden || !action ||
+        session.generation !== customPropertyEditGeneration) return;
+    // A delayed preview belonging to another mapping must not be allowed to
+    // turn the current editor back into that older mapping.
+    if ((action.dataset.editingId || "") !== (session.editingId || "") ||
+        (action.dataset.editingKey || "") !== (session.editingKey || "")) return;
+    action.dataset.editingId = session.editingId || "";
+    action.dataset.editingKey = session.editingKey || "";
+    action.textContent = "Update property and source";
+    if ($("custom-property-capability")) $("custom-property-capability").value = session.capability;
+    const target = $("custom-property-target"), options = [...(target?.options || [])];
+    if (target) {
+      // The exact saved selector is authoritative. partId is only a friendly
+      // Component Map hint and may be recreated during a preview rescan.
+      let option = options.find((entry) => entry.value === session.targetValue);
+      if (!option && session.targetPartId)
+        option = options.find((entry) => entry.dataset.partId === session.targetPartId);
+      if (!option && session.targetValue) {
+        option = new Option(session.targetLabel || session.targetValue, session.targetValue);
+        option.dataset.partId = session.targetPartId || "";
+        target.appendChild(option);
+      }
+      if (option) target.selectedIndex = option.index;
+      target.dataset.edited = "true";
+    }
+    const scope = $("custom-property-state-scope");
+    if (scope) {
+      scope.value = session.stateScope || "all";
+      scope.dataset.edited = "true";
+    }
+    Object.entries(session.fields || {}).forEach(([id, value]) => {
+      if (!$(id)) return;
+      $(id).value = value;
+      $(id).dataset.edited = "true";
+    });
+    const additional = new Set(session.additional || []);
+    [...($("custom-property-additional-targets")?.options || [])].forEach((option) => {
+      option.selected = additional.has(option.value);
+    });
+    customWorkbenchSelectedPartId = session.targetPartId || session.selectedPartId || customWorkbenchSelectedPartId;
+    const definition = customScopedPropertyTypes.find((entry) => entry.value === session.capability);
+    if (definition && $("custom-property-sentence"))
+      $("custom-property-sentence").innerHTML = customPropertySentence(
+        definition,
+        target?.value || session.targetValue,
+        scope?.value || session.stateScope || "all",
+      );
+  }
   function customFriendlyTargetName(selector = "") {
     const part = (customWorkbenchDraft?.parts || []).find((entry) => entry.selector === selector);
-    if (part) return part.name || friendlyRole(part.role);
+    if (part) return part.name || customWorkbenchRoleLabel(part.role);
     const option = customScopeTargets(false).find((entry) => entry.selector === selector);
     return option?.label || "Component";
   }
@@ -17152,53 +17394,159 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return target.querySelector('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value') ||
       (!target.children.length ? target : null);
   }
-  function applyCustomTemporaryPropertyValue(value) {
+  function customTemporaryPropertyDeclaration(definition, value, unit, resolvedAsset) {
+    const numeric = Number(value) || 0,
+      cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
+        ? $("custom-property-target-name")?.value.trim()
+        : definition.css;
+    if (definition.value === "glowColor")
+      return `--composer-scope-glow-color:${value};filter:drop-shadow(0 0 var(--composer-scope-glow-strength,6px) var(--composer-scope-glow-color))`;
+    if (definition.value === "glowStrength")
+      return `--composer-scope-glow-strength:${numeric}px;filter:drop-shadow(0 0 var(--composer-scope-glow-strength) var(--composer-scope-glow-color,#00e5c3))`;
+    if (definition.value === "shadowSize")
+      return `--composer-shadow-size:${numeric}px;box-shadow:0 var(--composer-shadow-size) var(--composer-shadow-size) var(--composer-shadow-color,#000000)`;
+    if (definition.value === "shadowColor")
+      return `--composer-shadow-color:${value};box-shadow:0 var(--composer-shadow-size,6px) var(--composer-shadow-size,6px) var(--composer-shadow-color)`;
+    if (definition.value === "wrapText") return `white-space:${value ? "normal" : "nowrap"}`;
+    if (definition.value === "rotation") return `transform:rotate(${numeric}${unit || "deg"})`;
+    if (definition.value === "positionX") return `position:relative;left:${numeric}${unit || "px"}`;
+    if (definition.value === "positionY") return `position:relative;top:${numeric}${unit || "px"}`;
+    if (definition.value === "asset") {
+      const source = resolvedAsset ? `url(${JSON.stringify(resolvedAsset)})` : "none";
+      return `background-image:${source};background-position:center;background-repeat:no-repeat;background-size:contain`;
+    }
+    if (!cssName) return "";
+    const renderedValue = definition.transform === "percent"
+      ? String(numeric / 100)
+      : `${value}${unit}`;
+    return `${cssName}:${renderedValue}`;
+  }
+  function customTemporaryVisualSelector(selector = "") {
+    // A saved authored rule can include the state trigger (for example
+    // `input:checked + .track::before`). The Workbench already simulates the
+    // requested state, so temporary painting should address the visual part
+    // itself. Keeping the trigger here made Every state work while Standard
+    // and Selected appeared to do nothing whenever simulation used a class or
+    // aria state instead of the author's exact checkbox relationship.
+    return String(selector || "")
+      .split(",")
+      .map((entry) => entry
+        .replace(/^\s*(?:input)?\s*:\s*checked\s*\+\s*/i, "")
+        .replace(/^\s*\.(?:selected|active|composer-pressed)\s+/i, "")
+        .trim())
+      .filter(Boolean)
+      .join(",");
+  }
+  function applyCustomTemporaryPropertyValue(value, { directOnly = false, skipStateSwitch = false } = {}) {
     const definition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
     if (!definition) return;
     const frameDocument = $("custom-component-preview")?.contentDocument,
-      selector = $("custom-property-target")?.value || "";
-    let target;
-    try { target = frameDocument?.querySelector(selector); } catch (_) {}
-    if (!target) return;
-    const unit = $("custom-property-unit")?.value || definition.unit || "",
+      selector = $("custom-property-target")?.value || "",
+      editingId = $("custom-property-create")?.dataset.editingId || "",
+      editingKey = $("custom-property-create")?.dataset.editingKey || "",
+      editingMapping = (customWorkbenchDraft?.properties || []).find((mapping) =>
+        (editingId && mapping.id === editingId) || (editingKey && mapping.key === editingKey),
+      ),
+      selectedPartId = $("custom-property-target")?.selectedOptions[0]?.dataset.partId || "",
+      selectedPart = (customWorkbenchDraft?.parts || []).find((part) => part.id === selectedPartId),
+      // Apply already uses authoredCss.selector as its source of truth. Live
+      // Preview must do the same. The friendly Component Map selection is an
+      // editor aid and can legitimately point at the visible owner of a
+      // pseudo-element; it must never replace the saved visual selector.
+      visualSelector = String(
+        editingMapping?.authoredCss?.selector ||
+        selectedPart?.selector ||
+        editingMapping?.target?.selector ||
+        selector,
+      ).trim(),
+      temporaryVisualSelector = customTemporaryVisualSelector(visualSelector || selector),
+      ownerSelector = stableCustomSelectorForAuthoredRule(temporaryVisualSelector),
+      unit = $("custom-property-unit")?.value || definition.unit || "",
       numeric = Number(value),
-      resolvedAsset = state.assets.find((asset) => asset.id === value)?.dataUrl || value;
+      resolvedAsset = state.assets.find((asset) => asset.id === value)?.dataUrl || value,
+      stateScope = $("custom-property-state-scope")?.value || editingMapping?.stateScope || "all",
+      declaration = customTemporaryPropertyDeclaration(definition, value, unit, resolvedAsset),
+      activeState = String(customWorkbenchActiveState || "standard").replace(/^state-/, "").toLowerCase(),
+      normalizedScope = String(stateScope || "all").replace(/^state-/, "").toLowerCase();
+
+    // Existing mappings have already proved that their saved selector/token,
+    // state scope, and generated adapter work when Update/Apply is pressed.
+    // Preview them through that exact render path as well.  The older code
+    // below is intentionally retained only for a brand-new, not-yet-added
+    // property, where no saved mapping exists to render yet.
+    //
+    // This is important for authored tokens and pseudo-elements.  Painting an
+    // inline/scoped approximation can only see the DOM owner (for example the
+    // toggle Track), while Apply may correctly replace a token that controls
+    // the Knob's ::before rule.  Re-rendering with a temporary Inspector value
+    // keeps Live Preview and Apply authoritative and identical for every
+    // property capability rather than special-casing colors or toggles.
+    if (editingMapping?.key && !directOnly) {
+      customTemporaryPropertyValues.set(editingMapping.key, {
+        value,
+        stateScope: normalizedScope,
+        editingId: editingMapping.id || "",
+      });
+      // An Every-state authored token can safely use the normal render path.
+      // A scoped value cannot: replacing {{token}} in the authored source is
+      // necessarily global and makes Standard leak into Selected (and vice
+      // versa). Scoped previews are painted with the same guarded selector
+      // that Update/Apply generates below.
+      if (normalizedScope === "all") {
+        refreshCustomPreview({ refreshSimulator: false });
+        return;
+      }
+    }
+    // Editing a state-specific property should show that state automatically.
+    // This mirrors Apply's result without leaking a Selected value into the
+    // Standard preview (or vice versa).
+    if (!skipStateSwitch && normalizedScope !== "all" && activeState !== normalizedScope) {
+      setCustomWorkbenchActiveState(normalizedScope, { apply: true });
+      setTimeout(() => applyCustomTemporaryPropertyValue(value, { directOnly: true, skipStateSwitch: true }), 120);
+      return;
+    }
+    let target;
+    try { target = frameDocument?.querySelector(ownerSelector); } catch (_) {}
+    if (!frameDocument || (!target && !declaration)) return;
+    // CSS properties must be previewed through a scoped rule, not an inline
+    // style. An inline style on a toggle track overrides both its Standard and
+    // Selected authored rules, making a "Selected only" edit appear global.
+    if (declaration) {
+      // Component Map pickers use a real DOM owner for pseudo-elements so
+      // querySelector/highlighting works. Painting must use the exact visual
+      // selector (`.track::before`, for example), otherwise a temporary Knob
+      // edit colors its Track or appears to do nothing until Apply.
+      const unscopedSelector = temporaryVisualSelector || visualSelector || selector,
+        scopedSelector = editingMapping
+          ? customAuthoredCssSelectorForState(editingMapping, unscopedSelector, normalizedScope)
+          : customStateScopedCssSelector(unscopedSelector, normalizedScope),
+        styleId = "custom-property-temporary-style";
+      let style = frameDocument.getElementById(styleId);
+      if (!style) {
+        style = frameDocument.createElement("style");
+        style.id = styleId;
+      }
+      // Imported documents frequently keep authored <style> blocks in their
+      // body. Keep this temporary rule last in the cascade and authoritative;
+      // the state-scoped selector above prevents Standard edits leaking into
+      // Selected while still allowing the preview to beat authored !important
+      // declarations.
+      style.textContent = `${scopedSelector} { ${declaration.split(";").filter(Boolean).map((item) => `${item} !important`).join(";")}; }`;
+      (frameDocument.body || frameDocument.documentElement).appendChild(style);
+      requestAnimationFrame(() => applyCustomWorkbenchActiveState());
+      return;
+    }
     if (["text", "standardText", "selectedText"].includes(definition.value)) {
       const textTarget = customTemporaryTextTarget(target);
       if (textTarget) "value" in textTarget ? (textTarget.value = value) : (textTarget.textContent = value);
     } else if (definition.value === "foregroundAsset") {
       const image = target.matches("img") ? target : target.querySelector("img");
       if (image) image.src = resolvedAsset;
-    } else if (definition.value === "asset") {
-      target.style.backgroundImage = resolvedAsset ? `url(${JSON.stringify(resolvedAsset)})` : "none";
-      target.style.backgroundPosition = "center";
-      target.style.backgroundRepeat = "no-repeat";
-      target.style.backgroundSize = "contain";
     } else if (definition.value === "visibility") target.style.display = value ? "" : "none";
     else if (definition.value === "classPresence") target.classList.toggle($("custom-property-target-name").value || "active", !!value);
-    else if (definition.value === "glowColor") {
-      target.style.setProperty("--composer-scope-glow-color", value);
-      target.style.filter = `drop-shadow(0 0 var(--composer-scope-glow-strength, 6px) ${value})`;
-    } else if (definition.value === "glowStrength") {
-      target.style.setProperty("--composer-scope-glow-strength", `${numeric || 0}px`);
-      target.style.filter = `drop-shadow(0 0 ${numeric || 0}px var(--composer-scope-glow-color, #00e5c3))`;
-    } else if (definition.value === "shadowSize") {
-      target.style.setProperty("--composer-shadow-size", `${numeric || 0}px`);
-      target.style.boxShadow = `0 var(--composer-shadow-size) var(--composer-shadow-size) var(--composer-shadow-color, #000000)`;
-    } else if (definition.value === "shadowColor") {
-      target.style.setProperty("--composer-shadow-color", value);
-      target.style.boxShadow = `0 var(--composer-shadow-size, 6px) var(--composer-shadow-size, 6px) var(--composer-shadow-color)`;
-    } else if (definition.value === "wrapText") target.style.whiteSpace = value ? "normal" : "nowrap";
-    else if (definition.value === "rotation") target.style.transform = `rotate(${numeric || 0}${unit || "deg"})`;
-    else {
-      const cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
-        ? $("custom-property-target-name").value.trim()
-        : definition.css;
-      if (cssName) {
-        if (["positionX", "positionY"].includes(definition.value)) target.style.position = "relative";
-        target.style.setProperty(cssName, definition.transform === "percent" ? String((numeric || 0) / 100) : `${value}${unit}`);
-      }
-    }
+    else if (definition.value === "attribute") target.setAttribute($("custom-property-target-name").value, String(value));
+    else if (definition.value === "dataAttribute") target.setAttribute(`data-${$("custom-property-target-name").value}`, String(value));
+    else if (definition.value === "domProperty") target[$("custom-property-target-name").value] = value;
   }
   function renderCustomPropertyLiveTest() {
     const host = $("custom-property-test-control"), definition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
@@ -17231,7 +17579,18 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       }
     }
     control.id = "custom-property-temporary-control";
-    control.oninput = control.onchange = () => applyCustomTemporaryPropertyValue(control.type === "checkbox" ? control.checked : control.value);
+    control.oninput = control.onchange = () => {
+      const value = control.type === "checkbox" ? control.checked : control.value,
+        defaultField = $("custom-property-default");
+      // "Test before adding" is the visual editor for this property's value.
+      // Keep the saved Default value synchronized so Update does not silently
+      // restore the old imported value after showing the user's new preview.
+      if (defaultField) {
+        defaultField.value = String(value);
+        defaultField.dataset.edited = "true";
+      }
+      applyCustomTemporaryPropertyValue(value);
+    };
     host.appendChild(control);
     $("custom-property-test-label").textContent = definition.label;
   }
@@ -17262,11 +17621,57 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (scope === "pressed")
       return `${selector}:active,${selector}.composer-pressed,.composer-pressed ${selector}`;
     if (scope === "selected")
-      return `${selector}.selected,${selector}.active,${selector}:checked,${selector}[aria-checked="true"],.selected ${selector},.active ${selector},[aria-checked="true"] ${selector}`;
+      return `${selector}.selected,${selector}.active,${selector}:checked,${selector}[aria-checked="true"],input:checked + ${selector},.selected ${selector},.active ${selector},[aria-checked="true"] ${selector}`;
     if (scope === "disabled")
       return `${selector}:disabled,${selector}.disabled,${selector}[disabled],${selector}[aria-disabled="true"],.disabled ${selector},[aria-disabled="true"] ${selector}`;
     const safe = CSS.escape(scope);
     return `${selector}.${safe},${selector}[data-state="${scope}"],.${safe} ${selector},[data-state="${scope}"] ${selector}`;
+  }
+  function customAuthoredCssSelectorForState(mapping, selector, scope = "all") {
+    const authored = String(mapping?.authoredCss?.selector || "").trim();
+    if (!authored) return customStateScopedCssSelector(selector, scope);
+    // Keep pseudo-elements such as ::before intact while replacing only the
+    // state portion of the authored selector.
+    const base = authored
+      .replace(/(?:input)?\s*:\s*checked\s*\+\s*/gi, "")
+      .replace(/\.(?:selected|active|composer-pressed)\s+/gi, "")
+      .trim(),
+      pseudoMatch = base.match(/(::?(?:before|after))\s*$/i),
+      pseudo = pseudoMatch?.[1] || "",
+      owner = pseudo ? base.slice(0, pseudoMatch.index).trim() : base,
+      withPseudo = (ownerSelector) => `${ownerSelector}${pseudo}`;
+    if (scope === "all") return authored;
+    // Reuse a state-aware authored selector only when it actually contains
+    // that state. A plain `.track` rule saved as Standard must be guarded or
+    // its temporary preview declaration will also win in Selected state.
+    const authoredLower = authored.toLowerCase(),
+      authoredHasRequestedState =
+        (scope === "selected" && /:checked|\.selected|\.active|aria-checked/.test(authoredLower)) ||
+        (scope === "pressed" && /:active|composer-pressed/.test(authoredLower)) ||
+        (scope === "disabled" && /:disabled|\.disabled|\[disabled|aria-disabled/.test(authoredLower));
+    if ((mapping.stateScope || "all") === scope && authoredHasRequestedState) return authored;
+    if (scope === "selected") return [
+      `input:checked + ${withPseudo(owner)}`,
+      withPseudo(`${owner}.selected`),
+      withPseudo(`${owner}.active`),
+      withPseudo(`${owner}[aria-checked="true"]`),
+      `.selected ${withPseudo(owner)}`,
+      `.active ${withPseudo(owner)}`,
+    ].join(",");
+    if (scope === "pressed") return [
+      `.composer-pressed ${withPseudo(owner)}`,
+      withPseudo(`${owner}:active`),
+    ].join(",");
+    if (scope === "disabled") return [
+      `input:disabled + ${withPseudo(owner)}`,
+      `.disabled ${withPseudo(owner)}`,
+      `[aria-disabled="true"] ${withPseudo(owner)}`,
+    ].join(",");
+    if (scope === "standard") return [
+      `input:not(:checked) + ${withPseudo(owner)}`,
+      withPseudo(`${owner}:not(.selected):not(.active):not([aria-checked="true"])`),
+    ].join(",");
+    return customStateScopedCssSelector(base, scope);
   }
   function preferredCustomPropertyTarget(definition, select) {
     const options = [...select.options],
@@ -17488,16 +17893,128 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     renderCustomGeneratedAdapter();
   }
   function editCustomPropertyMapping(mapping) {
-    openCustomScopeCreator("property");
+    customPropertyEditGeneration += 1;
+    customPropertyEditSession = null;
+    // Step 2 owns a temporary, state-scoped value while this mapping is open.
+    // Do not inherit a prior Step 3 simulator override for the same key.
+    customTemporaryPropertyValues.clear();
+    customSimulatorPropertyValues.delete(mapping.key);
+    {
+      const normalizeSelector = (value) => String(value || "")
+          .replace(/:before\b/gi, "::before")
+          .replace(/:after\b/gi, "::after")
+          .replace(/\s+/g, " ")
+          .trim(),
+        exactSelector = normalizeSelector(mapping.authoredCss?.selector || mapping.target?.selector || ""),
+        stateScope = String(mapping.stateScope || "all").replace(/^state-/, "").toLowerCase(),
+        partId = mapping.target?.partId || "";
+      // The saved mapping is the sole authority when Edit opens. Component
+      // Map selection and preview state are presentation state and must not
+      // be allowed to retarget an existing property.
+      // Set the toolbar state without starting an iframe load before this
+      // mapping's authoritative form/session has been established.
+      if (stateScope !== "all") setCustomWorkbenchActiveState(stateScope, { apply: false });
+      openCustomScopeCreator("property", { key: mapping.key, id: mapping.id || "" });
+      const capability = customScopedPropertyTypes.some((entry) => entry.value === mapping.capability)
+          ? mapping.capability
+          : mapping.target?.kind === "css-custom-property" ? "cssVariable"
+            : mapping.target?.kind === "css-property" ? "cssProperty"
+              : mapping.target?.kind || "cssProperty",
+        target = $("custom-property-target");
+      $("custom-property-capability").value = capability;
+      refreshCustomPropertyCreator();
+      let option = [...target.options].find((entry) => normalizeSelector(entry.value) === exactSelector);
+      if (!option && exactSelector) {
+        option = new Option(`${mapping.label || mapping.key} — exact authored target`, exactSelector);
+        option.dataset.partId = partId;
+        target.appendChild(option);
+      }
+      if (option) target.selectedIndex = option.index;
+      const values = {
+        "custom-property-value-type": mapping.type || "text",
+        "custom-property-label": mapping.label || mapping.key,
+        "custom-property-key": mapping.key,
+        "custom-property-default": mapping.defaultValue ?? "",
+        "custom-property-target-name": mapping.target?.name || "",
+        "custom-property-unit": mapping.unit || "",
+        "custom-property-min": mapping.min ?? "",
+        "custom-property-max": mapping.max ?? "",
+        "custom-property-step": mapping.step ?? "",
+        "custom-property-state-scope": stateScope,
+      };
+      Object.entries(values).forEach(([id, value]) => {
+        if (!$(id)) return;
+        $(id).value = value;
+        $(id).dataset.edited = "true";
+      });
+      target.dataset.edited = "true";
+      const additionalSelectors = new Set(
+        (mapping.targets || []).map((entry) => entry.selector).filter((selector) =>
+          selector && normalizeSelector(selector) !== exactSelector
+        ),
+      );
+      [...$("custom-property-additional-targets").options].forEach((entry) => {
+        entry.selected = additionalSelectors.has(entry.value);
+      });
+      $("custom-property-create").dataset.editingKey = mapping.key;
+      $("custom-property-create").dataset.editingId = mapping.id || "";
+      $("custom-property-create").textContent = "Update property and source";
+      if (partId) customWorkbenchSelectedPartId = partId;
+      updateCustomScopeCreatorContext();
+      captureCustomPropertyEditSession();
+      setTimeout(previewPendingCustomPropertyEdit, 0);
+      return;
+    }
+    // Enter edit mode before the creator is refreshed. Opening this as a new
+    // property first cleared the saved id/key, allowing the current Component
+    // Map selection to replace the mapping's real target during Live Preview.
+    openCustomScopeCreator("property", { key: mapping.key, id: mapping.id || "" });
+    // Resolve the most useful visual part for the editor without rewriting the
+    // saved mapping. The authored selector remains the source of truth used by
+    // Apply; this only controls which friendly Component Map part the form and
+    // temporary preview display.
+    const semanticLabel = String(mapping.label || mapping.key || "").toLowerCase(),
+      mappingOwnerSelector = stableCustomSelectorForAuthoredRule(mapping.authoredCss?.selector || mapping.target?.selector || ""),
+      allParts = customWorkbenchDraft?.parts || [],
+      ownerCandidates = allParts.filter((part) =>
+        stableCustomSelectorForAuthoredRule(part.selector) === mappingOwnerSelector
+      ),
+      normalizePseudo = (value) => String(value || "").replace(/:before\b/gi, "::before").replace(/:after\b/gi, "::after").replace(/\s+/g, "").toLowerCase(),
+      exactAuthoredPart = mapping.authoredCss?.selector
+        ? allParts.find((part) => normalizePseudo(part.selector) === normalizePseudo(mapping.authoredCss.selector))
+        : null,
+      matchesMeaning = (part) => {
+        const signature = `${part.name || ""} ${part.role || ""} ${part.selector || ""}`.toLowerCase();
+        if (/knob|handle|thumb/.test(semanticLabel))
+          return /knob|handle|thumb|::?before|::?after/.test(signature);
+        if (/track|rail/.test(semanticLabel))
+          return /track|rail|slider/.test(signature) && !/knob|handle|thumb|::?before|::?after/.test(signature);
+        return false;
+      },
+      // Imported pseudo-elements and live-picked parts do not always retain
+      // the same stable owner selector. Search the owner's family first, then
+      // every named Component Map part. Otherwise a valid Knob row can be
+      // ignored and Edit falls back to a stale Track/Whole-component partId.
+      semanticPart = exactAuthoredPart
+        || ownerCandidates.find(matchesMeaning)
+        || allParts.find(matchesMeaning),
+      editorPartId = semanticPart?.id || mapping.target?.partId || "",
+      // Preserve the exact authored visual selector. Friendly DOM selectors
+      // are useful for highlighting, but replacing `.track::before` with
+      // `.track` is precisely what made Knob edits reopen as Track edits.
+      editorSelector = mapping.authoredCss?.selector || mapping.target?.selector || semanticPart?.selector || "";
+    // The stored state scope is authoritative. A user-facing label is not a
+    // safe source of state and must never mutate a mapping merely by editing it.
     const capability = customScopedPropertyTypes.some((entry) => entry.value === mapping.capability)
       ? mapping.capability
       : mapping.target?.kind === "css-custom-property" ? "cssVariable"
         : mapping.target?.kind === "css-property" ? "cssProperty"
           : mapping.target?.kind || "cssProperty";
     $("custom-property-capability").value = capability;
+    $("custom-property-target").dataset.preferPartId = editorPartId;
     refreshCustomPropertyCreator();
     const values = {
-      "custom-property-target": mapping.target?.selector || "",
+      "custom-property-target": editorSelector,
       "custom-property-value-type": mapping.type || "text",
       "custom-property-label": mapping.label || mapping.key,
       "custom-property-key": mapping.key,
@@ -17510,7 +18027,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       "custom-property-state-scope": mapping.stateScope || "all",
     };
     Object.entries(values).forEach(([id, value]) => {
-      $(id).value = value;
+      if (id === "custom-property-target" && editorPartId) {
+        const option = [...$(id).options].find((entry) => entry.dataset.partId === editorPartId);
+        if (option) $(id).selectedIndex = option.index;
+        else $(id).value = value;
+      } else $(id).value = value;
       $(id).dataset.edited = "true";
     });
     const additionalSelectors = new Set(
@@ -17522,8 +18043,62 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (option) => (option.selected = additionalSelectors.has(option.value)),
     );
     $("custom-property-create").dataset.editingKey = mapping.key;
+    $("custom-property-create").dataset.editingId = mapping.id || "";
     $("custom-property-create").textContent = "Update property and source";
+    // Keep the semantic editor target resolved above. Reapplying the saved
+    // owner part here caused Knob properties to jump back to Track/Whole
+    // component just before the form rendered. The saved mapping itself is
+    // intentionally left untouched and remains authoritative when applied.
+    $("custom-property-target").dataset.preferPartId = editorPartId;
+    if (editorPartId) customWorkbenchSelectedPartId = editorPartId;
     refreshCustomPropertyCreator();
+    // The target list can be rebuilt from newly rescanned parts during the
+    // refresh above, which can invalidate even a freshly resolved part id.
+    // Finish restoration from the user-visible semantic option so an Edit of
+    // “Knob color” cannot reopen on Whole component, Toggle width, or Track.
+    const restoredTarget = $("custom-property-target"),
+      visibleOptions = [...restoredTarget.options],
+      wantsSelectedPart = /\bselected\b/.test(semanticLabel),
+      semanticOption = /knob|handle|thumb/.test(semanticLabel)
+        ? visibleOptions.find((option) => {
+            const label = String(option.textContent || "").split(" — ")[0].trim();
+            return wantsSelectedPart
+              ? /^selected\s+(?:knob|handle|thumb)\b/i.test(label)
+              : /^(?:knob|handle|thumb)\b/i.test(label);
+          })
+        : /track|rail/.test(semanticLabel)
+          ? visibleOptions.find((option) => {
+              const label = String(option.textContent || "").split(" — ")[0].trim();
+              return wantsSelectedPart
+                ? /^selected\s+(?:track|rail)\b/i.test(label)
+                : /^(?:track|rail)\b/i.test(label);
+            })
+          : null;
+    let exactOption = visibleOptions.find((option) => normalizePseudo(option.value) === normalizePseudo(editorSelector));
+    if (!exactOption && editorSelector) {
+      exactOption = new Option(`${mapping.label || mapping.key} — exact authored target`, editorSelector);
+      exactOption.dataset.partId = editorPartId;
+      restoredTarget.appendChild(exactOption);
+    }
+    const restoredOption = exactOption || semanticOption;
+    if (restoredOption) {
+      restoredTarget.selectedIndex = restoredOption.index;
+      restoredTarget.dataset.edited = "true";
+      const restoredPartId = restoredOption.dataset.partId || "";
+      if (restoredPartId) customWorkbenchSelectedPartId = restoredPartId;
+    }
+    updateCustomScopeCreatorContext();
+    const restoredDefinition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
+    if (restoredDefinition)
+      $("custom-property-sentence").innerHTML = customPropertySentence(
+        { ...restoredDefinition, stateScope: $("custom-property-state-scope").value || "all" },
+        restoredTarget.value,
+        $("custom-property-state-scope").value || "all",
+      );
+    captureCustomPropertyEditSession();
+    const restoredScope = String(mapping.stateScope || "all").replace(/^state-/, "").toLowerCase();
+    if (restoredScope !== "all") setCustomWorkbenchActiveState(restoredScope, { apply: true });
+    setTimeout(() => previewPendingCustomPropertyEdit(), restoredScope === "all" ? 0 : 120);
   }
   function duplicateCustomPropertyMapping(mapping) {
     let index = 2, key = `${mapping.key}Copy`;
@@ -17536,6 +18111,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       label: `${mapping.label || mapping.key} copy`,
     });
     $("custom-property-create").dataset.editingKey = "";
+    $("custom-property-create").dataset.editingId = "";
     $("custom-property-create").textContent = "Add property to Composer and source";
   }
   function removeCustomPropertyMapping(mapping) {
@@ -17705,6 +18281,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     );
   }
   function refreshCustomPropertyCreator() {
+    // Rebuilding the creator replaces its <option> elements.  Preserve the
+    // exact mapping being edited across that rebuild; recommendation logic is
+    // only allowed to choose a target for a brand-new property.
+    const pinnedEditSession = captureCustomPropertyEditSession();
     const select = $("custom-property-capability"), current = select.value;
     const recommended = customPropertyRoleRecommendations(customSelectedPropertyRole()),
       recommendedEntries = customScopedPropertyTypes.filter((entry) => recommended.has(entry.value)),
@@ -17791,6 +18371,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       .map((target) => customPropertyGenerationText(effectiveDefinition, target, $("custom-property-key").value || suggestedKey))
       .join("\n\n--- additional target ---\n\n");
     renderCustomPropertyLiveTest();
+    restoreCustomPropertyEditSession(pinnedEditSession);
   }
   function refreshCustomSignalCreator() {
     const type = $("custom-signal-capability-type").value,
@@ -17811,7 +18392,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (!$("custom-signal-capability-label").dataset.edited) $("custom-signal-capability-label").value = `${targetLabel} ${action[1]}`;
     if (!$("custom-signal-capability-address").dataset.edited)
       $("custom-signal-capability-address").value = `${contractBase}.${action[0].replace(/^./, (letter) => letter.toUpperCase())}`;
-    $("custom-signal-capability-help").textContent = `${action[2]} Available because ${targetLabel} is classified as ${friendlyRole(role)}.`;
+    $("custom-signal-capability-help").textContent = `${action[2]} Available because ${targetLabel} is classified as ${customWorkbenchRoleLabel(role)}.`;
     const digitalOutput = type === "digital" && direction === "output",
       analog = type === "analog",
       needsParameter = ["classState", "mappedProperty", "attribute", "standardStateText", "selectedStateText", "customEvent"].includes(action[0]),
@@ -17993,8 +18574,20 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       delete element.dataset.edited;
     });
   }
-  function openCustomScopeCreator(kind) {
+  function previewPendingCustomPropertyEdit() {
+    if ($("custom-property-creator")?.hidden) return;
+    captureCustomPropertyEditSession();
+    const value = $("custom-property-default")?.value;
+    if (value == null) return;
+    requestAnimationFrame(() => applyCustomTemporaryPropertyValue(value));
+  }
+  function openCustomScopeCreator(kind, editContext = null) {
     const property = kind === "property";
+    if (property && !editContext) {
+      customPropertyEditGeneration += 1;
+      customPropertyEditSession = null;
+      customTemporaryPropertyValues.clear();
+    }
     $("custom-property-creator").hidden = !property;
     $("custom-signal-creator").hidden = property;
     resetCustomScopeCreatorEdits(property ? "custom-property-" : "custom-signal-capability-");
@@ -18004,8 +18597,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (target && customWorkbenchSelectedPartId) target.dataset.preferPartId = customWorkbenchSelectedPartId;
     updateCustomScopeCreatorContext();
     if (property) {
-      $("custom-property-create").dataset.editingKey = "";
-      $("custom-property-create").textContent = "Add property to Composer and source";
+      $("custom-property-create").dataset.editingKey = editContext?.key || "";
+      $("custom-property-create").dataset.editingId = editContext?.id || "";
+      $("custom-property-create").textContent = editContext
+        ? "Update property and source"
+        : "Add property to Composer and source";
       refreshCustomPropertyCreator();
     }
     else {
@@ -18056,7 +18652,17 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           ? { options: definition.options.map((option) => ({ value: option, label: option })) }
           : {}),
       };
-    const editingKey = $("custom-property-create").dataset.editingKey || "";
+    const editingKey = $("custom-property-create").dataset.editingKey || "",
+      editingId = $("custom-property-create").dataset.editingId || "",
+      existingWorkbenchMapping = editingId
+        ? customWorkbenchDraft?.properties?.find((property) => property.id === editingId)
+        : customWorkbenchDraft?.properties?.find((property) => property.key === editingKey),
+      // An authored CSS token may continue to own the mapping only while the
+      // user keeps the state in which that CSS declaration was authored. If a
+      // Standard declaration is reassigned to Selected, Composer must create a
+      // state-scoped adapter instead of replacing the base declaration and
+      // consequently changing both appearances.
+      preserveAuthoredTarget = existingWorkbenchMapping?.target?.kind === "authored-token";
     if (editingKey && editingKey !== key) {
       customDefinitionRow("custom-property-list", editingKey)?.remove();
       customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter(
@@ -18091,13 +18697,52 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         selector,
         targetOption?.textContent?.split(" — ")[0] || "Mapped part",
       );
-    const
+    const authoredStateChanged = preserveAuthoredTarget &&
+        (existingWorkbenchMapping.stateScope || "all") !== definition.stateScope,
+      authoredSelector = authoredStateChanged
+        ? customAuthoredCssSelectorForState(
+            existingWorkbenchMapping,
+            existingWorkbenchMapping.authoredCss?.selector || existingWorkbenchMapping.target?.selector || selector,
+            definition.stateScope,
+          )
+        : "",
       targetKind = definition.value === "cssVariable"
         ? "css-custom-property"
         : definition.value === "cssProperty" || definition.css
           ? "css-property"
           : definition.javascript || "adapter-value",
-      mapping = {
+      mapping = preserveAuthoredTarget
+        ? {
+            ...structuredClone(existingWorkbenchMapping),
+            key,
+            label: name,
+            type: definition.type,
+            defaultValue,
+            ...(min !== "" ? { min: Number(min) } : {}),
+            ...(max !== "" ? { max: Number(max) } : {}),
+            ...(step !== "" ? { step: Number(step) } : {}),
+            ...(definition.unit ? { unit: definition.unit } : {}),
+            // The editor is authoritative. Preserving the old imported scope
+            // made a Standard property silently remain Standard after the user
+            // changed it to Selected (and vice versa).
+            stateScope: definition.stateScope,
+            ...(authoredStateChanged ? {
+              target: {
+                ...structuredClone(existingWorkbenchMapping.target),
+                selector: stableCustomSelectorForAuthoredRule(authoredSelector),
+              },
+              targets: [{
+                ...structuredClone(existingWorkbenchMapping.target),
+                selector: stableCustomSelectorForAuthoredRule(authoredSelector),
+              }],
+              authoredCss: {
+                ...structuredClone(existingWorkbenchMapping.authoredCss),
+                selector: authoredSelector,
+                syntheticDeclaration: true,
+              },
+            } : {}),
+          }
+        : {
         id: customWorkbenchDraft.properties.find((property) => property.key === key)?.id || `property-${key}`,
         key,
         label: name,
@@ -18126,10 +18771,24 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         capability: definition.value,
         stateScope: definition.stateScope,
       };
-    upsertCustomWorkbenchMapping("property", mapping, true);
+    const editingIndex = editingId
+      ? customWorkbenchDraft.properties.findIndex((property) => property.id === editingId)
+      : -1;
+    if (editingIndex >= 0) {
+      mapping.id = customWorkbenchDraft.properties[editingIndex].id || mapping.id;
+      customWorkbenchDraft.properties[editingIndex] = mapping;
+    } else upsertCustomWorkbenchMapping("property", mapping, true);
+    const definitionRow = customDefinitionRow("custom-property-list", key);
+    if (definitionRow) definitionRow.dataset.mappingId = mapping.id || "";
+    materializeCustomAuthoredCssMapping(mapping, editingKey);
+    customTemporaryPropertyValues.delete(key);
+    // Apply commits to the mapping/source; do not leave a second simulator
+    // value behind to override the committed state during later renders.
+    customSimulatorPropertyValues.delete(key);
     renderCustomPropertyMappings();
     refreshCustomPreview();
     $("custom-property-create").dataset.editingKey = "";
+    $("custom-property-create").dataset.editingId = "";
     $("custom-property-create").textContent = "Add property to Composer and source";
     $("custom-property-creator").hidden = true;
     setStatus(`Added editable Composer property “${name}”`);
@@ -18200,6 +18859,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       ...(range ? { range } : {}),
     };
     upsertCustomWorkbenchMapping("connection", mapping, true);
+    const definitionRow = customDefinitionRow("custom-signal-list", key);
+    if (definitionRow) definitionRow.dataset.mappingId = mapping.id || "";
     renderCustomConnectionMappings();
     refreshCustomPreview();
     // A completed mapping must leave edit mode. Otherwise the next use of
@@ -18351,7 +19012,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   const customElementKeywordRegex = /button|toggle|switch|press|click|label|title|text|name|caption|icon|image|graphic|symbol|background|backdrop|wallpaper|surface|handle|thumb|grip|selected|active|indicator|led|status|progress|meter|gauge|fill|level|value|slider|range|knob|dial|numeric|list|items|grid|menu|repeat|container|track|rail|groove|wrapper|panel|card/i;
   function isCandidateWorkbenchElement(element) {
     const tag = element.tagName.toLowerCase(),
+      // A full-document import can temporarily leave its authored support
+      // tags inside the HTML editor/body rather than in separate source
+      // fields.  Their CSS/JavaScript text is not visible component content
+      // and must never become a Workbench part or mapping target.
+      nonVisualTags = new Set([
+        "script", "style", "link", "meta", "title", "head", "base",
+        "template", "noscript", "source", "track",
+      ]),
       signature = `${element.id} ${element.className} ${element.getAttribute("role") || ""} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("style") || ""}`;
+    if (nonVisualTags.has(tag)) return false;
     return (
       ["button", "input", "select", "textarea", "img", "svg", "label"].includes(tag) ||
       customElementKeywordRegex.test(signature) ||
@@ -18872,15 +19542,34 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       sliderHandle: "Editable numeric-control handle appearance.",
       label: "Editable label text and typography.",
     };
-    return descriptions[entry.role] || `Apply Composer's familiar ${friendlyRole(entry.role)} capabilities without replacing the authored source behavior.`;
+    return descriptions[entry.role] || `Apply Composer's familiar ${customWorkbenchRoleLabel(entry.role)} capabilities without replacing the authored source behavior.`;
   }
   function customSafeRecommendationEntries(inventory = customAnalyzedElements) {
     const supportedRoles = new Set(["button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated"]);
-    return (inventory || []).filter((entry) =>
+    const candidates = (inventory || []).filter((entry) =>
       supportedRoles.has(entry.role) &&
       !["ignore", "decorative"].includes(entry.role) &&
       (!entry.repeatedOwner || entry.role === "repeated"),
     );
+    // A checkbox/radio switch is commonly detected as several overlapping
+    // things: its outer button-like label, the input toggle, and a `.slider`
+    // track. Those are useful Component Map parts, but they are not three
+    // independent controls. Applying Button + Toggle + Slider bundles to the
+    // same authored switch generates competing CSS/behavior rules and can
+    // visibly tear the component apart. Keep one authoritative Toggle setup
+    // for that control; the track and handle remain available as property
+    // targets in the Component Map.
+    const toggleOwners = new Set(
+      candidates
+        .filter((entry) => entry.role === "toggle")
+        .flatMap((entry) => [entry.selector, entry.controlOwner].filter(Boolean)),
+    );
+    return candidates.filter((entry) => {
+      if (!toggleOwners.size || entry.role === "toggle") return true;
+      const sameToggle = toggleOwners.has(entry.selector) ||
+        (entry.controlOwner && toggleOwners.has(entry.controlOwner));
+      return !(sameToggle && ["button", "slider", "sliderHandle", "gauge", "selected"].includes(entry.role));
+    });
   }
   function customRecommendationConfiguration(entry) {
     if (entry.role !== "toggle") return entry;
@@ -18889,7 +19578,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return {
       ...entry,
       selector: ownerSelector,
-      role: "button",
+      role: "toggle",
       metadata: structuredClone(owner?.metadata || entry.metadata || {}),
     };
   }
@@ -18910,7 +19599,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       checkbox.checked = entry.recommendedEnabled;
       checkbox.dataset.recommendationIndex = String(index);
       checkbox.onchange = () => { entry.recommendedEnabled = checkbox.checked; };
-      title.textContent = `${friendlyCustomPartName(entry)} — ${friendlyRole(entry.role)}`;
+      title.textContent = `${friendlyCustomPartName(entry)} — ${customWorkbenchRoleLabel(entry.role)}`;
       detail.textContent = entry.confidence === "low"
         ? `Review first: ${customCapabilityRecommendationExplanation(entry)}`
         : customCapabilityRecommendationExplanation(entry);
@@ -18932,20 +19621,44 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     renderCustomConnectionMappings();
     refreshCustomPreview();
     renderCustomCapabilityRecommendations();
-    $("custom-capability-recommendation-status").textContent = `Applied ${entries.length} selected setup${entries.length === 1 ? "" : "s"}; added ${additions} non-duplicate properties and connections.`;
+    const message = additions
+      ? `Applied ${entries.length} checked setup${entries.length === 1 ? "" : "s"}. Added ${additions} missing ${additions === 1 ? "property or connection" : "properties and connections"}; review them under Editable properties and Crestron connections.`
+      : `No changes were needed. All capabilities from the ${entries.length} checked setup${entries.length === 1 ? " is" : "s are"} already present.`;
+    $("custom-capability-recommendation-status").textContent = message;
+    $("custom-capability-recommendation-status").classList.toggle(
+      "no-changes",
+      additions === 0,
+    );
+    setStatus(message);
   }
   function applyCustomCapabilityBundle(bundle) {
-    const part = (customWorkbenchDraft?.parts || []).find((entry) => entry.id === customWorkbenchSelectedPartId);
+    const parts = customWorkbenchDraft?.parts || [],
+      compatibleRoles = {
+        button: ["button"],
+        toggle: ["toggle", "button"],
+        slider: ["slider", "gauge", "sliderHandle"],
+        textInput: ["textInput", "text", "label"],
+        repeated: ["repeated"],
+      }[bundle] || [],
+      selectedPart = parts.find((entry) => entry.id === customWorkbenchSelectedPartId),
+      part = selectedPart ||
+        compatibleRoles
+          .map((role) => parts.find((entry) => entry.role === role))
+          .find(Boolean);
     if (!part) {
-      $("custom-capability-recommendation-status").textContent = "Select a part in the Component Map first, then choose its bundle.";
+      const message = `No matching component part was found for this bundle. Select the intended part in the Component Map, then try again.`;
+      $("custom-capability-recommendation-status").textContent = message;
+      setStatus(message);
       return;
     }
+    selectCustomWorkbenchPart(part.id);
+    highlightCustomWorkbenchPart(part);
     const inventory = customAnalyzedElements.find((entry) => entry.selector === part.selector),
       bundleTargetSelector = bundle === "toggle" && inventory?.controlOwner
         ? inventory.controlOwner
         : part.selector,
       bundleInventory = customAnalyzedElements.find((entry) => entry.selector === bundleTargetSelector) || inventory,
-      role = bundle === "toggle" ? "button"
+      role = bundle === "toggle" ? "toggle"
         : bundle === "slider" ? (part.role === "gauge" ? "gauge" : "slider")
           : bundle === "textInput" ? (["text", "label"].includes(part.role) ? "text" : "textInput")
             : bundle,
@@ -18957,7 +19670,22 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       additions = applyCustomElementRole(configuration, false) || [];
     renderCustomPropertyMappings();
     renderCustomConnectionMappings();
-    $("custom-capability-recommendation-status").textContent = `${bundle === "toggle" ? "Toggle" : friendlyRole(role)} bundle applied to ${bundleInventory ? friendlyCustomPartName(bundleInventory) : part.name}; added ${additions.length} non-duplicate capabilities.`;
+    refreshCustomPreview();
+    const targetName = bundleInventory
+        ? friendlyCustomPartName(bundleInventory)
+        : part.name,
+      bundleName = bundle === "toggle"
+        ? "Toggle"
+        : customWorkbenchRoleLabel(role),
+      message = additions.length
+        ? `${bundleName} setup applied to ${targetName}. Added ${additions.length} missing ${additions.length === 1 ? "property or connection" : "properties and connections"}.`
+        : `${bundleName} setup is already complete on ${targetName}; no duplicate properties or connections were added.`;
+    $("custom-capability-recommendation-status").textContent = message;
+    $("custom-capability-recommendation-status").classList.toggle(
+      "no-changes",
+      additions.length === 0,
+    );
+    setStatus(message);
   }
   function customPartId(name = "part") {
     const base = `part-${String(name || "part").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "part"}`,
@@ -19020,6 +19748,112 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       backgroundImage: "backgroundAsset",
       visibility: "showElement",
     }[action] || parameter || action || "adapterValue";
+  }
+  function stableCustomSelectorForAuthoredRule(selector = "") {
+    let stable = String(selector || "").trim();
+    // State selectors and pseudo-elements describe an authored CSS rule, but
+    // they are not reliable DOM picker targets.  Keep the exact selector on
+    // the mapping while using the visible element for highlighting/testing.
+    if (stable.includes("+")) stable = stable.split("+").pop().trim();
+    stable = stable
+      .replace(/::?(?:before|after)\b/gi, "")
+      .replace(/:(?:checked|active|focus|hover|disabled)\b/gi, "")
+      .trim();
+    return stable || String(selector || "").trim();
+  }
+  function importedCssPropertyCapability(entry = {}) {
+    return {
+      "background-color": "backgroundColor",
+      color: "textColor",
+      "border-color": "borderColor",
+      "border-radius": "cornerRadius",
+      width: "width",
+      height: "height",
+      opacity: "opacity",
+      "font-size": "fontSize",
+    }[entry.source] || "cssProperty";
+  }
+  function importedCssPropertyPartLabel(entry = {}) {
+    const selector = String(entry.selector || "");
+    if (/::?(?:before|after)\b/i.test(selector)) return "Handle / knob";
+    if (/checked/i.test(selector)) return /slider|track/i.test(selector) ? "Selected track" : "Selected control";
+    if (/slider|track/i.test(selector)) return "Track";
+    return entry.label || "Imported element";
+  }
+  function reconcileImportedCssPropertyMappings(importedProperties = []) {
+    if (!customWorkbenchDraft) return;
+    importedProperties
+      .filter((entry) => entry?.kind === "css-declaration" && entry.selector && entry.key)
+      .forEach((entry) => {
+        const mapping = customWorkbenchDraft.properties.find((candidate) => candidate.key === entry.key);
+        if (!mapping) return;
+        const selector = stableCustomSelectorForAuthoredRule(entry.selector),
+          partId = customWorkbenchPartIdForSelector(selector, importedCssPropertyPartLabel(entry)),
+          target = {
+            kind: "authored-token",
+            partId,
+            selector,
+            name: `{{${entry.key}}}`,
+          };
+        mapping.target = target;
+        mapping.targets = [structuredClone(target)];
+        mapping.capability = importedCssPropertyCapability(entry);
+        mapping.stateScope = entry.stateScope || "all";
+        mapping.authoredCss = {
+          selector: entry.selector,
+          property: entry.source,
+          // Synthetic state declarations are appended to the translated CSS
+          // with a Composer token (for example selectedKnobColor).  Recording
+          // the original shared color here makes the applied Workbench
+          // component search for a value that no longer exists, so the live
+          // preview works but the saved component silently loses the state
+          // override.  The token is the authored value after translation.
+          sourceValue: entry.syntheticDeclaration
+            ? `{{${entry.key}}}`
+            : entry.sourceValue ?? entry.value,
+          ...(entry.syntheticDeclaration ? { syntheticDeclaration: true } : {}),
+        };
+        mapping.translatedSuggestion = true;
+      });
+    customWorkbenchDraft = window.ComposerComponentWorkbench.normalize(customWorkbenchDraft);
+    materializeCustomAuthoredCssMappings();
+    renderCustomWorkbenchParts();
+    renderCustomPropertyMappings();
+    renderCustomGeneratedAdapter();
+    refreshCustomPreview();
+  }
+
+  function materializeCustomAuthoredCssMapping(mapping, previousKey = "") {
+    const authored = mapping?.authoredCss,
+      selector = String(authored?.selector || mapping?.target?.selector || "").trim(),
+      property = String(authored?.property || "").trim(),
+      key = String(mapping?.key || "").trim(),
+      editor = $("custom-source-css");
+    if (
+      !editor ||
+      mapping?.target?.kind !== "authored-token" ||
+      !selector ||
+      !property ||
+      !key
+    ) return false;
+    const result = window.ComposerComponentWorkbench.materializeAuthoredCssMapping(
+      editor.value,
+      mapping,
+      previousKey,
+    );
+    if (result.changed) {
+      editor.value = result.css;
+      authored.sourceValue = `{{${key}}}`;
+    }
+    return result.changed;
+  }
+
+  function materializeCustomAuthoredCssMappings() {
+    let changed = false;
+    (customWorkbenchDraft?.properties || []).forEach((mapping) => {
+      if (materializeCustomAuthoredCssMapping(mapping)) changed = true;
+    });
+    return changed;
   }
   function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems } = {}) {
     const api = window.ComposerComponentWorkbench,
@@ -19609,8 +20443,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       multipleLabel = document.createElement("label"),
       multiple = document.createElement("input"),
       metadata = document.createElement("small"),
-      roles = ["element", "container", "track", "handle", "label", "button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated", "decorative", "mapped-target"],
-      friendlyRole = (value) => (value || "element").replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+      roles = ["element", "container", "track", "handle", "label", "button", "toggle", "text", "textInput", "icon", "backgroundAsset", "selected", "gauge", "slider", "sliderHandle", "repeated", "decorative", "mapped-target"];
     node.className = "custom-part-node";
     row.className = "custom-part-row";
     row.dataset.partId = part.id || "";
@@ -19621,7 +20454,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     name.value = part.name || "Part";
     name.placeholder = "Friendly name";
     roleBadge.className = "custom-part-role-badge";
-    roleBadge.textContent = friendlyRole(part.role);
+    roleBadge.textContent = customWorkbenchRoleLabel(part.role);
     if (part.metadata?.stateOnly)
       roleBadge.textContent += ` · ${part.metadata.stateOnly} only`;
     else if (part.metadata?.eventOwner)
@@ -19708,7 +20541,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     roles.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = friendlyRole(value);
+      option.textContent = customWorkbenchRoleLabel(value);
       option.selected = value === part.role;
       roleSelect.appendChild(option);
     });
@@ -19756,7 +20589,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     roleSelect.onchange = () => {
       part.role = roleSelect.value;
       roleIcon.textContent = customWorkbenchRoleIcons[part.role] || "▫";
-      roleBadge.textContent = friendlyRole(part.role);
+      roleBadge.textContent = customWorkbenchRoleLabel(part.role);
     };
     multiple.onchange = () => { part.multiple = multiple.checked; validate(); };
     highlight.onclick = (event) => { event.stopPropagation(); showCustomWorkbenchPartHighlight(part); };
@@ -20601,7 +21434,19 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
             registerCustomWorkbenchConnectionCapability(signalDefinition, targetSelector, resolved, false);
         }
       };
-    if (role === "button") {
+    if (role === "toggle") {
+      // Preserve the authored switch geometry and CSS. A toggle bundle adds
+      // control behavior only; its detected Track and Handle parts own the
+      // visual properties. Treating this as a generic button used to apply
+      // face, padding, radius, glow, and slider rules to overlapping nodes.
+      const pressKey = customElementSignalKey("press", selector),
+        selectedKey = customElementSignalKey("selected", selector),
+        signalSuffix = pressKey === "press" ? "" : pressKey.slice("press".length);
+      signal({ key: pressKey, name: signalSuffix ? `${signalSuffix} Press` : "Press", type: "digital", direction: "output", defaultValue: `${base}.${signalSuffix || ""}Press` });
+      signal({ key: selectedKey, name: signalSuffix ? `${signalSuffix} Selected` : "Selected", type: "digital", direction: "input", defaultValue: `${base}.${signalSuffix || ""}Selected` });
+      behavior({ source: "signal-output", key: pressKey, action: "press" });
+      behavior({ source: "signal-input", key: selectedKey, action: "selectedClass" });
+    } else if (role === "button") {
       const pressKey = customElementSignalKey("press", selector),
         selectedKey = customElementSignalKey("selected", selector),
         signalSuffix = pressKey === "press" ? "" : pressKey.slice("press".length),
@@ -21337,7 +22182,8 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
   function applyCustomWorkbenchActiveState() {
     const frame = $("custom-component-preview")?.contentWindow;
     frame?.postMessage(customWorkbenchStateSimulationMessage(customWorkbenchActiveState), "*");
-    setTimeout(refreshCustomWorkbenchForActiveState, 80);
+    if ($("custom-property-creator")?.hidden && $("custom-signal-creator")?.hidden)
+      setTimeout(refreshCustomWorkbenchForActiveState, 80);
   }
   function applyCustomWorkbenchComparisonState(frame, name) {
     if (!frame?.contentWindow) return;
@@ -21384,10 +22230,31 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     };
   }
   function setCustomWorkbenchActiveState(name, { apply = true } = {}) {
+    const pinnedEditSession = captureCustomPropertyEditSession();
     const normalized = String(name || "standard").replace(/^state-/, "").toLowerCase();
     customWorkbenchActiveState = customWorkbenchStateNames().includes(normalized) ? normalized : "standard";
     renderCustomWorkbenchStateToolbar();
-    if (apply) simulateCustomState(customWorkbenchActiveState, { quiet: true, allowStandard: true });
+    if (!apply) {
+      restoreCustomPropertyEditSession(pinnedEditSession);
+      return;
+    }
+    // The toolbar is a presentation control. It must never rebuild or infer
+    // the open property form. Simulate the requested state in-place, then
+    // repaint the one temporary property through its exact saved mapping.
+    simulateCustomState(customWorkbenchActiveState, { quiet: true, allowStandard: true });
+    restoreCustomPropertyEditSession(pinnedEditSession);
+    if (customTemporaryPropertyValues.size && !$('custom-property-creator')?.hidden) {
+      const action = $('custom-property-create'),
+        mapping = (customWorkbenchDraft?.properties || []).find((entry) =>
+          (action?.dataset.editingId && entry.id === action.dataset.editingId) ||
+          (action?.dataset.editingKey && entry.key === action.dataset.editingKey)),
+        temporary = mapping?.key ? customTemporaryPropertyValues.get(mapping.key) : null;
+      if (temporary)
+        requestAnimationFrame(() => applyCustomTemporaryPropertyValue(temporary.value, {
+          directOnly: true,
+          skipStateSwitch: true,
+        }));
+    }
   }
   function preferredCustomStatePart() {
     const parts = customWorkbenchDraft?.parts || [],
@@ -21555,7 +22422,11 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       sendCustomSimulatorInput(selectedConnection, normalized === "selected");
     if (modeConnection && stateDefinition?.modeIndex != null)
       sendCustomSimulatorInput(modeConnection, Number(stateDefinition.modeIndex));
-    setTimeout(refreshCustomWorkbenchForActiveState, 80);
+    // Dynamic inventory discovery is useful during ordinary simulation, but
+    // rebuilding Component Map while an edit form is open can invalidate its
+    // part selection and silently retarget the mapping.
+    if ($("custom-property-creator")?.hidden && $("custom-signal-creator")?.hidden)
+      setTimeout(refreshCustomWorkbenchForActiveState, 80);
     if (!options.quiet && $("custom-state-summary")) $("custom-state-summary").textContent =
       `Simulating ${stateDefinition?.name || normalized}. ${selectedConnection || modeConnection ? "Mapped Crestron feedback was also applied." : "Authored transitions remain active."}`;
   }
@@ -22273,9 +23144,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const apply = () => {
         const value = property.type === "checkbox" ? input.checked : property.type === "number" ? Number(input.value) : input.value;
         customSimulatorPropertyValues.set(property.key, value);
-        refreshCustomPreview();
+        // Do not rebuild the Inspector controls while a native color picker is
+        // still dispatching input events. Rebuilding that side of Step 3 used
+        // to discard the pending picker value, so the swatch changed briefly
+        // while the Composer preview kept the previous/default color.
+        refreshCustomPreview({ refreshSimulator: false });
       };
       input.onchange = apply;
+      if (property.type === "color") input.oninput = apply;
       reset.onclick = () => { customSimulatorPropertyValues.delete(property.key); refreshCustomPreview(); };
       control.append(input);
       row.append(title, control, reset);
@@ -22362,11 +23238,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     else stateSelect.add(new Option("No mapped states or modes", ""));
   }
-  function refreshCustomPreview() {
+  function refreshCustomPreview({ refreshSimulator = true } = {}) {
+    // Capture ownership when the refresh starts, not when its iframe happens
+    // to finish.  A newer edit invalidates this snapshot via the generation.
+    const previewEditGeneration = customPropertyEditGeneration,
+      previewEditSession = customPropertyEditSession
+        ? structuredClone(customPropertyEditSession)
+        : null;
+    const activePreviewState = String(customWorkbenchActiveState || "standard")
+      .replace(/^state-/, "").toLowerCase();
     const previewProperties = Object.fromEntries(
       collectCustomProperties().map((property) => [
         property.key,
-        customSimulatorPropertyValues.has(property.key)
+        customTemporaryPropertyValues.has(property.key) &&
+          customTemporaryPropertyValues.get(property.key).stateScope === "all"
+          ? customTemporaryPropertyValues.get(property.key).value
+          : customSimulatorPropertyValues.has(property.key)
           ? customSimulatorPropertyValues.get(property.key)
           : property.type === "asset"
           ? state.assets.find((asset) => asset.id === property.defaultValue)
@@ -22387,13 +23274,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
       customBehaviorRuntime(collectCustomBehaviors(), previewProperties);
     collectCustomProperties().forEach((property) => {
+      // Step 3 is a live simulator. Render its current Inspector value when
+      // one has been entered instead of silently reverting to the saved
+      // default (notably for authored tokens such as selectedTrackColor).
+      const previewValue = previewProperties[property.key] ?? property.defaultValue ?? "";
       source = source.replaceAll(
         `{{${property.key}Json}}`,
-        JSON.stringify(property.defaultValue ?? ""),
+        JSON.stringify(previewValue),
       );
       source = source.replaceAll(
         `{{${property.key}}}`,
-        String(property.defaultValue ?? ""),
+        String(previewValue),
       );
       if (property.type === "asset")
         source = source.replaceAll(
@@ -22461,7 +23352,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     fitCustomWorkbenchPreviewToPane(previewFrame);
     previewFrame.onload = () => {
-      renderCustomWorkbenchParts();
+      // A live-preview refresh may refine inventory while browsing, but an
+      // open property editor must not be reconstructed underneath the user.
+      if ($("custom-property-creator")?.hidden) renderCustomWorkbenchParts();
       wireCustomWorkbenchHoverSync();
       refineCustomElementInventoryWithLivePreview();
       refineWorkbenchPartsWithLivePreview();
@@ -22470,6 +23363,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       // Preview rebuilds are frequent while editing. Reapply the programmer's
       // chosen state after the authored and generated runtimes have mounted.
       requestAnimationFrame(() => applyCustomWorkbenchActiveState());
+      requestAnimationFrame(() => {
+        if (previewEditGeneration === customPropertyEditGeneration) {
+          restoreCustomPropertyEditSession(previewEditSession);
+          const action = $('custom-property-create'),
+            mapping = (customWorkbenchDraft?.properties || []).find((entry) =>
+              (action?.dataset.editingId && entry.id === action.dataset.editingId) ||
+              (action?.dataset.editingKey && entry.key === action.dataset.editingKey)),
+            temporary = mapping?.key ? customTemporaryPropertyValues.get(mapping.key) : null;
+          if (temporary && temporary.stateScope !== 'all')
+            applyCustomTemporaryPropertyValue(temporary.value, { directOnly: true, skipStateSwitch: true });
+        }
+      });
+      setTimeout(() => {
+        if (previewEditGeneration === customPropertyEditGeneration)
+          restoreCustomPropertyEditSession(previewEditSession);
+      }, 120);
       requestAnimationFrame(() => collectCustomSignals().filter((signal) => signal.direction === "input" && customSimulatorSignalValues.has(signal.key)).forEach((signal) => sendCustomSimulatorInput(signal, customSimulatorSignalValues.get(signal.key), false)));
     };
     customWorkbenchPreviewDocument = safeDoc(
@@ -22482,7 +23391,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     refreshCustomWorkbenchStateComparison();
     refreshCustomGeneratedCode();
     renderCustomPlainLanguageReview();
-    refreshCustomSignalTester();
+    if (refreshSimulator) refreshCustomSignalTester();
     validateCustomComponent();
   }
   const customButtonProperties = [
@@ -23151,11 +24060,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       // itself gets rebuilt.
       fitCustomWorkbenchPreviewToPane($("custom-component-preview"));
     }
-    if (customWizardStep === 2) {
-      refreshCustomGeneratedCode();
-      refreshCustomSignalTester();
-      validateCustomComponent();
-    }
+    // Step 3 owns two runtime frames. Populate both immediately on entry so
+    // neither one can retain the starter/template document until Refresh is
+    // clicked. This also applies the current Inspector simulation values to
+    // the Composer frame before the user begins testing it.
+    if (customWizardStep === 2) refreshCustomPreview();
     renderCustomWorkbenchStateToolbar();
     dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -23212,7 +24121,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   }
   function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
     customEditingId = entry?.id || "";
+    customPropertyEditGeneration += 1;
+    customPropertyEditSession = null;
     customSimulatorPropertyValues.clear();
+    customTemporaryPropertyValues.clear();
     customSimulatorSignalValues.clear();
     customBuilderSourceItemId = item?.id || "";
     customDraftNaturalSize = null;
@@ -23226,6 +24138,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       entry?.preservedRelationships || [],
     );
     customPickedElement = null;
+    $("custom-capability-recommendation-status").textContent =
+      "Checked setups add only missing Composer properties and Crestron connections; existing definitions are never duplicated.";
+    $("custom-capability-recommendation-status").classList.remove("no-changes");
     ensureCustomWorkbenchDraft(entry);
     $("custom-element-selector").value = "";
     $("custom-element-classifier").hidden = true;
@@ -23447,7 +24362,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
   $("custom-scope-add-property").onclick = () => openCustomScopeCreator("property");
   $("custom-scope-add-signal").onclick = () => openCustomScopeCreator("signal");
-  $("custom-property-test-reset").onclick = () => refreshCustomPreview();
+  $("custom-property-test-reset").onclick = () => {
+    const editingKey = $("custom-property-create")?.dataset.editingKey || "";
+    if (editingKey) customTemporaryPropertyValues.delete(editingKey);
+    refreshCustomPreview({ refreshSimulator: false });
+  };
   $("custom-property-test-compare").onclick = () => {
     const panel = $("custom-property-original-comparison"),
       button = $("custom-property-test-compare"),
@@ -23459,25 +24378,62 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   document.querySelectorAll("[data-close-scope-creator]").forEach((button) => {
     button.onclick = () => {
+      const editingKey = $("custom-property-create")?.dataset.editingKey || "";
+      if (editingKey) customTemporaryPropertyValues.delete(editingKey);
       $("custom-property-creator").hidden = true;
       $("custom-signal-creator").hidden = true;
+      customPropertyEditGeneration += 1;
+      customPropertyEditSession = null;
+      refreshCustomPreview({ refreshSimulator: false });
     };
   });
   $("custom-property-capability").onchange = () => {
+    // When editing an existing mapping, changing the capability must not
+    // discard its exact Component Map target. Previously this reset removed
+    // data-edited from Apply to, so the recommendation engine silently moved
+    // the property to another part.
+    const editing = !!$("custom-property-create").dataset.editingId,
+      target = $("custom-property-target").value,
+      targetPartId = $("custom-property-target").selectedOptions[0]?.dataset.partId || "",
+      stateScope = $("custom-property-state-scope")?.value || "all";
     resetCustomScopeCreatorEdits("custom-property-");
+    if (editing) {
+      $("custom-property-target").dataset.edited = "true";
+      if (targetPartId) $("custom-property-target").dataset.preferPartId = targetPartId;
+      $("custom-property-target").value = target;
+      if ($("custom-property-state-scope")) {
+        $("custom-property-state-scope").value = stateScope;
+        $("custom-property-state-scope").dataset.edited = "true";
+      }
+    }
     refreshCustomPropertyCreator();
+    if (editing) {
+      $("custom-property-target").value = target;
+      captureCustomPropertyEditSession();
+      previewPendingCustomPropertyEdit();
+    }
   };
   $("custom-property-target").onchange = () => {
     $("custom-property-target").dataset.edited = "true";
     delete $("custom-property-key").dataset.edited;
     delete $("custom-property-label").dataset.edited;
+    const pinnedEditSession = captureCustomPropertyEditSession();
     refreshCustomPropertyCreator();
+    restoreCustomPropertyEditSession(pinnedEditSession);
+    previewPendingCustomPropertyEdit();
   };
   $("custom-property-state-scope").onchange = () => {
     $("custom-property-state-scope").dataset.edited = "true";
+    const pinnedEditSession = captureCustomPropertyEditSession();
     refreshCustomPropertyCreator();
+    restoreCustomPropertyEditSession(pinnedEditSession);
+    previewPendingCustomPropertyEdit();
   };
-  $("custom-property-additional-targets").onchange = refreshCustomPropertyCreator;
+  $("custom-property-additional-targets").onchange = () => {
+    const pinnedEditSession = captureCustomPropertyEditSession();
+    refreshCustomPropertyCreator();
+    restoreCustomPropertyEditSession(pinnedEditSession);
+  };
   [
     "custom-property-key",
     "custom-property-label",
@@ -23491,7 +24447,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   ].forEach(
     (id) => ($(id).oninput = () => {
       $(id).dataset.edited = "true";
+      const pinnedEditSession = captureCustomPropertyEditSession();
       refreshCustomPropertyCreator();
+      restoreCustomPropertyEditSession(pinnedEditSession);
+      if (["custom-property-default", "custom-property-target-name", "custom-property-unit", "custom-property-value-type"].includes(id))
+        previewPendingCustomPropertyEdit();
     }),
   );
   $("custom-property-create").onclick = createScopedCustomProperty;
@@ -24708,6 +25668,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     deleteCustomComponent(entry);
   };
+  // Workbench contains many editable text/number fields. It is intentionally
+  // not a submit-on-Enter form: an implicit method="dialog" submission would
+  // close the entire editor while the programmer was editing a value.
+  const customWorkbenchForm = $("custom-component-dialog").querySelector("form");
+  customWorkbenchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+  });
+  $("custom-component-dialog")
+    .querySelector("[data-close-custom-workbench]")
+    .addEventListener("click", () => $("custom-component-dialog").close());
   [
     "custom-source-html",
     "custom-source-css",

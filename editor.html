@@ -1492,7 +1492,7 @@
               <div class="custom-builder-heading">
                 <div>
                   <h2>Recommended capability setups</h2>
-                  <p class="hint">Composer selected the confident component parts automatically. Uncheck anything you do not want, or apply a familiar bundle to the currently selected Component Map part.</p>
+                  <p class="hint">Composer selected the confident component parts automatically. The bundle buttons apply a complete setup to the selected Component Map part—or automatically choose the obvious matching part when none is selected.</p>
                 </div>
               </div>
               <div class="custom-capability-bundles" aria-label="One-click capability bundles">
@@ -1503,8 +1503,10 @@
                 <button type="button" data-custom-capability-bundle="repeated">Repeated Selector</button>
               </div>
               <div id="custom-capability-recommendation-list" class="custom-capability-recommendation-list"></div>
-              <button id="custom-apply-safe-recommendations" type="button" class="primary">Apply selected safe recommendations</button>
-              <p id="custom-capability-recommendation-status" class="hint" aria-live="polite"></p>
+              <p id="custom-capability-recommendation-status" class="custom-capability-recommendation-status" role="status" aria-live="polite">
+                Checked setups add only missing Composer properties and Crestron connections; existing definitions are never duplicated.
+              </p>
+              <button id="custom-apply-safe-recommendations" type="button" class="primary">Apply checked capability setups</button>
             </section>
             <details class="custom-behavior-builder custom-step-capabilities" open>
               <summary>Add Composer capabilities</summary>
@@ -2029,8 +2031,8 @@
           >
             Delete component
           </button>
-          <button value="cancel">Cancel</button>
-          <button id="custom-component-save" value="default" class="primary custom-step-review">
+          <button type="button" value="cancel" data-close-custom-workbench>Cancel</button>
+          <button id="custom-component-save" type="button" value="default" class="primary custom-step-review">
             Validate &amp; create component
           </button>
         </div>
@@ -2808,6 +2810,7 @@
     <script src="horizontal-separator.component.js"></script>
     <script src="vertical-separator.component.js"></script>
     <script src="wizard-steps.component.js"></script>
+    <script src="pie-radial-menu.component.js"></script>
     <div id="canvas-context-menu" class="context-menu" hidden>
       <button id="context-copy" type="button">Copy</button>
       <button id="context-paste" type="button">Paste</button>

@@ -110,5 +110,6 @@
     ,{"file":"horizontalSeparator.html","componentId":"horizontal-separator","runtime":"scoped","name":"Horizontal Separator","category":"Visual Only","width":300,"height":24}
     ,{"file":"verticalSeparator.html","componentId":"vertical-separator","runtime":"scoped","name":"Vertical Separator","category":"Visual Only","width":24,"height":300}
     ,{"file":"wizardSteps.html","componentId":"wizard-steps","runtime":"scoped","name":"Wizard Steps","category":"Navigation & Menus","width":480,"height":160}
+    ,{"file":"pieRadialMenu.html","componentId":"pie-radial-menu","runtime":"scoped","name":"Pie Radial Menu","category":"Navigation & Menus","width":400,"height":400}
   ]
 }

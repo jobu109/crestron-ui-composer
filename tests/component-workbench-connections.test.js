@@ -45,7 +45,8 @@ assert.ok(javascript.includes("new MutationObserver(render)"));
 assert.ok(javascript.includes("control.addEventListener('composer-state-change',render)"));
 assert.ok(javascript.includes('group.label = "Component parts"'));
 assert.ok(javascript.includes('group.label = "Advanced selectors"'));
-assert.ok(javascript.includes("if (node && nodeOwners.has(node)) return"));
+assert.ok(javascript.includes('const identity = partId ? `part:${partId}` : `selector:${value}`'));
+assert.ok(javascript.includes("duplicate visual selectors are valid"));
 const connectionRenderer = javascript.slice(
   javascript.indexOf("function renderCustomConnectionMappings("),
   javascript.indexOf("function editCustomConnectionMapping("),

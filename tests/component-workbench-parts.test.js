@@ -9,6 +9,23 @@ const root = path.resolve(__dirname, "..");
 const editorHtml = fs.readFileSync(path.join(root, "editor.html"), "utf8");
 const editorJs = fs.readFileSync(path.join(root, "editor.js"), "utf8");
 
+assert.match(editorJs, /const customWorkbenchRoleLabel = \(value\) =>/);
+assert.doesNotMatch(editorJs, /\bfriendlyRole\b/);
+assert.match(editorJs, /const escapeHtml = \(value\) =>/);
+for (const workbenchContextHelper of [
+  "customWorkbenchScopeContextText",
+  "customPropertySentence",
+  "customConnectionSentence",
+]) {
+  const start = editorJs.indexOf(`function ${workbenchContextHelper}(`);
+  assert.ok(start >= 0, `${workbenchContextHelper} is missing`);
+  assert.match(
+    editorJs.slice(start, start + 1500),
+    /escapeHtml\(/,
+    `${workbenchContextHelper} no longer escapes user-visible Workbench context`,
+  );
+}
+
 assert.match(editorHtml, /id="custom-part-list"/);
 assert.match(editorHtml, /id="custom-part-picker"/);
 assert.match(editorHtml, /id="custom-part-rescan"/);

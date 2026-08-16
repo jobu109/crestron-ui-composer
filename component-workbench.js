@@ -186,5 +186,52 @@
     );
     return { valid: errors.length === 0, errors, warnings, value };
   }
-  return { SCHEMA_VERSION, empty, normalize, migrate, validate };
+  function normalizeCssSelector(value) {
+    return String(value || "")
+      .replace(/:before\b/gi, "::before")
+      .replace(/:after\b/gi, "::after")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function materializeAuthoredCssMapping(css, mapping, previousKey = "") {
+    const authored = mapping?.authoredCss || {},
+      selector = normalizeCssSelector(authored.selector || mapping?.target?.selector),
+      property = String(authored.property || "").trim(),
+      key = String(mapping?.key || "").trim();
+    if (mapping?.target?.kind !== "authored-token" || !selector || !property || !key)
+      return { css: String(css || ""), changed: false, matched: false };
+    const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      declaration = new RegExp(`(^|[;\\s])(${escapeRegExp(property)}\\s*:)\\s*([^;}]+)`, "im"),
+      oldToken = previousKey && previousKey !== key
+        ? new RegExp(`\\{\\{${escapeRegExp(previousKey)}\\}\\}`, "g")
+        : null,
+      token = `{{${key}}}${mapping.unit || ""}`;
+    let matched = false, changed = false;
+    const protectedTokens = [],
+      protectedCss = String(css || "").replace(/\{\{[^{}]+\}\}/g, (token) => {
+        const marker = `__COMPOSER_TOKEN_${protectedTokens.length}__`;
+        protectedTokens.push(token);
+        return marker;
+      }),
+      restoreTokens = (value) => String(value).replace(/__COMPOSER_TOKEN_(\d+)__/g, (all, index) => protectedTokens[Number(index)] || all);
+    let next = protectedCss.replace(/([^{}]+)\{([^{}]*)\}/g, (rule, selectors, body) => {
+      const owns = String(selectors).split(",").some((candidate) => normalizeCssSelector(candidate) === selector);
+      if (!owns) return rule;
+      matched = true;
+      let nextBody = body;
+      if (oldToken) nextBody = nextBody.replace(oldToken, `{{${key}}}`);
+      if (declaration.test(nextBody))
+        nextBody = nextBody.replace(declaration, (all, prefix, name) => `${prefix}${name} ${token}`);
+      else nextBody = `${nextBody.trimEnd()}\n  ${property}: ${token};\n`;
+      if (nextBody !== body) changed = true;
+      return `${selectors}{${nextBody}}`;
+    });
+    next = restoreTokens(next);
+    if (!matched && authored.syntheticDeclaration) {
+      next = `${next.trimEnd()}\n\n${selector} {\n  ${property}: ${token};\n}\n`;
+      matched = changed = true;
+    }
+    return { css: next, changed, matched };
+  }
+  return { SCHEMA_VERSION, empty, normalize, migrate, validate, normalizeCssSelector, materializeAuthoredCssMapping };
 });

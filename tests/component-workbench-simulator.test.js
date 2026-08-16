@@ -5,6 +5,23 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8");
 
+assert.ok(
+  editor.includes('const previewValue = previewProperties[property.key] ?? property.defaultValue ?? ""'),
+  "Step 3 must render the current simulated property value rather than only its saved default",
+);
+assert.ok(
+  editor.includes('if (property.type === "color") input.oninput = apply'),
+  "Step 3 color controls must update the Composer preview while the color picker is used",
+);
+assert.ok(
+  editor.includes("refreshCustomPreview({ refreshSimulator: false })"),
+  "live property changes must not rebuild and reset their own Inspector control",
+);
+assert.ok(
+  editor.includes("if (customWizardStep === 2) refreshCustomPreview()"),
+  "entering Step 3 must populate both preview frames without requiring Refresh",
+);
+
 assert.ok(editor.includes("function customSimulatorAnalogScale(signal)"));
 assert.ok(editor.includes("Crestron input: ${minimum}–${maximum}"));
 assert.ok(editor.includes("minimum = scale?.inputMin ?? 0"));

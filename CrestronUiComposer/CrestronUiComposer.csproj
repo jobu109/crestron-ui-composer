@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.6.4</Version>
-    <FileVersion>1.6.4.0</FileVersion>
-    <AssemblyVersion>1.6.4.0</AssemblyVersion>
+    <Version>1.6.5</Version>
+    <FileVersion>1.6.5.0</FileVersion>
+    <AssemblyVersion>1.6.5.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -113,6 +113,7 @@
     <Content Include="..\horizontal-separator.component.js" Link="Web\horizontal-separator.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\vertical-separator.component.js" Link="Web\vertical-separator.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\wizard-steps.component.js" Link="Web\wizard-steps.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\pie-radial-menu.component.js" Link="Web\pie-radial-menu.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\components.manifest.json" Link="Web\components.manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\devices.manifest.json" Link="Web\devices.manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Packaging\CrComLib\package\build_bundles\umd\cr-com-lib.js" Link="Packaging\cr-com-lib.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
