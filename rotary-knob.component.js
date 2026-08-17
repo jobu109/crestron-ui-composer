@@ -34,7 +34,7 @@
     signals: [
       { key: "set", name: "Value Set", type: "analog", direction: "output", defaultValue: "RotaryKnob.ValueSet" },
       { key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "RotaryKnob.Feedback" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "RotaryKnob.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "RotaryKnob.Label" },
     ],
     template:
       '<div class="rotary-control"><div class="rotary-name">Rotary Knob</div><div class="rotary-knob" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="rotary-face"><span class="rotary-marker"></span></div></div><output class="rotary-value">0%</output></div>',

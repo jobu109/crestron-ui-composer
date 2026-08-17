@@ -17,6 +17,7 @@
     name: "Menu Item",
     category: "Navigation & Menus",
     defaultSize: { width: 340, height: 120 },
+    itemSelector: ".mi-button",
     signals: [], data: { choices, defaults },
     addressBindings: [
       { name: "Text size override", type: "analog", direction: "input", key: "textSizeSignal" },

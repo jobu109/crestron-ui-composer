@@ -30,7 +30,7 @@
         key: "labelBase",
         name: "Serial text entry pattern",
         type: "text",
-        defaultValue: "TextScramble.Items.{index}.Name",
+        defaultValue: "TextScramble.Items.{index}.Label",
         signalSetting: true,
       },
       {

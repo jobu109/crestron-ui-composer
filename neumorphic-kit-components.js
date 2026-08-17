@@ -709,6 +709,7 @@
           countKey: "buttonCount",
         },
       ],
+      itemSelector: ".nr-button",
       template: `<div class="nr ${vertical ? "vertical" : "horizontal"} ${v2 ? "v2" : "classic"}"></div>`,
       styles: rockerStyles,
       mount(root, context) {
@@ -859,6 +860,10 @@
       name,
       category: "Navigation & Menus",
       defaultSize: { width: 280, height: 280 },
+      itemSelector: "[data-index]",
+      simulatorItemResolver(root, index) {
+        return root.querySelector('[data-index="' + index + '"]');
+      },
       data: { circular },
       properties: [
         mode,
@@ -1069,6 +1074,7 @@
             const button = document.createElement("button");
             button.type = "button";
             button.className = "nd-button";
+            button.dataset.index = String(item.a);
             if (item.a === 4 && display === "icon") button.innerHTML = centerIconMarkup;
             else button.textContent = item.t;
             button.style.gridArea = item.grid;

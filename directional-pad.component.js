@@ -5,6 +5,11 @@
     name: "Directional Pad",
     category: "Navigation & Menus",
     defaultSize: { width: 280, height: 280 },
+    itemSelector: ".dpad-button",
+    simulatorItemResolver(root, index) {
+      const order = ["up", "down", "left", "right", "home"];
+      return root.querySelector('[data-key="' + (order[index] || "") + '"]');
+    },
     signals: [],
     signalGroups: [
       { name: "Directional press range", type: "digital", direction: "output" },

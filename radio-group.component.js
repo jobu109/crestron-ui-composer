@@ -6,6 +6,7 @@
     name: "Radio Group",
     category: "Lists & Selectors",
     defaultSize: { width: 280, height: 220 },
+    itemSelector: ".radio-item",
     signals: [
       { key: "count", name: "Number of options", type: "analog", direction: "input", defaultValue: "RadioGroup.Feedback" },
     ],
@@ -26,7 +27,7 @@
       { key: "textSize", name: "Text size", type: "number", min: 8, max: 80, defaultValue: 22 },
       { key: "pressBase", name: "Press base / pattern", type: "text", defaultValue: "RadioGroup.Items.{index}.Press", signalSetting: true },
       { key: "feedbackBase", name: "Selected base / pattern", type: "text", defaultValue: "RadioGroup.Items.{index}.Selected", signalSetting: true },
-      { key: "labelBase", name: "Name base / pattern", type: "text", defaultValue: "RadioGroup.Items.{index}.Name", signalSetting: true },
+      { key: "labelBase", name: "Name base / pattern", type: "text", defaultValue: "RadioGroup.Items.{index}.Label", signalSetting: true },
       { key: "signalIncrement", name: "Join increment", type: "number", defaultValue: 1, signalSetting: true },
       { key: "panelColor", name: "Panel color", type: "color", defaultValue: "#203332" },
       { key: "itemColor", name: "Option background color", type: "color", defaultValue: "#151a24" },

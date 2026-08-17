@@ -20,7 +20,7 @@
     ],
     signals: [
       { key: "speed", name: "Speed", type: "analog", direction: "input", defaultValue: "LoadingSpinner.Feedback" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "LoadingSpinner.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "LoadingSpinner.Label" },
     ],
     template:
       '<div class="loading-spinner"><svg class="spinner-svg" viewBox="0 0 120 120" aria-hidden="true"><circle class="spinner-track" cx="60" cy="60" r="49"></circle><g class="spinner-motion"><path class="spinner-arc" d="M60 11 A49 49 0 1 1 37 16.74"></path><circle class="spinner-dot" cx="60" cy="11" r="5"></circle></g></svg><span class="spinner-text">LOADING</span></div>',

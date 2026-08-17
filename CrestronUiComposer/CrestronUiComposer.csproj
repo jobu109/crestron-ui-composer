@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.6.5</Version>
-    <FileVersion>1.6.5.0</FileVersion>
-    <AssemblyVersion>1.6.5.0</AssemblyVersion>
+    <Version>1.6.6</Version>
+    <FileVersion>1.6.6.0</FileVersion>
+    <AssemblyVersion>1.6.6.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -114,6 +114,11 @@
     <Content Include="..\vertical-separator.component.js" Link="Web\vertical-separator.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\wizard-steps.component.js" Link="Web\wizard-steps.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\pie-radial-menu.component.js" Link="Web\pie-radial-menu.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\icon-folder.component.js" Link="Web\icon-folder.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\pattern-lock.component.js" Link="Web\pattern-lock.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\dynamic-table.component.js" Link="Web\dynamic-table.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\number-stepper.component.js" Link="Web\number-stepper.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\drag-drop-list.component.js" Link="Web\drag-drop-list.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\components.manifest.json" Link="Web\components.manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\devices.manifest.json" Link="Web\devices.manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Packaging\CrComLib\package\build_bundles\umd\cr-com-lib.js" Link="Packaging\cr-com-lib.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -11,6 +11,7 @@
     name: "Select-All Checklist",
     category: "Lists & Selectors",
     defaultSize: { width: 260, height: 340 },
+    itemSelector: ".checklist-check",
     properties: [
       {
         key: "bindingMode",

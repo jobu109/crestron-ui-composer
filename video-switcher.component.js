@@ -497,7 +497,7 @@
         key: "sourceNameBase",
         name: "Source Name pattern",
         type: "text",
-        defaultValue: "VideoSwitcher.Sources[{index}].Name",
+        defaultValue: "VideoSwitcher.Sources[{index}].Label",
         signalSetting: true,
       },
       {
@@ -540,7 +540,7 @@
         key: "tvNameBase",
         name: "TV Name pattern",
         type: "text",
-        defaultValue: "VideoSwitcher.TVs[{index}].Name",
+        defaultValue: "VideoSwitcher.TVs[{index}].Label",
         signalSetting: true,
       },
       {

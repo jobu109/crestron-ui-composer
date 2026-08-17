@@ -37,7 +37,7 @@
       { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "MultiMode.Press" },
       { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "MultiMode.Selected" },
       { key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "MultiMode.Feedback" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "MultiMode.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "MultiMode.Label" },
       { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: "MultiMode.Visibility", optionalProperty: "visibilityEnabled" },
     ],
     template: '<button class="multi-mode-button" type="button"><span class="multi-mode-asset"></span><span class="multi-mode-label">Mode 0</span></button>',

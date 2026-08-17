@@ -26,7 +26,7 @@
     signals: [
       { key: "set", name: "Value Set", type: "analog", direction: "output", defaultValue: "EffectKnob.ValueSet" },
       { key: "feedback", name: "Feedback", type: "analog", direction: "input", defaultValue: "EffectKnob.Feedback" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "EffectKnob.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "EffectKnob.Label" },
     ],
     template: '<div class="effect-knob-control"><canvas width="360" height="360" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></canvas><div class="effect-knob-caption"><span class="effect-knob-name">Effect</span><output class="effect-knob-value">50%</output></div></div>',
     styles:

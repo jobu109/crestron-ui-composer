@@ -111,5 +111,10 @@
     ,{"file":"verticalSeparator.html","componentId":"vertical-separator","runtime":"scoped","name":"Vertical Separator","category":"Visual Only","width":24,"height":300}
     ,{"file":"wizardSteps.html","componentId":"wizard-steps","runtime":"scoped","name":"Wizard Steps","category":"Navigation & Menus","width":480,"height":160}
     ,{"file":"pieRadialMenu.html","componentId":"pie-radial-menu","runtime":"scoped","name":"Pie Radial Menu","category":"Navigation & Menus","width":400,"height":400}
+    ,{"file":"iconFolder.html","componentId":"icon-folder","runtime":"scoped","name":"Icon Folder","category":"Navigation & Menus","width":400,"height":400}
+    ,{"file":"patternLock.html","componentId":"pattern-lock","runtime":"scoped","name":"Pattern Lock","category":"Text & Input","width":420,"height":420}
+    ,{"file":"dynamicTable.html","componentId":"dynamic-table","runtime":"scoped","name":"Dynamic Table","category":"Text & Input","width":640,"height":420}
+    ,{"file":"numberStepper.html","componentId":"number-stepper","runtime":"scoped","name":"Number Stepper","category":"Sliders & Levels","width":380,"height":200}
+    ,{"file":"dragDropList.html","componentId":"drag-drop-list","runtime":"scoped","name":"Drag & Drop List","category":"Navigation & Menus","width":360,"height":420}
   ]
 }

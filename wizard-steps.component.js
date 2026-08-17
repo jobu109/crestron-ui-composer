@@ -11,6 +11,7 @@
     name: "Wizard Steps",
     category: "Navigation & Menus",
     defaultSize: { width: 480, height: 160 },
+    itemSelector: ".wiz-step",
     properties: [
       {
         key: "bindingMode",

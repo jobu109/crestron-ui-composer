@@ -32,7 +32,7 @@
       { key: "offPress", name: "Off Press", type: "digital", direction: "output", defaultValue: "PowerRocker.OffPress" },
       { key: "onSelected", name: "On Selected", type: "digital", direction: "input", defaultValue: "PowerRocker.OnSelected" },
       { key: "offSelected", name: "Off Selected", type: "digital", direction: "input", defaultValue: "PowerRocker.OffSelected" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "PowerRocker.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "PowerRocker.Label" },
     ],
     template:
       '<div class="power-rocker-root"><button class="power-rocker" type="button" aria-label="Power"><span class="rocker-well"><span class="rocker-paddle"><span class="rocker-led"></span></span></span></button><span class="rocker-name">POWER</span></div>',

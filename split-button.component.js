@@ -10,9 +10,9 @@
     defaultSize: { width: 360, height: 220 },
     itemSelector: ".split-item",
     signals: [
-      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "SplitButton.Press" },
+      { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "SplitButton.Press", simulatorSelector: ".split-main" },
       { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "SplitButton.Selected" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "SplitButton.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "SplitButton.Label" },
       { key: "itemCount", name: "Number of sub-items", type: "analog", direction: "input", defaultValue: "SplitButton.Feedback" },
     ],
     rangeBindings: [
@@ -29,7 +29,7 @@
       { key: "menuDirection", name: "Submenu direction", type: "select", options: [{ value: "down", label: "Down" }, { value: "up", label: "Up" }], defaultValue: "down" },
       { key: "pressBase", name: "Digital sub-item press base / pattern", type: "text", defaultValue: "SplitButton.Items[{index}].Press", signalSetting: true },
       { key: "feedbackBase", name: "Digital sub-item selected base / pattern", type: "text", defaultValue: "SplitButton.Items[{index}].Selected", signalSetting: true },
-      { key: "labelBase", name: "Serial sub-item name base / pattern", type: "text", defaultValue: "SplitButton.Items[{index}].Name", signalSetting: true },
+      { key: "labelBase", name: "Serial sub-item name base / pattern", type: "text", defaultValue: "SplitButton.Items[{index}].Label", signalSetting: true },
       { key: "signalIncrement", name: "Join increment", type: "number", defaultValue: 1, signalSetting: true },
       { key: "faceColor", name: "Standard state — button color", type: "color", defaultValue: "#04aa8e" },
       { key: "selectedFaceColor", name: "Selected state — button color", type: "color", defaultValue: "#078f7d" },

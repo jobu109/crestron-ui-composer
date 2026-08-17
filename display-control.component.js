@@ -162,7 +162,7 @@
         key: "nameBase",
         name: "Display name base / pattern",
         type: "text",
-        defaultValue: "Displays.Items.{n}.Name",
+        defaultValue: "Displays.Items.{n}.Label",
         signalSetting: true,
       },
       {

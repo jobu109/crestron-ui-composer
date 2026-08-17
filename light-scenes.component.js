@@ -54,7 +54,7 @@
       { key: "glowStrength", name: "Glow strength", type: "number", min: 0, max: 40, defaultValue: 10 },
       { key: "pressBase", name: "Press base / pattern", type: "text", defaultValue: "LightScenes.Items.{index}.Press", signalSetting: true },
       { key: "feedbackBase", name: "Selected base / pattern", type: "text", defaultValue: "LightScenes.Items.{index}.Selected", signalSetting: true },
-      { key: "labelBase", name: "Name base / pattern", type: "text", defaultValue: "LightScenes.Items.{index}.Name", signalSetting: true },
+      { key: "labelBase", name: "Name base / pattern", type: "text", defaultValue: "LightScenes.Items.{index}.Label", signalSetting: true },
       { key: "signalIncrement", name: "Join increment", type: "number", min: 1, defaultValue: 1, signalSetting: true },
       { key: "itemVisibilityEnabled", name: "Enable per-scene visibility signals", type: "checkbox", defaultValue: false, signalSetting: true },
       { key: "visibilityBase", name: "Per-scene Visibility base / pattern", type: "text", defaultValue: "LightScenes.Items.{index}.Visibility", signalSetting: true },

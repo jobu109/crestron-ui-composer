@@ -122,7 +122,7 @@
       { key: "selectedBase", name: "Selected base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.Selected", signalSetting: true },
       { key: "valueSetBase", name: "Value Set base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.ValueSet", signalSetting: true },
       { key: "feedbackBase", name: "Feedback base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.Feedback", signalSetting: true },
-      { key: "nameBase", name: "Name base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.Name", signalSetting: true },
+      { key: "nameBase", name: "Name base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.Label", signalSetting: true },
       { key: "textBase", name: "Text base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.Text", signalSetting: true },
       { key: "visibilityBase", name: "Visibility base / pattern", type: "text", defaultValue: "WidgetList.Items.{index}.Visibility", signalSetting: true },
       { key: "signalIncrement", name: "Join increment", type: "number", min: 1, defaultValue: 1, signalSetting: true }

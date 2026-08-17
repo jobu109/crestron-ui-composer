@@ -42,7 +42,7 @@
     signals: [
       { key: "press", name: "Press", type: "digital", direction: "output", defaultValue: "TextBlock.Press", optionalProperty: "pressEnabled" },
       { key: "selected", name: "Selected", type: "digital", direction: "input", defaultValue: "TextBlock.Selected", optionalProperty: "selectedEnabled" },
-      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "TextBlock.Name" },
+      { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: "TextBlock.Label" },
     ],
     template: '<div class="text-block" role="text"><span class="text-block-label">Text</span></div>',
     styles:

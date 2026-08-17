@@ -7,6 +7,7 @@
     name: "Hamburger Menu",
     category: "Navigation & Menus",
     defaultSize: { width: 360, height: 420 },
+    itemSelector: ".hp-item",
     signals: [],
     signalGroups: [
       { name: "Item count", type: "analog", direction: "input" },

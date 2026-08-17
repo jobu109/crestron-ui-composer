@@ -97,7 +97,7 @@
         key: group.nameKey,
         name: `${title} Name base / pattern`,
         type: "text",
-        defaultValue: `FanController.${group.id}.Items.{index}.Name`,
+        defaultValue: `FanController.${group.id}.Items.{index}.Label`,
         signalSetting: true,
       },
     ];
@@ -135,7 +135,7 @@
         name: "Fan Power Name",
         type: "serial",
         direction: "input",
-        defaultValue: "FanController.Power.Name",
+        defaultValue: "FanController.Power.Label",
       },
       {
         key: "reversePress",
@@ -156,7 +156,7 @@
         name: "Reverse Name",
         type: "serial",
         direction: "input",
-        defaultValue: "FanController.Reverse.Name",
+        defaultValue: "FanController.Reverse.Label",
       },
     ],
     rangeBindings: groups.flatMap((group) => [

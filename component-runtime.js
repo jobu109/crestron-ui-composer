@@ -105,7 +105,7 @@
     const normalized = String(value || "").replace(/[^A-Za-z0-9_]/g, "_");
     if (/^(?:Visibility|Disabled)$/i.test(normalized))
       return /^Visibility$/i.test(normalized) ? "Visibility" : "Disabled";
-    const suffix = type === "digital" ? (direction === "output" ? "Press" : "Selected") : type === "analog" ? (direction === "output" ? "ValueSet" : "Feedback") : direction === "output" ? "Text" : "Name",
+    const suffix = type === "digital" ? (direction === "output" ? "Press" : "Selected") : type === "analog" ? (direction === "output" ? "ValueSet" : "Feedback") : direction === "output" ? "Text" : "Label",
       pattern = type === "digital" ? /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i : type === "analog" ? direction === "output" ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i : /(?:_?(?:IndirectText|Label|Name|Text))$/i;
     let prefix = String(value || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").replace(pattern, "").replace(/_+$/g, "");
     if (/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix)) prefix = "";

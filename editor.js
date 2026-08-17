@@ -6882,6 +6882,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             mode: overall,
             value: binding.value || "",
             itemId: item.id,
+            simulatorSelector: signal.simulatorSelector || "",
             setMode(mode) {
               item.properties.bindingMode = mode;
               Object.values(item.signalBindings || {}).forEach(
@@ -8900,9 +8901,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       definition = item.componentId ? window.ComposerRuntime.get(item.componentId) : null;
     if (!element || !root) return false;
     let target = null;
-    if (definition?.itemSelector && Number.isInteger(Number(row.contractIndex))) {
+    if (typeof definition?.simulatorItemResolver === "function" && Number.isInteger(Number(row.contractIndex))) {
+      try {
+        target = definition.simulatorItemResolver(root, Number(row.contractIndex)) || null;
+      } catch (_) {}
+    }
+    if (!target && definition?.itemSelector && Number.isInteger(Number(row.contractIndex))) {
       try {
         target = root.querySelectorAll(definition.itemSelector)[Number(row.contractIndex)] || null;
+      } catch (_) {}
+    }
+    if (row.simulatorSelector) {
+      try {
+        target ||= root.querySelector(row.simulatorSelector) || null;
       } catch (_) {}
     }
     target ||= root.querySelector(

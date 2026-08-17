@@ -72,7 +72,7 @@
         key: "labelBase",
         name: "Name pattern",
         type: "text",
-        defaultValue: "SwipingCards.Items.{index}.Name",
+        defaultValue: "SwipingCards.Items.{index}.Label",
         signalSetting: true,
       },
       {

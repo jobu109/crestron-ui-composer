@@ -515,7 +515,7 @@ run("simulator and mounted widgets share resolved contract addresses", () => {
       "input",
       "Home.Sources",
     ),
-    "Home.Sources.Items[2].Name",
+    "Home.Sources.Items[2].Label",
   );
   assert.equal(
     ComposerRuntime.resolveAddress(
