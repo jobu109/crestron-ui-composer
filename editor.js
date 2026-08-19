@@ -42,7 +42,6 @@
     subpages: [],
     themes: [],
     customComponents: [],
-    acceptance: { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} },
     contract: {
       name: "MyCrestronUI",
       description: "",
@@ -416,7 +415,6 @@
       subpages: state.subpages,
       themes: state.themes,
       customComponents: state.customComponents,
-      acceptance: state.acceptance,
       contract: state.contract,
     };
   }
@@ -556,8 +554,6 @@
       JSON.stringify(next.customComponents)
     )
       return "Changed custom components";
-    if (JSON.stringify(previous.acceptance) !== JSON.stringify(next.acceptance))
-      return "Updated acceptance test";
     if (JSON.stringify(previous.contract) !== JSON.stringify(next.contract))
       return "Changed contract settings";
     return "Changed project";
@@ -795,7 +791,6 @@
     state.subpages = saved.subpages || [];
     state.themes = saved.themes || [];
     state.customComponents = saved.customComponents || [];
-    state.acceptance = saved.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.customComponents.forEach(registerCustomComponent);
     state.contract = { ...state.contract, ...(saved.contract || {}) };
     state.selected = null;
@@ -839,7 +834,6 @@
     state.subpages = p.subpages || [];
     state.themes = p.themes || [];
     mergeGlobalCustomComponents(p.customComponents || [], p.assets || []);
-    state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     scheduleComponentLibrarySave();
     state.contract = {
       ...state.contract,
@@ -10272,58 +10266,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     setStatus(`Panel performance audit completed${issues.length ? ` with ${issues.length} recommendations` : ""}`);
     return { metrics, issues, errors };
   }
-  function releaseReadinessAudit() {
-    const validation = runValidation(false),
-      contract = contractBuildData(),
-      performance = lastPerformanceMetrics || projectPerformanceAudit(),
-      performanceIssues = panelPerformanceIssues(performance),
-      acceptance = acceptanceState(),
-      acceptanceResults = acceptanceChecks.map(([, id, title]) => ({ id, title, ...acceptanceResult(id) })),
-      failedAcceptance = acceptanceResults.filter((entry) => entry.status === "fail"),
-      untestedAcceptance = acceptanceResults.filter((entry) => entry.status === "untested"),
-      fingerprint = recoveryFingerprint(project()),
-      settings = deploymentSettings(),
-      currentArtifact = (settings.buildArtifacts || []).find((entry) => entry.fingerprint === fingerprint),
-      successfulDeployment = (settings.history || []).find((entry) => entry.success === true && (!currentArtifact || normalizedArtifactPath(entry.packagePath) === normalizedArtifactPath(currentArtifact.path))),
-      checks = [
-        { name: "Project Health", pass: validation.errors.length === 0, detail: validation.errors.length ? `${validation.errors.length} blocking error${validation.errors.length === 1 ? "" : "s"}` : `${validation.issues.length} non-blocking warning${validation.issues.length === 1 ? "" : "s"}` },
-        { name: "Contract generation", pass: contract.errors.length === 0 && contract.rows.length > 0, detail: contract.errors.length ? `${contract.errors.length} contract error${contract.errors.length === 1 ? "" : "s"}` : contract.rows.length ? `${contract.rows.length} mapped contract signals` : "No contract signals are assigned" },
-        { name: "Acceptance checklist", pass: failedAcceptance.length === 0 && untestedAcceptance.length === 0, detail: failedAcceptance.length ? `${failedAcceptance.length} failed` : untestedAcceptance.length ? `${untestedAcceptance.length} untested` : `${acceptanceResults.length} passed` },
-        { name: "Panel performance", pass: performanceIssues.length === 0, detail: performanceIssues.length ? `${performanceIssues.length} recommendation${performanceIssues.length === 1 ? "" : "s"} remain` : `Peak page score ${performance.peakPageScore}` },
-        { name: "Current build artifact", pass: !!currentArtifact, detail: currentArtifact ? `${currentArtifact.targetName || currentArtifact.targetDevice} · ${formatMetricBytes(currentArtifact.size || 0)} · ${String(currentArtifact.sha256 || "").slice(0, 12) || "no hash"}` : "Build the current saved project after its latest changes" },
-        { name: "Verified deployment", pass: !!successfulDeployment, detail: successfulDeployment ? `${successfulDeployment.host} · ${new Date(successfulDeployment.time).toLocaleString()}` : "Deploy the current build successfully to a target panel" },
-      ],
-      blockers = checks.filter((check) => !check.pass),
-      lines = [
-        `CRESTRON UI COMPOSER — RELEASE READINESS — ${blockers.length ? "NOT READY" : "PASSED"}`,
-        `Generated: ${new Date().toLocaleString()}`,
-        `Application: ${document.title || "Crestron UI Composer"} · Project: ${state.contract.name || "Untitled"}`,
-        `Target: ${selectedDevice().name} (${state.width} × ${state.height})`,
-        `Project fingerprint: ${fingerprint}`,
-        "",
-        ...checks.flatMap((check) => [`[${check.pass ? "PASS" : "BLOCKED"}] ${check.name}`, `  ${check.detail}`]),
-        "",
-        blockers.length
-          ? `Resolve ${blockers.length} blocked release gate${blockers.length === 1 ? "" : "s"}, rebuild, deploy, and run this audit again.`
-          : "All project-level beta release gates passed. Perform clean-install and upgrade-install tests before publishing stable.",
-      ];
-    return { checks, blockers, report: lines.join("\r\n") };
-  }
-  function openReleaseReadiness() {
-    const result = releaseReadinessAudit();
-    lastHealthReport = result.report;
-    setHealthDisplayMode(false);
-    $("health-title").textContent = "Release readiness";
-    $("health-summary").textContent = result.blockers.length
-      ? `${result.blockers.length} release gate${result.blockers.length === 1 ? "" : "s"} blocked.`
-      : "Project-level beta release gates passed.";
-    $("health-report").textContent = result.report;
-    $("compatibility-device").hidden = true;
-    $("compatibility-preview").hidden = true;
-    $("compatibility-autofit").hidden = true;
-    if (!$("health-dialog").open) $("health-dialog").showModal();
-    setStatus(result.blockers.length ? "Release readiness found blockers" : "Release readiness passed");
-  }
   function runAuditUi(action, title) {
     try {
       return action();
@@ -12283,125 +12225,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     lastApprovedPreflightFingerprint = fingerprint;
     setStatus("Project Health preflight passed");
     return true;
-  }
-  const acceptanceChecks = [
-    ["Automatic", "health", "Project Health passes", "No blocking project, signal, navigation, asset, or panel problems."],
-    ["Automatic", "roundtrip", "Save/open round trip", "Pages, widgets, assets, reusable symbols, custom components, and test results survive serialization."],
-    ["Automatic", "export", "HTML runtime export", "Export contains pages, component runtime, CrComLib, Web XPanel, and interaction actions."],
-    ["Automatic", "signals", "Signal coverage", "Representative digital, analog, serial, single-widget, and repeated-item bindings are present."],
-    ["Automatic", "responsive", "Responsive target coverage", "Representative widgets have a saved alternate-panel override."],
-    ["Automatic", "font", "Embedded custom font", "An imported font is selected and emitted through @font-face."],
-    ["Editor", "editor-render", "Editor visual inspection", "All acceptance pages render without component errors, clipped glow, or unexpected overflow."],
-    ["Editor", "editor-simulate", "Signal simulation", "Digital Selected, analog Feedback, and serial Name visibly update representative widgets."],
-    ["Editor", "editor-navigation", "Navigation and actions", "Local navigation, contract page selection, timeline animation, and actions execute correctly."],
-    ["Preview", "preview-render", "Preview rendering", "Layout, fonts, assets, animations, and widget states match the Editor."],
-    ["Preview", "preview-signals", "Preview signal behavior", "Simulator-driven digital, analog, serial, and repeated-item behavior matches the Editor."],
-    ["CH5 Desktop", "desktop-load", "CH5 Desktop load", "The same CH5Z opens without a blank page or component runtime errors."],
-    ["CH5 Desktop", "desktop-signals", "CH5 Desktop communication", "Button presses and processor feedback work through the selected contract mapping."],
-    ["TSW-1070", "panel-load", "Panel install and load", "Deployment verifies the package, installs it, and the intended project remains active."],
-    ["TSW-1070", "panel-signals", "Physical-panel signals", "Digital, analog, serial, page, and multi-device signals operate with SIMPL Windows."],
-    ["TSW-1070", "panel-performance", "Panel performance", "Startup, page transitions, scrolling, animations, memory, and touch response remain acceptable."],
-    ["Packaging", "portable", "Portable project round trip", "Save/open portable package preserves assets, fonts, custom components, and reusable designs."],
-    ["Packaging", "component-package", "Component package round trip", "Export/import of a custom component preserves properties, signals, assets, and behavior."],
-    ["Packaging", "contract", "Contract Editor and SIMPL", "CCE import, .cse2j build mapping, and SIMPL component hierarchy/names are correct."],
-  ];
-  function acceptanceState() {
-    state.acceptance ||= { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
-    state.acceptance.results ||= {};
-    return state.acceptance;
-  }
-  function escapeAcceptanceHtml(value) {
-    const span = document.createElement("span");
-    span.textContent = String(value ?? "");
-    return span.innerHTML;
-  }
-  function acceptanceResult(id) {
-    return acceptanceState().results[id] || { status: "untested", notes: "", testedAt: "" };
-  }
-  function setAcceptanceResult(id, status, notes = "") {
-    const acceptance = acceptanceState(), previous = acceptanceResult(id);
-    acceptance.startedAt ||= new Date().toISOString();
-    acceptance.updatedAt = new Date().toISOString();
-    acceptance.results[id] = { status, notes: notes || previous.notes || "", testedAt: status === "untested" ? "" : new Date().toISOString() };
-    projectDirty = true;
-    setAutosaveState("Unsaved changes");
-  }
-  function renderAcceptanceEnvironment() {
-    const environment = acceptanceState().environment || {}, artifact = (deploymentSettings().buildArtifacts || [])[0], entries = [
-      ["Application", environment.appVersion || "—"], ["Windows", environment.os || navigator.userAgent],
-      ["WebView2", environment.webView2 || "—"], ["Node / NPM", `${environment.node || "—"} / ${environment.npm || "—"}`],
-      ["Crestron CLI", environment.ch5Cli || "—"], ["Project", `${state.contract.name || "Untitled"} · ${state.pages.length} pages · ${state.items.length} widgets`],
-      ["Target", `${selectedDevice().name} · ${state.width}×${state.height}`], ["Latest CH5Z", artifact ? `${artifact.path} · ${artifact.sha256 || "no hash"}` : "No verified build artifact"],
-    ];
-    $("acceptance-environment").innerHTML = entries.map(([key, value]) => `<div><strong>${escapeAcceptanceHtml(key)}:</strong> ${escapeAcceptanceHtml(String(value))}</div>`).join("");
-  }
-  function renderAcceptanceChecklist() {
-    const host = $("acceptance-checklist"), acceptance = acceptanceState(), completed = acceptanceChecks.filter(([, id]) => acceptanceResult(id).status !== "untested").length,
-      passed = acceptanceChecks.filter(([, id]) => acceptanceResult(id).status === "pass").length, failed = acceptanceChecks.filter(([, id]) => acceptanceResult(id).status === "fail").length;
-    $("acceptance-summary").textContent = `${completed}/${acceptanceChecks.length} checked · ${passed} passed · ${failed} failed. Results are saved with this project.`;
-    host.innerHTML = "";
-    [...new Set(acceptanceChecks.map(([group]) => group))].forEach((group) => {
-      const section = document.createElement("section"), heading = document.createElement("h3"); section.className = "acceptance-group"; heading.textContent = group; section.appendChild(heading);
-      acceptanceChecks.filter(([entryGroup]) => entryGroup === group).forEach(([, id, title, description]) => {
-        const result = acceptanceResult(id), row = document.createElement("div"), copy = document.createElement("div"), status = document.createElement("select"), notes = document.createElement("input");
-        row.className = "acceptance-row"; row.dataset.status = result.status; copy.innerHTML = `<strong>${escapeAcceptanceHtml(title)}</strong><small>${escapeAcceptanceHtml(description)}</small>`;
-        [["untested","Not tested"],["pass","Pass"],["fail","Fail"],["blocked","Blocked"]].forEach(([value,label]) => { const option=document.createElement("option"); option.value=value; option.textContent=label; status.appendChild(option); });
-        status.value = result.status; status.onchange = () => { setAcceptanceResult(id, status.value, notes.value); renderAcceptanceChecklist(); scheduleHistory(); };
-        notes.type="text"; notes.placeholder="Notes / evidence"; notes.value=result.notes || ""; notes.onchange=()=>{ setAcceptanceResult(id,status.value,notes.value); scheduleHistory(); };
-        row.append(copy,status,notes); section.appendChild(row);
-      }); host.appendChild(section);
-    });
-    $("acceptance-notes").value = acceptance.notes || "";
-  }
-  async function openAcceptanceTest() {
-    const acceptance = acceptanceState();
-    if (native) try { acceptance.environment = await nativeRequest("systemDiagnostics"); } catch (error) { acceptance.environment = { error:error.message }; }
-    renderAcceptanceEnvironment(); renderAcceptanceChecklist();
-    if (!$("acceptance-dialog").open) $("acceptance-dialog").showModal();
-  }
-  function acceptanceItem(componentId, pageId, x, y, overrides = {}) {
-    const definition = window.ComposerRuntime.get(componentId); if (!definition) return null;
-    const itemId=uid("acceptance-"), contractName=`Acceptance.${componentId.replace(/[^A-Za-z0-9_]/g,"_")}_${itemId.replace(/[^A-Za-z0-9_]/g,"_")}`;
-    return { id:itemId, pageId, name:overrides.name || definition.name, componentId, source:"", x,y,
-      w:overrides.w || definition.defaultSize?.width || 240, h:overrides.h || definition.defaultSize?.height || 140, z:state.items.length+1,
-      properties:{ ...Object.fromEntries((definition.properties || []).map((property)=>[property.key,structuredClone(property.defaultValue)])), ...(overrides.properties || {}) },
-      signalBindings:Object.fromEntries((definition.signals || []).map((signal)=>[signal.key,{mode:"contract",value:`${contractName}.${signal.key.replace(/[^A-Za-z0-9_]/g,"_")}`}])) ,
-      targetPage:overrides.targetPage || "", actions:overrides.actions || [], interactions:overrides.interactions || [],
-      layout:{anchorX:overrides.anchorX || "left",anchorY:overrides.anchorY || "top",scaleMode:overrides.scaleMode || "fixed",safeMargin:12}, deviceOverrides:{} };
-  }
-  function createAcceptanceProject() {
-    if ((state.items.length || state.pages.length > 1) && !confirm("Replace the current project with the acceptance test project? Save it first if needed.")) return;
-    const retainedFonts=state.assets.filter((asset)=>String(asset.type || "").includes("font")), asset={id:"acceptance-graphic",name:"Acceptance Graphic.svg",type:"image/svg+xml",size:100,dataUrl:"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MiIgZmlsbD0iIzA0YWFlOCIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjQiLz48L3N2Zz4="},
-      pages=[{id:"acceptance-home",name:"Acceptance Home",background:"#182126",bindingMode:"contract",binding:"AcceptanceHome",transition:"slide-left",transitionDuration:350},{id:"acceptance-signals",name:"Signals",background:"#122022",bindingMode:"contract",binding:"AcceptanceSignals",transition:"fade",transitionDuration:300},{id:"acceptance-media",name:"Media & Motion",background:"#182126",bindingMode:"contract",binding:"AcceptanceMedia",transition:"scale",transitionDuration:350}];
-    state.pages=pages; state.activePage=pages[0].id; state.items=[]; state.assets=[asset,...retainedFonts]; state.reusables=[]; state.pageTemplates=[]; state.themes=[]; state.customComponents=[];
-    const customAcceptance={id:"custom-acceptance-button",name:"Acceptance Custom Button",category:"Custom",icon:"🧪",version:"1.0.0",defaultSize:{width:260,height:120},
-      html:'<!doctype html><html><head><style>html,body{margin:0;width:100%;height:100%;background:transparent}.acceptance-custom{width:100%;height:100%;border:1px solid #fff;border-radius:14px;background:#203332;color:#fff;box-shadow:0 0 14px #04dcb9;font:700 22px Segoe UI}</style></head><body><button class="acceptance-custom">CUSTOM</button><script>var b=document.querySelector("button"),up=function(){window.ComposerSignals.publish("press",false)};b.onpointerdown=function(){window.ComposerSignals.publish("press",true)};b.onpointerup=up;b.onpointercancel=up;window.ComposerSignals.subscribe("selected",function(v){b.style.background=v?"#04aa8e":"#203332"});window.ComposerSignals.subscribe("name",function(v){if(v!=null&&v!=="")b.textContent=String(v)});<\/script></body></html>',
-      properties:[{key:"textSize",name:"Text size",type:"number",defaultValue:22}],signals:[{key:"press",name:"Press",type:"digital",direction:"output",defaultValue:"Acceptance.Custom.Press"},{key:"selected",name:"Selected",type:"digital",direction:"input",defaultValue:"Acceptance.Custom.Selected"},{key:"name",name:"Name",type:"serial",direction:"input",defaultValue:"Acceptance.Custom.Name"}]};
-    state.customComponents.push(customAcceptance); registerCustomComponent(customAcceptance);
-    const fontFamily=retainedFonts[0]?fontAssetFamily(retainedFonts[0]):"", add=(id,page,x,y,overrides)=>{const item=acceptanceItem(id,page,x,y,overrides);if(item)state.items.push(item);return item;};
-    const nav=add("standard-button",pages[0].id,40,40,{name:"Navigate to Signals",targetPage:pages[1].id,properties:{text:"SIGNALS",fontAsset:fontFamily},interactions:[{trigger:"press",preset:"glow",duration:300,delay:0,easing:"ease-out",pressEffect:"particle"}]});
-    if(nav){nav.graphicAsset=asset.id;nav.graphicAssetMode="overlay";nav.graphicAssetWidth=24;nav.graphicAssetHeight=24;nav.graphicAssetX=16;}
-    add("volume-slider",pages[0].id,390,40,{name:"Analog Volume"}); add("rolling-menu",pages[0].id,40,260,{name:"Repeated Rolling Menu"}); add("text-block",pages[0].id,470,280,{name:"Font and Serial Text",properties:{text:"CUSTOM FONT / SERIAL",fontAsset:fontFamily}});
-    add("standard-button",pages[1].id,20,30,{name:"Digital Button",w:240,h:110}); add("rotary-knob",pages[1].id,300,20,{name:"Analog Rotary",w:280,h:330}); add("lighting-control",pages[1].id,620,20,{name:"Multi Lighting",w:620,h:330}); add("microphone-control",pages[1].id,20,400,{name:"Multi Microphones",w:1220,h:360});
-    add("horizontal-scrolling-text",pages[2].id,40,40,{name:"Scrolling Serial Text"}); add("video-input",pages[2].id,40,210,{name:"Video and PTZ",w:620,h:360}); add("loading-spinner",pages[2].id,760,210,{name:"Animated Loading"}); add("custom-acceptance-button",pages[2].id,950,40,{name:"Custom Component"});
-    const reusableSource=add("standard-button",pages[0].id,900,40,{name:"Reusable Master",properties:{text:"MASTER"}}); if(reusableSource){const reusableId=uid("reusable-"),instanceId=uid("instance-");reusableSource.reusableId=reusableId;reusableSource.reusableKey="button";reusableSource.linkedInstanceId=instanceId;state.reusables.push({id:reusableId,name:"Acceptance Navigation Symbol",masterInstanceId:instanceId,items:reusableSnapshot([reusableSource])});}
-    const alternateKey=panelLayoutKey("ipad-landscape",1920,1080); state.items.forEach((item)=>{item.deviceOverrides[alternateKey]=window.ComposerResponsiveLayout.adaptRect(item,{width:1280,height:800},{width:1920,height:1080},item.layout);});
-    state.contract={name:"ComposerAcceptance",description:"Cross-runtime acceptance test",company:"",client:"",author:"",version:"1.0.0.0"}; state.acceptance={startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),results:{},notes:"",environment:{}};
-    state.targetDevice="tsw-1070";state.width=1280;state.height=800;$("target-device").value=state.targetDevice;$("panel-width").value=state.width;$("panel-height").value=state.height;resize(state.width,state.height);renderPage();history.length=0;historyIndex=-1;commitHistory();renderAcceptanceEnvironment();renderAcceptanceChecklist();setStatus("Acceptance test project created");
-  }
-  async function runAcceptanceAutomaticChecks() {
-    const test=(id,condition,message)=>setAcceptanceResult(id,condition?"pass":"fail",message),p=project(),serialized=JSON.stringify(p),reopened=JSON.parse(serialized),html=window.ComposerExporter.exportProject(p),validation=runValidation(false),signals=collectProjectSignals(),font=state.assets.find((asset)=>String(asset.type || "").includes("font"));
-    test("health",validation.errors.length===0,validation.issues.length?`0 blocking errors; ${validation.issues.length} warning(s). Open Project Health for details.`:"No Project Health issues.");
-    test("roundtrip",reopened.pages.length===state.pages.length&&reopened.items.length===state.items.length&&reopened.assets.length===state.assets.length&&!!reopened.acceptance,"Project JSON serialized and reopened with acceptance results.");
-    test("export",html.includes("cr-com-lib.js")&&html.includes("ch5-webxpanel.js")&&html.includes("composer-interaction"),`Exported ${Math.ceil(html.length/1024)} KB HTML runtime.`);
-    test("signals",["digital","analog","serial"].every((type)=>signals.some((row)=>row.type===type))&&signals.some((row)=>row.range),`${signals.length} signal rows inspected.`);
-    test("responsive",state.items.some((item)=>Object.keys(item.deviceOverrides || {}).length),"Alternate-panel overrides found.");
-    test("font",!!font&&html.includes("@font-face")&&html.includes(font.dataUrl),font?`Embedded ${font.name}.`:"Import a TTF, OTF, WOFF, or WOFF2 font, select it on a text widget, and rerun.");
-    if(native)try{acceptanceState().environment=await nativeRequest("systemDiagnostics");}catch(_){} renderAcceptanceEnvironment();renderAcceptanceChecklist();scheduleHistory();setStatus("Acceptance automated checks completed");
-  }
-  function acceptanceReport() {
-    const acceptance=acceptanceState(),lines=["CRESTRON UI COMPOSER — CROSS-RUNTIME ACCEPTANCE REPORT",`Generated: ${new Date().toLocaleString()}`,`Project: ${state.contract.name || "Untitled"}`,`Target: ${selectedDevice().name} (${state.width}×${state.height})`,`Started: ${acceptance.startedAt || "Not started"}`,`Last updated: ${acceptance.updatedAt || "—"}`,"","ENVIRONMENT",JSON.stringify(acceptance.environment || {},null,2),""]; let lastGroup="";
-    acceptanceChecks.forEach(([group,id,title,description])=>{if(group!==lastGroup){lines.push(group.toUpperCase());lastGroup=group;}const result=acceptanceResult(id);lines.push(`[${result.status.toUpperCase()}] ${title}`,`  ${description}`,result.notes?`  Evidence: ${result.notes}`:"",result.testedAt?`  Tested: ${new Date(result.testedAt).toLocaleString()}`:"");}); lines.push("","OVERALL NOTES",acceptance.notes || "None"); return lines.filter((line,index,array)=>line!==""||array[index-1]!=="").join("\n");
   }
   function project() {
     return {
@@ -26814,7 +26637,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     state.subpages = p.subpages || [];
     state.themes = p.themes || [];
     mergeGlobalCustomComponents(p.customComponents || [], p.assets || []);
-    state.acceptance = p.acceptance || { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     scheduleComponentLibrarySave();
     state.contract = { ...state.contract, ...(p.contract || {}) };
     state.pages = p.pages || [
@@ -26962,8 +26784,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("validate-project").onclick = () => runValidation(true);
   $("panel-performance").onclick = () =>
     runAuditUi(runPanelPerformanceReport, "Panel performance report");
-  $("release-readiness").onclick = () =>
-    runAuditUi(openReleaseReadiness, "Release readiness");
   document.querySelectorAll("[data-health-filter]").forEach((button) => {
     button.onclick = () => {
       healthIssueFilter = button.dataset.healthFilter;
@@ -26976,18 +26796,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("health-search").oninput = renderHealthDashboard;
   $("health-fix-all").onclick = fixAllHealthIssues;
   $("build-self-test").onclick = runBuildSelfTest;
-  $("acceptance-test").onclick = openAcceptanceTest;
-  $("acceptance-create-project").onclick = createAcceptanceProject;
-  $("acceptance-run-automatic").onclick = runAcceptanceAutomaticChecks;
-  $("acceptance-reset").onclick = () => {
-    if (!confirm("Reset every acceptance result and note?")) return;
-    state.acceptance = { startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),results:{},notes:"",environment:acceptanceState().environment || {} };
-    renderAcceptanceChecklist(); scheduleHistory();
-  };
-  $("acceptance-notes").onchange = (event) => {
-    const acceptance=acceptanceState(); acceptance.notes=event.target.value; acceptance.updatedAt=new Date().toISOString(); scheduleHistory();
-  };
-  $("acceptance-export").onclick = () => download("crestron-ui-acceptance-report.txt",acceptanceReport(),"text/plain");
   $("project-backups").onclick = async () => {
     if (!native)
       return alert("Project backups are available in the Windows application.");
@@ -27835,7 +27643,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     state.themes = [];
     state.customComponents = structuredClone(globalComponentLibrary.components || []);
     state.customComponents.forEach(registerCustomComponent);
-    state.acceptance = { startedAt: "", updatedAt: "", results: {}, notes: "", environment: {} };
     state.contract = {
       name: "MyCrestronUI",
       description: "",

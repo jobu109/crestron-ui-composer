@@ -14,7 +14,6 @@ Use this checklist for the next beta and again before promoting that beta to sta
 - [ ] Open a representative project with contracts, multi-device widgets, assets, responsive overrides, custom fonts, timelines, and actions.
 - [ ] Run **Project → Health check** and resolve blocking errors.
 - [ ] Run **Project → Panel performance** and review every high-cost finding on the lowest-powered target.
-- [ ] Run **Project → Acceptance test** and complete every Editor and Preview check.
 - [ ] Export the signal schedule and compare the generated `.cce` or `.cse2j` in Signal Manager.
 
 ## 3. CH5 runtime checks
@@ -28,13 +27,7 @@ Use this checklist for the next beta and again before promoting that beta to sta
 - [ ] Verify installation, startup, page changes, scrolling, animations, feedback, and output events.
 - [ ] Confirm Deployment History records a successful result and that rollback can validate the backup package.
 
-## 4. Release-readiness gate
-
-- [ ] Run **Project → Release readiness** after the final build and physical-panel deployment.
-- [ ] Confirm Project Health, contracts, acceptance, performance, current artifact, and verified deployment all pass.
-- [ ] Export and retain the readiness report with the release evidence.
-
-## 5. Installer checks
+## 4. Installer checks
 
 Build the candidate packages:
 
@@ -56,7 +49,7 @@ Run the isolated upgrade test. It installs a separate test product, verifies rep
 - [ ] Manual launch from a newly installed MSI passed.
 - [ ] `.cuiproj` file association opened the installed application.
 
-## 6. GitHub beta
+## 5. GitHub beta
 
 - [ ] Update application/package/installer versions consistently.
 - [ ] Commit only intended files; do not include local editor or assistant settings.
@@ -64,7 +57,7 @@ Run the isolated upgrade test. It installs a separate test product, verifies rep
 - [ ] Publish MSI and portable ZIP as a GitHub prerelease.
 - [ ] Use `RELEASE_NOTES_1.4.0-beta.1.md` as the initial release description.
 
-## 7. Stable promotion
+## 6. Stable promotion
 
 - [ ] No blocking beta reports remain.
 - [ ] Repeat automated, installer, CH5 Desktop, and physical-panel checks using the final commit.

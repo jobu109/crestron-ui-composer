@@ -7,7 +7,9 @@ const assert = require("node:assert/strict"),
   root = path.resolve(__dirname, "..");
 
 function read(name) {
-  return fs.readFileSync(path.join(root, name), "utf8");
+  // Normalize line endings: git's core.autocrlf can check these files out with
+  // CRLF on Windows, and several assertions below check LF-only substrings.
+  return fs.readFileSync(path.join(root, name), "utf8").replace(/\r\n/g, "\n");
 }
 function run(name, fn) {
   try {
@@ -997,7 +999,6 @@ run("undo history covers every persistent project field", () => {
     "pageTemplates",
     "themes",
     "customComponents",
-    "acceptance",
     "contract",
   ].forEach((field) =>
     assert.ok(
@@ -1237,19 +1238,6 @@ run("panel performance profiler identifies expensive pages and widgets", () => {
   assert.match(editor, /className = `health-metric \$\{rating/);
 });
 
-run("release readiness gates beta publication on verified evidence", () => {
-  const editor = read("editor.js"),
-    markup = read("editor.html");
-  assert.match(markup, /id="release-readiness"/);
-  assert.match(editor, /function releaseReadinessAudit/);
-  assert.match(editor, /Project Health/);
-  assert.match(editor, /Contract generation/);
-  assert.match(editor, /Acceptance checklist/);
-  assert.match(editor, /Current build artifact/);
-  assert.match(editor, /Verified deployment/);
-  assert.match(editor, /clean-install and upgrade-install tests/);
-});
-
 run("Help includes a complete built-in general user manual", () => {
   const editor = read("editor.js"),
     markup = read("editor.html"),
@@ -1443,24 +1431,9 @@ run("custom fonts remain embedded from import through CH5Z export", () => {
   assert.ok(exporter.includes("@font-face"));
 });
 
-run("cross-runtime acceptance workflow is project-persistent and reportable", () => {
-  const editor = read("editor.js"),
-    markup = read("editor.html"),
-    styles = read("editor.css");
-  assert.ok(markup.includes('id="acceptance-test"'));
-  assert.ok(markup.includes('id="acceptance-dialog"'));
-  assert.ok(markup.includes('id="acceptance-create-project"'));
-  assert.ok(markup.includes('id="acceptance-run-automatic"'));
-  assert.ok(editor.includes("const acceptanceChecks"));
-  assert.ok(editor.includes("function createAcceptanceProject"));
-  assert.ok(editor.includes("function runAcceptanceAutomaticChecks"));
-  assert.ok(editor.includes("function acceptanceReport"));
-  assert.ok(editor.includes("acceptance: state.acceptance"));
-  assert.ok(editor.includes('"CH5 Desktop"'));
-  assert.ok(editor.includes('"TSW-1070"'));
+run("project health overlap detection skips system-managed and hidden items", () => {
+  const editor = read("editor.js");
   assert.ok(editor.includes("if (x.systemManaged || y.systemManaged || x.hidden || y.hidden) continue"));
-  assert.ok(editor.includes("0 blocking errors"));
-  assert.ok(styles.includes(".acceptance-checklist"));
 });
 
 run("linked subpages persist, render, export, and travel in design libraries", () => {

@@ -213,6 +213,8 @@
             </button>
             <span class="menu-separator"></span>
             <button id="palette-preferences">Preferences</button>
+            <button id="storage-settings">Storage locations</button>
+            <button id="project-backups">Backups</button>
           </div>
         </details>
         <details class="app-menu">
@@ -234,10 +236,6 @@
             <button id="validate-project">Health check</button>
             <button id="panel-performance">Panel performance</button>
             <button id="build-self-test">Export/build self-test</button>
-            <button id="acceptance-test">Acceptance test</button>
-            <button id="release-readiness">Release readiness</button>
-            <button id="project-backups">Backups</button>
-            <button id="storage-settings">Storage locations</button>
             <button id="build-ch5">Build Project</button>
           </div>
         </details>
@@ -2581,29 +2579,6 @@
         <p id="project-search-summary" class="hint"></p>
         <div id="project-search-results" class="project-search-results"></div>
         <div class="dialog-actions"><button value="default">Close</button></div>
-      </form>
-    </dialog>
-    <dialog id="acceptance-dialog" class="acceptance-dialog">
-      <form method="dialog">
-        <h2>Cross-runtime acceptance test</h2>
-        <p id="acceptance-summary" class="hint"></p>
-        <div class="acceptance-toolbar">
-          <button id="acceptance-create-project" type="button" class="primary">Create acceptance project</button>
-          <button id="acceptance-run-automatic" type="button">Run automated checks</button>
-          <button id="acceptance-reset" type="button">Reset results</button>
-        </div>
-        <section class="acceptance-environment">
-          <h3>Environment and package</h3>
-          <div id="acceptance-environment"></div>
-        </section>
-        <div id="acceptance-checklist" class="acceptance-checklist"></div>
-        <label class="acceptance-notes">Overall test notes
-          <textarea id="acceptance-notes" rows="4" placeholder="Processor, panel firmware, observed differences, ticket numbers, or follow-up work…"></textarea>
-        </label>
-        <div class="dialog-actions">
-          <button id="acceptance-export" type="button">Export report</button>
-          <button value="default">Close</button>
-        </div>
       </form>
     </dialog>
     <dialog id="backup-dialog" class="backup-dialog">

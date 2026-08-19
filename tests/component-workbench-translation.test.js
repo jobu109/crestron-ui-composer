@@ -3,7 +3,9 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8");
+// Normalize line endings: git's core.autocrlf can check this file out with
+// CRLF on Windows, and the multi-line substring checks below are LF-only.
+const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8").replace(/\r\n/g, "\n");
 
 assert.ok(editor.includes("function populateCustomWorkbenchFromTranslation"));
 assert.ok(editor.includes("translatedSuggestion: true"));
