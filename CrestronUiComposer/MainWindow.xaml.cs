@@ -318,6 +318,9 @@ public partial class MainWindow : Window
                 case "openContractEditorProject":
                     SaveContractEditorProject(id, root.GetProperty("payload"), true);
                     break;
+                case "buildChdFile":
+                    BuildChdFile(id, root.GetProperty("payload"));
+                    break;
                 default:
                     Respond(id, false, null, $"Unknown desktop command: {command}");
                     break;
@@ -372,6 +375,27 @@ public partial class MainWindow : Window
             }
         }
         Respond(id, true, new { path = dialog.FileName, opened = openAfterSave }, null);
+    }
+
+    private void BuildChdFile(string id, JsonElement payload)
+    {
+        var contents = payload.GetProperty("contents").GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(contents))
+            throw new InvalidDataException("The generated SIMPL interface is empty. Assign at least one contract binding before building it.");
+        var requestedName = payload.TryGetProperty("name", out var nameValue) ? nameValue.GetString() ?? "CrestronUiContract" : "CrestronUiContract";
+        var fileName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or ' ').ToArray()).Trim();
+        if (string.IsNullOrWhiteSpace(fileName)) fileName = "CrestronUiContract";
+        var dialog = new SaveFileDialog
+        {
+            Title = "Build SIMPL Windows Interface",
+            Filter = "SIMPL Windows Interface (*.chd)|*.chd",
+            FileName = fileName + ".chd",
+            AddExtension = true,
+            InitialDirectory = LoadStorageSettings()["exports"]
+        };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        File.WriteAllText(dialog.FileName, contents);
+        Respond(id, true, new { path = dialog.FileName }, null);
     }
 
     private static void ValidateContractEditorProject(string contents)
@@ -960,12 +984,21 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(projectName)) throw new InvalidOperationException("The package name must contain letters or numbers.");
 
         string? contractPath = null;
+        string? generatedContractMapping = null;
         if (usesContracts)
         {
-            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j)", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
-            if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
-            contractPath = contractDialog.FileName;
-            ValidateContractMapping(contractPath);
+            if (payload.TryGetProperty("contractMapping", out var mappingProp) && mappingProp.ValueKind == JsonValueKind.String)
+                generatedContractMapping = mappingProp.GetString();
+            if (string.IsNullOrWhiteSpace(generatedContractMapping))
+            {
+                // Composer generates the .cse2j mapping inline from its own contract data; this
+                // dialog only remains as a fallback if that generation did not run (e.g. an older
+                // cached page) or the caller explicitly wants to supply a Contract Editor file.
+                var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j)", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
+                if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+                contractPath = contractDialog.FileName;
+                ValidateContractMapping(contractPath);
+            }
         }
 
         var saveDialog = new SaveFileDialog { Title = "Build Crestron CH5 Package", Filter = "Crestron HTML5 Archive (*.ch5z)|*.ch5z", FileName = projectName + ".ch5z", AddExtension = true, InitialDirectory = LoadStorageSettings()["exports"] };
@@ -995,7 +1028,17 @@ public partial class MainWindow : Window
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
             CopyWebXPanelRuntime(source);
 
-            var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+            string archiveContractPath;
+            if (!string.IsNullOrWhiteSpace(generatedContractMapping))
+            {
+                archiveContractPath = Path.Combine(workRoot, projectName + ".cse2j");
+                File.WriteAllText(archiveContractPath, generatedContractMapping);
+                ValidateContractMapping(archiveContractPath);
+            }
+            else
+            {
+                archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+            }
             var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\" -P \"samplesource=Shell\"";
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -1011,7 +1054,7 @@ public partial class MainWindow : Window
             ValidateCh5Archive(saveDialog.FileName);
             var file = new FileInfo(saveDialog.FileName);
             var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(saveDialog.FileName)));
-            Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null, size = file.Length, sha256 }, null);
+            Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null || generatedContractMapping is not null, size = file.Length, sha256 }, null);
         }
         finally
         {
@@ -1025,12 +1068,18 @@ public partial class MainWindow : Window
         if (packages.Length == 0) throw new InvalidOperationException("Select at least one panel package.");
         var usesContracts = payload.TryGetProperty("usesContracts", out var contractFlag) && contractFlag.GetBoolean();
         string? contractPath = null;
+        string? generatedContractMapping = null;
         if (usesContracts)
         {
-            var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j) for all panel packages", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
-            if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
-            contractPath = contractDialog.FileName;
-            ValidateContractMapping(contractPath);
+            if (payload.TryGetProperty("contractMapping", out var mappingProp) && mappingProp.ValueKind == JsonValueKind.String)
+                generatedContractMapping = mappingProp.GetString();
+            if (string.IsNullOrWhiteSpace(generatedContractMapping))
+            {
+                var contractDialog = new OpenFileDialog { Title = "Select the Contract Editor mapping (.cse2j) for all panel packages", Filter = "Contract Editor mapping (.cse2j)|*.cse2j", Multiselect = false };
+                if (contractDialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+                contractPath = contractDialog.FileName;
+                ValidateContractMapping(contractPath);
+            }
         }
 
         var folderDialog = new OpenFolderDialog { Title = "Select the multi-panel package output folder", Multiselect = false, InitialDirectory = LoadStorageSettings()["exports"] };
@@ -1050,7 +1099,7 @@ public partial class MainWindow : Window
             var html = package.GetProperty("html").GetString() ?? "";
             var deviceJson = package.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
             var destination = Path.Combine(folderDialog.FolderName, projectName + ".ch5z");
-            CreateCh5Archive(cli, runtime, html, projectName, deviceJson, contractPath, destination);
+            CreateCh5Archive(cli, runtime, html, projectName, deviceJson, contractPath, generatedContractMapping, destination);
             paths.Add(destination);
             artifacts.Add(new
             {
@@ -1062,7 +1111,7 @@ public partial class MainWindow : Window
         Respond(id, true, new { folder = folderDialog.FolderName, paths, artifacts }, null);
     }
 
-    private static void CreateCh5Archive(string cli, string runtime, string html, string projectName, string deviceJson, string? contractPath, string destination)
+    private static void CreateCh5Archive(string cli, string runtime, string html, string projectName, string deviceJson, string? contractPath, string? generatedContractMapping, string destination)
     {
         var workRoot = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", Guid.NewGuid().ToString("N"));
         var source = Path.Combine(workRoot, "project");
@@ -1078,7 +1127,17 @@ public partial class MainWindow : Window
             var runtimeLicense = Path.Combine(Path.GetDirectoryName(runtime)!, "cr-com-lib.js.LICENSE.txt");
             if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
             CopyWebXPanelRuntime(source);
-            var archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+            string archiveContractPath;
+            if (!string.IsNullOrWhiteSpace(generatedContractMapping))
+            {
+                archiveContractPath = Path.Combine(workRoot, projectName + ".cse2j");
+                File.WriteAllText(archiveContractPath, generatedContractMapping);
+                ValidateContractMapping(archiveContractPath);
+            }
+            else
+            {
+                archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+            }
             var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\" -P \"samplesource=Shell\"";
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -1111,7 +1170,7 @@ public partial class MainWindow : Window
         var timer = Stopwatch.StartNew();
         try
         {
-            CreateCh5Archive(cli, runtime, html, "ComposerSelfTest", deviceJson, null, destination);
+            CreateCh5Archive(cli, runtime, html, "ComposerSelfTest", deviceJson, null, null, destination);
             ValidateCh5Archive(destination);
             timer.Stop();
             Respond(id, true, new { size = new FileInfo(destination).Length, elapsedMilliseconds = timer.ElapsedMilliseconds }, null);

@@ -7262,6 +7262,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return result;
   }
   function cse2jComparisonSignals(mapping) {
+    // Real Contract Editor shape: signals.{states|events}.{boolean|numeric|string}.{ControlId}.{Join} = "Path.Attribute".
+    // states = Commands (input to widget), events = Feedbacks (output from widget).
+    const signals = mapping?.signals;
+    if (signals && typeof signals === "object") {
+      const result = [], seen = new Set(),
+        typeOf = { boolean: "digital", numeric: "analog", string: "serial" },
+        directionOf = { states: "input", events: "output" };
+      Object.entries(directionOf).forEach(([groupKey, direction]) => {
+        const group = signals[groupKey];
+        if (!group || typeof group !== "object") return;
+        Object.entries(typeOf).forEach(([bucketKey, type]) => {
+          const bucket = group[bucketKey];
+          if (!bucket || typeof bucket !== "object") return;
+          Object.values(bucket).forEach((joinMap) => {
+            if (!joinMap || typeof joinMap !== "object") return;
+            Object.values(joinMap).forEach((path) => {
+              const value = String(path || "").trim();
+              if (!value || !value.includes(".") || seen.has(value)) return;
+              seen.add(value);
+              result.push({ path: value, type, direction });
+            });
+          });
+        });
+      });
+      if (result.length) return result;
+    }
+    // Fallback heuristic scan for unrecognized/legacy files.
     const result = [], known = new Set(), metadata = /^(type|direction|join|value|state|event|serial|analog|digital|notes|id)$/i;
     const add = (path, node) => {
       path = String(path || "").replace(/^signals\.?/i, "").replace(/^\.+|\.+$/g, "");
@@ -8376,6 +8403,354 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     };
     return { contract, rows, errors };
   }
+  // Mirrors the .cse2j serialization in Crestron's CH5 Contract Editor
+  // (CH5ContainerAppData/CH5Signals/CH5States/CH5Events + the join-id
+  // generator's ControlId/Join numbering), reverse-engineered from its
+  // installed app.asar so Composer can emit a build-ready mapping directly
+  // instead of round-tripping through the external editor.
+  function buildCse2jMapping(result) {
+    const contract = result.contract,
+      componentsById = new Map((contract.components || []).map((component) => [component.id, component])),
+      typeNames = ["boolean", "numeric", "string"],
+      buckets = {
+        states: { boolean: {}, numeric: {}, string: {} },
+        events: { boolean: {}, numeric: {}, string: {} },
+      };
+    let controlId = 1;
+    // Confirmed against a real Contract Editor .cse2j: states and events are NOT
+    // symmetric. states nests {ControlId: {Join: "path"}}. events is flat, keyed
+    // directly by the full dotted path, with explicit {joinId, smartObjectId}
+    // values — smartObjectId is the same ControlId used on the states side. Also,
+    // a gap (unnamed) paired command/feedback slot still consumes a join number;
+    // it's only omitted from the output, not compacted out of the numbering.
+    const assignStateJoins = (entries, dict, id, path) => {
+      let join = 0;
+      const joinMap = {};
+      entries.forEach((entry) => {
+        join += 1;
+        if (entry.name) joinMap[join] = `${path}.${entry.name}`;
+      });
+      if (Object.keys(joinMap).length) dict[id] = joinMap;
+    };
+    const assignEventJoins = (entries, dict, id, path) => {
+      let join = 0;
+      entries.forEach((entry) => {
+        join += 1;
+        if (entry.name) dict[`${path}.${entry.name}`] = { joinId: join, smartObjectId: id };
+      });
+    };
+    const visit = (specification, parentPath) => {
+      const component = componentsById.get(specification.componentId);
+      if (!component) return;
+      const numberOfInstances = Math.max(1, Number(specification.numberOfInstances) || 1);
+      for (let instanceIndex = 0; instanceIndex < numberOfInstances; instanceIndex++) {
+        const instanceName = numberOfInstances > 1
+            ? `${specification.instanceName}[${instanceIndex}]`
+            : specification.instanceName,
+          path = [parentPath, instanceName].filter(Boolean).join("."),
+          id = controlId++;
+        typeNames.forEach((typeName, index) => {
+          const dataType = index + 1;
+          assignStateJoins(
+            (component.commands || []).filter((entry) => entry.dataType === dataType),
+            buckets.states[typeName], id, path,
+          );
+          assignEventJoins(
+            (component.feedbacks || []).filter((entry) => entry.dataType === dataType),
+            buckets.events[typeName], id, path,
+          );
+        });
+        (component.specifications || []).forEach((child) => visit(child, path));
+      }
+    };
+    (contract.specifications || []).forEach((specification) => visit(specification, ""));
+    const trim = (group) => {
+      const output = {};
+      typeNames.forEach((typeName) => {
+        if (Object.keys(group[typeName]).length) output[typeName] = group[typeName];
+      });
+      return output;
+    };
+    return {
+      name: String(contract.name || "CrestronUiContract").replace(/\s+/g, "_"),
+      timestamp: new Date().toISOString(),
+      version: contract.version || "1.0.0.0",
+      schema_version: contract.schemaVersion || 1,
+      extra_value: contract.description || "",
+      signals: { states: trim(buckets.states), events: trim(buckets.events) },
+    };
+  }
+  // Mirrors the .chd SIMPL Windows symbol file produced by Crestron's CH5 Contract
+  // Editor (FileSignature/Header/SymbolObject/ParameterPropertyDefinition/
+  // CrestronHtml5Definition sections, plus the Folder/_reserved_ hierarchy every
+  // symbol's ParentChdFolder depends on, via its Ini encoder), reverse-engineered
+  // from its installed app.asar and validated against a real exported .chd.
+  function chdIniQuoted(value) {
+    return (value.charAt(0) === '"' && value.slice(-1) === '"') || (value.charAt(0) === "'" && value.slice(-1) === "'");
+  }
+  function chdIniSafe(value) {
+    if (typeof value !== "string" || (value.length > 1 && chdIniQuoted(value)) || value !== value.trim())
+      return JSON.stringify(value);
+    return value.replace(/;/g, "\\;").replace(/#/g, "\\#");
+  }
+  function chdIniEncode(obj) {
+    let out = "[\r\n";
+    const children = [];
+    Object.entries(obj).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (value instanceof Map) {
+        value.forEach((itemValue, itemKey) => {
+          const text = chdIniSafe(itemValue);
+          if (text !== "") out += `${itemKey}=${text}\r\n`;
+        });
+      } else if (typeof value === "object") {
+        children.push(key);
+      } else {
+        const text = chdIniSafe(value);
+        if (text !== "") out += `${chdIniSafe(key)}=${text}\r\n`;
+      }
+    });
+    out += "]\r\n";
+    children.forEach((key) => {
+      const child = chdIniEncode(obj[key]);
+      if (out.length && child.length) out += "\r\n";
+      out += child;
+    });
+    return out;
+  }
+  function buildChdMapping(result) {
+    const contract = result.contract,
+      componentsById = new Map((contract.components || []).map((component) => [component.id, component])),
+      byType = (list, dataType) => (list || []).filter((entry) => entry.dataType === dataType),
+      joinList = (entries) =>
+        entries.map((entry) => ({
+          name: entry.name || "[~UNUSED3~]",
+          isGap: !entry.name,
+          id: entry.id,
+          notes: entry.notes || "",
+        }));
+    let controlId = 1,
+      folderId = 1;
+    // Two independent id pools, confirmed against a real Contract Editor .chd sample:
+    // controlId is shared by every visited node (folder-only namespace components like
+    // "Global"/"Home" consume one too, even though they never get a [Symbol]/[CHD] block);
+    // folderId is separate and only allocated to nodes that have child specifications.
+    // A specification with numberOfInstances > 1 (a ranged/multi-instance widget, e.g. a
+    // list's repeated items) must become one indexed control per instance ("Items[0]",
+    // "Items[1]", ...) — confirmed against a real Contract Editor .chd, which emits a
+    // fully separate [Symbol]/[Dp]/[CHD] triplet per instance, all sharing the same join
+    // ids (those belong to the component definition's attributes, not the instance).
+    const visit = (specification, parentPath, parentFolderId) => {
+      const component = componentsById.get(specification.componentId);
+      if (!component) return [];
+      const numberOfInstances = Math.max(1, Number(specification.numberOfInstances) || 1),
+        childSpecifications = component.specifications || [],
+        nodes = [];
+      for (let instanceIndex = 0; instanceIndex < numberOfInstances; instanceIndex++) {
+        const instanceName = numberOfInstances > 1
+            ? `${specification.instanceName}[${instanceIndex}]`
+            : specification.instanceName,
+          path = [parentPath, instanceName].filter(Boolean).join("."),
+          id = controlId++,
+          uniqueId = `${specification.id}${id}`,
+          node = {
+            controlId: id,
+            uniqueId,
+            name: path,
+            hint: `${path} (Control Join Id ${id})`,
+            commandBooleans: joinList(byType(component.commands, 1)),
+            commandNumerics: joinList(byType(component.commands, 2)),
+            commandStrings: joinList(byType(component.commands, 3)),
+            feedbackBooleans: joinList(byType(component.feedbacks, 1)),
+            feedbackNumerics: joinList(byType(component.feedbacks, 2)),
+            feedbackStrings: joinList(byType(component.feedbacks, 3)),
+            parentFolderId,
+            folderId: null,
+            children: [],
+          };
+        if (childSpecifications.length) node.folderId = folderId++;
+        childSpecifications.forEach((child) => {
+          node.children.push(...visit(child, path, node.folderId != null ? node.folderId : parentFolderId));
+        });
+        nodes.push(node);
+      }
+      return nodes;
+    };
+    const topNodes = (contract.specifications || []).flatMap((specification) => visit(specification, "", 0));
+    const allNodes = [];
+    (function collect(list) {
+      list.forEach((node) => {
+        allNodes.push(node);
+        collect(node.children);
+      });
+    })(topNodes);
+
+    const hasNonGap = (list) => list.some((entry) => !entry.isGap),
+      hasIO = (control) =>
+        [
+          control.commandBooleans, control.commandNumerics, control.commandStrings,
+          control.feedbackBooleans, control.feedbackNumerics, control.feedbackStrings,
+        ].some((list) => list.length && hasNonGap(list)),
+      isTriListed = (control) => {
+        let dataTypesInUse = 0;
+        if ((control.commandBooleans.length && hasNonGap(control.commandBooleans)) ||
+            (control.feedbackBooleans.length > 1 && hasNonGap(control.feedbackBooleans)))
+          dataTypesInUse = 1;
+        if ((control.commandNumerics.length && hasNonGap(control.commandNumerics)) ||
+            (control.feedbackNumerics.length > 1 && hasNonGap(control.feedbackNumerics)))
+          dataTypesInUse += 1;
+        if (dataTypesInUse === 2) return true;
+        // Mirrors Contract Editor's own tri-list check verbatim: both branches inspect
+        // CommandStrings (not FeedbackStrings) — that appears to be a quirk in Crestron's
+        // own logic, reproduced here rather than "corrected" against unverified behavior.
+        if ((control.commandStrings.length && hasNonGap(control.commandStrings)) ||
+            (control.commandStrings.length > 1 && hasNonGap(control.commandStrings))) {
+          dataTypesInUse += 1;
+          if (dataTypesInUse === 2) return true;
+        }
+        return false;
+      },
+      ioGroup = (entries, cuePrefix, sigTypeKey, joinKey, sigType, tooltipKey) => {
+        if (!entries.length) return null;
+        const map = new Map();
+        entries.forEach((entry, index) => {
+          const cue = index + 1;
+          map.set(`${cuePrefix}${cue}`, entry.name);
+          map.set(`${sigTypeKey}${cue}`, sigType);
+          map.set(`${joinKey}${cue}`, String(entry.id));
+          if (entry.notes) map.set(`${tooltipKey}${cue}`, entry.notes.slice(0, 100).trimEnd());
+        });
+        return map;
+      },
+      buildSymbolObject = (control) => {
+        const symbol = {
+          ObjTp: "Symbol",
+          Name: control.name,
+          SmplCName: control.uniqueId,
+          Hint: control.hint,
+          Code: control.controlId,
+          SMWRev: "4.13.00",
+          Expand: "expand_randomly",
+          MinVariableInputs: control.commandBooleans.length,
+          MaxVariableInputs: control.commandBooleans.length,
+          MinVariableOutputs: control.feedbackBooleans.length,
+          MaxVariableOutputs: control.feedbackBooleans.length,
+          MinVariableInputsList2: control.commandNumerics.length,
+          MaxVariableInputsList2: control.commandNumerics.length,
+          MinVariableOutputsList2: control.feedbackNumerics.length,
+          MaxVariableOutputsList2: control.feedbackNumerics.length,
+          MinVariableInputsList3: control.commandStrings.length,
+          MaxVariableInputsList3: control.commandStrings.length,
+          MinVariableOutputsList3: control.feedbackStrings.length,
+          MaxVariableOutputsList3: control.feedbackStrings.length,
+          NumFixedParams: 1,
+          ParamCue1: "ControlJoinId",
+          ParamSigType1: "UI_RO_String",
+          ControlJoinId: `${control.controlId}d`,
+          MPp: 1,
+          Pp1: control.controlId,
+          ChdH: control.controlId,
+        };
+        if (isTriListed(control)) symbol.Render = 8;
+        symbol.DigitalInputs = ioGroup(control.commandBooleans, "InputCue", "InputSigType", "SmplCInputCue", "Digital", "InputToolTip");
+        symbol.AnalogInputs = ioGroup(control.commandNumerics, "InputList2Cue", "InputList2SigType", "SmplCInputList2Cue", "Analog", "Input2ToolTip");
+        symbol.SerialInputs = ioGroup(control.commandStrings, "InputList3Cue", "InputList3SigType", "SmplCInputList3Cue", "Serial", "Input3ToolTip");
+        symbol.DigitalOutputs = ioGroup(control.feedbackBooleans, "OutputCue", "OutputSigType", "SmplCOutputCue", "Digital", "OutputToolTip");
+        symbol.AnalogOutputs = ioGroup(control.feedbackNumerics, "OutputList2Cue", "OutputList2SigType", "SmplCOutputList2Cue", "Analog", "Output2ToolTip");
+        symbol.SerialOutputs = ioGroup(control.feedbackStrings, "OutputList3Cue", "OutputList3SigType", "SmplCOutputList3Cue", "Serial", "Output3ToolTip");
+        return symbol;
+      },
+      buildParameterPropertyDefinition = (control) => ({
+        ObjTp: "Dp", Tp: 1, HD: "TRUE", NF: 1, DNF: 1, EncFmt: 0, DVLF: 1, Sgn: 0,
+        H: control.controlId, DV: `${control.controlId}d`,
+      }),
+      buildCrestronHtml5Definition = (control) => ({
+        ObjTp: "CHD", H: control.controlId, ChdCode: control.controlId, ParentChdFolder: control.parentFolderId,
+      }),
+      // Mirrors Folder.ProcessOrders: a folder's own main component (if it has I/O) is
+      // listed first as a CHD entry referencing its own controlId, then each child is
+      // listed as either a nested Folder (referencing the child's own folderId) or a CHD
+      // (referencing the child's controlId) depending on whether that child itself has
+      // children of its own.
+      buildFolderBlock = (node) => {
+        // Confirmed against a real Contract Editor .chd for a folder with mixed child
+        // types: it lists every CHD (leaf) child before every Folder (nested container)
+        // child, regardless of the children's original declaration order — not the
+        // interleaved order they were encountered in. Within each group, original
+        // relative order is preserved (a stable sort by type, CHD before Folder).
+        const chdItems = [], folderItems = [];
+        if (hasIO(node)) chdItems.push({ type: "CHD", handle: node.controlId });
+        node.children.forEach((child) => {
+          if (child.folderId != null) folderItems.push({ type: "Folder", handle: child.folderId });
+          else if (hasIO(child)) chdItems.push({ type: "CHD", handle: child.controlId });
+        });
+        const items = [...chdItems, ...folderItems];
+        const folder = {
+          ObjTp: "Folder",
+          Name: node.name,
+          Hint: node.name,
+          H: node.folderId,
+          ParentChdFolder: node.parentFolderId,
+          MaxChildren: node.children.length + 1,
+        };
+        items.forEach((item, index) => {
+          folder[`Order${index + 1}`] = item.type;
+          folder[`Child${index + 1}`] = String(item.handle);
+        });
+        return folder;
+      },
+      buildReservedFolder = () => {
+        const folder = {
+          ObjTp: "Folder",
+          Name: "_reserved_",
+          Hint: "reserved to define hierarchy directly under the touch screen",
+          H: 0,
+          ParentChdFolder: 0,
+          MaxChildren: 1,
+        };
+        const first = topNodes[0];
+        if (first) {
+          folder.Order1 = first.folderId != null ? "Folder" : "CHD";
+          folder.Child1 = String(first.folderId != null ? first.folderId : first.controlId);
+        }
+        return folder;
+      };
+
+    const fileSignature = {
+      ObjTp: "FSgntr", Sgntr: "CHD", RelVrs: 1,
+      Schema: contract.schemaVersion || 1, ContractEditor: contract.version || "1.0.0.0",
+    };
+    const header = {
+      ObjTp: "Hd", Schema: 1, ProjectFile: contract.name, ContractID: contract.id,
+      CEProjectVer: contract.version || "1.0.0.0", DateTimeUTC: new Date().toISOString(),
+    };
+    const description = String(contract.description || "");
+    if (description) {
+      const comments = new Map();
+      let remaining = description, index = 1;
+      while (remaining.length) {
+        comments.set(`Cmn${index++}`, remaining.slice(0, 80).trim());
+        remaining = remaining.slice(80);
+      }
+      header.Comments = comments;
+    }
+
+    let content = chdIniEncode(fileSignature) + chdIniEncode(header);
+    allNodes.filter(hasIO).forEach((control) => {
+      content += chdIniEncode(buildSymbolObject(control));
+      content += chdIniEncode(buildParameterPropertyDefinition(control));
+      content += chdIniEncode(buildCrestronHtml5Definition(control));
+    });
+    // Every symbol's ParentChdFolder is a reference into this folder hierarchy — without
+    // it (including the _reserved_ root every top-level ParentChdFolder=0 depends on),
+    // SIMPL Windows has no way to attach the compiled symbols to the touchpanel's program
+    // tree, so the file can compile cleanly while the resulting program never runs.
+    content += chdIniEncode(buildReservedFolder());
+    allNodes.filter((node) => node.folderId != null).forEach((node) => {
+      content += chdIniEncode(buildFolderBlock(node));
+    });
+    return content;
+  }
   function syncContractMetadata() {
     ["name", "description", "company", "client", "author", "version"].forEach(
       (key) => {
@@ -8448,6 +8823,38 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       else
         alert(
           "Opening Contract Editor is available in the Windows application.",
+        );
+    } catch (error) {
+      if (error.message !== "cancelled") {
+        $("contract-status").textContent = error.message;
+        alert(error.message);
+      }
+    }
+  }
+  async function saveChdFile() {
+    if (!approveExport()) return;
+    const result = contractBuildData();
+    if (result.errors.length) {
+      alert(result.errors.join("\n"));
+      return;
+    }
+    if (!result.rows.length) {
+      alert("Assign at least one contract binding before building a SIMPL interface.");
+      return;
+    }
+    const contents = buildChdMapping(result);
+    try {
+      if (native) {
+        const saved = await nativeRequest("buildChdFile", {
+          contents,
+          name: state.contract.name,
+        });
+        $("contract-status").textContent = `Built ${saved.path}`;
+      } else
+        download(
+          `${state.contract.name || "CrestronUiContract"}.chd`,
+          contents,
+          "text/plain",
         );
     } catch (error) {
       if (error.message !== "cancelled") {
@@ -26829,6 +27236,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             ([key, value]) => /bindingmode$/i.test(key) && value === "contract",
           ),
       );
+    let contractMapping = null;
+    if (usesContracts) {
+      const contractResult = contractBuildData();
+      if (contractResult.errors.length) {
+        alert(
+          `Multi-panel build cannot continue:\n\n${contractResult.errors.join("\n")}`,
+        );
+        return;
+      }
+      contractMapping = JSON.stringify(buildCse2jMapping(contractResult));
+    }
     $("contract-status").textContent =
       `Building ${packages.length} panel packages…`;
     setStatus(`Building ${packages.length} panel packages…`);
@@ -26836,6 +27254,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const result = await nativeRequest("buildCh5Packages", {
         packages,
         usesContracts,
+        contractMapping,
       });
       packages.forEach((entry, index) =>
         recordBuildArtifact(
@@ -26887,6 +27306,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("contract-export").onclick = () => saveContractEditorProject(false);
   $("contract-open").onclick = () => saveContractEditorProject(true);
+  $("contract-chd").onclick = () => saveChdFile();
   $("build-project-ch5").onclick = async () => {
     if (!approveExport()) return;
     if (!native) {
@@ -26924,12 +27344,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             )
           : findBindings(i.source).some((b) => !/^[0-9]+$/.test(b.value)),
       );
+    let contractMapping = null;
+    if (usesContracts) {
+      const contractResult = contractBuildData();
+      if (contractResult.errors.length) {
+        alert(`Build cannot continue:\n\n${contractResult.errors.join("\n")}`);
+        return;
+      }
+      contractMapping = JSON.stringify(buildCse2jMapping(contractResult));
+    }
     setStatus("Building Crestron package…");
     try {
       const result = await nativeRequest("buildCh5Package", {
         html: exportHtml(),
         projectName,
         usesContracts,
+        contractMapping,
         device,
       });
       recordBuildArtifact(result, device);
