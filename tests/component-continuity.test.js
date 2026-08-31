@@ -31,6 +31,32 @@ for (const match of editorHtml.matchAll(/<script src="([^"]+\.js)"/g)) {
 
 const definitions = ComposerRuntime.definitions;
 for (const definition of definitions.values()) {
+  const serialInputs = [
+    ...(definition.signals || []),
+    ...(definition.signalGroups || []),
+    ...(definition.rangeBindings || []),
+    ...(definition.addressBindings || []),
+  ].filter(
+    (binding) => binding.type === "serial" && binding.direction === "input",
+  );
+  for (const binding of serialInputs)
+    assert.doesNotMatch(
+      String(binding.name || ""),
+      /\bnames?\b/i,
+      `${definition.id} still exposes legacy serial-input wording: ${binding.name}`,
+    );
+  for (const property of definition.properties || [])
+    if (
+      property.signalSetting &&
+      /(?:^|[A-Z_-])name(?:Base|Signal)?$/i.test(String(property.key || ""))
+    )
+      assert.doesNotMatch(
+        String(property.name || ""),
+        /\bnames?\b/i,
+        `${definition.id} still exposes legacy serial-label property wording: ${property.name}`,
+      );
+}
+for (const definition of definitions.values()) {
   const keys = definition.properties.map((property) => property.key),
     hasEditableText = keys.some(
       (key) =>

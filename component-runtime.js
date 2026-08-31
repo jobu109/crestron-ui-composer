@@ -109,7 +109,11 @@
       pattern = type === "digital" ? /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i : type === "analog" ? direction === "output" ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i : /(?:_?(?:IndirectText|Label|Name|Text))$/i;
     let prefix = String(value || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").replace(pattern, "").replace(/_+$/g, "");
     if (/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix)) prefix = "";
-    return prefix + suffix;
+    const separatedSerialAttribute =
+      type === "serial" && /_(?:Name|Label|Text|IndirectText)$/i.test(normalized);
+    return prefix
+      ? `${prefix}${separatedSerialAttribute ? "." : ""}${suffix}`
+      : suffix;
   }
   function contractAddress(value, type, direction, prefix) {
     const address = String(value || "").replace(
@@ -866,7 +870,7 @@
       pressBase: "Press",
       feedbackBase: "Feedback",
       labelBase: "Label",
-      nameBase: "Name",
+      nameBase: "Label",
       setBase: "Level.Set",
       levelSetBase: "Level.Set",
       levelFeedbackBase: "Level.Value",
@@ -1159,6 +1163,38 @@
     definition.properties.forEach((property) => {
       if (property.signalSetting && typeof property.defaultValue === "string")
         property.defaultValue = contractPattern(property.defaultValue);
+    });
+    // Keep legacy signal/property keys (for example `name` and `nameBase`) so
+    // existing component scripts and saved projects remain compatible, while
+    // presenting the current Composer terminology everywhere in the UI.
+    const labelTerminology = (value) =>
+      String(value || "")
+        .replace(/\bNames\b/g, "Labels")
+        .replace(/\bnames\b/g, "labels")
+        .replace(/\bName\b/g, "Label")
+        .replace(/\bname\b/g, "label");
+    definition.signals.forEach((signal) => {
+      if (signal.type === "serial" && signal.direction === "input")
+        signal.name = labelTerminology(signal.name || "Label");
+    });
+    (definition.signalGroups || []).forEach((signal) => {
+      if (signal.type === "serial" && signal.direction === "input")
+        signal.name = labelTerminology(signal.name || "Label");
+    });
+    (definition.rangeBindings || []).forEach((binding) => {
+      if (binding.type === "serial" && binding.direction === "input")
+        binding.name = labelTerminology(binding.name || "Label range");
+    });
+    (definition.addressBindings || []).forEach((binding) => {
+      if (binding.type === "serial" && binding.direction === "input")
+        binding.name = labelTerminology(binding.name || "Label");
+    });
+    definition.properties.forEach((property) => {
+      if (
+        property.signalSetting &&
+        /(?:^|[A-Z_-])name(?:Base|Signal)?$/i.test(String(property.key || ""))
+      )
+        property.name = labelTerminology(property.name || "Label");
     });
     definition.signals.forEach((signal) => {
       if (typeof signal.defaultValue === "string")

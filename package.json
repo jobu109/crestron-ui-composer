@@ -1,7 +1,7 @@
 {
   "name": "crestron-ui-composer",
   "private": true,
-  "version": "1.7.1",
+  "version": "1.7.2",
   "scripts": {
     "pretest": "node tests/component-workbench-ux-baseline.test.js",
     "test": "node tests/component-workbench-baseline.test.js && node tests/component-workbench-parts.test.js && node tests/component-workbench-properties.test.js && node tests/component-workbench-connections.test.js && node tests/component-workbench-states.test.js && node tests/component-workbench-adapter.test.js && node tests/component-workbench-translation.test.js && node tests/component-workbench-entry-paths.test.js && node tests/component-workbench-simulator.test.js && node tests/component-workbench-runtime-parity.test.js && node tests/component-workbench-packaging.test.js && node tests/regression.test.js && node tests/preview-runtime.test.js && node tests/widget-audit.test.js && node tests/component-continuity.test.js"

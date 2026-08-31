@@ -413,6 +413,21 @@ run("exported action runtime is valid JavaScript", () => {
     "Home.Lighting_Control.Items[0].ValueSet",
     "Exported ranged analog addresses must use the mapped ValueSet attribute",
   );
+  assert.equal(
+    exportedResolver("Home.Mute.Name", "serial", "input"),
+    "Home.Mute.Label",
+    "Exported serial inputs must use the project-wide Label attribute",
+  );
+  assert.equal(
+    exportedResolver("Home.Mute.Label", "serial", "input"),
+    "Home.Mute.Label",
+    "Existing serial Label addresses must remain Label addresses",
+  );
+  assert.equal(
+    exportedResolver("Home.Search.Name", "serial", "output"),
+    "Home.Search.Text",
+    "Exported serial outputs must use the project-wide Text attribute",
+  );
   new Function(html.slice(start, end));
 });
 

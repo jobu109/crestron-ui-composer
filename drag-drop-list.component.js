@@ -101,7 +101,15 @@
       };
 
       list.innerHTML = "";
-      const cleanups = [];
+      const cleanups = [], pulseTimers = new Set();
+      const pulseAddress = signal => {
+        context.signals.publishAddress("digital", signal, true);
+        const timer = setTimeout(() => {
+          pulseTimers.delete(timer);
+          context.signals.publishAddress("digital", signal, false);
+        }, 100);
+        pulseTimers.add(timer);
+      };
       for (let index = 0; index < count; index++) {
         const item = document.createElement("div");
         item.className = "ddl-item";
@@ -128,8 +136,7 @@
         const pressUp = () => {
           if (!body.classList.contains("pressed")) return;
           body.classList.remove("pressed");
-          context.signals.publishAddress("digital", pressSignal, true);
-          setTimeout(() => context.signals.publishAddress("digital", pressSignal, false), 100);
+          pulseAddress(pressSignal);
         };
         const pressCancel = () => body.classList.remove("pressed");
         body.addEventListener("pointerdown", pressDown);
@@ -204,7 +211,11 @@
 
       applyActiveCount();
 
-      return () => cleanups.forEach(fn => fn());
+      return () => {
+        pulseTimers.forEach(timer => clearTimeout(timer));
+        pulseTimers.clear();
+        cleanups.forEach(fn => fn());
+      };
     },
   });
 })(window.ComposerRuntime);

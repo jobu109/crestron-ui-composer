@@ -135,7 +135,7 @@
         name: "Fan Power Name",
         type: "serial",
         direction: "input",
-        defaultValue: "FanController.Power.Label",
+        defaultValue: "FanController.PowerLabel",
       },
       {
         key: "reversePress",
@@ -156,7 +156,7 @@
         name: "Reverse Name",
         type: "serial",
         direction: "input",
-        defaultValue: "FanController.Reverse.Label",
+        defaultValue: "FanController.ReverseLabel",
       },
     ],
     rangeBindings: groups.flatMap((group) => [

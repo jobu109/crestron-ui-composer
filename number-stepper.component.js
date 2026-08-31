@@ -76,7 +76,15 @@
         tiltTimer = setTimeout(() => { card.style.transform = "rotateY(0deg)"; tiltTimer = 0; }, 150);
       };
 
-      const cleanups = [];
+      const cleanups = [], pulseTimers = new Set();
+      const pulse = signalKey => {
+        context.signals.publish(signalKey, true);
+        const timer = setTimeout(() => {
+          pulseTimers.delete(timer);
+          context.signals.publish(signalKey, false);
+        }, 100);
+        pulseTimers.add(timer);
+      };
       const bindStep = (button, signalKey, delta) => {
         const down = event => { button.classList.add("pressed"); event.preventDefault(); };
         const up = () => {
@@ -86,8 +94,7 @@
           render();
           context.signals.publish("currentCount", current);
           tilt(delta > 0 ? 1 : -1);
-          context.signals.publish(signalKey, true);
-          setTimeout(() => context.signals.publish(signalKey, false), 100);
+          pulse(signalKey);
         };
         const cancel = () => button.classList.remove("pressed");
         button.addEventListener("pointerdown", down);
@@ -112,6 +119,8 @@
 
       return () => {
         if (tiltTimer) clearTimeout(tiltTimer);
+        pulseTimers.forEach(timer => clearTimeout(timer));
+        pulseTimers.clear();
         cleanups.forEach(fn => fn());
       };
     },

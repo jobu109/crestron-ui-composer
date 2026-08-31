@@ -1857,7 +1857,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               "serial",
               addressAt(
                 properties.labelBase ||
-                  `${repeated.namespace}.Items[{index}].Name`,
+                  `${repeated.namespace}.Items[{index}].Label`,
                 index,
               ),
               (value) => sendFeedback(`__repeatName:${index}`, value),
@@ -6253,7 +6253,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           const address = prompt(
             `${type} contract name or join number:`,
             type === "Serial"
-              ? "TextBlock.Status.Name"
+              ? "TextBlock.Status.Label"
               : type === "Digital"
                 ? "TextBlock.State.Selected"
                 : "TextBlock.Level.Feedback",
@@ -12384,10 +12384,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          suffix: "Name",
+          suffix: "Label",
         },
       ],
     },
@@ -12410,10 +12410,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          suffix: "Name",
+          suffix: "Label",
         },
       ],
     },
@@ -12436,10 +12436,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          suffix: "Name",
+          suffix: "Label",
         },
       ],
     },
@@ -12455,10 +12455,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          suffix: "Name",
+          suffix: "Label",
         },
       ],
     },
@@ -12474,10 +12474,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          suffix: "Name",
+          suffix: "Label",
         },
       ],
     },
@@ -12500,10 +12500,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          suffix: "Name",
+          suffix: "Label",
         },
       ],
     },
@@ -12768,7 +12768,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           suggestions.push({ action, title, detail, confidence });
       };
     if (/querySelectorAll\s*\(/.test(javascript) && /\.forEach\s*\(/.test(javascript))
-      add("repeated", "Repeated interactive collection", "The script iterates a group of elements. Generate zero-based Press, Selected, and Name ranges.", "high");
+      add("repeated", "Repeated interactive collection", "The script iterates a group of elements. Generate zero-based Press, Selected, and Label ranges.", "high");
     if (/createElement\s*\(|insertAdjacentHTML\s*\(|\.appendChild\s*\(/.test(javascript))
       add("dynamic-count", "Dynamic item creation", "The component creates elements at runtime. Add Default Count and analog item-count behavior.", "high");
     if (/\b(next|previous|prev|increment|decrement)\b/i.test(javascript))
@@ -14442,7 +14442,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
             name: `Name${title}`,
             type: "serial",
             direction: "input",
-            suffix: buttonCount === 1 ? "Name" : `Button${index + 1}.Name`,
+            suffix: buttonCount === 1 ? "Label" : `Button${index + 1}.Label`,
           });
       }
     }
@@ -14472,7 +14472,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         name: index ? `Text ${index + 1} Name` : "Name",
         type: "serial",
         direction: "input",
-        suffix: index ? `Text${index + 1}.Name` : "Name",
+        suffix: index ? `Text${index + 1}.Label` : "Label",
       });
     });
     if (detected.numericCount > 1)
@@ -14522,7 +14522,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     // exact preset for a detected entry field to be wired up correctly.
     if (detected.textEntryCount) {
       addSignal({ key: "text", name: "Text", type: "serial", direction: "output", suffix: "Text" });
-      addSignal({ key: "name", name: "Name", type: "serial", direction: "input", suffix: "Name" });
+      addSignal({ key: "name", name: "Label", type: "serial", direction: "input", suffix: "Label" });
     }
     // A continuously-looping decorative animation (spinning ring,
     // morphing shape) is "extra stuff a standard component doesn't have"
@@ -22112,7 +22112,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           behavior: { source: "property", key: "asset", action: "imageSource" },
         },
         serialText: {
-          signal: { key: "name", name: "Name", type: "serial", direction: "input", defaultValue: `${base}.Name` },
+          signal: { key: "name", name: "Label", type: "serial", direction: "input", defaultValue: `${base}.Label` },
           behavior: { source: "signal-input", key: "name", action: "text" },
         },
         analogGlow: {
@@ -23023,7 +23023,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
         key: "labelBase",
         name: "Serial item name base / pattern",
         type: "text",
-        defaultValue: `${config.namespace}.Items[{index}].Name`,
+        defaultValue: `${config.namespace}.Items[{index}].Label`,
       }]),
     ];
     if (config.numericOutput && config.valueSetSignal !== false)
@@ -23746,10 +23746,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       },
       {
         key: "name",
-        name: "Name",
+        name: "Label",
         type: "serial",
         direction: "input",
-        defaultValue: "CustomButton.Name",
+        defaultValue: "CustomButton.Label",
       },
     ],
     customButtonCss = `html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:visible}.custom-button{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px;background:{{faceColor}};color:{{textColor}};border:1px solid {{borderColor}};border-radius:{{cornerRadius}}px;box-shadow:0 0 {{glowStrength}}px {{glowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819;transition:background .18s,color .18s,border-color .18s,box-shadow .18s;touch-action:none}.custom-button.active{background:{{selectedFaceColor}};color:{{selectedTextColor}};border-color:{{selectedBorderColor}};box-shadow:0 0 calc({{glowStrength}}px * 2) {{selectedGlowColor}},{{shadowSize}}px {{shadowSize}}px calc({{shadowSize}}px * 2) #101819}.custom-icon{font-size:{{iconSize}}px;line-height:1}.custom-label{font:700 {{textSize}}px "Segoe UI",sans-serif;text-align:center}`,
@@ -23853,10 +23853,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          defaultValue: "CustomSlider.Name",
+          defaultValue: "CustomSlider.Label",
         },
       ],
       html: '<div class="custom-slider"><label>{{text}}</label><input type="range" min="0" max="65535" value="0"><output>0%</output></div>',
@@ -23904,10 +23904,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          defaultValue: "CustomGauge.Name",
+          defaultValue: "CustomGauge.Label",
         },
       ],
       html: '<div class="custom-gauge"><label>{{text}}</label><div class="gauge-track"><div class="gauge-fill"></div></div><output>0%</output></div>',
@@ -23960,10 +23960,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         },
         {
           key: "name",
-          name: "Name",
+          name: "Label",
           type: "serial",
           direction: "input",
-          defaultValue: "CustomText.Name",
+          defaultValue: "CustomText.Label",
         },
       ],
       html: '<input class="custom-text" placeholder="{{placeholder}}">',

@@ -129,7 +129,14 @@
         : String(base || "").replace(/\{n\}/g, index + 1).replace(/\{index\}/g, index);
 
       grid.innerHTML = "";
-      const cleanups = [];
+      const cleanups = [], pulseTimers = new Set();
+      const schedulePulseEnd = callback => {
+        const timer = setTimeout(() => {
+          pulseTimers.delete(timer);
+          callback();
+        }, 100);
+        pulseTimers.add(timer);
+      };
       for (let index = 0; index < count; index++) {
         const item = document.createElement("button");
         item.type = "button"; item.className = "fld-item";
@@ -158,7 +165,7 @@
           if (!item.classList.contains("pressed")) return;
           item.classList.remove("pressed");
           context.signals.publishAddress("digital", signal, true);
-          setTimeout(() => context.signals.publishAddress("digital", signal, false), 100);
+          schedulePulseEnd(() => context.signals.publishAddress("digital", signal, false));
         };
         const cancel = () => item.classList.remove("pressed");
         item.addEventListener("pointerdown", down);
@@ -187,7 +194,7 @@
         previewPressed = false;
         preview.classList.remove("pressed");
         context.signals.publish("press", true);
-        setTimeout(() => context.signals.publish("press", false), 100);
+        schedulePulseEnd(() => context.signals.publish("press", false));
         open = true;
         applyOpenState();
       };
@@ -213,7 +220,11 @@
 
       context.signals.subscribe("selected", value => { open = truthy(value); applyOpenState(); });
 
-      return () => cleanups.forEach(fn => fn());
+      return () => {
+        pulseTimers.forEach(timer => clearTimeout(timer));
+        pulseTimers.clear();
+        cleanups.forEach(fn => fn());
+      };
     },
   });
 })(window.ComposerRuntime);

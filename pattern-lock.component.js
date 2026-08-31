@@ -115,6 +115,16 @@
         clearVisuals();
       };
 
+      const pulseTimers = new Set();
+      const pulse = key => {
+        context.signals.publish(key, true);
+        const timer = setTimeout(() => {
+          pulseTimers.delete(timer);
+          context.signals.publish(key, false);
+        }, 100);
+        pulseTimers.add(timer);
+      };
+
       const down = event => {
         const hit = nearestDotIndex(toSvgPoint(event.clientX, event.clientY));
         if (hit < 0) return;
@@ -147,15 +157,13 @@
         try { svg.releasePointerCapture(event.pointerId); } catch (_) {}
         if (liveLine) { liveLine.remove(); liveLine = null; }
         const value = publishPattern(patternIndices);
-        context.signals.publish("entered", true);
-        setTimeout(() => context.signals.publish("entered", false), 100);
+        pulse("entered");
 
         if (patternIndices.length && referencePattern) {
           const matched = value === referencePattern;
           patternIndices.forEach(i => dotEls[i].classList.add(matched ? "matched" : "error"));
           if (matched) {
-            context.signals.publish("passwordCorrect", true);
-            setTimeout(() => context.signals.publish("passwordCorrect", false), 100);
+            pulse("passwordCorrect");
           }
         }
 
@@ -201,6 +209,8 @@
 
       return () => {
         if (resetTimer) clearTimeout(resetTimer);
+        pulseTimers.forEach(timer => clearTimeout(timer));
+        pulseTimers.clear();
         svg.removeEventListener("pointerdown", down);
         svg.removeEventListener("pointermove", move);
         svg.removeEventListener("pointerup", up);
