@@ -16919,14 +16919,20 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function upsertCustomWorkbenchMapping(kind, mapping, replace = true) {
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
-    const collection = kind === "property" ? customWorkbenchDraft.properties : customWorkbenchDraft.connections,
-      index = collection.findIndex((entry) => entry.key === mapping.key);
+    const canonicalMapping = window.ComposerComponentWorkbench.withCanonicalBinding(mapping),
+      collection = kind === "property" ? customWorkbenchDraft.properties : customWorkbenchDraft.connections,
+      index = collection.findIndex((entry) => entry.key === canonicalMapping.key);
     if (index >= 0) {
-      if (replace) collection[index] = { ...collection[index], ...mapping, id: collection[index].id || mapping.id };
+      if (replace)
+        collection[index] = window.ComposerComponentWorkbench.withCanonicalBinding({
+          ...collection[index],
+          ...canonicalMapping,
+          id: collection[index].id || canonicalMapping.id,
+        });
       return collection[index];
     }
-    collection.push(mapping);
-    return mapping;
+    collection.push(canonicalMapping);
+    return canonicalMapping;
   }
   function registerCustomWorkbenchPropertyCapability(property, selector, rule = {}, replace = false) {
     const partId = customWorkbenchPartIdForSelector(selector, property.name || property.key),
@@ -19017,7 +19023,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       : -1;
     if (editingIndex >= 0) {
       mapping.id = customWorkbenchDraft.properties[editingIndex].id || mapping.id;
-      customWorkbenchDraft.properties[editingIndex] = mapping;
+      customWorkbenchDraft.properties[editingIndex] =
+        window.ComposerComponentWorkbench.withCanonicalBinding(mapping);
     } else upsertCustomWorkbenchMapping("property", mapping, true);
     const definitionRow = customDefinitionRow("custom-property-list", key);
     if (definitionRow) definitionRow.dataset.mappingId = mapping.id || "";

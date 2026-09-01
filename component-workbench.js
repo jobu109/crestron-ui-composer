@@ -5,6 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
   const SCHEMA_VERSION = 1;
+  const BINDING_VERSION = 1;
 
   function clone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -36,6 +37,81 @@
       authoredSource: { field: "html", originalSourceField: "originalSource" },
     };
   }
+  function normalizeBindingTarget(target = {}) {
+    const selector = normalizeCssSelector(target.selector || ""),
+      pseudoMatch = selector.match(/(::?(?:before|after))$/i),
+      pseudoElement = String(target.pseudoElement || pseudoMatch?.[1] || "")
+        .replace(/^:(?!:)/, "::")
+        .toLowerCase();
+    return {
+      partId: String(target.partId || ""),
+      selector: pseudoMatch ? selector.slice(0, -pseudoMatch[1].length).trim() : selector,
+      pseudoElement,
+      ...(target.multiple != null ? { multiple: !!target.multiple } : {}),
+    };
+  }
+  function canonicalEffectKind(value) {
+    const source = String(value || "").trim(),
+      aliases = {
+        cssProperty: "css-property",
+        "css-custom-property": "css-custom-property",
+        cssVariable: "css-custom-property",
+        text: "text-content",
+        textContent: "text-content",
+        attribute: "attribute",
+        dataAttribute: "data-attribute",
+        domProperty: "dom-property",
+        classPresence: "class-presence",
+        foregroundAsset: "foreground-asset",
+        backgroundAsset: "background-asset",
+        state: "state-activation",
+        selectedClass: "state-activation",
+        press: "output-event",
+        release: "output-event",
+        held: "output-event",
+        pulse: "output-event",
+        mappedProperty: "mapped-property",
+      };
+    return aliases[source] || source.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`) || "unresolved";
+  }
+  function normalizeBinding(binding, entry = {}) {
+    const source = binding && typeof binding === "object" ? clone(binding) : {},
+      legacyTargets = Array.isArray(entry.targets) && entry.targets.length
+        ? entry.targets
+        : entry.target
+          ? [entry.target]
+          : [],
+      rawTargets = Array.isArray(source.targets) && source.targets.length
+        ? source.targets
+        : source.target
+          ? [source.target]
+          : legacyTargets,
+      targets = rawTargets.map(normalizeBindingTarget).filter((target) => target.partId || target.selector),
+      legacyTarget = entry.target || {},
+      effectSource = source.effect && typeof source.effect === "object" ? source.effect : {},
+      legacyKind = legacyTarget.kind === "authored-token" && entry.authoredCss?.property
+        ? "css-property"
+        : legacyTarget.kind,
+      effect = {
+        kind: canonicalEffectKind(effectSource.kind || entry.action || legacyKind || entry.capability),
+        name: String(effectSource.name || entry.authoredCss?.property || legacyTarget.name || legacyTarget.parameter || entry.parameter || ""),
+        stateScope: String(effectSource.stateScope || entry.stateScope || "all"),
+        unit: String(effectSource.unit || entry.unit || entry.mapping?.unit || ""),
+      };
+    ["stateId", "trueValue", "falseValue", "event", "javascript"].forEach((key) => {
+      const value = effectSource[key] ?? entry[key] ?? legacyTarget[key];
+      if (value != null && value !== "") effect[key] = clone(value);
+    });
+    return {
+      version: Number(source.version) || BINDING_VERSION,
+      target: targets[0] || normalizeBindingTarget(),
+      ...(targets.length > 1 ? { targets } : {}),
+      effect,
+    };
+  }
+  function withCanonicalBinding(entry = {}) {
+    return { ...clone(entry), binding: normalizeBinding(entry.binding, entry) };
+  }
   function normalize(workbench) {
     const source = workbench && typeof workbench === "object" ? workbench : {},
       // Preserve fields introduced by a newer Composer even when this build
@@ -46,6 +122,8 @@
     ["parts", "properties", "connections", "states", "repeatedCollections"].forEach(
       (key) => (result[key] = Array.isArray(source[key]) ? clone(source[key]) : []),
     );
+    result.properties = result.properties.map(withCanonicalBinding);
+    result.connections = result.connections.map(withCanonicalBinding);
     result.adapter = {
       ...(source.adapter && typeof source.adapter === "object"
         ? clone(source.adapter)
@@ -125,6 +203,7 @@
         type: signal.type || "digital",
         direction: signal.direction || "input",
         defaultValue: signal.defaultValue || "",
+        action: rules.find((rule) => rule.action)?.action || "",
         target: {
           kind: rules.length ? "legacy-adapter-rules" : "unresolved",
           partId: ensurePart(selector, "signal-target"),
@@ -153,7 +232,7 @@
       packageSchema: 3,
       fields: ["properties", "signals", "behaviors", "stateStyles", "elementRoles", "repeatedItems"],
     };
-    return workbench;
+    return normalize(workbench);
   }
   function validate(workbench) {
     const value = normalize(workbench),
@@ -182,6 +261,18 @@
         });
         if (entry.target?.kind === "unresolved")
           warnings.push(`${entry.label || entry.key || entry.id} still needs a target mapping.`);
+        if (["properties", "connections"].includes(group)) {
+          const binding = normalizeBinding(entry.binding, entry),
+            bindingTargets = binding.targets || [binding.target];
+          if (binding.version !== BINDING_VERSION)
+            errors.push(`${entry.label || entry.key || entry.id} uses unsupported binding version ${binding.version}.`);
+          bindingTargets.forEach((target) => {
+            if (target.partId && !partIds.has(target.partId))
+              errors.push(`${entry.id} binding references missing part ${target.partId}.`);
+          });
+          if (binding.effect.kind === "unresolved")
+            warnings.push(`${entry.label || entry.key || entry.id} still needs a binding effect.`);
+        }
       }),
     );
     return { valid: errors.length === 0, errors, warnings, value };
@@ -233,5 +324,16 @@
     }
     return { css: next, changed, matched };
   }
-  return { SCHEMA_VERSION, empty, normalize, migrate, validate, normalizeCssSelector, materializeAuthoredCssMapping };
+  return {
+    SCHEMA_VERSION,
+    BINDING_VERSION,
+    empty,
+    normalize,
+    migrate,
+    validate,
+    normalizeCssSelector,
+    normalizeBinding,
+    withCanonicalBinding,
+    materializeAuthoredCssMapping,
+  };
 });
