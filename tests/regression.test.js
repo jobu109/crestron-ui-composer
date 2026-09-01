@@ -4,6 +4,7 @@ const assert = require("node:assert/strict"),
   path = require("node:path"),
   vm = require("node:vm"),
   childProcess = require("node:child_process"),
+  componentWorkbench = require("../component-workbench.js"),
   root = path.resolve(__dirname, "..");
 
 function read(name) {
@@ -2135,7 +2136,7 @@ run("custom element picker classifies elements and generates standard capabiliti
   ["fontFamily", "fontWeight", "textAlign", "wrapText", "lineHeight", "letterSpacing", "shadowSize", "shadowColor", "padding", "margin", "positionX", "positionY", "rotation", "fill", "animationDuration", "transitionDuration"].forEach((capability) => assert.ok(editor.includes(`value: "${capability}"`)));
   assert.ok(editor.includes('{ value: "width", label: "Width", type: "number", defaultValue: 100, css: "width"'));
   assert.ok(editor.includes('{ value: "height", label: "Height", type: "number", defaultValue: 50, css: "height"'));
-  assert.ok(editor.includes("const position = [\"positionX\", \"positionY\"].includes(definition.value)"));
+  assert.ok(componentWorkbench.bindingDeclaration({ target: { selector: ".part" }, effect: { kind: "css-property", capability: "positionX" } }, 12).includes("position:relative;left:12px"));
   assert.ok(editor.includes("custom-component-glow-proxy"));
   assert.ok(editor.includes("properties.contentInset"));
   assert.ok(editor.includes('stateScope: definition.stateScope'));
@@ -2394,7 +2395,7 @@ run("component scoping creates real Composer properties and Crestron connections
   assert.ok(editor.includes("function upgradeCustomFrameOverflow(source)"));
   assert.ok(editor.includes('frame.setAttribute("scrolling", "no")'));
   assert.ok(editor.includes("overflow:hidden!important;box-sizing:border-box;background:transparent!important"));
-  assert.ok(editor.includes("filter: drop-shadow(0 0 var(--composer-scope-glow-strength"));
+  assert.ok(componentWorkbench.bindingDeclaration({ target: { selector: ".part" }, effect: { kind: "css-property", capability: "glowStrength" } }, 6).includes("filter:drop-shadow(0 0 var(--composer-scope-glow-strength"));
   assert.ok(editor.includes("target.style.filter='drop-shadow(0 0 '"));
   assert.ok(editor.includes('defaultValue: 6, help: "Adds an editable glow radius'));
   assert.ok(editor.includes("host.dataset.composerGlowOverflow = \"true\""));

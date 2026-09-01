@@ -65,7 +65,26 @@
         foregroundAsset: "foreground-asset",
         backgroundAsset: "background-asset",
         state: "state-activation",
+        selected: "state-activation",
         selectedClass: "state-activation",
+        classState: "class-presence",
+        charging: "class-presence",
+        checkedState: "dom-property",
+        name: "text-content",
+        standardStateText: "text-content",
+        selectedStateText: "text-content",
+        value: "dom-property",
+        url: "dom-property",
+        attribute: "attribute",
+        asset: "asset-source",
+        width: "css-property",
+        height: "css-property",
+        opacity: "css-property",
+        glowStrength: "css-property",
+        fill: "css-custom-property",
+        rotation: "css-property",
+        positionX: "css-property",
+        positionY: "css-property",
         press: "output-event",
         release: "output-event",
         held: "output-event",
@@ -98,6 +117,8 @@
         stateScope: String(effectSource.stateScope || entry.stateScope || "all"),
         unit: String(effectSource.unit || entry.unit || entry.mapping?.unit || ""),
       };
+    if (effectSource.capability || entry.capability)
+      effect.capability = String(effectSource.capability || entry.capability);
     ["stateId", "trueValue", "falseValue", "event", "javascript"].forEach((key) => {
       const value = effectSource[key] ?? entry[key] ?? legacyTarget[key];
       if (value != null && value !== "") effect[key] = clone(value);
@@ -105,7 +126,16 @@
     if (effect.kind === "output-event" && !effect.event && entry.action)
       effect.event = String(entry.action);
     if (effect.kind === "state-activation" && !effect.name && entry.action)
-      effect.name = String(entry.action);
+      effect.name = entry.action === "selected" ? "selected" : String(entry.action);
+    if (effect.kind === "class-presence" && !effect.name)
+      effect.name = entry.action === "charging" ? "charging" : String(legacyTarget.parameter || entry.parameter || "selected");
+    if (effect.kind === "dom-property" && !effect.name)
+      effect.name = entry.action === "checkedState" ? "checked" : entry.action === "url" ? "src" : "value";
+    if (effect.kind === "css-property" && !effect.name)
+      effect.name = { glowStrength: "filter", rotation: "transform", positionX: "left", positionY: "top" }[entry.action] || String(entry.action || "");
+    if (effect.kind === "css-custom-property" && !effect.name)
+      effect.name = entry.action === "fill" ? "--fill" : String(entry.action || "");
+    if (!effect.capability && entry.action) effect.capability = String(entry.action);
     return {
       version: Number(source.version) || BINDING_VERSION,
       target: targets[0] || normalizeBindingTarget(),
@@ -317,6 +347,136 @@
     });
     return [...new Set(scoped)].join(",");
   }
+  function bindingSelector(binding = {}) {
+    const normalized = normalizeBinding(binding);
+    return `${normalized.target.selector || ""}${normalized.target.pseudoElement || ""}`;
+  }
+  function bindingBoolean(value) {
+    if (typeof value === "string")
+      return ["true", "1", "yes", "on", "selected", "checked"].includes(value.trim().toLowerCase());
+    return value === true || value === 1;
+  }
+  function bindingDeclaration(binding = {}, value, options = {}) {
+    const normalized = normalizeBinding(binding),
+      effect = normalized.effect,
+      capability = String(effect.capability || options.capability || ""),
+      unit = effect.unit || options.unit || "",
+      numeric = Number(value) || 0,
+      amount = options.literal ? value : numeric,
+      cssName = effect.name || options.name || "";
+    if (capability === "glowColor")
+      return `--composer-scope-glow-color:${value};filter:drop-shadow(0 0 var(--composer-scope-glow-strength,6px) var(--composer-scope-glow-color))`;
+    if (capability === "glowStrength")
+      return `--composer-scope-glow-strength:${amount}px;filter:drop-shadow(0 0 var(--composer-scope-glow-strength) var(--composer-scope-glow-color,#00e5c3))`;
+    if (capability === "shadowSize")
+      return `--composer-shadow-size:${amount}px;box-shadow:0 var(--composer-shadow-size) var(--composer-shadow-size) var(--composer-shadow-color,#000000)`;
+    if (capability === "shadowColor")
+      return `--composer-shadow-color:${value};box-shadow:0 var(--composer-shadow-size,6px) var(--composer-shadow-size,6px) var(--composer-shadow-color)`;
+    if (capability === "wrapText") return `white-space:${bindingBoolean(value) ? "normal" : "nowrap"}`;
+    if (capability === "rotation") return `transform:rotate(${value}${unit || "deg"})`;
+    if (capability === "positionX") return `position:relative;left:${value}${unit || "px"}`;
+    if (capability === "positionY") return `position:relative;top:${value}${unit || "px"}`;
+    if (capability === "asset" || effect.kind === "background-asset") {
+      const source = value ? `url(${JSON.stringify(String(value))})` : "none";
+      return `background-image:${source};background-position:center;background-repeat:no-repeat;background-size:contain`;
+    }
+    if (!["css-property", "css-custom-property", "mapped-property"].includes(effect.kind) || !cssName)
+      return "";
+    const rendered = options.percent
+      ? options.literal ? `calc(${value} / 100)` : String(numeric / 100)
+      : `${value}${unit}`;
+    return `${cssName}:${rendered}`;
+  }
+  function bindingCssText(binding = {}, value, options = {}) {
+    const normalized = normalizeBinding(binding),
+      selector = bindingSelector(normalized),
+      declaration = bindingDeclaration(normalized, value, options);
+    if (!selector || !declaration) return "";
+    const scopedSelector = scopeCssSelector(selector, normalized.effect.stateScope),
+      rendered = options.important
+        ? declaration.split(";").filter(Boolean).map((item) => `${item}!important`).join(";")
+        : declaration;
+    return `${scopedSelector}{${rendered};}`;
+  }
+  function applyBinding(root, binding = {}, value, options = {}) {
+    const normalized = normalizeBinding(binding),
+      documentValue = root?.nodeType === 9 ? root : root?.ownerDocument || root,
+      selector = normalized.target.selector,
+      effect = normalized.effect,
+      cssText = bindingCssText(normalized, value, { ...options, important: options.important !== false });
+    if (cssText && documentValue?.createElement) {
+      const styleId = options.styleId || "composer-binding-preview-style";
+      let style = documentValue.getElementById?.(styleId);
+      if (!style) {
+        style = documentValue.createElement("style");
+        style.id = styleId;
+      }
+      style.textContent = cssText;
+      (documentValue.body || documentValue.documentElement)?.appendChild(style);
+      return { applied: true, mode: "css", count: 1 };
+    }
+    if (!selector || !documentValue?.querySelectorAll) return { applied: false, mode: "unresolved", count: 0 };
+    let targets = [];
+    try { targets = [...documentValue.querySelectorAll(selector)]; } catch (_) { return { applied: false, mode: "invalid-selector", count: 0 }; }
+    targets.forEach((target) => {
+      const name = effect.name || "";
+      if (effect.kind === "text-content") target.textContent = String(value ?? "");
+      else if (effect.kind === "attribute") target.setAttribute(name, String(value ?? ""));
+      else if (effect.kind === "data-attribute") target.setAttribute(`data-${name}`, String(value ?? ""));
+      else if (effect.kind === "dom-property") target[name] = value;
+      else if (effect.kind === "class-presence") target.classList.toggle(name, bindingBoolean(value));
+      else if (effect.kind === "visibility") target.style.display = bindingBoolean(value) ? "" : "none";
+      else if (effect.kind === "foreground-asset") {
+        const image = target.matches?.("img") ? target : target.querySelector?.("img");
+        if (image) image.src = String(value || "");
+      } else if (effect.kind === "asset-source") {
+        const source = String(value || "");
+        if ("src" in target) target.src = source;
+        else target.style.backgroundImage = source ? `url(${JSON.stringify(source)})` : "none";
+      } else if (effect.kind === "state-activation") {
+        const active = bindingBoolean(value), className = name || "selected";
+        target.classList.toggle(className, active);
+        if (className === "selected") target.setAttribute("aria-checked", String(active));
+        if ("checked" in target && className === "selected") target.checked = active;
+        target.dispatchEvent?.(new Event("change", { bubbles: true }));
+        target.dispatchEvent?.(new CustomEvent("composer-state-change", { detail: { active }, bubbles: true }));
+      }
+    });
+    return { applied: targets.length > 0, mode: "dom", count: targets.length };
+  }
+  function mapBindingValue(entry = {}, value) {
+    const mapping = entry.mapping || entry.connectionConfig?.mapping;
+    if (!mapping || !Number.isFinite(Number(value))) return value;
+    const finite = (candidate, fallback) => Number.isFinite(Number(candidate)) ? Number(candidate) : fallback,
+      inputMin = finite(mapping.inputMin, 0), inputMax = finite(mapping.inputMax, 65535),
+      outputMin = finite(mapping.outputMin, inputMin), outputMax = finite(mapping.outputMax, inputMax);
+    if (inputMax === inputMin) return outputMin;
+    let ratio = (Number(value) - inputMin) / (inputMax - inputMin);
+    if (mapping.clamp !== false) ratio = Math.max(0, Math.min(1, ratio));
+    if (mapping.invert) ratio = 1 - ratio;
+    return outputMin + ratio * (outputMax - outputMin);
+  }
+  function applyEntryBinding(root, entry = {}, value, options = {}) {
+    return applyBinding(root, normalizeBinding(entry.binding, entry), mapBindingValue(entry, value), options);
+  }
+  function bindingExecutorSource() {
+    const functions = [
+      clone,
+      normalizeCssSelector,
+      normalizeBindingTarget,
+      canonicalEffectKind,
+      normalizeBinding,
+      scopeCssSelector,
+      bindingSelector,
+      bindingBoolean,
+      bindingDeclaration,
+      bindingCssText,
+      applyBinding,
+      mapBindingValue,
+      applyEntryBinding,
+    ];
+    return `(function(){const BINDING_VERSION=${BINDING_VERSION};${functions.map((fn) => fn.toString()).join("\n")}return {applyBinding:applyBinding,mapBindingValue:mapBindingValue,applyEntryBinding:applyEntryBinding};})()`;
+  }
   function materializeAuthoredCssMapping(css, mapping, previousKey = "") {
     const authored = mapping?.authoredCss || {},
       selector = normalizeCssSelector(authored.selector || mapping?.target?.selector),
@@ -366,6 +526,14 @@
     validate,
     normalizeCssSelector,
     scopeCssSelector,
+    bindingSelector,
+    bindingBoolean,
+    bindingDeclaration,
+    bindingCssText,
+    applyBinding,
+    mapBindingValue,
+    applyEntryBinding,
+    bindingExecutorSource,
     normalizeBinding,
     withCanonicalBinding,
     materializeAuthoredCssMapping,

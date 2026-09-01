@@ -90,9 +90,10 @@ assert.ok(
 );
 assert.ok(
   javascript.includes("function customTemporaryPropertyDeclaration") &&
-    javascript.includes('definition.value === "glowColor"') &&
-    javascript.includes('definition.value === "shadowSize"') &&
-    javascript.includes('definition.value === "wrapText"'),
+    javascript.includes("ComposerComponentWorkbench.bindingDeclaration") &&
+    workbench.bindingDeclaration({ target: { selector: ".face" }, effect: { kind: "css-property", capability: "glowColor" } }, "#00e5c3").includes("drop-shadow") &&
+    workbench.bindingDeclaration({ target: { selector: ".face" }, effect: { kind: "css-property", capability: "shadowSize" } }, 6).includes("box-shadow") &&
+    workbench.bindingDeclaration({ target: { selector: ".label" }, effect: { kind: "adapter-value", capability: "wrapText" } }, true).includes("white-space:normal"),
   "all visual property families must use the shared state-scoped temporary preview path",
 );
 assert.ok(

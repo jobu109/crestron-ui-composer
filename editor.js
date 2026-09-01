@@ -17641,32 +17641,44 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return target.querySelector('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value') ||
       (!target.children.length ? target : null);
   }
+  function customBindingForPropertyDefinition(definition, selector = "") {
+    const javascriptKinds = {
+        text: "text-content",
+        stateText: "text-content",
+        attribute: "attribute",
+        domProperty: "dom-property",
+        classPresence: "class-presence",
+        dataAttribute: "data-attribute",
+        foregroundAsset: "foreground-asset",
+        visibility: "visibility",
+      },
+      kind = definition.value === "cssVariable"
+        ? "css-custom-property"
+        : definition.css || ["glowColor", "glowStrength", "shadowSize", "shadowColor", "rotation", "positionX", "positionY", "asset"].includes(definition.value)
+          ? "css-property"
+          : javascriptKinds[definition.javascript] || "adapter-value";
+    return window.ComposerComponentWorkbench.normalizeBinding({
+      version: 1,
+      target: { selector },
+      effect: {
+        kind,
+        name: definition.targetName || definition.css || "",
+        stateScope: definition.stateScope || definition.stateMode || "all",
+        unit: definition.unit || "",
+        capability: definition.value || "",
+      },
+    });
+  }
   function customTemporaryPropertyDeclaration(definition, value, unit, resolvedAsset) {
-    const numeric = Number(value) || 0,
-      cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
+    const targetName = definition.value === "cssProperty" || definition.value === "cssVariable"
         ? $("custom-property-target-name")?.value.trim()
-        : definition.css;
-    if (definition.value === "glowColor")
-      return `--composer-scope-glow-color:${value};filter:drop-shadow(0 0 var(--composer-scope-glow-strength,6px) var(--composer-scope-glow-color))`;
-    if (definition.value === "glowStrength")
-      return `--composer-scope-glow-strength:${numeric}px;filter:drop-shadow(0 0 var(--composer-scope-glow-strength) var(--composer-scope-glow-color,#00e5c3))`;
-    if (definition.value === "shadowSize")
-      return `--composer-shadow-size:${numeric}px;box-shadow:0 var(--composer-shadow-size) var(--composer-shadow-size) var(--composer-shadow-color,#000000)`;
-    if (definition.value === "shadowColor")
-      return `--composer-shadow-color:${value};box-shadow:0 var(--composer-shadow-size,6px) var(--composer-shadow-size,6px) var(--composer-shadow-color)`;
-    if (definition.value === "wrapText") return `white-space:${value ? "normal" : "nowrap"}`;
-    if (definition.value === "rotation") return `transform:rotate(${numeric}${unit || "deg"})`;
-    if (definition.value === "positionX") return `position:relative;left:${numeric}${unit || "px"}`;
-    if (definition.value === "positionY") return `position:relative;top:${numeric}${unit || "px"}`;
-    if (definition.value === "asset") {
-      const source = resolvedAsset ? `url(${JSON.stringify(resolvedAsset)})` : "none";
-      return `background-image:${source};background-position:center;background-repeat:no-repeat;background-size:contain`;
-    }
-    if (!cssName) return "";
-    const renderedValue = definition.transform === "percent"
-      ? String(numeric / 100)
-      : `${value}${unit}`;
-    return `${cssName}:${renderedValue}`;
+        : definition.targetName,
+      binding = customBindingForPropertyDefinition({ ...definition, targetName, unit: unit || definition.unit }, "");
+    return window.ComposerComponentWorkbench.bindingDeclaration(
+      binding,
+      definition.value === "asset" ? resolvedAsset : value,
+      { capability: definition.value, unit: unit || definition.unit, name: targetName || definition.css, percent: definition.transform === "percent" },
+    );
   }
   function customTemporaryVisualSelector(selector = "") {
     // A saved authored rule can include the state trigger (for example
@@ -17794,14 +17806,19 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (["text", "standardText", "selectedText"].includes(definition.value)) {
       const textTarget = customTemporaryTextTarget(target);
       if (textTarget) "value" in textTarget ? (textTarget.value = value) : (textTarget.textContent = value);
-    } else if (definition.value === "foregroundAsset") {
-      const image = target.matches("img") ? target : target.querySelector("img");
-      if (image) image.src = resolvedAsset;
-    } else if (definition.value === "visibility") target.style.display = value ? "" : "none";
-    else if (definition.value === "classPresence") target.classList.toggle($("custom-property-target-name").value || "active", !!value);
-    else if (definition.value === "attribute") target.setAttribute($("custom-property-target-name").value, String(value));
-    else if (definition.value === "dataAttribute") target.setAttribute(`data-${$("custom-property-target-name").value}`, String(value));
-    else if (definition.value === "domProperty") target[$("custom-property-target-name").value] = value;
+    } else {
+      const targetName = $("custom-property-target-name")?.value.trim() || definition.targetName || "",
+        binding = customBindingForPropertyDefinition(
+          { ...definition, targetName, stateScope: normalizedScope, unit },
+          ownerSelector,
+        );
+      window.ComposerComponentWorkbench.applyBinding(
+        frameDocument,
+        binding,
+        definition.value === "foregroundAsset" ? resolvedAsset : value,
+        { styleId: "custom-property-temporary-style", important: true },
+      );
+    }
   }
   function renderCustomPropertyLiveTest() {
     const host = $("custom-property-test-control"), definition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
@@ -17997,26 +18014,15 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       return `${selector}:not(.selected):not(.active):not(:checked):not([aria-checked="true"]) { font-size: {{${key}}}${definition.unit || "px"}; }`;
     if (definition.stateMode === "selected" && definition.css)
       return `${selector}.selected, ${selector}.active, ${selector}:checked, ${selector}[aria-checked="true"] { font-size: {{${key}}}${definition.unit || "px"}; }`;
-    const scopedSelector = customStateScopedCssSelector(selector, definition.stateScope || "all");
-    if (definition.value === "glowColor")
-      return `${scopedSelector} { --composer-scope-glow-color: {{${key}}}; filter: drop-shadow(0 0 var(--composer-scope-glow-strength, 6px) var(--composer-scope-glow-color)); }`;
-    if (definition.value === "glowStrength")
-      return `${scopedSelector} { --composer-scope-glow-strength: {{${key}}}px; filter: drop-shadow(0 0 var(--composer-scope-glow-strength) var(--composer-scope-glow-color, #00e5c3)); }`;
-    if (definition.value === "shadowSize")
-      return `${scopedSelector} { --composer-shadow-size: {{${key}}}px; box-shadow: 0 var(--composer-shadow-size) var(--composer-shadow-size) var(--composer-shadow-color, #000000); }`;
-    if (definition.value === "shadowColor")
-      return `${scopedSelector} { --composer-shadow-color: {{${key}}}; box-shadow: 0 var(--composer-shadow-size, 6px) var(--composer-shadow-size, 6px) var(--composer-shadow-color); }`;
-    if (definition.transform === "asset")
-      return `${scopedSelector} { background-image: url("{{${key}Data}}"); background-repeat: no-repeat; background-position: center; background-size: contain; }`;
-    const cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
-      ? definition.targetName
-      : definition.css;
-    if (!cssName) return "";
-    const value = definition.transform === "percent"
-      ? `calc({{${key}}} / 100)`
-      : `{{${key}}}${definition.unit || ""}`;
-    const position = ["positionX", "positionY"].includes(definition.value) ? "position: relative; " : "";
-    return `${scopedSelector} { ${position}${cssName}: ${value}; }`;
+    const binding = customBindingForPropertyDefinition(definition, selector),
+      value = definition.transform === "asset" ? `{{${key}Data}}` : `{{${key}}}`;
+    return window.ComposerComponentWorkbench.bindingCssText(binding, value, {
+      capability: definition.value,
+      unit: definition.unit || "",
+      name: definition.targetName || definition.css || "",
+      percent: definition.transform === "percent",
+      literal: true,
+    });
   }
   function customSafeTextTargetRuntime(targetName = "target") {
     return `var textTarget=${targetName},structure=${targetName}.matches('input,select,textarea')||${targetName}.querySelector('input,select,textarea,[data-translated-toggle-track],.track,.knob,.slider');if(structure){var container=${targetName}.matches('input,select,textarea')?${targetName}.closest('label'):${targetName},candidate=container&&container.querySelector('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value');if(!candidate&&container&&container.nextElementSibling&&container.nextElementSibling.matches('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value'))candidate=container.nextElementSibling;if(!candidate){candidate=document.createElement('span');candidate.setAttribute('data-composer-property-text','true');candidate.className='composer-property-text';if(container&&container.parentNode)container.parentNode.insertBefore(candidate,container.nextSibling);else ${targetName}.appendChild(candidate)}textTarget=candidate}else if(${targetName}.children.length){textTarget=${targetName}.querySelector('[data-state-text],[data-translated-text],[data-custom-text],[data-translated-generated-label],.button-label,.label,.text,.value');if(!textTarget){textTarget=document.createElement('span');textTarget.setAttribute('data-composer-property-text','true');${targetName}.appendChild(textTarget)}}`;
@@ -18751,6 +18757,31 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       }
     }
     if (direction === "input") {
+      const sharedActions = new Set([
+        "selected", "charging", "classState", "checkedState",
+        "text", "name", "asset", "url", "attribute",
+        "value", "mappedProperty", "glowStrength", "width", "height",
+        "opacity", "fill", "rotation", "positionX", "positionY",
+      ]);
+      if (sharedActions.has(action) && !(type === "serial" && ["standardStateText", "selectedStateText"].includes(action))) {
+        const entry = window.ComposerComponentWorkbench.withCanonicalBinding({
+            key,
+            type,
+            direction,
+            action,
+            parameter: config.parameter || "",
+            stateScope: config.stateScope || "all",
+            unit: config.mapping?.unit || config.unit || "",
+            mapping: config.mapping || null,
+            target: { kind: action, selector, parameter: config.parameter || "" },
+          }),
+          executor = window.ComposerComponentWorkbench.bindingExecutorSource(),
+          options = {
+            styleId: `composer-binding-${String(key || "input").replace(/[^a-z0-9_-]+/gi, "-")}`,
+            percent: action === "opacity",
+          };
+        return ready(`var executor=${executor},entry=${JSON.stringify(entry)},options=${JSON.stringify(options)};window.ComposerSignals.subscribe(${JSON.stringify(key)},function(value){executor.applyEntryBinding(document,entry,value,options)});`);
+      }
       if (type === "digital" && action === "selected")
         return subscribe("var active=value===true||value===1||value==='1'||String(value).toLowerCase()==='true';if('checked'in target)target.checked=active;target.classList.toggle('selected',active);target.classList.toggle('active',active);target.setAttribute('aria-checked',String(active));target.dispatchEvent(new Event('change',{bubbles:true}));");
       if (type === "digital" && action === "charging")
@@ -23320,6 +23351,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   }
   function sendCustomSimulatorInput(signal, value, record = true) {
     customSimulatorSignalValues.set(signal.key, value);
+    const mapping = customWorkbenchDraft?.connections?.find(
+      (connection) => connection.id === signal.id || connection.key === signal.key,
+    );
+    if (mapping?.direction === "input")
+      window.ComposerComponentWorkbench.applyEntryBinding(
+        $("custom-component-preview")?.contentDocument,
+        mapping,
+        value,
+        { styleId: `custom-signal-preview-${mapping.id || mapping.key}`, important: true },
+      );
     $("custom-component-preview").contentWindow?.postMessage(
       { type: "composer-signal", key: signal.key, value },
       "*",
