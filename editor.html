@@ -1630,7 +1630,7 @@
                   <label data-capability-for="controls"><input id="custom-cap-press" type="checkbox" checked> Digital output for Press</label>
                   <label data-capability-for="controls"><input id="custom-cap-held" type="checkbox"> Digital output for Held (3 seconds)</label>
                   <label data-capability-for="controls"><input id="custom-cap-selected" type="checkbox" checked> Digital input for Selected feedback</label>
-                  <label data-capability-for="text"><input id="custom-cap-label" type="checkbox" checked> Serial input for Name / label</label>
+                  <label data-capability-for="text"><input id="custom-cap-label" type="checkbox" checked> Serial input for Label</label>
                   <label data-capability-for="numeric"><input id="custom-cap-analog-feedback" type="checkbox" checked> Analog input for Feedback</label>
                   <label data-capability-for="numeric-output"><input id="custom-cap-analog-set" type="checkbox" checked> Analog output for Value Set</label>
                 </div>
@@ -1804,7 +1804,7 @@
                 <label><input id="custom-repeat-press-signal" type="checkbox" checked> Digital Press output</label>
                 <label><input id="custom-repeat-held-signal" type="checkbox"> Digital Held output</label>
                 <label><input id="custom-repeat-selected-signal" type="checkbox" checked> Digital Selected input</label>
-                <label><input id="custom-repeat-label-signal" type="checkbox" checked> Serial Name input</label>
+                <label><input id="custom-repeat-label-signal" type="checkbox" checked> Serial Label input</label>
                 <label><input id="custom-repeat-feedback-signal" type="checkbox" checked> Analog Feedback input when numeric</label>
                 <label><input id="custom-repeat-value-set-signal" type="checkbox" checked> Analog Value Set output when numeric</label>
               </fieldset>
@@ -2417,7 +2417,7 @@
               <tr><td>Analog</td><td>Widget → processor</td><td>ValueSet</td></tr>
               <tr><td>Analog</td><td>Processor → widget</td><td>Feedback</td></tr>
               <tr><td>Serial</td><td>Widget → processor</td><td>Text</td></tr>
-              <tr><td>Serial</td><td>Processor → widget</td><td>Name</td></tr>
+              <tr><td>Serial</td><td>Processor → widget</td><td>Label</td></tr>
             </tbody></table>
             <p>Open <strong>View → Signals</strong> to search, find uses, inspect the page/widget tree, rename all uses, allocate joins, generate contract names, preview the exact SIMPL hierarchy, compare `.cce`/`.cse2j` files, or export a signal schedule.</p>
             <p>Repeated widgets use zero-based item indexing. Their configured/default item count controls how many Contract Editor instances are generated—not the component’s maximum capacity.</p>
@@ -2458,7 +2458,7 @@
             <dl>
               <dt>Button with Press</dt><dd>Name the clickable surface as a Part, add a Digital Output connection using Press, then use the pointer simulator to verify TRUE/FALSE pulse activity.</dd>
               <dt>Selected toggle</dt><dd>Add Standard and Selected states, map the authored checked/class state, and add a Digital Input named Selected. State simulation should move in both directions without replacing authored transitions.</dd>
-              <dt>Serial label</dt><dd>Name the label Part, add a Serial Input using Text/Name, send normal and empty strings in the simulator, and confirm empty feedback preserves the configured fallback when intended.</dd>
+              <dt>Serial label</dt><dd>Name the label Part, add a Serial Input using Label, send normal and empty strings in the simulator, and confirm empty feedback preserves the configured fallback when intended.</dd>
               <dt>Analog gauge or slider</dt><dd>Map an Analog Input to Value/Feedback with a 0–65535 range. For an interactive slider also add an Analog Output using Value Set; a read-only gauge needs only feedback.</dd>
               <dt>Repeated list</dt><dd>Name the container and item-template Parts, set the zero-based default/max count, then add per-item Press, Selected, Name, and optional analog ranges. Test at least two Widget List instances.</dd>
               <dt>JavaScript-generated parts</dt><dd>Open the live preview and allow the authored script to create its controls. Composer observes the preview and adds newly created elements to the Component Map. If a part is still missing, use <strong>Pick part from preview</strong>, click the exact visible element, give it a meaningful name, then map properties or Crestron connections to that named Part. Retest after a page remount so the generated element and its mapping are recreated reliably.</dd>

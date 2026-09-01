@@ -6,6 +6,7 @@ const path = require("path");
 const workbench = require("../component-workbench.js");
 
 const editor = fs.readFileSync(path.resolve(__dirname, "..", "editor.js"), "utf8");
+const editorHtml = fs.readFileSync(path.resolve(__dirname, "..", "editor.html"), "utf8");
 
 assert.strictEqual(workbench.BINDING_VERSION, 1);
 
@@ -60,6 +61,15 @@ assert.deepStrictEqual(pseudoBinding.target, {
   pseudoElement: "::before",
 });
 assert.strictEqual(pseudoBinding.effect.stateScope, "selected");
+assert.strictEqual(
+  workbench.scopeCssSelector(".track::before", "selected"),
+  '.track.selected::before,.track.active::before,.track:checked::before,.track[aria-checked="true"]::before,input:checked + .track::before,.selected .track::before,.active .track::before,[aria-checked="true"] .track::before',
+  "state qualifiers must be inserted before pseudo-elements",
+);
+assert.strictEqual(
+  workbench.scopeCssSelector(".face", "standard"),
+  '.face:not(.selected):not(.active):not(.composer-pressed):not(:checked):not(:disabled):not([aria-checked="true"]):not([data-state])',
+);
 
 const authoredBinding = workbench.normalizeBinding(null, {
   target: { kind: "authored-token", partId: "part-face", selector: ".button-face" },
@@ -82,6 +92,26 @@ assert.deepStrictEqual(roundTrip.connections, definition.connections);
 assert.ok(
   editor.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"),
   "new and edited Workbench mappings must receive the canonical binding at insertion time",
+);
+assert.ok(!editorHtml.includes("Serial input for Name / label"));
+assert.ok(!editorHtml.includes("Serial Name input"));
+assert.ok(editorHtml.includes("Serial input for Label"));
+assert.ok(editorHtml.includes("Serial Label input"));
+assert.ok(
+  editor.includes("function customCanonicalBinding(mapping = {})") &&
+    editor.includes("customCanonicalBindingSelector(editingMapping)"),
+  "temporary property preview must resolve the canonical binding target",
+);
+const adapterRenderer = editor.slice(
+  editor.indexOf("function customAdapterBlocks()"),
+  editor.indexOf("function customGeneratedAdapter()"),
+);
+assert.ok(
+  adapterRenderer.includes("const binding = customCanonicalBinding(mapping)") &&
+    adapterRenderer.includes("binding.effect.stateScope") &&
+    adapterRenderer.includes("binding.effect.name") &&
+    adapterRenderer.includes("binding.effect.event"),
+  "installed adapter generation must resolve target, effect, state, parameter, and event from the canonical binding",
 );
 
 console.log("component-workbench-bindings.test.js passed");

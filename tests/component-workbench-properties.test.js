@@ -73,7 +73,7 @@ assert.match(javascript, /function duplicateCustomPropertyMapping\(/);
 assert.match(javascript, /function removeCustomPropertyMapping\(/);
 assert.match(javascript, /COMPOSER MANAGED/);
 assert.ok(
-  javascript.includes('input:checked + ${selector}'),
+  workbench.scopeCssSelector(".track", "selected").includes("input:checked + .track"),
   "Selected-only properties must support checkbox sibling tracks",
 );
 assert.ok(

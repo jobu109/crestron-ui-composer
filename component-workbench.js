@@ -102,6 +102,10 @@
       const value = effectSource[key] ?? entry[key] ?? legacyTarget[key];
       if (value != null && value !== "") effect[key] = clone(value);
     });
+    if (effect.kind === "output-event" && !effect.event && entry.action)
+      effect.event = String(entry.action);
+    if (effect.kind === "state-activation" && !effect.name && entry.action)
+      effect.name = String(entry.action);
     return {
       version: Number(source.version) || BINDING_VERSION,
       target: targets[0] || normalizeBindingTarget(),
@@ -279,10 +283,39 @@
   }
   function normalizeCssSelector(value) {
     return String(value || "")
-      .replace(/:before\b/gi, "::before")
-      .replace(/:after\b/gi, "::after")
+      .replace(/(^|[^:]):before\b/gi, "$1::before")
+      .replace(/(^|[^:]):after\b/gi, "$1::after")
+      .replace(/:{3,}(before|after)\b/gi, "::$1")
       .replace(/\s+/g, " ")
       .trim();
+  }
+  function scopeCssSelector(selector, scope = "all") {
+    const normalizedScope = String(scope || "all").replace(/^state-/, "").toLowerCase(),
+      candidates = String(selector || "").split(",").map(normalizeCssSelector).filter(Boolean),
+      escapeValue = (value) => String(value).replace(/[^a-z0-9_-]/gi, (character) => `\\${character}`),
+      scoped = [];
+    candidates.forEach((candidate) => {
+      const pseudoMatch = candidate.match(/(::?(?:before|after))$/i),
+        pseudo = pseudoMatch ? pseudoMatch[1].replace(/^:(?!:)/, "::") : "",
+        owner = pseudoMatch ? candidate.slice(0, -pseudoMatch[1].length).trim() : candidate,
+        add = (value) => scoped.push(`${value}${pseudo}`);
+      if (normalizedScope === "all") add(owner);
+      else if (normalizedScope === "standard")
+        add(`${owner}:not(.selected):not(.active):not(.composer-pressed):not(:checked):not(:disabled):not([aria-checked="true"]):not([data-state])`);
+      else if (normalizedScope === "pressed") {
+        add(`${owner}:active`); add(`${owner}.composer-pressed`); add(`.composer-pressed ${owner}`);
+      } else if (normalizedScope === "selected") {
+        add(`${owner}.selected`); add(`${owner}.active`); add(`${owner}:checked`); add(`${owner}[aria-checked="true"]`);
+        add(`input:checked + ${owner}`); add(`.selected ${owner}`); add(`.active ${owner}`); add(`[aria-checked="true"] ${owner}`);
+      } else if (normalizedScope === "disabled") {
+        add(`${owner}:disabled`); add(`${owner}.disabled`); add(`${owner}[disabled]`); add(`${owner}[aria-disabled="true"]`);
+        add(`.disabled ${owner}`); add(`[aria-disabled="true"] ${owner}`);
+      } else {
+        const safe = escapeValue(normalizedScope);
+        add(`${owner}.${safe}`); add(`${owner}[data-state="${normalizedScope}"]`); add(`.${safe} ${owner}`); add(`[data-state="${normalizedScope}"] ${owner}`);
+      }
+    });
+    return [...new Set(scoped)].join(",");
   }
   function materializeAuthoredCssMapping(css, mapping, previousKey = "") {
     const authored = mapping?.authoredCss || {},
@@ -332,6 +365,7 @@
     migrate,
     validate,
     normalizeCssSelector,
+    scopeCssSelector,
     normalizeBinding,
     withCanonicalBinding,
     materializeAuthoredCssMapping,

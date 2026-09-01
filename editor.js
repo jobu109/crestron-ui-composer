@@ -17280,7 +17280,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     ],
     "serial:input": [
       ["text", "Text / name", "Replaces the selected part's displayed text."],
-      ["name", "Name / label", "Replaces the selected part's displayed name or label."],
+      ["name", "Label", "Replaces the selected part's displayed label."],
       ["standardStateText", "Standard-state text", "Stores text for the Standard/Idle state and displays it whenever the target is not selected."],
       ["selectedStateText", "Selected-state text", "Stores text for the Selected state and displays it whenever the target is selected."],
       ["asset", "Image / asset source", "Applies incoming image data or URL."],
@@ -17684,6 +17684,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       .filter(Boolean)
       .join(",");
   }
+  function customCanonicalBinding(mapping = {}) {
+    return window.ComposerComponentWorkbench.normalizeBinding(mapping.binding, mapping);
+  }
+  function customCanonicalBindingSelector(mapping = {}) {
+    const target = customCanonicalBinding(mapping).target || {};
+    return `${target.selector || ""}${target.pseudoElement || ""}`;
+  }
   function applyCustomTemporaryPropertyValue(value, { directOnly = false, skipStateSwitch = false } = {}) {
     const definition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
     if (!definition) return;
@@ -17702,6 +17709,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       // pseudo-element; it must never replace the saved visual selector.
       visualSelector = String(
         editingMapping?.authoredCss?.selector ||
+        customCanonicalBindingSelector(editingMapping) ||
         selectedPart?.selector ||
         editingMapping?.target?.selector ||
         selector,
@@ -17862,17 +17870,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     host.textContent = conflict ? `Possible duplicate: “${conflict.label || conflict.key}” already targets this part and state. You can still add it, but the two mappings may conflict.` : "";
   }
   function customStateScopedCssSelector(selector, scope = "all") {
-    if (!scope || scope === "all") return selector;
-    if (scope === "standard")
-      return `${selector}:not(.selected):not(.active):not(.composer-pressed):not(:disabled):not([aria-checked="true"]):not([data-state])`;
-    if (scope === "pressed")
-      return `${selector}:active,${selector}.composer-pressed,.composer-pressed ${selector}`;
-    if (scope === "selected")
-      return `${selector}.selected,${selector}.active,${selector}:checked,${selector}[aria-checked="true"],input:checked + ${selector},.selected ${selector},.active ${selector},[aria-checked="true"] ${selector}`;
-    if (scope === "disabled")
-      return `${selector}:disabled,${selector}.disabled,${selector}[disabled],${selector}[aria-disabled="true"],.disabled ${selector},[aria-disabled="true"] ${selector}`;
-    const safe = CSS.escape(scope);
-    return `${selector}.${safe},${selector}[data-state="${scope}"],.${safe} ${selector},[data-state="${scope}"] ${selector}`;
+    return window.ComposerComponentWorkbench.scopeCssSelector(selector, scope);
   }
   function customAuthoredCssSelectorForState(mapping, selector, scope = "all") {
     const authored = String(mapping?.authoredCss?.selector || "").trim();
@@ -18094,7 +18092,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     host.innerHTML = "";
     (customWorkbenchDraft?.properties || [])
       .forEach((mapping, index, mappings) => {
-        const card = document.createElement("div"),
+        const binding = customCanonicalBinding(mapping),
+          bindingSelector = customCanonicalBindingSelector(mapping),
+          card = document.createElement("div"),
           info = document.createElement("div"),
           edit = document.createElement("button"),
           duplicate = document.createElement("button"),
@@ -18106,8 +18106,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         card.dataset.mappingId = mapping.id;
         info.innerHTML = `<strong></strong><small></small><details class="custom-mapping-technical"><summary>Technical details</summary><code></code></details>`;
         info.querySelector("strong").textContent = mapping.label || mapping.key;
-        info.querySelector("small").textContent = `Make ${customFriendlyTargetName(mapping.target?.selector)} editable for ${customStateScopeLabel(mapping.stateScope)}.`;
-        info.querySelector("code").textContent = `${mapping.type} · ${mapping.target?.selector || "unresolved target"} · ${mapping.target?.kind || "adapter"}${mapping.target?.name ? ` (${mapping.target.name})` : ""}`;
+        info.querySelector("small").textContent = `Make ${customFriendlyTargetName(bindingSelector)} editable for ${customStateScopeLabel(binding.effect.stateScope)}.`;
+        info.querySelector("code").textContent = `${mapping.type} · ${bindingSelector || "unresolved target"} · ${binding.effect.kind}${binding.effect.name ? ` (${binding.effect.name})` : ""}`;
         edit.textContent = "Edit";
         duplicate.textContent = "Duplicate";
         up.textContent = "↑";
@@ -18147,14 +18147,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     customTemporaryPropertyValues.clear();
     customSimulatorPropertyValues.delete(mapping.key);
     {
-      const normalizeSelector = (value) => String(value || "")
+      const binding = customCanonicalBinding(mapping),
+        bindingSelector = customCanonicalBindingSelector(mapping),
+        normalizeSelector = (value) => String(value || "")
           .replace(/:before\b/gi, "::before")
           .replace(/:after\b/gi, "::after")
           .replace(/\s+/g, " ")
           .trim(),
-        exactSelector = normalizeSelector(mapping.authoredCss?.selector || mapping.target?.selector || ""),
-        stateScope = String(mapping.stateScope || "all").replace(/^state-/, "").toLowerCase(),
-        partId = mapping.target?.partId || "";
+        exactSelector = normalizeSelector(mapping.authoredCss?.selector || bindingSelector || ""),
+        stateScope = String(binding.effect.stateScope || "all").replace(/^state-/, "").toLowerCase(),
+        partId = binding.target?.partId || "";
       // The saved mapping is the sole authority when Edit opens. Component
       // Map selection and preview state are presentation state and must not
       // be allowed to retarget an existing property.
@@ -18164,9 +18166,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       openCustomScopeCreator("property", { key: mapping.key, id: mapping.id || "" });
       const capability = customScopedPropertyTypes.some((entry) => entry.value === mapping.capability)
           ? mapping.capability
-          : mapping.target?.kind === "css-custom-property" ? "cssVariable"
-            : mapping.target?.kind === "css-property" ? "cssProperty"
-              : mapping.target?.kind || "cssProperty",
+          : binding.effect.kind === "css-custom-property" ? "cssVariable"
+            : binding.effect.kind === "css-property" ? "cssProperty"
+              : mapping.capability || "cssProperty",
         target = $("custom-property-target");
       $("custom-property-capability").value = capability;
       refreshCustomPropertyCreator();
@@ -18182,8 +18184,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         "custom-property-label": mapping.label || mapping.key,
         "custom-property-key": mapping.key,
         "custom-property-default": mapping.defaultValue ?? "",
-        "custom-property-target-name": mapping.target?.name || "",
-        "custom-property-unit": mapping.unit || "",
+        "custom-property-target-name": binding.effect.name || "",
+        "custom-property-unit": binding.effect.unit || "",
         "custom-property-min": mapping.min ?? "",
         "custom-property-max": mapping.max ?? "",
         "custom-property-step": mapping.step ?? "",
@@ -18196,7 +18198,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       });
       target.dataset.edited = "true";
       const additionalSelectors = new Set(
-        (mapping.targets || []).map((entry) => entry.selector).filter((selector) =>
+        (binding.targets || []).map((entry) => `${entry.selector || ""}${entry.pseudoElement || ""}`).filter((selector) =>
           selector && normalizeSelector(selector) !== exactSelector
         ),
       );
@@ -18377,7 +18379,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     host.innerHTML = "";
     (customWorkbenchDraft?.connections || [])
       .forEach((mapping, index, mappings) => {
-        const card = document.createElement("div"), info = document.createElement("div"),
+        const binding = customCanonicalBinding(mapping),
+          selector = customCanonicalBindingSelector(mapping),
+          action = binding.effect.event || mapping.action || binding.effect.name || binding.effect.kind,
+          card = document.createElement("div"), info = document.createElement("div"),
           edit = document.createElement("button"), duplicate = document.createElement("button"),
           up = document.createElement("button"), down = document.createElement("button"), remove = document.createElement("button");
         [edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
@@ -18385,8 +18390,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         card.dataset.mappingId = mapping.id;
         info.innerHTML = `<strong></strong><small></small><details class="custom-mapping-technical"><summary>Technical details</summary><code></code></details>`;
         info.querySelector("strong").textContent = mapping.label || mapping.key;
-        info.querySelector("small").textContent = `${mapping.direction === "input" ? "Crestron controls" : "Send to Crestron from"} ${customFriendlyTargetName(mapping.target?.selector)}: ${String(mapping.action || mapping.target?.kind || "signal").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ")} (${customStateScopeLabel(mapping.stateScope)}).`;
-        info.querySelector("code").textContent = `${mapping.type} ${mapping.direction} · ${mapping.key} · ${mapping.target?.selector || "unresolved target"}${mapping.perItem ? " · per item" : ""}`;
+        info.querySelector("small").textContent = `${mapping.direction === "input" ? "Crestron controls" : "Send to Crestron from"} ${customFriendlyTargetName(selector)}: ${String(action || "signal").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ")} (${customStateScopeLabel(binding.effect.stateScope)}).`;
+        info.querySelector("code").textContent = `${mapping.type} ${mapping.direction} · ${mapping.key} · ${selector || "unresolved target"}${mapping.perItem ? " · per item" : ""}`;
         edit.textContent = "Edit"; duplicate.textContent = "Duplicate"; up.textContent = "↑"; down.textContent = "↓"; remove.textContent = "Delete";
         remove.className = "custom-part-delete";
         edit.onclick = () => editCustomConnectionMapping(mapping);
@@ -18414,7 +18419,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     renderCustomGeneratedAdapter();
   }
   function customConnectionInlineTester(mapping) {
-    const tester = document.createElement("div"), label = document.createElement("strong"),
+    const binding = customCanonicalBinding(mapping),
+      action = binding.effect.event || mapping.action || binding.effect.name || binding.effect.kind,
+      selector = customCanonicalBindingSelector(mapping),
+      tester = document.createElement("div"), label = document.createElement("strong"),
       controls = document.createElement("div");
     tester.className = "custom-connection-inline-tester";
     label.textContent = mapping.direction === "input" ? "Test this Crestron input" : "Trigger this component output";
@@ -18445,10 +18453,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       }
     } else {
       const trigger = document.createElement("button"), output = document.createElement("output");
-      trigger.type = "button"; trigger.textContent = mapping.action === "held" ? "Simulate hold" : "Simulate interaction";
+      trigger.type = "button"; trigger.textContent = action === "held" ? "Simulate hold" : "Simulate interaction";
       output.className = "custom-simulator-output"; output.dataset.inlineOutputKey = mapping.key; output.textContent = "Waiting for output…";
       trigger.onclick = () => $("custom-component-preview").contentWindow?.postMessage({
-        type: "composer-pointer-simulate", selector: mapping.target?.selector || "", lifecycle: mapping.action === "held" ? "hold" : "press-release", duration: Math.round((Number(mapping.holdDuration) || 3) * 1000),
+        type: "composer-pointer-simulate", selector, lifecycle: action === "held" ? "hold" : "press-release", duration: Math.round((Number(mapping.holdDuration) || 3) * 1000),
       }, "*");
       controls.append(trigger, output);
     }
@@ -18456,6 +18464,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return tester;
   }
   function editCustomConnectionMapping(mapping) {
+    const binding = customCanonicalBinding(mapping),
+      action = binding.effect.event || mapping.action || binding.effect.name || binding.effect.kind,
+      selector = customCanonicalBindingSelector(mapping);
     openCustomScopeCreator("signal");
     $("custom-signal-capability-type").value = mapping.type || "digital";
     $("custom-signal-capability-direction").value = mapping.direction || "input";
@@ -18464,18 +18475,18 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     let saved = {};
     try { saved = JSON.parse(config || "{}"); } catch (_) {}
     const values = {
-      "custom-signal-capability-action": mapping.action || mapping.target?.kind || "selected",
-      "custom-signal-target": mapping.target?.selector || "",
+      "custom-signal-capability-action": action || "selected",
+      "custom-signal-target": selector,
       "custom-signal-capability-key": mapping.key,
       "custom-signal-capability-label": mapping.label || mapping.key,
       "custom-signal-capability-address": mapping.defaultValue || "",
-      "custom-signal-parameter": mapping.target?.parameter || saved.parameter || "",
+      "custom-signal-parameter": binding.effect.name || saved.parameter || "",
       "custom-signal-hold-duration": mapping.holdDuration ?? saved.holdDuration ?? 3,
       "custom-signal-pulse-duration": mapping.pulseDuration ?? saved.pulseDuration ?? 50,
       "custom-signal-input-min": mapping.mapping?.inputMin ?? 0,
       "custom-signal-input-max": mapping.mapping?.inputMax ?? 65535,
-      "custom-signal-unit": mapping.mapping?.unit || "",
-      "custom-signal-state-scope": mapping.stateScope || "all",
+      "custom-signal-unit": binding.effect.unit || mapping.mapping?.unit || "",
+      "custom-signal-state-scope": binding.effect.stateScope || "all",
     };
     Object.entries(values).forEach(([id, value]) => { $(id).value = value; $(id).dataset.edited = "true"; });
     $("custom-signal-exclusive").checked = mapping.exclusive !== false;
@@ -22776,13 +22787,16 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
     const blocks = [];
     (customWorkbenchDraft.properties || []).filter((mapping) => !["legacy-adapter-rules", "authored-token"].includes(mapping.target?.kind)).forEach((mapping) => {
-      const base = customScopedPropertyTypes.find((entry) => entry.value === mapping.capability),
-        definition = base ? { ...base, type: mapping.type || base.type, targetName: mapping.target?.name || base.targetName, unit: mapping.unit || base.unit || "", stateScope: mapping.stateScope || "all" } : null,
-        selectors = (mapping.targets?.length ? mapping.targets : [mapping.target]).map((target) => target?.selector).filter(Boolean);
+      const binding = customCanonicalBinding(mapping),
+        base = customScopedPropertyTypes.find((entry) => entry.value === mapping.capability),
+        definition = base ? { ...base, type: mapping.type || base.type, targetName: binding.effect.name || base.targetName, unit: binding.effect.unit || base.unit || "", stateScope: binding.effect.stateScope || "all" } : null,
+        bindingTargets = binding.targets?.length ? binding.targets : [binding.target],
+        selectors = bindingTargets.map((target) => `${target?.selector || ""}${target?.pseudoElement || ""}`).filter(Boolean);
       if (!definition) return;
       blocks.push({ id: mapping.id, mappingId: mapping.id, kind: "property", title: `Property · ${mapping.label || mapping.key}`, css: selectors.map((selector) => customScopedPropertyCss(definition, selector, mapping.key)).filter(Boolean).join("\n"), javascript: selectors.map((selector) => customScopedPropertyJavascript(definition, selector, mapping.key)).filter(Boolean).join("\n") });
     });
     (customWorkbenchDraft.connections || []).filter((mapping) => !["legacy-adapter-rules", "authored-runtime"].includes(mapping.target?.kind)).forEach((mapping) => {
+      const binding = customCanonicalBinding(mapping);
       // Rehydrate the generator from the normalized Workbench mapping. The
       // row's legacy connectionConfig is not authoritative after editing.
       const config = {
@@ -22793,11 +22807,12 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
           exclusive: mapping.exclusive ?? mapping.connectionConfig?.exclusive,
           perItem: mapping.perItem ?? mapping.connectionConfig?.perItem,
           zeroBased: mapping.zeroBased ?? mapping.connectionConfig?.zeroBased,
-          parameter: mapping.target?.parameter || mapping.connectionConfig?.parameter || "",
-          stateScope: mapping.stateScope || mapping.connectionConfig?.stateScope || "all",
+          parameter: binding.effect.name || mapping.connectionConfig?.parameter || "",
+          stateScope: binding.effect.stateScope || mapping.connectionConfig?.stateScope || "all",
         },
-        selector = mapping.target?.selector || config.selector || "";
-      blocks.push({ id: mapping.id, mappingId: mapping.id, kind: "connection", title: `Connection · ${mapping.label || mapping.key}`, css: "", javascript: selector ? customScopedSignalJavascript(mapping.type, mapping.direction, mapping.action, selector, mapping.key, { ...config, selector, key: mapping.key }) : "" });
+        selector = `${binding.target?.selector || ""}${binding.target?.pseudoElement || ""}` || config.selector || "",
+        action = binding.effect.event || mapping.action || binding.effect.name || binding.effect.kind;
+      blocks.push({ id: mapping.id, mappingId: mapping.id, kind: "connection", title: `Connection · ${mapping.label || mapping.key}`, css: "", javascript: selector ? customScopedSignalJavascript(mapping.type, mapping.direction, action, selector, mapping.key, { ...config, selector, key: mapping.key }) : "" });
     });
     const stateConfig = collectCustomStateStyles();
     if (stateConfig) blocks.push({ id: "states", mappingId: "states", kind: "states", title: "States & Modes", css: customStateCss(stateConfig), javascript: customStateRuntime(stateConfig) });

@@ -2140,7 +2140,7 @@ run("custom element picker classifies elements and generates standard capabiliti
   assert.ok(editor.includes("properties.contentInset"));
   assert.ok(editor.includes('stateScope: definition.stateScope'));
   assert.ok(editor.includes('stateScope: config.stateScope || "all"'));
-  assert.ok(editor.includes('stateScope: mapping.stateScope || "all"'));
+  assert.ok(editor.includes('stateScope: binding.effect.stateScope || "all"'));
   assert.ok(editor.includes("function inferCustomElementRole(element = {})"));
   assert.ok(editor.includes("function applyCustomElementRole("));
   assert.ok(editor.includes("Existing definitions were preserved"));

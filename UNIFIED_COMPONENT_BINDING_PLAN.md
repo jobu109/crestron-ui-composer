@@ -89,7 +89,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 
 - [ ] Implement one binding executor for temporary preview and simulator values.
 - [ ] Use the same executor when generating the installed component adapter.
-- [ ] Use the same state-scoping and selector resolution in preview, Apply, export, and runtime.
+- [x] Use the same state-scoping and selector resolution in preview, Apply, export, and runtime.
 - [ ] Add parity tests for every supported effect and state scope.
 
 ### Phase 3 — Simplified blank-button workflow
