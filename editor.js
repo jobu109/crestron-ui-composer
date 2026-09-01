@@ -18087,24 +18087,32 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           card = document.createElement("div"),
           info = document.createElement("div"),
           edit = document.createElement("button"),
+          test = document.createElement("button"),
           duplicate = document.createElement("button"),
           up = document.createElement("button"),
           down = document.createElement("button"),
           remove = document.createElement("button");
-        [edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
+        [edit, test, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
         card.className = "custom-property-mapping-card";
         card.dataset.mappingId = mapping.id;
         info.innerHTML = `<strong></strong><small></small><details class="custom-mapping-technical"><summary>Technical details</summary><code></code></details>`;
         info.querySelector("strong").textContent = mapping.label || mapping.key;
-        info.querySelector("small").textContent = `Make ${customFriendlyTargetName(bindingSelector)} editable for ${customStateScopeLabel(binding.effect.stateScope)}.`;
+        const effectLabel = String(binding.effect.capability || mapping.capability || binding.effect.name || binding.effect.kind || "value")
+          .replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").toLowerCase();
+        info.querySelector("small").textContent = `Composer Inspector controls ${customFriendlyTargetName(bindingSelector)} ${effectLabel} in ${customStateScopeLabel(binding.effect.stateScope)}.`;
         info.querySelector("code").textContent = `${mapping.type} · ${bindingSelector || "unresolved target"} · ${binding.effect.kind}${binding.effect.name ? ` (${binding.effect.name})` : ""}`;
         edit.textContent = "Edit";
+        test.textContent = "Test";
         duplicate.textContent = "Duplicate";
         up.textContent = "↑";
         down.textContent = "↓";
         remove.textContent = "Delete";
         remove.className = "custom-part-delete";
         edit.onclick = () => editCustomPropertyMapping(mapping);
+        test.onclick = () => {
+          editCustomPropertyMapping(mapping);
+          requestAnimationFrame(() => $("custom-property-temporary-control")?.focus());
+        };
         info.onclick = () => focusCustomAdapterMapping(mapping.id);
         duplicate.onclick = () => duplicateCustomPropertyMapping(mapping);
         up.disabled = index === 0;
@@ -18124,7 +18132,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           renderCustomPropertyMappings();
         };
         remove.onclick = () => removeCustomPropertyMapping(mapping);
-        card.append(info, edit, duplicate, up, down, remove);
+        card.append(info, edit, test, duplicate, up, down, remove);
         host.appendChild(card);
       });
     renderCustomGeneratedAdapter();
@@ -18371,16 +18379,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           selector = customCanonicalBindingSelector(mapping),
           action = binding.effect.event || mapping.action || binding.effect.name || binding.effect.kind,
           card = document.createElement("div"), info = document.createElement("div"),
-          edit = document.createElement("button"), duplicate = document.createElement("button"),
+          edit = document.createElement("button"), test = document.createElement("button"), duplicate = document.createElement("button"),
           up = document.createElement("button"), down = document.createElement("button"), remove = document.createElement("button");
-        [edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
+        [edit, test, duplicate, up, down, remove].forEach((button) => (button.type = "button"));
         card.className = "custom-property-mapping-card";
         card.dataset.mappingId = mapping.id;
         info.innerHTML = `<strong></strong><small></small><details class="custom-mapping-technical"><summary>Technical details</summary><code></code></details>`;
         info.querySelector("strong").textContent = mapping.label || mapping.key;
-        info.querySelector("small").textContent = `${mapping.direction === "input" ? "Crestron controls" : "Send to Crestron from"} ${customFriendlyTargetName(selector)}: ${String(action || "signal").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ")} (${customStateScopeLabel(binding.effect.stateScope)}).`;
+        info.querySelector("small").textContent = `${mapping.type} ${mapping.direction}: ${mapping.direction === "input" ? "Crestron controls" : "the component sends"} ${customFriendlyTargetName(selector)} ${String(action || "signal").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").toLowerCase()} in ${customStateScopeLabel(binding.effect.stateScope)}${mapping.defaultValue ? ` at ${mapping.defaultValue}` : ""}.`;
         info.querySelector("code").textContent = `${mapping.type} ${mapping.direction} · ${mapping.key} · ${selector || "unresolved target"}${mapping.perItem ? " · per item" : ""}`;
-        edit.textContent = "Edit"; duplicate.textContent = "Duplicate"; up.textContent = "↑"; down.textContent = "↓"; remove.textContent = "Delete";
+        edit.textContent = "Edit"; test.textContent = "Test"; duplicate.textContent = "Duplicate"; up.textContent = "↑"; down.textContent = "↓"; remove.textContent = "Delete";
         remove.className = "custom-part-delete";
         edit.onclick = () => editCustomConnectionMapping(mapping);
         info.onclick = () => focusCustomAdapterMapping(mapping.id);
@@ -18401,7 +18409,15 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           renderCustomConnectionMappings();
         };
         remove.onclick = () => removeCustomConnectionMapping(mapping);
-        card.append(info, edit, duplicate, up, down, remove, customConnectionInlineTester(mapping));
+        const inlineTester = customConnectionInlineTester(mapping);
+        inlineTester.hidden = true;
+        test.setAttribute("aria-pressed", "false");
+        test.onclick = () => {
+          inlineTester.hidden = !inlineTester.hidden;
+          test.setAttribute("aria-pressed", String(!inlineTester.hidden));
+          if (!inlineTester.hidden) inlineTester.querySelector("input,button")?.focus();
+        };
+        card.append(info, edit, test, duplicate, up, down, remove, inlineTester);
         host.appendChild(card);
       });
     renderCustomGeneratedAdapter();

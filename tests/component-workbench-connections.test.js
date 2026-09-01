@@ -94,10 +94,14 @@ const connectionRenderer = javascript.slice(
   javascript.indexOf("function editCustomConnectionMapping("),
 );
 assert.ok(
-  connectionRenderer.includes('[edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"))'),
+  connectionRenderer.includes('[edit, test, duplicate, up, down, remove].forEach((button) => (button.type = "button"))'),
   "connection mapping actions must not submit and close the Workbench dialog",
 );
 assert.ok(connectionRenderer.includes("customConnectionInlineTester(mapping)"));
+assert.ok(connectionRenderer.includes('test.textContent = "Test"'));
+assert.ok(connectionRenderer.includes("inlineTester.hidden = true"));
+assert.ok(connectionRenderer.includes('test.setAttribute("aria-pressed", String(!inlineTester.hidden))'));
+assert.ok(connectionRenderer.includes('`${mapping.type} ${mapping.direction}:'));
 assert.ok(connectionRenderer.includes("Number(mapping.mapping?.inputMin)"));
 assert.ok(connectionRenderer.includes("Number(mapping.mapping?.inputMax)"));
 assert.ok(javascript.includes("data.lifecycle==='press-release'"));

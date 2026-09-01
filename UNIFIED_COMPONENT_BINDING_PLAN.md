@@ -99,7 +99,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 - [x] Simplify Add Editable Property to target, effect, state, Inspector control, and default.
 - [x] Simplify Add Crestron Connection to target, effect/event, signal contract, and conversion.
 - [x] Remove fields and panels that restate the same selection without changing the binding.
-- [ ] Show each resulting mapping as one readable sentence with Edit, Test, Duplicate, and Delete.
+- [x] Show each resulting mapping as one readable sentence with Edit, Test, Duplicate, and Delete.
 
 ### Phase 4 — Applicable Inspector defaults
 

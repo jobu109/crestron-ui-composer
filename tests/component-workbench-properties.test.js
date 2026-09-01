@@ -211,8 +211,18 @@ const propertyRenderer = javascript.slice(
   javascript.indexOf("function editCustomPropertyMapping("),
 );
 assert.ok(
-  propertyRenderer.includes('[edit, duplicate, up, down, remove].forEach((button) => (button.type = "button"))'),
+  propertyRenderer.includes('[edit, test, duplicate, up, down, remove].forEach((button) => (button.type = "button"))'),
   "property mapping actions must not submit and close the Workbench dialog",
+);
+assert.ok(
+  propertyRenderer.includes('test.textContent = "Test"') &&
+    propertyRenderer.includes('editCustomPropertyMapping(mapping)') &&
+    propertyRenderer.includes('$("custom-property-temporary-control")?.focus()'),
+  "each property sentence must offer a direct Test action using the same temporary preview editor",
+);
+assert.ok(
+  propertyRenderer.includes("Composer Inspector controls") && propertyRenderer.includes("effectLabel"),
+  "each saved property must explain its target, effect, and state in one sentence",
 );
 
 const propertyDefinitionRow = javascript.slice(
