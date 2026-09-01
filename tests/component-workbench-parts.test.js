@@ -13,7 +13,6 @@ assert.match(editorJs, /const customWorkbenchRoleLabel = \(value\) =>/);
 assert.doesNotMatch(editorJs, /\bfriendlyRole\b/);
 assert.match(editorJs, /const escapeHtml = \(value\) =>/);
 for (const workbenchContextHelper of [
-  "customWorkbenchScopeContextText",
   "customPropertySentence",
   "customConnectionSentence",
 ]) {
@@ -25,6 +24,8 @@ for (const workbenchContextHelper of [
     `${workbenchContextHelper} no longer escapes user-visible Workbench context`,
   );
 }
+assert.doesNotMatch(editorHtml, /id="custom-(?:property|signal)-context"/);
+assert.doesNotMatch(editorJs, /customWorkbenchScopeContextText/);
 
 assert.match(editorHtml, /id="custom-part-list"/);
 assert.match(editorHtml, /id="custom-part-picker"/);

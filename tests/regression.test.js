@@ -2075,8 +2075,8 @@ run("custom element picker classifies elements and generates standard capabiliti
   assert.ok(editor.includes("function refreshCustomWorkbenchStateComparison("));
   assert.ok(editor.includes("function applyCustomWorkbenchComparisonState("));
   assert.ok(css.includes(".custom-workbench-state-comparison"));
-  assert.ok(html.includes('id="custom-property-context"'));
-  assert.ok(html.includes('id="custom-signal-context"'));
+  assert.ok(!html.includes('id="custom-property-context"'));
+  assert.ok(!html.includes('id="custom-signal-context"'));
   assert.ok(html.includes('id="custom-property-state-scope"'));
   assert.ok(html.includes('id="custom-signal-state-scope"'));
   assert.ok(editor.includes("target.dataset.preferPartId = customWorkbenchSelectedPartId"));

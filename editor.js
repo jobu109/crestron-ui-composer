@@ -17497,22 +17497,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     else if (previousOption) select.selectedIndex = previousOption.index;
     delete select.dataset.preferPartId;
   }
-  function customWorkbenchScopeContextText() {
-    const part = (customWorkbenchDraft?.parts || []).find((entry) => entry.id === customWorkbenchSelectedPartId),
-      partName = part?.name || (part ? customWorkbenchRoleLabel(part.role) : "No Component Map part selected"),
-      stateName = customWorkbenchActiveState.replace(/[-_]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());
-    return `<strong>Current context:</strong> ${escapeHtml(partName)} · ${escapeHtml(stateName)} state. ${part ? "The Apply to field starts on this part." : "Select a part in Component Map to carry it here automatically."}`;
-  }
-  function updateCustomScopeCreatorContext() {
-    // A preview-state change must never rewrite the context of a property or
-    // signal that is already open for editing.  The open mapping owns that
-    // context until it is applied or closed.
-    if (!$('custom-property-creator')?.hidden || !$('custom-signal-creator')?.hidden) return;
-    ["custom-property-context", "custom-signal-context"].forEach((id) => {
-      const node = $(id);
-      if (node) node.innerHTML = customWorkbenchScopeContextText();
-    });
-  }
   function fillCustomStateScopeSelect(select, preferred = "") {
     if (!select) return;
     const previous = select.value,
@@ -18215,7 +18199,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       $("custom-property-create").dataset.editingId = mapping.id || "";
       $("custom-property-create").textContent = "Save property changes";
       if (partId) customWorkbenchSelectedPartId = partId;
-      updateCustomScopeCreatorContext();
       captureCustomPropertyEditSession();
       setTimeout(previewPendingCustomPropertyEdit, 0);
       return;
@@ -18342,7 +18325,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       const restoredPartId = restoredOption.dataset.partId || "";
       if (restoredPartId) customWorkbenchSelectedPartId = restoredPartId;
     }
-    updateCustomScopeCreatorContext();
     const restoredDefinition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
     if (restoredDefinition)
       $("custom-property-sentence").innerHTML = customPropertySentence(
@@ -18893,7 +18875,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (stateScope) delete stateScope.dataset.edited;
     const target = property ? $("custom-property-target") : $("custom-signal-target");
     if (target && customWorkbenchSelectedPartId) target.dataset.preferPartId = customWorkbenchSelectedPartId;
-    updateCustomScopeCreatorContext();
     if (property) {
       $("custom-property-create").dataset.editingKey = editContext?.key || "";
       $("custom-property-create").dataset.editingId = editContext?.id || "";
@@ -20593,7 +20574,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     document.querySelectorAll(".custom-part-row").forEach((row) => {
       row.classList.toggle("selected", row.dataset.partId === customWorkbenchSelectedPartId);
     });
-    updateCustomScopeCreatorContext();
   }
   function showCustomWorkbenchPartHighlight(part) {
     if (!part) return;
@@ -22434,7 +22414,6 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       host.appendChild(button);
     });
     if (status) status.textContent = `Showing ${customWorkbenchActiveState.replace(/[-_]+/g, " ")} appearance`;
-    updateCustomScopeCreatorContext();
   }
   function refreshCustomWorkbenchForActiveState() {
     const frameDocument = $("custom-component-preview")?.contentDocument;
