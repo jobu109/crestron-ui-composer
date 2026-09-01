@@ -26,6 +26,48 @@ assert.ok(!javascript.includes('["input-min", "input-max", "output-min", "output
   "custom-connection-mapping-list",
 ].forEach((id) => assert.match(html, new RegExp(`id="${id}"`)));
 
+const connectionCreatorMarkup = html.slice(
+  html.indexOf('id="custom-signal-creator"'),
+  html.indexOf('id="custom-connection-mapping-list"'),
+);
+[
+  "custom-signal-target",
+  "custom-signal-capability-type",
+  "custom-signal-capability-direction",
+  "custom-signal-capability-action",
+  "custom-signal-state-scope",
+  "custom-signal-capability-address",
+].reduce((prior, id) => {
+  const index = connectionCreatorMarkup.indexOf(`id="${id}"`);
+  assert.ok(index > prior, `${id} should follow the simplified target/contract/effect/state/join order`);
+  return index;
+}, -1);
+const connectionOptions = connectionCreatorMarkup.slice(
+  connectionCreatorMarkup.indexOf('id="custom-signal-options"'),
+  connectionCreatorMarkup.indexOf("</details>"),
+);
+[
+  "custom-signal-capability-label",
+  "custom-signal-capability-key",
+  "custom-signal-parameter",
+  "custom-signal-hold-duration",
+  "custom-signal-pulse-duration",
+  "custom-signal-input-min",
+  "custom-signal-input-max",
+  "custom-signal-unit",
+  "custom-signal-invert",
+  "custom-signal-clamp",
+  "custom-signal-per-item",
+].forEach((id) => assert.ok(
+  connectionOptions.includes(`id="${id}"`),
+  `${id} should remain available in contextual conversion/connection options`,
+));
+assert.ok(
+  javascript.includes('requiredOptions = analog || needsParameter || eventTiming || repeatedTarget') &&
+    javascript.includes('if (requiredOptions) signalOptions.open = true'),
+  "conversion and event options should open automatically when the selected effect needs them",
+);
+
 [
   "function collectCustomSignalCreatorConfig(",
   "function renderCustomConnectionMappings(",

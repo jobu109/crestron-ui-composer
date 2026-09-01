@@ -97,7 +97,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 - [x] Render authored HTML/CSS/JavaScript before presenting mappings.
 - [x] Make selecting a preview part establish the exact canonical target.
 - [x] Simplify Add Editable Property to target, effect, state, Inspector control, and default.
-- [ ] Simplify Add Crestron Connection to target, effect/event, signal contract, and conversion.
+- [x] Simplify Add Crestron Connection to target, effect/event, signal contract, and conversion.
 - [ ] Remove fields and panels that restate the same selection without changing the binding.
 - [ ] Show each resulting mapping as one readable sentence with Edit, Test, Duplicate, and Delete.
 

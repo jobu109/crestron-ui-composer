@@ -18677,6 +18677,15 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (name) => ($(`custom-signal-${name}-row`).hidden = !analog),
     );
     $("custom-signal-per-item-row").hidden = !repeatedTarget;
+    const signalOptions = $("custom-signal-options"),
+      eventTiming = digitalOutput && ["press", "release", "pulse", "held", "completed", "customEvent"].includes(action[0]),
+      requiredOptions = analog || needsParameter || eventTiming || repeatedTarget;
+    signalOptions.querySelector("summary").textContent = analog
+      ? "Analog conversion and connection options"
+      : eventTiming
+        ? "Event timing and connection options"
+        : "Advanced connection options";
+    if (requiredOptions) signalOptions.open = true;
     if (needsParameter && !$("custom-signal-parameter").dataset.edited) {
       const defaults = { classState: "selected", mappedProperty: "--value", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
       $("custom-signal-parameter").value = defaults[action[0]];
@@ -18894,6 +18903,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       refreshCustomPropertyCreator();
     }
     else {
+      $("custom-signal-options").open = false;
       $("custom-signal-create").dataset.editingKey = "";
       $("custom-signal-create").textContent = "Add Crestron connection";
       refreshCustomSignalCreator();

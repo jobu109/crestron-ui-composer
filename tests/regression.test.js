@@ -2128,7 +2128,8 @@ run("custom element picker classifies elements and generates standard capabiliti
   assert.ok(editor.includes("customSimulatorSignalValues.set(signal.key, value)"));
   ["charging", "completed", "customEvent", "positionX", "positionY", "name", "textEntry"].forEach((action) => assert.ok(editor.includes(`[\"${action}\"`)));
   assert.ok(html.includes("Advanced: generated CSS / JavaScript"));
-  assert.ok(html.includes("Advanced mapping details"));
+  assert.ok(html.includes("Advanced property options"));
+  assert.ok(html.includes("Conversion and connection options"));
   assert.ok(css.includes(".custom-mapping-sentence"));
   assert.ok(css.includes(".custom-mapping-advanced"));
   assert.ok(css.includes(".custom-property-live-test"));
@@ -2371,7 +2372,7 @@ run("component scoping creates real Composer properties and Crestron connections
   assert.ok(html.includes('id="custom-property-creator"'));
   assert.ok(html.includes('id="custom-signal-creator"'));
   assert.ok(html.includes("Add an editable Composer property or a Crestron connection"));
-  assert.ok(html.includes("What should it do?<select id=\"custom-signal-capability-action\""));
+  assert.ok(html.includes("Effect or event<select id=\"custom-signal-capability-action\""));
   assert.ok(editor.includes("function createScopedCustomProperty()"));
   assert.ok(editor.includes("function preferredCustomPropertyTarget(definition, select)"));
   assert.ok(editor.includes('part.title === "Track"'));
