@@ -123,7 +123,7 @@ assert.ok(
 );
 assert.ok(
   javascript.includes('defaultField.value = String(value)'),
-  "the tested property value must become the value saved by Update property and source",
+  "the tested property value must become the value saved with the property mapping",
 );
 assert.ok(
   javascript.includes('customTemporaryPropertyValues.set(editingMapping.key') &&

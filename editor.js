@@ -17565,7 +17565,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         (action.dataset.editingKey || "") !== (session.editingKey || "")) return;
     action.dataset.editingId = session.editingId || "";
     action.dataset.editingKey = session.editingKey || "";
-    action.textContent = "Update property and source";
+    action.textContent = "Save property changes";
     if ($("custom-property-capability")) $("custom-property-capability").value = session.capability;
     const target = $("custom-property-target"), options = [...(target?.options || [])];
     if (target) {
@@ -18207,7 +18207,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       });
       $("custom-property-create").dataset.editingKey = mapping.key;
       $("custom-property-create").dataset.editingId = mapping.id || "";
-      $("custom-property-create").textContent = "Update property and source";
+      $("custom-property-create").textContent = "Save property changes";
       if (partId) customWorkbenchSelectedPartId = partId;
       updateCustomScopeCreatorContext();
       captureCustomPropertyEditSession();
@@ -18293,7 +18293,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     );
     $("custom-property-create").dataset.editingKey = mapping.key;
     $("custom-property-create").dataset.editingId = mapping.id || "";
-    $("custom-property-create").textContent = "Update property and source";
+    $("custom-property-create").textContent = "Save property changes";
     // Keep the semantic editor target resolved above. Reapplying the saved
     // owner part here caused Knob properties to jump back to Track/Whole
     // component just before the form rendered. The saved mapping itself is
@@ -18361,7 +18361,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     });
     $("custom-property-create").dataset.editingKey = "";
     $("custom-property-create").dataset.editingId = "";
-    $("custom-property-create").textContent = "Add property to Composer and source";
+    $("custom-property-create").textContent = "Add editable property";
   }
   function removeCustomPropertyMapping(mapping) {
     if (!confirm(`Remove editable property “${mapping.label || mapping.key}” and its managed source?`)) return;
@@ -18495,7 +18495,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-signal-zero-based").checked = !!mapping.zeroBased;
     $("custom-signal-per-item").checked = !!mapping.perItem;
     $("custom-signal-create").dataset.editingKey = mapping.key;
-    $("custom-signal-create").textContent = "Update connection and source";
+    $("custom-signal-create").textContent = "Save connection changes";
     refreshCustomSignalCreator();
   }
   function duplicateCustomConnectionMapping(mapping) {
@@ -18504,7 +18504,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     while (keys.has(key)) key = `${mapping.key}Copy${index++}`;
     editCustomConnectionMapping({ ...structuredClone(mapping), id: `connection-${key}`, key, label: `${mapping.label || mapping.key} copy`, defaultValue: `${mapping.defaultValue || mapping.key}Copy` });
     $("custom-signal-create").dataset.editingKey = "";
-    $("custom-signal-create").textContent = "Add connection to Composer and source";
+    $("custom-signal-create").textContent = "Add Crestron connection";
   }
   function removeCustomConnectionMapping(mapping) {
     if (!confirm(`Remove Crestron connection “${mapping.label || mapping.key}” and its managed source?`)) return;
@@ -18858,13 +18858,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       $("custom-property-create").dataset.editingKey = editContext?.key || "";
       $("custom-property-create").dataset.editingId = editContext?.id || "";
       $("custom-property-create").textContent = editContext
-        ? "Update property and source"
-        : "Add property to Composer and source";
+        ? "Save property changes"
+        : "Add editable property";
       refreshCustomPropertyCreator();
     }
     else {
       $("custom-signal-create").dataset.editingKey = "";
-      $("custom-signal-create").textContent = "Add connection to Composer and source";
+      $("custom-signal-create").textContent = "Add Crestron connection";
       refreshCustomSignalCreator();
     }
     (property ? $("custom-property-creator") : $("custom-signal-creator")).scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -19048,7 +19048,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     refreshCustomPreview();
     $("custom-property-create").dataset.editingKey = "";
     $("custom-property-create").dataset.editingId = "";
-    $("custom-property-create").textContent = "Add property to Composer and source";
+    $("custom-property-create").textContent = "Add editable property";
     $("custom-property-creator").hidden = true;
     setStatus(`Added editable Composer property “${name}”`);
   }
@@ -19125,7 +19125,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // A completed mapping must leave edit mode. Otherwise the next use of
     // the form silently replaces this connection instead of adding another.
     $("custom-signal-create").dataset.editingKey = "";
-    $("custom-signal-create").textContent = "Add connection to Composer and source";
+    $("custom-signal-create").textContent = "Add Crestron connection";
     $("custom-signal-creator").hidden = true;
     setStatus(`Added Crestron ${type} ${direction} “${name}”`);
   }

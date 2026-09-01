@@ -1511,8 +1511,10 @@
               <summary>Add Composer capabilities</summary>
               <p class="hint">
                 Add an editable Composer property or a Crestron connection. Each
-                addition updates the component definition and inserts a visible,
-                editable managed block into its HTML, CSS, or JavaScript source.
+                mapping uses the selected component part directly. Composer
+                properties set editable design values; Crestron connections
+                control or publish runtime values. Generated adapter code stays
+                separate from your HTML, CSS, and JavaScript.
               </p>
               <div class="custom-scope-actions">
                 <button id="custom-scope-add-property" type="button" class="primary">+ Add editable property</button>
@@ -1567,7 +1569,7 @@
                   <summary>Advanced: generated CSS / JavaScript</summary>
                   <pre id="custom-property-generation-preview">Choose a part and property.</pre>
                 </details>
-                <button id="custom-property-create" type="button" class="primary">Add property to Composer and source</button>
+                <button id="custom-property-create" type="button" class="primary">Add editable property</button>
               </section>
               <div id="custom-property-mapping-list" class="custom-property-mapping-list" data-capability-panel="properties"></div>
               <section id="custom-signal-creator" class="custom-scope-creator" data-capability-panel="connections" hidden>
@@ -1607,7 +1609,7 @@
                   <summary>Advanced: generated JavaScript</summary>
                   <pre id="custom-signal-generation-preview">Choose a connection type and target part.</pre>
                 </details>
-                <button id="custom-signal-create" type="button" class="primary">Add connection to Composer and source</button>
+                <button id="custom-signal-create" type="button" class="primary">Add Crestron connection</button>
               </section>
               <div id="custom-connection-mapping-list" class="custom-property-mapping-list" data-capability-panel="connections"></div>
               <details class="custom-technical-mappings" data-capability-panel="advanced">
