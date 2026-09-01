@@ -43,6 +43,25 @@ const packageHandler = editor.slice(
 );
 assert.ok(packageHandler.includes("openCustomBuilder(null, entry)"));
 
+const pickerHandler = editor.slice(
+  editor.indexOf('if (event.data?.type === "composer-element-picked")'),
+  editor.indexOf("function exportCustomComponentEntry"),
+);
+assert.ok(pickerHandler.includes("addPickedCustomWorkbenchPart"));
+assert.ok(pickerHandler.includes("focusPickedCustomWorkbenchPart(pickedPart)"));
+const pickedPartHelper = editor.slice(
+  editor.indexOf("function addPickedCustomWorkbenchPart"),
+  editor.indexOf("function focusPickedCustomWorkbenchPart"),
+);
+assert.ok(pickedPartHelper.includes("selectCustomWorkbenchPart(existing.id)"));
+assert.ok(pickedPartHelper.includes("selectCustomWorkbenchPart(part.id)"));
+const propertyCreator = editor.slice(
+  editor.indexOf("function createScopedCustomProperty"),
+  editor.indexOf("function createScopedCustomSignal"),
+);
+assert.ok(propertyCreator.includes("targetOption?.dataset.partId"));
+assert.ok(propertyCreator.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"));
+
 const renderProperties = editor.slice(
   editor.indexOf("function renderCustomPropertyMappings"),
   editor.indexOf("function editCustomPropertyMapping"),

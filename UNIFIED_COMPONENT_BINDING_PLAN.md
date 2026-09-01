@@ -95,7 +95,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 ### Phase 3 — Simplified blank-button workflow
 
 - [x] Render authored HTML/CSS/JavaScript before presenting mappings.
-- [ ] Make selecting a preview part establish the exact canonical target.
+- [x] Make selecting a preview part establish the exact canonical target.
 - [ ] Simplify Add Editable Property to target, effect, state, Inspector control, and default.
 - [ ] Simplify Add Crestron Connection to target, effect/event, signal contract, and conversion.
 - [ ] Remove fields and panels that restate the same selection without changing the binding.
