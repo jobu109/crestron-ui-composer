@@ -1197,6 +1197,25 @@ h2 {
 .custom-component-dialog.custom-wizard-step-2 .custom-builder-controls {
   display: none !important;
 }
+/* Step 1 establishes authored source before any binding is configured. The
+   source editors and original rendered component are visible here; mapping,
+   Composer-output, and simulator surfaces begin in Step 2. */
+.custom-component-dialog.custom-wizard-step-0 .custom-step-authored,
+.custom-component-dialog.custom-wizard-step-0 .custom-step-authored-preview {
+  display: block !important;
+}
+.custom-component-dialog.custom-wizard-step-0 .custom-imported-mappings,
+.custom-component-dialog.custom-wizard-step-0 .custom-workbench-map-pane,
+.custom-component-dialog.custom-wizard-step-0 .custom-preview-version:not(.custom-preview-original),
+.custom-component-dialog.custom-wizard-step-0 .custom-preview-test,
+.custom-component-dialog.custom-wizard-step-0 .custom-preview-log,
+.custom-component-dialog.custom-wizard-step-0 .custom-signal-simulator {
+  display: none !important;
+}
+.custom-component-dialog.custom-wizard-step-0 .custom-test-workspace,
+.custom-component-dialog.custom-wizard-step-0 .custom-preview-comparison {
+  grid-template-columns: minmax(0, 1fr);
+}
 @media (max-width: 720px) {
   .custom-wizard-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

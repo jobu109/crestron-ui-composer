@@ -22,6 +22,20 @@ for (const page of ["properties", "connections", "states", "repeated", "code", "
   assert.ok(html.includes(`data-custom-capability-page="${page}"`), `${page} capability page is missing`);
 assert.ok(editor.includes("function setCustomCapabilityPage"));
 assert.ok(editor.includes('setCustomCapabilityPage(customCapabilityPage || "properties")'));
+assert.ok(html.includes("custom-step-authored"));
+assert.ok(html.includes("custom-step-authored-preview"));
+assert.ok(html.includes("custom-imported-mappings"));
+const stepSwitcher = editor.slice(
+  editor.indexOf("function setCustomWizardStep"),
+  editor.indexOf("function setCustomCapabilityPage"),
+);
+assert.ok(stepSwitcher.includes('if (customWizardStep === 0)'));
+assert.ok(stepSwitcher.includes('switchCustomSourceTab("html")'));
+assert.ok(stepSwitcher.includes("refreshCustomPreview()"));
+assert.ok(
+  stepSwitcher.indexOf('if (customWizardStep === 0)') < stepSwitcher.indexOf('if (customWizardStep === 1) analyzeCustomElements()'),
+  "authored source must render before Step 2 analyzes or presents mappings",
+);
 
 const packageHandler = editor.slice(
   editor.indexOf('$("custom-package-file").onchange'),

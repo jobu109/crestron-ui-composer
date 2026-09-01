@@ -2347,13 +2347,13 @@ run("custom component creation is gated by blocking automated errors", () => {
   assert.ok(editor.includes("parseCustomComponentPackage(JSON.parse(JSON.stringify(probe)))"));
 });
 
-run("component creation uses one three-step workflow with source editing in step two", () => {
+run("component creation uses one three-step workflow with authored source before mappings", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
   assert.equal((html.match(/data-custom-wizard-step=/g) || []).length, 3);
   assert.ok(html.includes("Imported setup</span>"));
   assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
   assert.ok(html.includes("Test &amp; create</span>"));
-  assert.ok(html.includes('class="custom-source-code custom-step-capabilities"'));
+  assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored"'));
   assert.ok(html.includes("Composer-generated CSS / JavaScript (live)"));
   assert.ok(editor.includes("function setCustomWizardStep(step = 0)"));
   assert.ok(editor.includes("if (customWizardStep === 1) analyzeCustomElements()"));

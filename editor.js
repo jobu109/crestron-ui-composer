@@ -24345,6 +24345,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     });
     $("custom-wizard-back").disabled = customWizardStep === 0;
     $("custom-wizard-next").hidden = customWizardStep === 2;
+    if (customWizardStep === 0) {
+      const authoredPanel = dialog.querySelector(".custom-step-authored");
+      if (authoredPanel) authoredPanel.hidden = false;
+      switchCustomSourceTab("html");
+      refreshCustomPreview();
+    }
     if (customWizardStep === 1) analyzeCustomElements();
     if (customWizardStep === 1) {
       setCustomCapabilityPage(customCapabilityPage || "properties");
