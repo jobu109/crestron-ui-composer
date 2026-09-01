@@ -24698,27 +24698,28 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     };
   });
   $("custom-property-capability").onchange = () => {
-    // When editing an existing mapping, changing the capability must not
-    // discard its exact Component Map target. Previously this reset removed
-    // data-edited from Apply to, so the recommendation engine silently moved
-    // the property to another part.
+    // Target and state are independent decisions in the simplified binding
+    // form. Changing the effect may refresh its suggested control/default,
+    // but must never move a new or existing mapping to another part or state.
     const editing = !!$("custom-property-create").dataset.editingId,
       target = $("custom-property-target").value,
       targetPartId = $("custom-property-target").selectedOptions[0]?.dataset.partId || "",
       stateScope = $("custom-property-state-scope")?.value || "all";
     resetCustomScopeCreatorEdits("custom-property-");
-    if (editing) {
+    if (target) {
       $("custom-property-target").dataset.edited = "true";
       if (targetPartId) $("custom-property-target").dataset.preferPartId = targetPartId;
       $("custom-property-target").value = target;
-      if ($("custom-property-state-scope")) {
-        $("custom-property-state-scope").value = stateScope;
-        $("custom-property-state-scope").dataset.edited = "true";
-      }
+    }
+    if ($("custom-property-state-scope")) {
+      $("custom-property-state-scope").value = stateScope;
+      $("custom-property-state-scope").dataset.edited = "true";
     }
     refreshCustomPropertyCreator();
-    if (editing) {
+    if (target) {
       $("custom-property-target").value = target;
+    }
+    if (editing) {
       captureCustomPropertyEditSession();
       previewPendingCustomPropertyEdit();
     }

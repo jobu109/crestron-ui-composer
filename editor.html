@@ -1524,28 +1524,28 @@
                 <div class="custom-builder-heading"><h2>Add editable property</h2><button type="button" data-close-scope-creator>×</button></div>
                 <div id="custom-property-context" class="custom-scope-context"></div>
                 <div class="custom-scope-grid">
-                  <label>What should be editable?<select id="custom-property-capability"></select></label>
+                  <label>Target part<select id="custom-property-target"></select></label>
+                  <label>What changes?<select id="custom-property-capability"></select></label>
+                  <label>State<select id="custom-property-state-scope"></select></label>
                   <label>Inspector control<select id="custom-property-value-type"><option value="text">Text</option><option value="number">Number</option><option value="color">Color</option><option value="color-alpha">Color + opacity</option><option value="checkbox">Checkbox</option><option value="select">Dropdown</option><option value="asset">Asset</option></select></label>
-                  <label>Which part?<select id="custom-property-target"></select></label>
-                  <label>In which state?<select id="custom-property-state-scope"></select></label>
-                  <fieldset class="custom-scope-wide custom-additional-target-field">
-                    <legend>Also apply to additional parts (optional)</legend>
-                    <p class="hint">Check another part only when this one Inspector property should control several elements together.</p>
-                    <div id="custom-property-additional-target-checks" class="custom-additional-target-checks"></div>
-                    <select id="custom-property-additional-targets" multiple hidden aria-hidden="true"></select>
-                  </fieldset>
-                  <label>Composer label<input id="custom-property-label"></label>
                   <label>Default value<input id="custom-property-default"></label>
-                  <label id="custom-property-unit-row" hidden>Unit<input id="custom-property-unit" placeholder="px, %, deg, ms"></label>
-                  <label id="custom-property-min-row" hidden>Minimum<input id="custom-property-min" type="number"></label>
-                  <label id="custom-property-max-row" hidden>Maximum<input id="custom-property-max" type="number"></label>
-                  <label id="custom-property-step-row" hidden>Step<input id="custom-property-step" type="number"></label>
                   <details class="custom-scope-wide custom-mapping-advanced">
-                    <summary>Advanced mapping details</summary>
+                    <summary>Advanced property options</summary>
                     <div class="custom-scope-grid">
+                      <label>Inspector label<input id="custom-property-label"></label>
                       <label>Property key<input id="custom-property-key"></label>
                       <label id="custom-property-target-name-row" hidden>CSS/DOM name<input id="custom-property-target-name" placeholder="Example: box-shadow or aria-label"></label>
+                      <label id="custom-property-unit-row" hidden>Unit<input id="custom-property-unit" placeholder="px, %, deg, ms"></label>
+                      <label id="custom-property-min-row" hidden>Minimum<input id="custom-property-min" type="number"></label>
+                      <label id="custom-property-max-row" hidden>Maximum<input id="custom-property-max" type="number"></label>
+                      <label id="custom-property-step-row" hidden>Step<input id="custom-property-step" type="number"></label>
                     </div>
+                    <fieldset class="custom-additional-target-field">
+                      <legend>Also apply to additional parts (optional)</legend>
+                      <p class="hint">Check another part only when this one Inspector property should control several elements together.</p>
+                      <div id="custom-property-additional-target-checks" class="custom-additional-target-checks"></div>
+                      <select id="custom-property-additional-targets" multiple hidden aria-hidden="true"></select>
+                    </fieldset>
                     <p class="hint">These identifiers are generated automatically. Change them only when integrating with handwritten component source.</p>
                   </details>
                 </div>

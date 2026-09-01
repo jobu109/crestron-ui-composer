@@ -56,6 +56,39 @@ assert.ok(propertyCreator.includes('$("custom-property-creator").hidden = true')
   "custom-property-mapping-list",
 ].forEach((id) => assert.match(html, new RegExp(`id="${id}"`)));
 
+const propertyCreatorMarkup = html.slice(
+  html.indexOf('id="custom-property-creator"'),
+  html.indexOf('id="custom-property-mapping-list"'),
+);
+const advancedPropertyOptions = propertyCreatorMarkup.slice(
+  propertyCreatorMarkup.indexOf("Advanced property options"),
+  propertyCreatorMarkup.indexOf("</details>"),
+);
+[
+  "custom-property-target",
+  "custom-property-capability",
+  "custom-property-state-scope",
+  "custom-property-value-type",
+  "custom-property-default",
+].reduce((prior, id) => {
+  const index = propertyCreatorMarkup.indexOf(`id="${id}"`);
+  assert.ok(index > prior, `${id} should follow the simplified target/effect/state/control/default order`);
+  return index;
+}, -1);
+[
+  "custom-property-label",
+  "custom-property-key",
+  "custom-property-target-name",
+  "custom-property-unit",
+  "custom-property-min",
+  "custom-property-max",
+  "custom-property-step",
+  "custom-property-additional-targets",
+].forEach((id) => assert.ok(
+  advancedPropertyOptions.includes(`id="${id}"`),
+  `${id} should remain available under Advanced property options`,
+));
+
 [
   "cssProperty",
   "cssVariable",
@@ -151,6 +184,16 @@ assert.ok(
 const previewStateSwitcher = javascript.slice(
   javascript.indexOf("function setCustomWorkbenchActiveState("),
   javascript.indexOf("function preferredCustomStatePart("),
+);
+const propertyCapabilityHandler = javascript.slice(
+  javascript.indexOf('$("custom-property-capability").onchange'),
+  javascript.indexOf('$("custom-property-target").onchange'),
+);
+assert.ok(
+  propertyCapabilityHandler.includes('if (target)') &&
+    propertyCapabilityHandler.includes('$("custom-property-target").dataset.edited = "true"') &&
+    propertyCapabilityHandler.includes('$("custom-property-state-scope").dataset.edited = "true"'),
+  "changing an effect must preserve the independently chosen target and state for new and edited mappings",
 );
 assert.ok(
   previewStateSwitcher.includes("captureCustomPropertyEditSession()") &&
