@@ -1387,6 +1387,15 @@ run("inferCustomElementRole still classifies a real <button> as button, not togg
   assert.equal(inferCustomElementRole({ tag: "button", text: "Press" }).role, "button");
 });
 
+run("inferCustomElementRole does not classify Bluetooth button descendants as buttons", () => {
+  assert.notEqual(inferCustomElementRole({ tag: "span", className: "bluetooth-button-ring" }).role, "button");
+  assert.equal(
+    inferCustomElementRole({ tag: "span", className: "bluetooth-state-label", text: "PRESS TO PAIR BLUETOOTH" }).role,
+    "label",
+  );
+  assert.equal(inferCustomElementRole({ tag: "button", className: "bluetooth-button" }).role, "button");
+});
+
 run("Workbench inventory excludes document support tags from full HTML imports", () => {
   global.customElementKeywordRegex = /button|label|text/;
   const candidate = (tag, text = "") =>

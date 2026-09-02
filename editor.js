@@ -14974,7 +14974,9 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     // so the translated setup cannot disappear between the two dialogs.
     setTimeout(() => {
       try {
-        openCustomBuilder();
+        // A translated handoff must not seed or start loading the ordinary
+        // default button before the imported source is installed below.
+        openCustomBuilder(null, null, "button", { deferInitialLoad: true });
     customDraftNaturalSize = translateSource?.naturalSize || null;
     $("custom-component-name").value = $("translate-name").value;
     $("custom-component-category").value = $("translate-category").value;
@@ -15020,7 +15022,6 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         event,
         effect,
       }));
-    setCustomWizardStep(0);
     $("custom-behavior-list").innerHTML = "";
     generatedPlan.behaviors.forEach(addCustomBehaviorRow);
     const translatedSource = `${html}\n${css}\n${javascript}`,
@@ -15039,7 +15040,6 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         row.remove();
     });
     setCustomStateStyles(generatedPlan.stateStyles);
-    refreshCustomPreview();
     if (translateSource.features.repeatedItems) {
       const namespace =
         $("translate-name").value.replace(/[^A-Za-z0-9]+/g, "") ||
@@ -15060,6 +15060,10 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         reconcileImportedCssPropertyMappings(properties);
         repairMissingTranslatedTargetMarkers();
         captureCustomOriginalSource();
+        // This is the first preview load for this handoff. At this point the
+        // translated source, mappings, state definitions, and repairs all
+        // agree, so Step 2 cannot inherit the starter-button document.
+        setCustomWizardStep(0);
         setStatus(`Opened “${$("translate-name").value}” in Component Workbench`);
       } catch (error) {
         console.error("Component Workbench handoff failed", error);
@@ -17309,7 +17313,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       name = String(part?.name || "").trim(),
       signature = `${selector} ${name} ${metadata.id || ""} ${metadata.className || ""} ${metadata.tag || ""} ${metadata.inputType || ""} ${metadata.role || ""} ${metadata.ariaLabel || ""}`.toLowerCase(),
       qualifierSeed = String(metadata.ariaLabel || metadata.text || metadata.id || name || "")
-        .trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ").slice(0, 36),
+        .trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ")
+        // Imported part names can already contain their role prefix. Strip
+        // it before composing the dropdown label so we never render labels
+        // such as "Button — Button — Bluetooth pairing".
+        .replace(/^(?:button|toggle container|toggle control|track|handle \/ knob|label \/ text|status \/ selected indicator|slider control|text input|whole component)\s*[—·:-]\s*/i, "")
+        .slice(0, 36),
       qualify = (label, genericPattern) => {
         if (!qualifierSeed || genericPattern.test(qualifierSeed)) return label;
         return `${label} — ${qualifierSeed}`;
@@ -17371,7 +17380,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       : roleLabel;
   }
   function customScopeTargets(includePseudo = true) {
-    const targets = [], seen = new Set(),
+    const targets = [], seen = new Set(), claimedPreviewNodes = new Set(),
       previewDocument = $("custom-component-preview")?.contentDocument,
       add = (label, selector, partId = "", advanced = false) => {
         const value = String(selector || "").trim();
@@ -17380,7 +17389,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         // Keep those Component Map parts distinct and identify them by partId.
         const identity = partId ? `part:${partId}` : `selector:${value}`;
         if (!value || seen.has(identity) || (!includePseudo && /::?(?:before|after)\b/i.test(value))) return;
+        let previewNode = null;
+        try { previewNode = previewDocument?.querySelector(value) || null; } catch (_) {}
+        // Component Map parts are canonical. The fallback raw-HTML scan may
+        // spell the same node differently (#id versus .class); do not add a
+        // second dropdown row for it. Distinct canonical parts retain their
+        // identities, which is required for authored pseudo-element Track
+        // and Handle mappings that intentionally share an owner node.
+        if (!partId && previewNode && claimedPreviewNodes.has(previewNode)) return;
         seen.add(identity);
+        if (previewNode) claimedPreviewNodes.add(previewNode);
         targets.push({ label, selector: value, partId, advanced });
       },
       parsed = new DOMParser().parseFromString($("custom-source-html").value, "text/html"),
@@ -17450,7 +17468,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const append = (parent, { label, selector, partId, advanced: isAdvanced }) => {
       const option = document.createElement("option");
       option.value = selector;
-      option.textContent = isAdvanced ? `${label} — ${selector}` : label;
+      // Always expose the selector. Friendly names alone are ambiguous for
+      // components with several rings, labels, and status indicators.
+      option.textContent = `${label} — ${selector}`;
       option.title = selector;
       option.dataset.partId = partId || "";
       parent.appendChild(option);
@@ -17494,6 +17514,27 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function customStateScopeLabel(scope = "all") {
     return scope === "all" ? "every state" : `${String(scope).replace(/[-_]+/g, " ")} only`;
+  }
+  function customAuthoredClassNames() {
+    const names = new Set(),
+      html = String($("custom-source-html")?.value || ""),
+      css = String($("custom-source-css")?.value || ""),
+      javascript = String($("custom-source-javascript")?.value || ""),
+      parsed = new DOMParser().parseFromString(html, "text/html");
+    parsed.querySelectorAll("[class]").forEach((element) =>
+      element.classList.forEach((name) => name && names.add(name)),
+    );
+    for (const match of css.matchAll(/\.(-?[_a-zA-Z]+[_a-zA-Z0-9-]*)/g)) names.add(match[1]);
+    for (const match of javascript.matchAll(/classList\.(?:add|remove|toggle|contains)\s*\(\s*["']([^"']+)["']/g))
+      match[1].split(/\s+/).filter(Boolean).forEach((name) => names.add(name));
+    return [...names].sort((left, right) => left.localeCompare(right));
+  }
+  function refreshCustomAuthoredClassChoices(input, enabled = true) {
+    const list = $("custom-authored-classes");
+    if (!input || !list) return;
+    list.replaceChildren(...customAuthoredClassNames().map((name) => new Option(name)));
+    if (enabled) input.setAttribute("list", list.id);
+    else if (input.getAttribute("list") === list.id) input.removeAttribute("list");
   }
   function captureCustomPropertyEditSession() {
     const creator = $("custom-property-creator"),
@@ -18607,6 +18648,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-property-step-row").hidden = !numberType;
     if (customTarget && !$("custom-property-target-name").dataset.edited)
       $("custom-property-target-name").value = definition.targetName || "";
+    refreshCustomAuthoredClassChoices(
+      $("custom-property-target-name"),
+      definition.value === "classPresence",
+    );
     if (!$("custom-property-unit").dataset.edited)
       $("custom-property-unit").value = definition.unit || "";
     if (!$("custom-property-min").dataset.edited)
@@ -18724,6 +18769,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           : "CSS/DOM property";
     if (["mappedProperty", "indexedProperty"].includes(action[0]))
       $("custom-signal-parameter").setAttribute("list", "custom-signal-style-properties");
+    else if (["classState", "standardStateText", "selectedStateText"].includes(action[0]))
+      refreshCustomAuthoredClassChoices($("custom-signal-parameter"), true);
     else $("custom-signal-parameter").removeAttribute("list");
     $("custom-signal-hold-row").hidden = !(digitalOutput && ["press", "held"].includes(action[0]));
     $("custom-signal-pulse-row").hidden = !(digitalOutput && ["release", "pulse", "held", "completed", "customEvent"].includes(action[0]));
@@ -19313,7 +19360,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         .toLowerCase(),
       tag = String(element.tag || "").toLowerCase(),
       inputType = String(element.inputType || "").toLowerCase(),
-      semanticSignature = `${element.id || ""} ${element.className || ""} ${element.ariaLabel || ""}`.toLowerCase();
+      semanticSignature = `${element.id || ""} ${element.className || ""} ${element.ariaLabel || ""}`.toLowerCase(),
+      explicitRole = String(element.role || "").toLowerCase(),
+      namedInteractiveSurface = /(?:^|[\s._-])(?:button|toggle|switch|control)$/.test(semanticSignature.trim());
     if (/slider.?handle|range.?handle|thumb|knob.?handle|drag.?handle/.test(signature))
       return { role: "sliderHandle", reason: "Detected a movable slider or gauge handle." };
     if (/background|backdrop|wallpaper|surface.?image|panel.?image/.test(semanticSignature) || /background-image\s*:/.test(String(element.style || "").toLowerCase()))
@@ -19358,8 +19407,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (
       tag === "button" ||
       inputType === "button" ||
-      ["button", "switch", "menuitem"].includes(String(element.role || "").toLowerCase()) ||
-      /button|toggle|switch|press|click|control/.test(signature)
+      ["button", "switch", "menuitem"].includes(explicitRole) ||
+      namedInteractiveSurface
     )
       return { role: "button", reason: "Detected an interactive button surface." };
     if (/list|items|grid|menu|repeat/.test(signature) && Number(element.childCount) > 1)
@@ -23018,6 +23067,14 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       row.appendChild(mapping);
       mapping.querySelector('[data-state-meta="activationKind"]').value = defaults.kind;
       mapping.querySelector('[data-state-meta="activationValue"]').value = defaults.value;
+      const activationKind = mapping.querySelector('[data-state-meta="activationKind"]'),
+        activationValue = mapping.querySelector('[data-state-meta="activationValue"]'),
+        refreshActivationChoices = () => refreshCustomAuthoredClassChoices(
+          activationValue,
+          activationKind.value === "class",
+        );
+      activationKind.addEventListener("change", refreshActivationChoices);
+      refreshActivationChoices();
       mapping.querySelector("[data-state-simulate]").onclick = () => simulateCustomState(row.dataset.state);
       mapping.querySelector("[data-state-delete]")?.addEventListener("click", () => {
         row.remove();
@@ -24690,7 +24747,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     return source;
   }
-  function setCustomWizardStep(step = 0) {
+  function setCustomWizardStep(step = 0, { refreshPreview = true } = {}) {
     const dialog = $("custom-component-dialog");
     customWizardStep = Math.max(0, Math.min(2, Number(step) || 0));
     [0, 1, 2, 3].forEach((index) =>
@@ -24714,7 +24771,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const authoredPanel = dialog.querySelector(".custom-step-authored");
       if (authoredPanel) authoredPanel.hidden = false;
       switchCustomSourceTab("html");
-      refreshCustomPreview();
+      if (refreshPreview) refreshCustomPreview();
     }
     if (customWizardStep === 1) analyzeCustomElements();
     if (customWizardStep === 1) {
@@ -24793,7 +24850,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     renderCustomWorkbenchStateToolbar();
     dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function openCustomBuilder(item = null, entry = null, starterTemplate = "button") {
+  function openCustomBuilder(item = null, entry = null, starterTemplate = "button", { deferInitialLoad = false } = {}) {
     customEditingId = entry?.id || "";
     customPropertyEditGeneration += 1;
     customPropertyEditSession = null;
@@ -24909,21 +24966,27 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     customBehaviorRules.forEach(addCustomBehaviorRow);
     $("custom-component-template").disabled = !!entry;
     $("custom-component-apply-template").disabled = !!entry;
-    if (!item && !entry) {
+    if (!item && !entry && !deferInitialLoad) {
       const templateKey = customStarterTemplates[starterTemplate]
         ? starterTemplate
         : "button";
       $("custom-component-template").value = templateKey;
       applyCustomStarterTemplate(templateKey, false);
     }
-    loadCustomOriginalSource(entry);
-    refreshCustomPreview();
-    analyzeCustomElements();
-    seedCustomWorkbenchParts(customAnalyzedElements);
-    renderCustomWorkbenchParts();
+    if (!deferInitialLoad) {
+      loadCustomOriginalSource(entry);
+      refreshCustomPreview();
+      analyzeCustomElements();
+      seedCustomWorkbenchParts(customAnalyzedElements);
+      renderCustomWorkbenchParts();
+    } else {
+      // Do not let a document from the previously opened component
+      // participate in the static inventory pass performed by the handoff.
+      $("custom-component-preview").srcdoc = "";
+    }
     customWizardStep = 0;
     customCapabilityPage = "properties";
-    setCustomWizardStep(0);
+    setCustomWizardStep(0, { refreshPreview: !deferInitialLoad });
     $("custom-component-dialog").showModal();
   }
   $("create-custom-component").onclick = () => {

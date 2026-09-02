@@ -18,6 +18,9 @@ assert.ok(editor.includes('kind: "authored-runtime"'));
 assert.ok(editor.includes('starterTemplate: templateKey'));
 assert.ok(editor.includes('repeatedCollections: template.repeatedItems ? [structuredClone(template.repeatedItems)] : []'));
 assert.ok(editor.includes('openCustomBuilder(null, null, button.dataset.creatorTemplate)'));
+assert.ok(editor.includes('openCustomBuilder(null, null, "button", { deferInitialLoad: true })'));
+assert.ok(editor.includes('if (!deferInitialLoad) {\n      loadCustomOriginalSource(entry);'));
+assert.ok(editor.includes('setCustomWizardStep(0, { refreshPreview: !deferInitialLoad })'));
 for (const page of ["properties", "connections", "states", "repeated", "advanced"])
   assert.ok(html.includes(`data-custom-capability-page="${page}"`), `${page} capability page is missing`);
 assert.ok(!html.includes('data-custom-capability-page="code"'));

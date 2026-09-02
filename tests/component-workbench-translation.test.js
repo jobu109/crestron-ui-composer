@@ -47,7 +47,8 @@ assert.ok(handoff.includes("analyzeCustomElements();\n    populateCustomWorkbenc
 assert.ok(handoff.includes("captureCustomOriginalSource();"));
 assert.ok(handoff.includes('continueButton.textContent = "Opening Component Workbench…"'));
 assert.ok(handoff.includes("setTimeout(() => {"));
-assert.ok(handoff.includes("openCustomBuilder();"));
+assert.ok(handoff.includes('openCustomBuilder(null, null, "button", { deferInitialLoad: true });'));
+assert.ok(!handoff.includes("openCustomBuilder();"), "translated imports must not initialize or preview the default button first");
 assert.ok(handoff.includes("Component Workbench handoff failed"));
 assert.ok(handoff.includes('$("translate-snippet-dialog").showModal()'));
 assert.ok(handoff.includes("repairMissingTranslatedTargetMarkers();"), "translated targets should be repaired before the Workbench captures its source");

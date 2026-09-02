@@ -30,7 +30,7 @@ for (const lifecycleMarker of [
   '$("custom-component-save").onclick = async (event) =>',
   "workbench: window.ComposerComponentWorkbench.normalize(customWorkbenchDraft)",
   "registerCustomComponent(entry)",
-  "function openCustomBuilder(item = null, entry = null, starterTemplate = \"button\")",
+  "function openCustomBuilder(item = null, entry = null, starterTemplate = \"button\", { deferInitialLoad = false } = {})",
   "function exportCustomComponentEntry(entry)",
   "function createCustomComponentPackage(entry, assetCatalog = state.assets)",
   "function parseCustomComponentPackage(packageValue)",

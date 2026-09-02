@@ -11,6 +11,10 @@ const javascript = fs.readFileSync(path.join(root, "editor.js"), "utf8");
 assert.ok(javascript.includes("mapping: structuredClone(mapping.mapping || mapping.connectionConfig?.mapping || null)"));
 assert.ok(javascript.includes('$("custom-signal-creator").hidden = true;'));
 assert.ok(javascript.includes('["output-min", "output-max"].forEach'));
+assert.ok(html.includes('id="custom-authored-classes"'));
+assert.ok(javascript.includes("function customAuthoredClassNames()"));
+assert.ok(javascript.includes('definition.value === "classPresence"'));
+assert.ok(javascript.includes('["classState", "standardStateText", "selectedStateText"].includes(action[0])'));
 
 [
   "custom-signal-hold-duration",

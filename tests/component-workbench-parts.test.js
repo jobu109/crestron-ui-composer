@@ -32,6 +32,8 @@ assert.match(editorHtml, /id="custom-part-picker"/);
 assert.match(editorHtml, /id="custom-part-rescan"/);
 assert.match(editorJs, /function renderCustomWorkbenchParts\(/);
 assert.match(editorJs, /function addPickedCustomWorkbenchPart\(/);
+assert.match(editorJs, /claimedPreviewNodes\.has\(previewNode\)/, "connection targets must suppress raw-scan aliases of canonical Component Map nodes");
+assert.match(editorJs, /option\.textContent = `\$\{label\} — \$\{selector\}`/, "connection targets must expose their selector beside the friendly label");
 assert.match(editorJs, /workbench: window\.ComposerComponentWorkbench\.normalize\(customWorkbenchDraft\)/);
 
 // UX plan Phase 1: the Component Map must be a persistent panel beside
