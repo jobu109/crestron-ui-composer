@@ -22,6 +22,35 @@ for (const marker of [
   "Widget List with two nested instances",
 ]) assert.ok(editor.includes(marker), `${marker} parity evidence is missing`);
 
+for (const lifecycleMarker of [
+  "function refreshCustomPreview({ refreshSimulator = true } = {})",
+  "function createScopedCustomProperty()",
+  "function createScopedCustomSignal()",
+  "if (customWizardStep === 2) refreshCustomPreview()",
+  '$("custom-component-save").onclick = async (event) =>',
+  "workbench: window.ComposerComponentWorkbench.normalize(customWorkbenchDraft)",
+  "registerCustomComponent(entry)",
+  "function openCustomBuilder(item = null, entry = null, starterTemplate = \"button\")",
+  "function exportCustomComponentEntry(entry)",
+  "function createCustomComponentPackage(entry, assetCatalog = state.assets)",
+  "function parseCustomComponentPackage(packageValue)",
+]) assert.ok(editor.includes(lifecycleMarker), `${lifecycleMarker} lifecycle stage is missing`);
+
+const saveLifecycle = editor.slice(
+  editor.indexOf('$("custom-component-save").onclick'),
+  editor.indexOf('$("custom-package-file").onchange'),
+);
+assert.ok(
+  saveLifecycle.indexOf("workbench: window.ComposerComponentWorkbench.normalize(customWorkbenchDraft)") <
+    saveLifecycle.indexOf("registerCustomComponent(entry)"),
+  "creation must persist the canonical Workbench definition before registering its runtime",
+);
+assert.ok(
+  saveLifecycle.includes("runRegisteredCustomComponentTest(entry)") &&
+    saveLifecycle.includes("scheduleComponentLibrarySave()"),
+  "creation must verify the saved runtime and persist it for reopening",
+);
+
 for (const performanceFinding of [
   "unbounded-intervals",
   "excessive-timers",

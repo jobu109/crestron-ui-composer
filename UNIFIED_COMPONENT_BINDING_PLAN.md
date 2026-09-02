@@ -125,9 +125,11 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 
 ### Phase 7 — End-to-end verification
 
-- [ ] Verify blank button, default button, imported button, toggle, slider, text input, and repeated selector.
-- [ ] Verify every property without a Crestron connection.
-- [ ] Verify Digital, Analog, and Serial input/output mappings.
-- [ ] Verify Standard, Pressed, Selected, Disabled, and Every-state scopes.
-- [ ] Verify Live Preview, Apply, Step 3, creation, reopen, export, and packaged runtime parity.
+- [x] Verify blank button, default button, imported button, toggle, slider, text input, and repeated selector.
+- [x] Verify every property without a Crestron connection.
+- [x] Verify Digital, Analog, and Serial input/output mappings.
+- [x] Verify Standard, Pressed, Selected, Disabled, and Every-state scopes.
+- [x] Verify Live Preview, Apply, Step 3, creation, reopen, export, and packaged runtime parity.
 - [ ] Run the full automated suite and complete physical desktop/touch testing.
+  - [x] Full automated suite passed on 2026-09-02.
+  - [ ] Physical desktop and touch-panel testing remains.

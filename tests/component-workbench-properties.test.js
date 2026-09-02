@@ -324,8 +324,10 @@ const definition = workbench.normalize({
   }],
 });
 assert.strictEqual(workbench.validate(definition).valid, true);
+assert.strictEqual(definition.connections.length, 0, "Composer-editable properties must remain valid without any Crestron connection");
 const roundTrip = workbench.normalize(JSON.parse(JSON.stringify(definition)));
 assert.deepStrictEqual(roundTrip.properties, definition.properties);
+assert.strictEqual(roundTrip.connections.length, 0, "standalone editable properties must remain connection-free after persistence");
 
 const importedToggleCss = `
 .slider { background-color: {{trackColor}}; }

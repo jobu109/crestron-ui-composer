@@ -39,4 +39,17 @@ const value = workbench.normalize({
 assert.deepStrictEqual(value.states[0].activation, { kind: "class", value: "selected" });
 assert.strictEqual(workbench.validate(value).valid, true);
 
+const scoped = Object.fromEntries(
+  ["all", "standard", "pressed", "selected", "disabled"].map((scope) => [
+    scope,
+    workbench.scopeCssSelector(".button::before", scope),
+  ]),
+);
+assert.strictEqual(scoped.all, ".button::before", "Every-state scope must retain the exact authored target");
+assert.ok(scoped.standard.includes(":not(.selected)") && scoped.standard.endsWith("::before"));
+assert.ok(scoped.pressed.includes(".composer-pressed") && scoped.pressed.includes("::before"));
+assert.ok(scoped.selected.includes('[aria-checked="true"]') && scoped.selected.includes("input:checked + .button::before"));
+assert.ok(scoped.disabled.includes('[aria-disabled="true"]') && scoped.disabled.includes(".button:disabled::before"));
+assert.strictEqual(new Set(Object.values(scoped)).size, 5, "all five state scopes must generate distinct selectors");
+
 console.log("component-workbench-states.test.js passed");
