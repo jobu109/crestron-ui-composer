@@ -13,6 +13,23 @@ assert.ok(editor.includes("translatedSuggestion: true"));
 assert.ok(editor.includes('optional: true') && editor.includes('source: "import-and-translate"'));
 assert.ok(editor.includes('customCanonicalTranslationSuggestion("property"'));
 assert.ok(editor.includes('customCanonicalTranslationSuggestion("connection"'));
+const suggestionDeduper = editor.slice(
+  editor.indexOf("function dedupeCustomMappingSuggestions("),
+  editor.indexOf("function populateCustomWorkbenchFromTranslation("),
+);
+assert.ok(suggestionDeduper.includes("frameDocument?.querySelector(target.selector)"));
+assert.ok(suggestionDeduper.includes("binding.effect.kind"));
+assert.ok(suggestionDeduper.includes("binding.effect.stateScope || \"all\""));
+assert.ok(editor.includes("dedupeCustomMappingSuggestions(workbench.properties)"));
+assert.ok(editor.includes("dedupeCustomMappingSuggestions(workbench.connections)"));
+const effectiveSuggestions = editor.slice(
+  editor.indexOf("function effectiveCustomMappingSuggestions("),
+  editor.indexOf("function populateCustomWorkbenchFromTranslation("),
+);
+assert.ok(effectiveSuggestions.includes("mapping.suggestion?.selected === false"));
+assert.ok(effectiveSuggestions.includes('binding.effect.kind === "unresolved"'));
+assert.ok(effectiveSuggestions.includes("customAnalyzedElements.some"));
+assert.ok(editor.includes("omittedSuggestionCount"));
 assert.ok(editor.includes('preserveLocalBehavior: true'));
 assert.ok(editor.includes('source: "import-and-translate"'));
 assert.ok(editor.includes("uncheckedSuggestionsRemoved: true"));

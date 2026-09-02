@@ -20307,6 +20307,47 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       },
     });
   }
+  function dedupeCustomMappingSuggestions(mappings = []) {
+    const frameDocument = $("custom-component-preview")?.contentDocument,
+      nodeIds = new WeakMap();
+    let nodeIndex = 0;
+    const resolvedTargetKey = (target = {}) => {
+      let node = null;
+      try { node = frameDocument?.querySelector(target.selector); } catch (_) {}
+      if (!node)
+        return `selector:${stableCustomSelectorForAuthoredRule(target.selector)}${target.pseudoElement || ""}`;
+      if (!nodeIds.has(node)) nodeIds.set(node, `node:${++nodeIndex}`);
+      return `${nodeIds.get(node)}${target.pseudoElement || ""}`;
+    };
+    const seen = new Set();
+    return mappings.filter((mapping) => {
+      const binding = customCanonicalBinding(mapping),
+        signature = [
+          resolvedTargetKey(binding.target),
+          binding.effect.kind,
+          binding.effect.name,
+          binding.effect.capability,
+          binding.effect.stateScope || "all",
+        ].join("|");
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    });
+  }
+  function effectiveCustomMappingSuggestions(mappings = []) {
+    const frameDocument = $("custom-component-preview")?.contentDocument;
+    return mappings.filter((mapping) => {
+      if (mapping.suggestion?.selected === false) return false;
+      const binding = customCanonicalBinding(mapping);
+      if (!binding.target.selector || binding.effect.kind === "unresolved") return false;
+      const stableSelector = stableCustomSelectorForAuthoredRule(binding.target.selector),
+        inventoried = customAnalyzedElements.some((entry) =>
+          stableCustomSelectorForAuthoredRule(entry.selector) === stableSelector);
+      if (inventoried || !frameDocument) return true;
+      try { return !!frameDocument.querySelector(binding.target.selector); }
+      catch (_) { return false; }
+    });
+  }
   function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems } = {}) {
     const api = window.ComposerComponentWorkbench,
       propertyDefinitions = properties || collectCustomProperties(),
@@ -20407,6 +20448,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         ...(range ? { range: structuredClone(range) } : {}),
       });
     });
+    const detectedSuggestionCount = workbench.properties.length + workbench.connections.length;
+    workbench.properties = effectiveCustomMappingSuggestions(
+      dedupeCustomMappingSuggestions(workbench.properties),
+    );
+    workbench.connections = effectiveCustomMappingSuggestions(
+      dedupeCustomMappingSuggestions(workbench.connections),
+    );
+    const omittedSuggestionCount = detectedSuggestionCount - workbench.properties.length - workbench.connections.length;
     workbench.repeatedCollections = component.repeatedItems
       ? Array.isArray(component.repeatedItems)
         ? structuredClone(component.repeatedItems)
@@ -20422,6 +20471,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     workbench.translationReview = {
       source: "import-and-translate",
       uncheckedSuggestionsRemoved: true,
+      omittedSuggestionCount,
       unresolvedProperties: workbench.properties.filter((entry) => entry.target.kind === "unresolved").map((entry) => entry.key),
       unresolvedConnections: workbench.connections.filter((entry) => entry.target.kind === "unresolved").map((entry) => entry.key),
     };

@@ -113,8 +113,8 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 - [x] Rebuild capability bundles as collections of ordinary canonical mappings.
 - [x] Make recommendation buttons visibly select/configure mappings and explain the result.
 - [x] Convert import detections into optional mapping suggestions using the same contract.
-- [ ] De-duplicate suggestions by resolved DOM target plus effect plus state.
-- [ ] Never add unselected or ineffective suggestions.
+- [x] De-duplicate suggestions by resolved DOM target plus effect plus state.
+- [x] Never add unselected or ineffective suggestions.
 
 ### Phase 6 — Remove redundant paths
 
