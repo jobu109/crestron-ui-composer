@@ -18491,6 +18491,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       "custom-signal-pulse-duration": mapping.pulseDuration ?? saved.pulseDuration ?? 50,
       "custom-signal-input-min": mapping.mapping?.inputMin ?? 0,
       "custom-signal-input-max": mapping.mapping?.inputMax ?? 65535,
+      "custom-signal-output-min": mapping.mapping?.outputMin ?? 0,
+      "custom-signal-output-max": mapping.mapping?.outputMax ?? 100,
       "custom-signal-unit": binding.effect.unit || mapping.mapping?.unit || "",
       "custom-signal-state-scope": binding.effect.stateScope || "all",
     };
@@ -18686,7 +18688,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-signal-hold-row").hidden = !(digitalOutput && ["press", "held"].includes(action[0]));
     $("custom-signal-pulse-row").hidden = !(digitalOutput && ["release", "pulse", "held", "completed", "customEvent"].includes(action[0]));
     $("custom-signal-exclusive-row").hidden = !(digitalOutput && action[0] === "press");
-    ["input-min", "input-max", "unit", "invert", "clamp", "zero"].forEach(
+    ["input-min", "input-max", "output-min", "output-max", "unit", "invert", "clamp", "zero"].forEach(
       (name) => ($(`custom-signal-${name}-row`).hidden = !analog),
     );
     $("custom-signal-per-item-row").hidden = !repeatedTarget;
@@ -18717,14 +18719,18 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       `Target part: ${config.selector}`,
       `State scope: ${customStateScopeLabel(config.stateScope)}`,
       `Address: ${config.defaultValue}`,
-      config.mapping ? `Crestron value: ${config.mapping.inputMin}…${config.mapping.inputMax}${config.mapping.unit || ""}${config.mapping.invert ? " (inverted)" : ""}` : "",
+      config.mapping ? `Conversion: Crestron ${config.mapping.inputMin}…${config.mapping.inputMax} → component ${config.mapping.outputMin}…${config.mapping.outputMax}${config.mapping.unit || ""}${config.mapping.invert ? " (inverted)" : ""}` : "",
       config.perItem ? "Per-item range: zero-based; use {n} or {index} in the address." : "",
       "\nJavaScript adapter\n" + (customScopedSignalJavascript(config.type, config.direction, config.action, config.selector, config.key, config) || "No valid adapter rule for this selection."),
     ].filter(Boolean).join("\n");
   }
   function collectCustomSignalCreatorConfig() {
     const type = $("custom-signal-capability-type").value,
-      direction = $("custom-signal-capability-direction").value;
+      direction = $("custom-signal-capability-direction").value,
+      finiteField = (id, fallback) => {
+        const value = Number($(id).value);
+        return Number.isFinite(value) ? value : fallback;
+      };
     return {
       type,
       direction,
@@ -18741,12 +18747,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       perItem: $("custom-signal-per-item").checked,
       zeroBased: $("custom-signal-zero-based").checked,
       mapping: type === "analog" ? {
-        inputMin: Number($("custom-signal-input-min").value) || 0,
-        inputMax: Number($("custom-signal-input-max").value) || 65535,
-        // Workbench analog connections use the exact value sent by
-        // Crestron. There is no second, hidden component target range.
-        outputMin: Number($("custom-signal-input-min").value) || 0,
-        outputMax: Number($("custom-signal-input-max").value) || 65535,
+        inputMin: finiteField("custom-signal-input-min", 0),
+        inputMax: finiteField("custom-signal-input-max", 65535),
+        outputMin: finiteField("custom-signal-output-min", 0),
+        outputMax: finiteField("custom-signal-output-max", 100),
         unit: $("custom-signal-unit").value.trim(),
         invert: $("custom-signal-invert").checked,
         clamp: $("custom-signal-clamp").checked,
@@ -23661,8 +23665,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (!mapping) return null;
     const inputMin = finite(mapping.inputMin, 0),
       inputMax = finite(mapping.inputMax, 65535),
-      outputMin = inputMin,
-      outputMax = inputMax;
+      outputMin = finite(mapping.outputMin, inputMin),
+      outputMax = finite(mapping.outputMax, inputMax);
     if (inputMax === inputMin) return null;
     return {
       inputMin,
@@ -23768,7 +23772,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         if (scale) {
           const hint = document.createElement("small");
           hint.className = "hint";
-          hint.textContent = `Crestron input: ${minimum}–${maximum}${scale.unit ? ` ${scale.unit}` : ""}`;
+          hint.textContent = `Crestron ${minimum}–${maximum} → component ${scale.outputMin}–${scale.outputMax}${scale.unit ? ` ${scale.unit}` : ""}`;
           pair.append(hint);
         }
         const bounded = () => Math.max(minimum, Math.min(maximum, Number(number.value) || minimum));
@@ -25078,6 +25082,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     "custom-signal-pulse-duration",
     "custom-signal-input-min",
     "custom-signal-input-max",
+    "custom-signal-output-min",
+    "custom-signal-output-max",
     "custom-signal-unit",
   ].forEach((id) => ($(id).oninput = () => {
     $(id).dataset.edited = "true";

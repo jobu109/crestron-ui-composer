@@ -23,10 +23,10 @@ assert.ok(
 );
 
 assert.ok(editor.includes("function customSimulatorAnalogScale(signal)"));
-assert.ok(editor.includes("Crestron input: ${minimum}–${maximum}"));
+assert.ok(editor.includes("Crestron ${minimum}–${maximum} → component ${scale.outputMin}–${scale.outputMax}"));
 assert.ok(editor.includes("minimum = scale?.inputMin ?? 0"));
 assert.ok(editor.includes("sendCustomSimulatorInput(signal, bounded())"));
-assert.ok(!editor.includes("component target: ${scale.outputMin}"));
+assert.ok(editor.includes("outputMin = finite(mapping.outputMin, inputMin)"));
 assert.ok(!/\bsafeKey\s*\(/.test(editor), "Workbench must use the defined key normalizer");
 const html = fs.readFileSync(path.join(root, "editor.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "editor.css"), "utf8");

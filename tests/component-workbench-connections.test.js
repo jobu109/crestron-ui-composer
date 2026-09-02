@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(root, "editor.html"), "utf8");
 const javascript = fs.readFileSync(path.join(root, "editor.js"), "utf8");
 assert.ok(javascript.includes("mapping: structuredClone(mapping.mapping || mapping.connectionConfig?.mapping || null)"));
 assert.ok(javascript.includes('$("custom-signal-creator").hidden = true;'));
-assert.ok(!javascript.includes('["input-min", "input-max", "output-min", "output-max"'));
+assert.ok(javascript.includes('["input-min", "input-max", "output-min", "output-max", "unit"'));
 
 [
   "custom-signal-hold-duration",
@@ -18,6 +18,8 @@ assert.ok(!javascript.includes('["input-min", "input-max", "output-min", "output
   "custom-signal-exclusive",
   "custom-signal-input-min",
   "custom-signal-input-max",
+  "custom-signal-output-min",
+  "custom-signal-output-max",
   "custom-signal-invert",
   "custom-signal-clamp",
   "custom-signal-zero-based",
@@ -54,6 +56,8 @@ const connectionOptions = connectionCreatorMarkup.slice(
   "custom-signal-pulse-duration",
   "custom-signal-input-min",
   "custom-signal-input-max",
+  "custom-signal-output-min",
+  "custom-signal-output-max",
   "custom-signal-unit",
   "custom-signal-invert",
   "custom-signal-clamp",
