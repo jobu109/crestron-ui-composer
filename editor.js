@@ -20052,7 +20052,20 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : [];
     return { additions, mappings };
   }
+  function customCanonicalMappingSummary(mapping = {}) {
+    const binding = customCanonicalBinding(mapping),
+      target = customWorkbenchDraft?.parts?.find((part) => part.id === binding.target.partId)?.name ||
+        customFriendlyTargetName(binding.target.selector),
+      effect = binding.effect.capability || binding.effect.name || binding.effect.kind || "effect",
+      state = customStateScopeLabel(binding.effect.stateScope || "all");
+    return `${mapping.label || mapping.key}: ${target} → ${effect} (${state})`;
+  }
   function applyCustomCapabilityBundle(bundle) {
+    document.querySelectorAll("[data-custom-capability-bundle]").forEach((button) => {
+      const active = button.dataset.customCapabilityBundle === bundle;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("selected", active);
+    });
     const parts = customWorkbenchDraft?.parts || [],
       compatibleRoles = {
         button: ["button"],
@@ -20100,9 +20113,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       bundleName = bundle === "toggle"
         ? "Toggle"
         : customWorkbenchRoleLabel(role),
+      configuredMappings = mappings.map(customCanonicalMappingSummary),
+      configuredSummary = configuredMappings.length
+        ? ` Configured: ${configuredMappings.slice(0, 4).join("; ")}${configuredMappings.length > 4 ? `; plus ${configuredMappings.length - 4} more visible mappings` : ""}.`
+        : "",
       message = additions.length
-        ? `${bundleName} setup applied to ${targetName}. Added ${mappings.length || additions.length} ordinary mapping${(mappings.length || additions.length) === 1 ? "" : "s"}; each is now visible under Editable properties or Crestron connections.`
-        : `${bundleName} setup is already complete on ${targetName}; no duplicate properties or connections were added.`;
+        ? `${bundleName} setup selected for ${targetName}. Added ${mappings.length || additions.length} ordinary mapping${(mappings.length || additions.length) === 1 ? "" : "s"}; each is visible under Editable properties or Crestron connections.${configuredSummary}`
+        : `${bundleName} setup selected for ${targetName}. It is already complete, so no duplicate mappings were added.${configuredSummary}`;
     $("custom-capability-recommendation-status").textContent = message;
     $("custom-capability-recommendation-status").classList.toggle(
       "no-changes",

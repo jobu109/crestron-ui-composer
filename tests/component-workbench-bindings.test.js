@@ -206,6 +206,13 @@ assert.ok(
     capabilityMappingCollection.includes("ordinary mapping"),
   "capability bundles must resolve to a visible collection of ordinary canonical mappings",
 );
+assert.ok(
+  editorHtml.includes('aria-pressed="false" data-custom-capability-bundle="button"') &&
+    capabilityMappingCollection.includes('button.setAttribute("aria-pressed", String(active))') &&
+    capabilityMappingCollection.includes("customCanonicalMappingSummary") &&
+    capabilityMappingCollection.includes("Configured:"),
+  "recommendation buttons must visibly select their preset and explain the canonical mappings they configured",
+);
 const roleMappingBuilder = editor.slice(
   editor.indexOf("function applyCustomElementRole("),
   editor.indexOf("function addCustomBehaviorPreset("),

@@ -1078,6 +1078,7 @@ h2 {
 .custom-capability-recommendations{display:grid;gap:12px;padding:14px;border:1px solid #28534e;border-radius:8px;background:#0d211f}
 .custom-capability-recommendations[hidden]{display:none}
 .custom-capability-bundles{display:flex;flex-wrap:wrap;gap:8px}
+.custom-capability-bundles button[aria-pressed="true"],.custom-capability-bundles button.selected{border-color:#00e5c3;background:#0b8f80;color:#fff;box-shadow:0 0 0 2px rgba(0,229,195,.2)}
 .custom-capability-recommendation-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px}
 .custom-capability-recommendation{display:grid;gap:9px;align-items:start;padding:10px;border:1px solid #294542;border-radius:6px;background:#102725}
 .custom-capability-recommendation>label{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start}
