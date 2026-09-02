@@ -89,6 +89,11 @@ assert.ok(javascript.includes('group.label = "Component parts"'));
 assert.ok(javascript.includes('group.label = "Advanced selectors"'));
 assert.ok(javascript.includes('const identity = partId ? `part:${partId}` : `selector:${value}`'));
 assert.ok(javascript.includes("duplicate visual selectors are valid"));
+assert.ok(
+  javascript.includes("preferredOption = preferredPartId") &&
+    javascript.includes("Do not let it match the first selector-only option"),
+  "refreshing a connection form must preserve Track/Handle instead of treating Whole component's blank part id as preferred",
+);
 const connectionRenderer = javascript.slice(
   javascript.indexOf("function renderCustomConnectionMappings("),
   javascript.indexOf("function editCustomConnectionMapping("),
@@ -120,6 +125,20 @@ const connectionCreator = javascript.slice(
 assert.ok(connectionCreator.includes("customWorkbenchDraft?.connections?.find((connection) => connection.id === editingId)"));
 assert.ok(connectionCreator.includes("findIndex((connection) => connection.id === editingId)"));
 assert.ok(connectionCreator.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"));
+
+const connectionChangeHandlers = javascript.slice(
+  javascript.indexOf('["custom-signal-capability-type", "custom-signal-capability-direction"]'),
+  javascript.indexOf('$("custom-signal-create").onclick = createScopedCustomSignal'),
+);
+assert.ok(
+  !connectionChangeHandlers.includes('resetCustomScopeCreatorEdits("custom-signal-capability-")') &&
+    !connectionChangeHandlers.includes('delete $("custom-signal-capability-address").dataset.edited'),
+  "changing connection type, direction, target, or effect must preserve user-entered form values",
+);
+assert.ok(
+  javascript.includes('resetCustomScopeCreatorEdits(property ? "custom-property-" : "custom-signal-")'),
+  "opening a new connection must reset stale edit markers across the entire signal form",
+);
 
 assert.ok(!javascript.includes('["visibility", "Visibility feedback"'));
 assert.ok(!javascript.includes('["disabled", "Disabled feedback"'));

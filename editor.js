@@ -17462,7 +17462,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       select.appendChild(group);
     }
     const options = [...select.options],
-      preferredOption = options.find((option) => option.dataset.partId === preferredPartId),
+      // An empty preferredPartId means there is no preferred Component Map
+      // part. Do not let it match the first selector-only option (commonly
+      // Whole component) and override the user's current selection.
+      preferredOption = preferredPartId
+        ? options.find((option) => option.dataset.partId === preferredPartId)
+        : null,
       previousOption = options.find((option) => option.value === previous);
     // Do not assign select.value here: duplicate visual selectors are valid and
     // value assignment always selects the first one (often Knob instead of Track).
@@ -18896,7 +18901,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     }
     $("custom-property-creator").hidden = !property;
     $("custom-signal-creator").hidden = property;
-    resetCustomScopeCreatorEdits(property ? "custom-property-" : "custom-signal-capability-");
+    resetCustomScopeCreatorEdits(property ? "custom-property-" : "custom-signal-");
     const stateScope = property ? $("custom-property-state-scope") : $("custom-signal-state-scope");
     if (stateScope) delete stateScope.dataset.edited;
     const target = property ? $("custom-property-target") : $("custom-signal-target");
@@ -25051,16 +25056,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   ["custom-signal-capability-type", "custom-signal-capability-direction"].forEach(
     (id) =>
       ($(id).onchange = () => {
-        resetCustomScopeCreatorEdits("custom-signal-capability-");
         refreshCustomSignalCreator();
       }),
   );
   ["custom-signal-capability-action", "custom-signal-target"].forEach(
     (id) =>
       ($(id).onchange = () => {
-        delete $("custom-signal-capability-key").dataset.edited;
-        delete $("custom-signal-capability-label").dataset.edited;
-        delete $("custom-signal-capability-address").dataset.edited;
         refreshCustomSignalCreator();
       }),
   );
