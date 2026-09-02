@@ -19914,6 +19914,89 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       metadata: structuredClone(owner?.metadata || entry.metadata || {}),
     };
   }
+  function customRecommendedPropertyChoices(entry = {}) {
+    const common = {
+        button: [
+          ["faceColor", "Standard background color"], ["selectedFaceColor", "Selected background color"],
+          ["textColor", "Standard text / icon color"], ["selectedTextColor", "Selected text / icon color"],
+          ["borderColor", "Standard border color"], ["selectedBorderColor", "Selected border color"],
+          ["glowColor", "Standard glow color"], ["selectedGlowColor", "Selected glow color"],
+          ["glowStrength", "Glow strength"], ["shadowSize", "Shadow size"],
+          ["cornerRadius", "Corner radius"], ["paddingHorizontal", "Horizontal padding"],
+          ["paddingVertical", "Vertical padding"], ["showBackground", "Show background"],
+        ],
+        textInput: [
+          ["placeholder", "Placeholder text"], ["textColor", "Text color"], ["textSize", "Text size"],
+          ["fontFamily", "Font family"], ["backgroundColor", "Background color"],
+          ["showBackground", "Show background"], ["borderColor", "Border color"],
+          ["cornerRadius", "Corner radius"], ["paddingHorizontal", "Horizontal padding"],
+          ["paddingVertical", "Vertical padding"],
+        ],
+        gauge: [["fillColor", "Fill color"], ["trackColor", "Track color"], ["showPercentage", "Show percentage / value"], ["textColor", "Value text color"], ["textSize", "Value text size"]],
+        slider: [["trackColor", "Track color"], ["fillColor", "Fill color"], ["handleColor", "Handle color"], ["showPercentage", "Show percentage / value"], ["textColor", "Value text color"], ["textSize", "Value text size"]],
+        repeated: [["itemGap", "Item spacing"]],
+      },
+      dynamic = {
+        text: [
+          [customElementPropertyKey("text", entry.selector), "Standard text"],
+          [customElementPropertyKey("selectedText", entry.selector), "Selected text"],
+          ["textColor", "Standard text color"], ["selectedTextColor", "Selected text color"],
+          ["textSize", "Text size"], ["fontFamily", "Font family"], ["textAlignment", "Text alignment"],
+          ["wrapText", "Wrap text"], ["showLabel", "Show label"],
+        ],
+        icon: [
+          [customElementPropertyKey("asset", entry.selector), "Standard image / asset"],
+          [customElementPropertyKey("selectedAsset", entry.selector), "Selected image / asset"],
+          [customElementPropertyKey("iconColor", entry.selector), "Standard icon color"],
+          [customElementPropertyKey("selectedIconColor", entry.selector), "Selected icon color"],
+          ["iconSize", "Icon size"], ["iconHorizontal", "Horizontal position"],
+          ["iconVertical", "Vertical position"], ["showIcon", "Show icon / asset"],
+        ],
+        backgroundAsset: [
+          [customElementPropertyKey("backgroundAsset", entry.selector), "Standard background asset"],
+          [customElementPropertyKey("selectedBackgroundAsset", entry.selector), "Selected background asset"],
+          [customElementPropertyKey("backgroundColor", entry.selector), "Standard background color"],
+          [customElementPropertyKey("selectedBackgroundColor", entry.selector), "Selected background color"],
+          ["backgroundFit", "Background image fit"], ["backgroundHorizontal", "Horizontal position"],
+          ["backgroundVertical", "Vertical position"], ["showBackground", "Show background"],
+        ],
+        selected: [
+          [customElementPropertyKey("indicatorStandardColor", entry.selector), "Standard indicator color"],
+          [customElementPropertyKey("indicatorSelectedColor", entry.selector), "Selected indicator color"],
+          [customElementPropertyKey("indicatorGlowColor", entry.selector), "Selected indicator glow color"],
+          [customElementPropertyKey("indicatorGlowStrength", entry.selector), "Selected indicator glow strength"],
+          [customElementPropertyKey("indicatorStandardOpacity", entry.selector), "Standard indicator opacity"],
+          [customElementPropertyKey("indicatorSelectedOpacity", entry.selector), "Selected indicator opacity"],
+        ],
+        sliderHandle: [
+          [customElementPropertyKey("handleColor", entry.selector), "Handle color"],
+          [customElementPropertyKey("handleBorderColor", entry.selector), "Handle border color"],
+          [customElementPropertyKey("handleSize", entry.selector), "Handle size"],
+          [customElementPropertyKey("handleGlowColor", entry.selector), "Handle glow color"],
+          [customElementPropertyKey("handleGlowStrength", entry.selector), "Handle glow strength"],
+          [customElementPropertyKey("showHandle", entry.selector), "Show handle"],
+        ],
+      };
+    let choices = dynamic[entry.role] || common[entry.role] || [];
+    if (entry.role === "button" && customComputedAppearance(entry.selector).supportsGap)
+      choices = [...choices, ["contentGap", "Text / icon spacing"]];
+    if (entry.role === "icon" && String(entry.metadata?.tag || "").toLowerCase() === "img")
+      choices = choices.filter(([key]) => !/iconColor/i.test(key));
+    if (["gauge", "slider"].includes(entry.role)) {
+      const valueSelector = customRelatedElementSelector(entry.selector, ["[data-value]", "output", ".value", ".percentage", ".percent", ".numeric-value"], entry.role === "gauge"),
+        trackSelector = entry.role === "gauge"
+          ? customRelatedElementSelector(entry.selector, ["[data-track]", ".track", ".gauge-track", ".meter-track"])
+          : entry.selector,
+        handleSelector = entry.role === "slider"
+          ? customRelatedElementSelector(entry.selector, ["[data-handle]", ".handle", ".thumb", ".slider-thumb"])
+          : "";
+      choices = choices.filter(([key]) =>
+        (trackSelector || key !== "trackColor") &&
+        (handleSelector || key !== "handleColor") &&
+        (valueSelector || !["showPercentage", "textColor", "textSize"].includes(key)));
+    }
+    return choices.map(([key, label]) => ({ key, label }));
+  }
   function renderCustomCapabilityRecommendations(inventory = customAnalyzedElements) {
     const panel = $("custom-capability-recommendations"),
       host = $("custom-capability-recommendation-list"),
@@ -19924,7 +20007,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     entries.forEach((entry, index) => {
       if (typeof entry.recommendedEnabled !== "boolean")
         entry.recommendedEnabled = entry.confidence !== "low";
-      const label = document.createElement("label"), checkbox = document.createElement("input"), copy = document.createElement("span"), title = document.createElement("strong"), detail = document.createElement("small");
+      const label = document.createElement("div"), heading = document.createElement("label"), checkbox = document.createElement("input"), copy = document.createElement("span"), title = document.createElement("strong"), detail = document.createElement("small"), properties = customRecommendedPropertyChoices(customRecommendationConfiguration(entry));
       label.className = "custom-capability-recommendation";
       label.classList.toggle("low-confidence", entry.confidence === "low");
       checkbox.type = "checkbox";
@@ -19936,7 +20019,29 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         ? `Review first: ${customCapabilityRecommendationExplanation(entry)}`
         : customCapabilityRecommendationExplanation(entry);
       copy.append(title, detail);
-      label.append(checkbox, copy);
+      heading.append(checkbox, copy);
+      label.append(heading);
+      if (properties.length) {
+        if (!entry.recommendedPropertyKeys)
+          entry.recommendedPropertyKeys = Object.fromEntries(properties.map(({ key }) => [key, true]));
+        const propertyChoices = document.createElement("fieldset"), legend = document.createElement("legend");
+        propertyChoices.className = "custom-capability-property-choices";
+        legend.textContent = "Editable properties to include";
+        propertyChoices.appendChild(legend);
+        properties.forEach(({ key, label: propertyLabel }) => {
+          const choice = document.createElement("label"), input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = entry.recommendedPropertyKeys[key] !== false;
+          input.disabled = !entry.recommendedEnabled;
+          input.onchange = () => { entry.recommendedPropertyKeys[key] = input.checked; };
+          choice.append(input, document.createTextNode(propertyLabel));
+          propertyChoices.appendChild(choice);
+        });
+        checkbox.addEventListener("change", () => {
+          propertyChoices.querySelectorAll("input").forEach((input) => { input.disabled = !checkbox.checked; });
+        });
+        label.appendChild(propertyChoices);
+      }
       host.appendChild(label);
     });
     $("custom-apply-safe-recommendations").disabled = !entries.some((entry) => entry.recommendedEnabled);
@@ -19948,7 +20053,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       return;
     }
     let additions = 0;
-    entries.forEach((entry) => { additions += applyCustomElementRole(customRecommendationConfiguration(entry), true)?.length || 0; });
+    entries.forEach((entry) => {
+      const configuration = customRecommendationConfiguration(entry),
+        choices = customRecommendedPropertyChoices(configuration);
+      configuration.includedPropertyKeys = choices
+        .filter(({ key }) => entry.recommendedPropertyKeys?.[key] !== false)
+        .map(({ key }) => key);
+      additions += applyCustomElementRole(configuration, true)?.length || 0;
+    });
     renderCustomPropertyMappings();
     renderCustomConnectionMappings();
     refreshCustomPreview();
@@ -21710,9 +21822,17 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         role,
         reason: "Classified with the live element picker.",
       });
-    const added = [],
+    const includedPropertyKeys = Array.isArray(configuration?.includedPropertyKeys)
+        ? new Set(configuration.includedPropertyKeys)
+        : null,
+      excludedPropertyKeys = new Set(),
+      added = [],
       scopedPropertyKeys = new Map(),
       property = (definition) => {
+        if (includedPropertyKeys && !includedPropertyKeys.has(definition.key)) {
+          excludedPropertyKeys.add(definition.key);
+          return;
+        }
         const existingBehavior = collectCustomBehaviors().find(
             (entry) => entry.source === "property" && entry.selector === selector &&
               (entry.key === definition.key || entry.key.startsWith(definition.key)),
@@ -21737,6 +21857,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         }
       },
       behavior = (definition, targetSelector = selector) => {
+        if (definition.source === "property" && excludedPropertyKeys.has(definition.key)) return;
+        const referencedPropertyKeys = JSON.stringify(definition).match(/\{\{([^}]+)\}\}/g) || [];
+        if (referencedPropertyKeys.some((token) => excludedPropertyKeys.has(token.slice(2, -2)))) return;
         let resolved = definition.source === "property" && scopedPropertyKeys.has(definition.key)
           ? { ...definition, key: scopedPropertyKeys.get(definition.key) }
           : definition;

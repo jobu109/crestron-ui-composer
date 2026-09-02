@@ -105,7 +105,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 
 - [x] Define role-based applicable property sets for button, label, icon, container, toggle, track, handle, slider, gauge, input, and repeated item.
 - [x] Offer common component-level properties unless the component structure makes them inapplicable.
-- [ ] Let users include or exclude every suggested property.
+- [x] Let users include or exclude every suggested property.
 - [ ] Do not synthesize icon, label, track, or handle elements unless the user explicitly requests one.
 
 ### Phase 5 — Recommendations and Import & Translate
