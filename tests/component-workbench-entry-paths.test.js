@@ -18,8 +18,10 @@ assert.ok(editor.includes('kind: "authored-runtime"'));
 assert.ok(editor.includes('starterTemplate: templateKey'));
 assert.ok(editor.includes('repeatedCollections: template.repeatedItems ? [structuredClone(template.repeatedItems)] : []'));
 assert.ok(editor.includes('openCustomBuilder(null, null, button.dataset.creatorTemplate)'));
-for (const page of ["properties", "connections", "states", "repeated", "code", "advanced"])
+for (const page of ["properties", "connections", "states", "repeated", "advanced"])
   assert.ok(html.includes(`data-custom-capability-page="${page}"`), `${page} capability page is missing`);
+assert.ok(!html.includes('data-custom-capability-page="code"'));
+assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored" data-capability-panel="advanced"'));
 assert.ok(editor.includes("function setCustomCapabilityPage"));
 assert.ok(editor.includes('setCustomCapabilityPage(customCapabilityPage || "properties")'));
 assert.ok(html.includes("custom-step-authored"));

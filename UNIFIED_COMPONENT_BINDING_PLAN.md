@@ -121,7 +121,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 - [x] Stop separately regenerating behavior rules from definition rows.
 - [x] Stop using transient Component Map selection as saved mapping identity.
 - [x] Remove legacy UI paths only after compatibility migration and parity tests pass.
-- [ ] Keep advanced selector and authored-source controls available behind Advanced.
+- [x] Keep advanced selector and authored-source controls available behind Advanced.
 
 ### Phase 7 — End-to-end verification
 

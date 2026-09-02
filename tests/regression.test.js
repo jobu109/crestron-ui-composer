@@ -2357,7 +2357,9 @@ run("component creation uses one three-step workflow with authored source before
   assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
   assert.ok(html.includes("Test &amp; create</span>"));
   assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored"'));
-  assert.ok(html.includes('data-custom-capability-page="code"'));
+  assert.ok(!html.includes('data-custom-capability-page="code"'));
+  assert.ok(html.includes('data-custom-capability-page="advanced"'));
+  assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored" data-capability-panel="advanced"'));
   assert.ok(html.includes('id="custom-legacy-behavior-storage" hidden'));
   assert.ok(editor.includes("function setCustomWizardStep(step = 0)"));
   assert.ok(editor.includes("if (customWizardStep === 1) analyzeCustomElements()"));

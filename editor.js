@@ -24659,7 +24659,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   }
   function setCustomCapabilityPage(page = "properties") {
     const dialog = $("custom-component-dialog"),
-      valid = new Set(["properties", "connections", "states", "repeated", "code", "advanced"]);
+      valid = new Set(["properties", "connections", "states", "repeated", "advanced"]);
     customCapabilityPage = valid.has(page) ? page : "properties";
     dialog.querySelectorAll("[data-custom-capability-page]").forEach((button) => {
       const active = button.dataset.customCapabilityPage === customCapabilityPage;
@@ -24696,11 +24696,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     } else if (customCapabilityPage === "connections") {
       refreshCustomSignalCreator();
       renderCustomConnectionMappings();
-    } else if (customCapabilityPage === "code") {
-      switchCustomSourceTab(document.querySelector("[data-custom-tab].active")?.dataset.customTab || "html");
     } else if (customCapabilityPage === "advanced") {
       renderCustomWorkbenchParts();
       renderCustomGeneratedAdapter();
+      switchCustomSourceTab(document.querySelector("[data-custom-tab].active")?.dataset.customTab || "html");
     } else if (customCapabilityPage === "states") {
       renderCustomStatePartOptions();
       ensureCustomStateRowsEnhanced();
