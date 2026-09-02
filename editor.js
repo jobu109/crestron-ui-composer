@@ -20295,6 +20295,18 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     });
     return changed;
   }
+  function customCanonicalTranslationSuggestion(kind, mapping) {
+    return window.ComposerComponentWorkbench.withCanonicalBinding({
+      ...mapping,
+      translatedSuggestion: true,
+      suggestion: {
+        optional: true,
+        selected: true,
+        source: "import-and-translate",
+        mappingKind: kind,
+      },
+    });
+  }
   function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems } = {}) {
     const api = window.ComposerComponentWorkbench,
       propertyDefinitions = properties || collectCustomProperties(),
@@ -20352,7 +20364,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
             name: rule.parameter || rule.action || "",
           };
         });
-      return {
+      return customCanonicalTranslationSuggestion("property", {
         id: `property-${property.key || index + 1}`,
         key: property.key,
         label: property.name || property.key,
@@ -20365,8 +20377,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         target: targets[0] || { kind: "unresolved", partId: "", selector: "", name: "" },
         targets,
         capability: customWorkbenchCapability(primary.action, primary.parameter),
-        translatedSuggestion: true,
-      };
+      });
     });
     workbench.connections = signalDefinitions.map((signal, index) => {
       const source = signal.direction === "output" ? "signal-output" : "signal-input",
@@ -20376,7 +20387,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         range = signal.range || (primary.perItem
           ? { perItem: true, zeroBased: true, keyPattern: `${signal.key}_{n}`, addressPattern: `${signal.defaultValue}_{n}` }
           : null);
-      return {
+      return customCanonicalTranslationSuggestion("connection", {
         id: `connection-${signal.key || index + 1}`,
         key: signal.key,
         label: signal.name || signal.key,
@@ -20394,8 +20405,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         perItem: !!(primary.perItem || range?.perItem),
         zeroBased: !!(primary.zeroBased || range?.zeroBased || range?.perItem),
         ...(range ? { range: structuredClone(range) } : {}),
-        translatedSuggestion: true,
-      };
+      });
     });
     workbench.repeatedCollections = component.repeatedItems
       ? Array.isArray(component.repeatedItems)

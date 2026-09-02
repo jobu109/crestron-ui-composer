@@ -8,7 +8,11 @@ const root = path.resolve(__dirname, "..");
 const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8").replace(/\r\n/g, "\n");
 
 assert.ok(editor.includes("function populateCustomWorkbenchFromTranslation"));
+assert.ok(editor.includes("function customCanonicalTranslationSuggestion"));
 assert.ok(editor.includes("translatedSuggestion: true"));
+assert.ok(editor.includes('optional: true') && editor.includes('source: "import-and-translate"'));
+assert.ok(editor.includes('customCanonicalTranslationSuggestion("property"'));
+assert.ok(editor.includes('customCanonicalTranslationSuggestion("connection"'));
 assert.ok(editor.includes('preserveLocalBehavior: true'));
 assert.ok(editor.includes('source: "import-and-translate"'));
 assert.ok(editor.includes("uncheckedSuggestionsRemoved: true"));
