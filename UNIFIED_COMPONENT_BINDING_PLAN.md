@@ -119,7 +119,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 ### Phase 6 — Remove redundant paths
 
 - [x] Stop separately regenerating behavior rules from definition rows.
-- [ ] Stop using transient Component Map selection as saved mapping identity.
+- [x] Stop using transient Component Map selection as saved mapping identity.
 - [ ] Remove legacy UI paths only after compatibility migration and parity tests pass.
 - [ ] Keep advanced selector and authored-source controls available behind Advanced.
 

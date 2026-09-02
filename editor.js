@@ -18468,7 +18468,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const binding = customCanonicalBinding(mapping),
       action = binding.effect.event || mapping.action || binding.effect.name || binding.effect.kind,
       selector = customCanonicalBindingSelector(mapping);
-    openCustomScopeCreator("signal");
+    openCustomScopeCreator("signal", { key: mapping.key, id: mapping.id || "" });
     $("custom-signal-capability-type").value = mapping.type || "digital";
     $("custom-signal-capability-direction").value = mapping.direction || "input";
     refreshCustomSignalCreator();
@@ -18496,6 +18496,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-signal-zero-based").checked = !!mapping.zeroBased;
     $("custom-signal-per-item").checked = !!mapping.perItem;
     $("custom-signal-create").dataset.editingKey = mapping.key;
+    $("custom-signal-create").dataset.editingId = mapping.id || "";
     $("custom-signal-create").textContent = "Save connection changes";
     refreshCustomSignalCreator();
   }
@@ -18505,6 +18506,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     while (keys.has(key)) key = `${mapping.key}Copy${index++}`;
     editCustomConnectionMapping({ ...structuredClone(mapping), id: `connection-${key}`, key, label: `${mapping.label || mapping.key} copy`, defaultValue: `${mapping.defaultValue || mapping.key}Copy` });
     $("custom-signal-create").dataset.editingKey = "";
+    $("custom-signal-create").dataset.editingId = "";
     $("custom-signal-create").textContent = "Add Crestron connection";
   }
   function removeCustomConnectionMapping(mapping) {
@@ -18898,7 +18900,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const stateScope = property ? $("custom-property-state-scope") : $("custom-signal-state-scope");
     if (stateScope) delete stateScope.dataset.edited;
     const target = property ? $("custom-property-target") : $("custom-signal-target");
-    if (target && customWorkbenchSelectedPartId) target.dataset.preferPartId = customWorkbenchSelectedPartId;
+    if (target && customWorkbenchSelectedPartId && !editContext)
+      target.dataset.preferPartId = customWorkbenchSelectedPartId;
     if (property) {
       $("custom-property-create").dataset.editingKey = editContext?.key || "";
       $("custom-property-create").dataset.editingId = editContext?.id || "";
@@ -18909,8 +18912,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     }
     else {
       $("custom-signal-options").open = false;
-      $("custom-signal-create").dataset.editingKey = "";
-      $("custom-signal-create").textContent = "Add Crestron connection";
+      $("custom-signal-create").dataset.editingKey = editContext?.key || "";
+      $("custom-signal-create").dataset.editingId = editContext?.id || "";
+      $("custom-signal-create").textContent = editContext
+        ? "Save connection changes"
+        : "Add Crestron connection";
       refreshCustomSignalCreator();
     }
     (property ? $("custom-property-creator") : $("custom-signal-creator")).scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -19107,11 +19113,15 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       alert("Choose a target, action, and contract name or join before adding the connection.");
       return;
     }
-    const editingKey = $("custom-signal-create").dataset.editingKey || "";
+    const editingKey = $("custom-signal-create").dataset.editingKey || "",
+      editingId = $("custom-signal-create").dataset.editingId || "",
+      existingWorkbenchMapping = editingId
+        ? customWorkbenchDraft?.connections?.find((connection) => connection.id === editingId)
+        : customWorkbenchDraft?.connections?.find((connection) => connection.key === editingKey);
     if (editingKey && editingKey !== key) {
       customDefinitionRow("custom-signal-list", editingKey)?.remove();
       customWorkbenchDraft.connections = customWorkbenchDraft.connections.filter(
-        (connection) => connection.key !== editingKey,
+        (connection) => editingId ? connection.id !== editingId : connection.key !== editingKey,
       );
       removeCustomManagedSource("javascript", `signal-${editingKey}`);
     }
@@ -19146,7 +19156,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         option?.textContent?.split(" — ")[0] || "Mapped part",
       );
     const mapping = {
-      id: customWorkbenchDraft.connections.find((connection) => connection.key === key)?.id || `connection-${key}`,
+      id: existingWorkbenchMapping?.id || customWorkbenchDraft.connections.find((connection) => connection.key === key)?.id || `connection-${key}`,
       key,
       label: name,
       type,
@@ -19163,7 +19173,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       zeroBased: config.zeroBased || config.perItem,
       ...(range ? { range } : {}),
     };
-    upsertCustomWorkbenchMapping("connection", mapping, true);
+    const editingIndex = editingId
+      ? customWorkbenchDraft.connections.findIndex((connection) => connection.id === editingId)
+      : -1;
+    if (editingIndex >= 0)
+      customWorkbenchDraft.connections[editingIndex] =
+        window.ComposerComponentWorkbench.withCanonicalBinding(mapping);
+    else upsertCustomWorkbenchMapping("connection", mapping, true);
     const definitionRow = customDefinitionRow("custom-signal-list", key);
     if (definitionRow) definitionRow.dataset.mappingId = mapping.id || "";
     renderCustomConnectionMappings();
@@ -19171,6 +19187,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // A completed mapping must leave edit mode. Otherwise the next use of
     // the form silently replaces this connection instead of adding another.
     $("custom-signal-create").dataset.editingKey = "";
+    $("custom-signal-create").dataset.editingId = "";
     $("custom-signal-create").textContent = "Add Crestron connection";
     $("custom-signal-creator").hidden = true;
     setStatus(`Added Crestron ${type} ${direction} “${name}”`);

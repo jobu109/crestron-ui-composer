@@ -107,6 +107,20 @@ assert.ok(connectionRenderer.includes("Number(mapping.mapping?.inputMax)"));
 assert.ok(javascript.includes("data.lifecycle==='press-release'"));
 assert.ok(javascript.includes("[data-inline-output-key]"));
 
+const connectionEditor = javascript.slice(
+  javascript.indexOf("function editCustomConnectionMapping("),
+  javascript.indexOf("function customAnimationSpeedRuntimeBody("),
+);
+assert.ok(connectionEditor.includes('openCustomScopeCreator("signal", { key: mapping.key, id: mapping.id || "" })'));
+assert.ok(connectionEditor.includes('dataset.editingId = mapping.id || ""'));
+const connectionCreator = javascript.slice(
+  javascript.indexOf("function createScopedCustomSignal("),
+  javascript.indexOf("function uniqueCustomBehaviorKey("),
+);
+assert.ok(connectionCreator.includes("customWorkbenchDraft?.connections?.find((connection) => connection.id === editingId)"));
+assert.ok(connectionCreator.includes("findIndex((connection) => connection.id === editingId)"));
+assert.ok(connectionCreator.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"));
+
 assert.ok(!javascript.includes('["visibility", "Visibility feedback"'));
 assert.ok(!javascript.includes('["disabled", "Disabled feedback"'));
 assert.ok(javascript.includes('value: "standardFontSize"'), "Workbench should offer a Standard/Idle text-size property");
