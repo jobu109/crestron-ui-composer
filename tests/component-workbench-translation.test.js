@@ -33,5 +33,7 @@ assert.ok(handoff.includes("repairMissingTranslatedTargetMarkers();"), "translat
 assert.ok(editor.includes("function repairMissingTranslatedTargetMarkers()"));
 assert.ok(editor.includes('target.setAttribute("data-translated-button", String(index))'));
 assert.ok(!handoff.includes('generatedLabel.textContent = "Toggle"'), "toggle imports must not invent a visible Toggle label");
+assert.ok(!editor.includes('generatedLabel.setAttribute("data-translated-generic-label", "")'), "imports without authored text must not synthesize a generic label");
+assert.ok(editor.includes("Preserve the authored structure exactly"), "translation should document its no-synthetic-parts contract");
 
 console.log("component-workbench-translation.test.js passed");

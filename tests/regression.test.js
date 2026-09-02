@@ -855,7 +855,10 @@ run("isolated custom component documents retain local ids and document selectors
     !editor.includes('generatedLabel.textContent = "Toggle"'),
     "Import should not invent a visible Toggle caption that was absent from the authored component",
   );
-  assert.ok(editor.includes("[data-translated-generated-label]{position:absolute"));
+  assert.ok(
+    !editor.includes('generatedLabel.setAttribute("data-translated-generic-label", "")'),
+    "Import analysis must not append a label that was absent from the authored component",
+  );
   assert.ok(editor.includes("[data-translated-text],[data-translated-generated-label]"));
   assert.ok(editor.includes("!(detected.toggleButtonIndexes || []).includes(index)"));
   assert.ok(!editor.includes("new ResizeObserver(fit)"));

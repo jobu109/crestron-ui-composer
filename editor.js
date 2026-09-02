@@ -13488,31 +13488,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         textIndex++;
       }
     }
-    // A widget with no text of its own still needs a way to display a
-    // Crestron-driven label. Toggles already get a small overlay label
-    // (translatedToggleCss); everything else gets a plain block-flow
-    // label appended after the widget's own content, wired through the
-    // same data-translated-text mechanism the normal text detector uses
-    // so it needs no separate signal-generation path.
-    let generatedLabelStyles = "";
-    if (textIndex === 1 && !toggleElements.length) {
-      const generatedLabel = documentValue.createElement("span");
-      generatedLabel.setAttribute("data-translated-text", "text");
-      generatedLabel.setAttribute("data-translated-generic-label", "");
-      generatedLabel.textContent = "Label";
-      body.appendChild(generatedLabel);
-      add({
-        key: "text",
-        label: "Text: Label",
-        type: "text",
-        value: "Label",
-        kind: "text",
-        source: "Label",
-      });
-      generatedLabelStyles =
-        "\n[data-translated-generic-label]{display:block;width:100%;margin-top:4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}";
-    }
-    const finalStyles = styles + generatedLabelStyles,
+    // Preserve the authored structure exactly. A label, icon, track, or
+    // handle is only created by an explicit user-selected capability; import
+    // analysis must not invent visible component parts that were not present.
+    const finalStyles = styles,
       inferredBehaviors = inferSnippetBehaviors(javascript, finalStyles);
     return {
       fileName: name,
@@ -14011,17 +13990,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return { properties, signals, inferences, plan };
   }
   function translatedToggleCss(properties, tokenized = false) {
-    const value = (key, fallback) => {
-      const property = properties.find((entry) => entry.key === key);
-      return property
-        ? tokenized
-          ? `{{${key}}}`
-          : String(property.value ?? fallback)
-        : fallback;
-    };
     return `
-[data-translated-toggle-root]{transform-origin:center center;will-change:transform;}
-[data-translated-generated-label]{position:absolute;left:50%;bottom:4%;transform:translateX(-50%);max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${value("textColor", "inherit")};font-size:${value("textSize", "inherit")}${properties.some((entry)=>entry.key==="textSize") ? "px" : ""};text-align:center;}`;
+[data-translated-toggle-root]{transform-origin:center center;will-change:transform;}`;
   }
   // Wires a detected 3+-state class family to the "state"/"stateFeedback"
   // analog signals directly via window.ComposerSignals, bypassing the
