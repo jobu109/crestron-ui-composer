@@ -24947,8 +24947,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   document.querySelectorAll("[data-custom-capability-page]").forEach((button) => {
     button.onclick = () => setCustomCapabilityPage(button.dataset.customCapabilityPage);
   });
-  $("custom-behavior-add").onclick = () => addCustomBehaviorRow();
-  $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
+  // Legacy behavior rows remain as hidden migration storage for older
+  // packages. New mappings are created only through the canonical Property
+  // and Crestron Connection forms, so the former behavior/preset UI no longer
+  // presents a competing authoring path.
+  if ($("custom-behavior-add")) $("custom-behavior-add").onclick = () => addCustomBehaviorRow();
+  if ($("custom-behavior-preset-add")) $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
   $("custom-scope-add-property").onclick = () => openCustomScopeCreator("property");
   $("custom-scope-add-signal").onclick = () => openCustomScopeCreator("signal");
   $("custom-property-test-reset").onclick = () => {

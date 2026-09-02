@@ -1684,60 +1684,12 @@
                 </div>
                 <div id="custom-visual-parts-list" class="custom-visual-parts-list"></div>
               </section>
-              <div class="custom-behavior-presets">
-                <select id="custom-behavior-preset">
-                  <optgroup label="Editable properties">
-                    <option value="propertyText">Editable text</option>
-                    <option value="propertyTextColor">Editable text color</option>
-                    <option value="propertyBackground">Editable background color</option>
-                    <option value="propertyFontSize">Editable text size</option>
-                    <option value="propertyGlow">Editable glow strength</option>
-                    <option value="propertyAsset">Editable image / asset</option>
-                  </optgroup>
-                  <optgroup label="Signal behaviors">
-                    <option value="serialText">Serial text feedback</option>
-                    <option value="analogGlow">Analog glow feedback</option>
-                    <option value="digitalSelected">Digital Selected feedback</option>
-                    <option value="pressOutput">Digital Press output</option>
-                  </optgroup>
-                </select>
-                <button id="custom-behavior-preset-add" type="button">
-                  + Add preset
-                </button>
+              <div id="custom-legacy-behavior-storage" hidden aria-hidden="true">
+                <select id="custom-behavior-preset"><option value="propertyText">Legacy compatibility</option></select>
+                <div id="custom-behavior-list"></div>
+                <textarea id="custom-generated-css" readonly></textarea>
+                <textarea id="custom-generated-javascript" readonly></textarea>
               </div>
-              <div class="custom-builder-heading">
-                <h2>Generated behaviors</h2>
-                <button id="custom-behavior-add" type="button">
-                  + Behavior
-                </button>
-              </div>
-              <div class="custom-behavior-columns">
-                <span>Source</span><span>Property / signal</span
-                ><span>Target</span><span>Behavior</span><span>Parameter</span
-                ><span></span>
-              </div>
-              <div id="custom-behavior-list" class="custom-builder-list"></div>
-              <small
-                >Generated rules are stored separately and run after handwritten
-                component code. Enable numeric mapping to convert a Crestron
-                analog range such as 0–65535 into CSS values such as 0–30px.
-                Digital-state mapping can assign separate Standard and Selected
-                values from false/true feedback.</small
-              >
-              <details class="custom-generated-code" hidden>
-                <summary>Composer-generated CSS / JavaScript (live)</summary>
-                <label
-                  >Generated CSS<textarea
-                    id="custom-generated-css"
-                    readonly
-                  ></textarea></label
-                ><label
-                  >Generated JavaScript<textarea
-                    id="custom-generated-javascript"
-                    readonly
-                  ></textarea>
-                </label>
-              </details>
               </details>
             </details>
             <details class="custom-state-builder custom-step-capabilities" data-capability-panel="states" open>

@@ -927,7 +927,7 @@ run("custom components support generated repeated-item contract ranges", () => {
 });
 
 run(
-  "visual behavior builder remains separate from handwritten component code",
+  "legacy behavior rules remain migratable without a competing authoring UI",
   () => {
     const editor = read("editor.js"),
       markup = read("editor.html");
@@ -935,7 +935,9 @@ run(
   assert.ok(markup.includes('id="custom-behavior-list"'));
   assert.ok(markup.includes('id="custom-generated-css"'));
   assert.ok(markup.includes('id="custom-generated-javascript"'));
-  assert.ok(markup.includes('id="custom-behavior-preset-add"'));
+  assert.ok(markup.includes('id="custom-legacy-behavior-storage" hidden'));
+  assert.ok(!markup.includes('id="custom-behavior-preset-add"'));
+  assert.ok(!markup.includes('id="custom-behavior-add"'));
   assert.ok(markup.includes('id="custom-state-grid"'));
   assert.ok(markup.includes('id="custom-state-signals"'));
   assert.ok(markup.includes('id="custom-self-test"'));
@@ -959,7 +961,7 @@ run(
   assert.ok(editor.includes("rule.enabled===false"));
   assert.ok(editor.includes("function customBehaviorTypeWarnings"));
   assert.ok(editor.includes("behaviorPropertyKeys"));
-  assert.ok(markup.includes('value="propertyAsset"'));
+  assert.ok(editor.includes("propertyAsset:"));
   assert.ok(editor.includes("function mapped(rule,value)"));
   assert.ok(editor.includes("case'glowStrength'"));
   assert.ok(editor.includes("function transforms(target)"));
@@ -971,13 +973,10 @@ run(
   assert.ok(editor.includes("<option>asset</option>"));
   assert.ok(editor.includes('["hold", "Hold-complete pulse"]'));
   assert.ok(editor.includes("function pulse(key)"));
-    assert.ok(editor.includes("composer-element-picked"));
-    assert.ok(editor.includes("behaviors: collectCustomBehaviors()"));
-    assert.ok(editor.includes("behaviorRuntime: customBehaviorRuntime("));
-    assert.ok(
-      editor.includes("Generated rules are stored separately") ||
-        markup.includes("Generated rules are stored separately"),
-    );
+  assert.ok(editor.includes("composer-element-picked"));
+  assert.ok(editor.includes("behaviors: collectCustomBehaviors()"));
+  assert.ok(editor.includes("behaviorRuntime: customBehaviorRuntime("));
+  assert.ok(editor.includes("function customCompatibilityBehaviorRules"));
   },
 );
 
@@ -2358,7 +2357,8 @@ run("component creation uses one three-step workflow with authored source before
   assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
   assert.ok(html.includes("Test &amp; create</span>"));
   assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored"'));
-  assert.ok(html.includes("Composer-generated CSS / JavaScript (live)"));
+  assert.ok(html.includes('data-custom-capability-page="code"'));
+  assert.ok(html.includes('id="custom-legacy-behavior-storage" hidden'));
   assert.ok(editor.includes("function setCustomWizardStep(step = 0)"));
   assert.ok(editor.includes("if (customWizardStep === 1) analyzeCustomElements()"));
   assert.ok(editor.includes("if (customWizardStep === 2)"));
