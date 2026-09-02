@@ -41,6 +41,38 @@ assert.ok(
   javascript.includes("Composer will create a separate Label for this text; it will not replace the toggle Track or Handle."),
   "text capabilities aimed at a toggle should explain that Composer preserves its structure",
 );
+for (const role of [
+  "button",
+  "label",
+  "icon",
+  "container",
+  "toggle",
+  "track",
+  "handle",
+  "slider",
+  "gauge",
+  "input",
+  "repeatedItem",
+]) assert.ok(
+  javascript.includes(`${role}: [`),
+  `Phase 4 must define an explicit applicable-property set for ${role}`,
+);
+assert.ok(javascript.includes("const customRolePropertySets = Object.freeze"));
+assert.ok(
+  javascript.includes("const customCommonComponentProperties = Object.freeze") &&
+    javascript.includes("...customCommonComponentProperties, ...advanced"),
+  "safe component-level size, opacity, and visibility properties must remain available for every role",
+);
+assert.ok(javascript.includes("function customPropertyRoleApplicability("));
+const propertyCreatorRefresh = javascript.slice(
+  javascript.indexOf("function refreshCustomPropertyCreator("),
+  javascript.indexOf("function refreshCustomSignalCreator("),
+);
+assert.ok(
+  propertyCreatorRefresh.includes("applicable.has(entry.value) && !recommended.has(entry.value)") &&
+    propertyCreatorRefresh.includes('group.label = "Current legacy mapping"'),
+  "the property picker must omit inapplicable choices while retaining an existing legacy mapping for safe editing",
+);
 const propertyCreator = javascript.slice(
   javascript.indexOf("function createScopedCustomProperty()"),
   javascript.indexOf("function createScopedCustomSignal()"),

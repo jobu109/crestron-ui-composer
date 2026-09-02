@@ -17598,20 +17598,44 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function customPropertySentence(definition, selector, stateScope = "all") {
     return `Make <strong>${escapeHtml(customFriendlyTargetName(selector))}</strong> ${escapeHtml(String(definition.label || "property").toLowerCase())} editable in the Composer Inspector for <strong>${escapeHtml(customStateScopeLabel(stateScope))}</strong>.`;
   }
+  const customRolePropertySets = Object.freeze({
+    button: ["backgroundColor", "borderColor", "textColor", "fontSize", "fontFamily", "fontWeight", "textAlign", "wrapText", "glowColor", "glowStrength", "shadowSize", "shadowColor", "cornerRadius", "padding", "transitionDuration"],
+    label: ["text", "standardText", "selectedText", "textColor", "fontSize", "standardFontSize", "selectedFontSize", "fontFamily", "fontWeight", "textAlign", "wrapText", "lineHeight", "letterSpacing"],
+    icon: ["foregroundAsset", "textColor", "fontSize", "width", "height", "glowColor", "glowStrength", "rotation"],
+    container: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "shadowSize", "shadowColor", "width", "height", "cornerRadius", "opacity", "padding", "margin"],
+    toggle: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "cornerRadius", "transitionDuration"],
+    track: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "cornerRadius", "fill", "transitionDuration"],
+    handle: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "cornerRadius", "positionX", "positionY", "transitionDuration"],
+    slider: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "fill", "cornerRadius", "transitionDuration"],
+    gauge: ["backgroundColor", "borderColor", "textColor", "fontSize", "glowColor", "glowStrength", "opacity", "fill", "rotation", "transitionDuration"],
+    input: ["text", "textColor", "fontSize", "fontFamily", "fontWeight", "textAlign", "wrapText", "backgroundColor", "borderColor", "cornerRadius", "padding"],
+    repeatedItem: ["backgroundColor", "borderColor", "textColor", "fontSize", "width", "height", "cornerRadius", "padding", "margin", "selectedText"],
+    background: ["asset", "backgroundColor", "opacity", "width", "height"],
+    indicator: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "opacity"],
+    element: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "cornerRadius", "opacity"],
+  });
+  const customCommonComponentProperties = Object.freeze([
+    "width",
+    "height",
+    "opacity",
+    "visibility",
+  ]);
+  const customPropertyRoleFamily = (role = "element") => ({
+    text: "label",
+    textInput: "input",
+    sliderHandle: "handle",
+    repeated: "repeatedItem",
+    backgroundAsset: "background",
+    selected: "indicator",
+    decorative: "container",
+  })[role] || (customRolePropertySets[role] ? role : "element");
   function customPropertyRoleRecommendations(role = "element") {
-    const common = ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "cornerRadius", "opacity"],
-      byRole = {
-        text: ["standardText", "selectedText", "fontSize", "standardFontSize", "selectedFontSize", "fontFamily", "fontWeight", "textAlign", "wrapText", "lineHeight", "letterSpacing", "textColor"],
-        textInput: ["text", "fontSize", "fontFamily", "textAlign", "wrapText", "textColor", "backgroundColor", "borderColor"],
-        button: ["standardText", "selectedText", "fontSize", "fontFamily", "fontWeight", "textAlign", "wrapText", "textColor", "backgroundColor", "borderColor", "glowColor", "glowStrength", "shadowSize", "shadowColor", "cornerRadius", "padding", "asset", "foregroundAsset", "transitionDuration"],
-        toggle: ["standardText", "selectedText", "backgroundColor", "borderColor", "glowColor", "glowStrength", "cornerRadius"],
-        slider: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "fill", "transitionDuration"],
-        sliderHandle: ["backgroundColor", "borderColor", "glowColor", "glowStrength", "width", "height", "cornerRadius"],
-        gauge: ["backgroundColor", "textColor", "fontSize", "glowColor", "glowStrength", "opacity", "fill", "rotation", "transitionDuration"],
-        icon: ["foregroundAsset", "textColor", "fontSize", "width", "height", "glowColor", "glowStrength"],
-        backgroundAsset: ["asset", "backgroundColor", "opacity", "width", "height"],
-      };
-    return new Set(byRole[role] || common);
+    return new Set(customRolePropertySets[customPropertyRoleFamily(role)] || customRolePropertySets.element);
+  }
+  function customPropertyRoleApplicability(role = "element") {
+    const roleProperties = customRolePropertySets[customPropertyRoleFamily(role)] || customRolePropertySets.element,
+      advanced = ["cssProperty", "cssVariable", "attribute", "domProperty", "classPresence", "dataAttribute", "visibility"];
+    return new Set([...roleProperties, ...customCommonComponentProperties, ...advanced]);
   }
   function customSelectedPropertyRole() {
     const selector = $("custom-property-target")?.value || "",
@@ -18548,17 +18572,28 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // only allowed to choose a target for a brand-new property.
     const pinnedEditSession = captureCustomPropertyEditSession();
     const select = $("custom-property-capability"), current = select.value;
-    const recommended = customPropertyRoleRecommendations(customSelectedPropertyRole()),
+    fillCustomScopeTarget($("custom-property-target"), true);
+    const
+      role = customSelectedPropertyRole(),
+      recommended = customPropertyRoleRecommendations(role),
+      applicable = customPropertyRoleApplicability(role),
       recommendedEntries = customScopedPropertyTypes.filter((entry) => recommended.has(entry.value)),
-      additionalEntries = customScopedPropertyTypes.filter((entry) => !recommended.has(entry.value));
+      additionalEntries = customScopedPropertyTypes.filter((entry) => applicable.has(entry.value) && !recommended.has(entry.value)),
+      currentEntry = customScopedPropertyTypes.find((entry) => entry.value === current);
     select.replaceChildren();
     [["Recommended for this part", recommendedEntries], ["More properties", additionalEntries]].forEach(([label, entries]) => {
+      if (!entries.length) return;
       const group = document.createElement("optgroup"); group.label = label;
       entries.forEach((entry) => group.appendChild(new Option(entry.label, entry.value)));
       select.appendChild(group);
     });
+    if (currentEntry && !applicable.has(currentEntry.value)) {
+      const group = document.createElement("optgroup");
+      group.label = "Current legacy mapping";
+      group.appendChild(new Option(currentEntry.label, currentEntry.value));
+      select.appendChild(group);
+    }
     if (customScopedPropertyTypes.some((entry) => entry.value === current)) select.value = current;
-    fillCustomScopeTarget($("custom-property-target"), true);
     const priorAdditional = new Set(
       [...$("custom-property-additional-targets").selectedOptions].map((option) => option.value),
     );
