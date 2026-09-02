@@ -145,6 +145,71 @@ assert.strictEqual(
   workbench.mapBindingValue({ mapping: { inputMin: 0, inputMax: 100, outputMin: 0, outputMax: 1, invert: true } }, 25),
   0.75,
 );
+assert.strictEqual(
+  workbench.mapBindingValue({ mapping: { valueMap: { falseValue: "__preserve__", trueValue: "#ff0000" } } }, true),
+  "#ff0000",
+);
+assert.strictEqual(
+  workbench.mapBindingValue({ mapping: { valueMap: { falseValue: "__preserve__", trueValue: "#ff0000" } } }, false),
+  "__preserve__",
+);
+assert.strictEqual(
+  workbench.mapBindingValue({ mapping: { valueTable: [
+    { input: 0, value: "red" }, { input: 1, value: "blue" }, { input: 2, value: "green" },
+  ] } }, 1),
+  "blue",
+);
+assert.strictEqual(
+  workbench.mapBindingValue({ mapping: { valueTable: [
+    { input: 0, value: "red" }, { input: 1, value: "blue" }, { input: 2, value: "green" },
+  ] } }, 1.8),
+  "green",
+  "indexed analog mappings should resolve to the nearest configured value",
+);
+assert.strictEqual(
+  workbench.normalizeBinding(null, { action: "mappedText", target: { selector: ".label" } }).effect.kind,
+  "text-content",
+);
+assert.strictEqual(
+  workbench.normalizeBinding(null, { action: "indexedVisibility", target: { selector: ".label" } }).effect.kind,
+  "visibility",
+);
+let preserveRemoved = false;
+const preserveResult = workbench.applyBinding(
+  { nodeType: 9, getElementById(id) { return id === "choice-red" ? { remove() { preserveRemoved = true; } } : null; } },
+  { target: { selector: ".track" }, effect: { kind: "css-property", name: "background-color" } },
+  "__preserve__",
+  { styleId: "choice-red" },
+);
+assert.strictEqual(preserveResult.mode, "preserve");
+assert.strictEqual(preserveRemoved, true, "a false preserve value must remove only that connection's generated style");
+for (const color of ["#ff0000", "#0066ff", "#00b050"]) {
+  const colorEntry = workbench.withCanonicalBinding({
+    action: "mappedProperty",
+    target: { selector: ".track", parameter: "background-color" },
+    mapping: { valueMap: { falseValue: "__preserve__", trueValue: color } },
+  });
+  assert.strictEqual(workbench.mapBindingValue(colorEntry, true), color);
+  assert.strictEqual(workbench.mapBindingValue(colorEntry, false), "__preserve__");
+  assert.ok(workbench.bindingDeclaration(colorEntry.binding, color).includes(`background-color:${color}`));
+}
+const glowEntry = workbench.withCanonicalBinding({
+  action: "mappedProperty",
+  target: { selector: ".track", parameter: "box-shadow" },
+  mapping: { valueMap: { falseValue: "none", trueValue: "0 0 12px #00e5c3" } },
+});
+assert.strictEqual(workbench.mapBindingValue(glowEntry, false), "none");
+assert.ok(workbench.bindingDeclaration(glowEntry.binding, workbench.mapBindingValue(glowEntry, true)).includes("0 0 12px #00e5c3"));
+const mappedTextTarget = fakeTarget(), mappedTextDocument = { nodeType: 9, querySelectorAll() { return [mappedTextTarget]; } },
+  mappedTextEntry = workbench.withCanonicalBinding({
+    action: "mappedText",
+    target: { selector: ".label" },
+    mapping: { valueMap: { falseValue: "", trueValue: "Active" } },
+  });
+workbench.applyEntryBinding(mappedTextDocument, mappedTextEntry, true);
+assert.strictEqual(mappedTextTarget.textContent, "Active");
+workbench.applyEntryBinding(mappedTextDocument, mappedTextEntry, false);
+assert.strictEqual(mappedTextTarget.textContent, "");
 const selectedEntry = workbench.withCanonicalBinding({
   action: "selected",
   target: { selector: ".part" },

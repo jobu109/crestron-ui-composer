@@ -90,6 +90,11 @@
         held: "output-event",
         pulse: "output-event",
         mappedProperty: "mapped-property",
+        mappedText: "text-content",
+        mappedVisibility: "visibility",
+        indexedProperty: "mapped-property",
+        indexedText: "text-content",
+        indexedVisibility: "visibility",
       };
     return aliases[source] || source.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`) || "unresolved";
   }
@@ -402,8 +407,12 @@
     const normalized = normalizeBinding(binding),
       documentValue = root?.nodeType === 9 ? root : root?.ownerDocument || root,
       selector = normalized.target.selector,
-      effect = normalized.effect,
-      cssText = bindingCssText(normalized, value, { ...options, important: options.important !== false });
+      effect = normalized.effect;
+    if (value === "__preserve__") {
+      documentValue?.getElementById?.(options.styleId || "composer-binding-preview-style")?.remove();
+      return { applied: true, mode: "preserve", count: 0 };
+    }
+    const cssText = bindingCssText(normalized, value, { ...options, important: options.important !== false });
     if (cssText && documentValue?.createElement) {
       const styleId = options.styleId || "composer-binding-preview-style";
       let style = documentValue.getElementById?.(styleId);
@@ -446,7 +455,24 @@
   }
   function mapBindingValue(entry = {}, value) {
     const mapping = entry.mapping || entry.connectionConfig?.mapping;
-    if (!mapping || !Number.isFinite(Number(value))) return value;
+    if (!mapping) return value;
+    if (mapping.valueMap && typeof mapping.valueMap === "object") {
+      const mapped = bindingBoolean(value)
+        ? mapping.valueMap.trueValue
+        : mapping.valueMap.falseValue;
+      return mapped === undefined ? value : mapped;
+    }
+    if (Array.isArray(mapping.valueTable) && mapping.valueTable.length) {
+      const numeric = Number(value), rows = mapping.valueTable
+        .map((row) => ({ input: Number(row?.input), value: row?.value }))
+        .filter((row) => Number.isFinite(row.input));
+      if (!Number.isFinite(numeric) || !rows.length) return value;
+      const nearest = rows.reduce((best, row) =>
+        Math.abs(row.input - numeric) < Math.abs(best.input - numeric) ? row : best,
+      );
+      return nearest.value;
+    }
+    if (!Number.isFinite(Number(value))) return value;
     const finite = (candidate, fallback) => Number.isFinite(Number(candidate)) ? Number(candidate) : fallback,
       inputMin = finite(mapping.inputMin, 0), inputMax = finite(mapping.inputMax, 65535),
       outputMin = finite(mapping.outputMin, inputMin), outputMax = finite(mapping.outputMax, inputMax);

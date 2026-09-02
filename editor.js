@@ -17220,6 +17220,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   const customScopedSignalActions = {
     "digital:input": [
       ["selected", "Selected feedback", "Sets checked/Selected state."],
+      ["mappedProperty", "Visual value — False / True", "Sets a CSS property, CSS variable, or DOM property to separate False and True values."],
+      ["mappedText", "Text — False / True", "Shows different text for False and True, including blank text."],
+      ["mappedVisibility", "Visibility — False / True", "Shows or hides the selected part from a Digital value."],
       ["charging", "Charging feedback", "Applies a charging state to a battery or status indicator."],
       ["classState", "Custom class feedback", "Adds or removes a named authored CSS class."],
       ["checkedState", "Checked feedback", "Sets the native checked state and dispatches change."],
@@ -17235,6 +17238,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     "analog:input": [
       ["value", "Value / feedback", "Applies incoming 0–65535 feedback to the control value."],
       ["mappedProperty", "Mapped CSS / DOM value", "Maps the incoming range to a named CSS property, variable, or DOM property."],
+      ["indexedProperty", "Indexed visual values", "Assigns discrete CSS or DOM values to analog indexes such as 0–3."],
+      ["indexedText", "Indexed text values", "Assigns displayed text to analog indexes such as 0–3."],
+      ["indexedVisibility", "Indexed visibility values", "Assigns shown or hidden states to analog indexes such as 0–3."],
       ["stateIndex", "State / mode index", "Selects an authored zero-based state or mode."],
       ["glowStrength", "Glow strength", "Uses the exact Crestron analog value as the glow strength."],
       ["width", "Width", "Uses the exact Crestron analog value as the width."],
@@ -17277,12 +17283,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       textual = new Set(["text", "textInput", "button", "toggle", "repeated", "element"]);
     if (type === "digital" && direction === "output") return interactive.has(role);
     if (type === "digital" && direction === "input") {
-      if (action === "classState") return true;
+      if (["classState", "mappedProperty", "mappedText", "mappedVisibility"].includes(action)) return true;
       if (action === "charging") return ["gauge", "icon", "selected", "element"].includes(role);
       return interactive.has(role);
     }
     if (type === "analog" && direction === "input") {
-      if (["mappedProperty", "glowStrength", "width", "height", "opacity", "positionX", "positionY", "speed"].includes(action)) return true;
+      if (["mappedProperty", "indexedProperty", "indexedText", "indexedVisibility", "glowStrength", "width", "height", "opacity", "positionX", "positionY", "speed"].includes(action)) return true;
       if (["value", "fill", "rotation"].includes(action)) return numeric.has(role) || role === "icon";
       if (action === "stateIndex") return ["button", "toggle", "repeated", "element"].includes(role);
       if (action === "itemCount") return role === "repeated";
@@ -18493,6 +18499,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       "custom-signal-input-max": mapping.mapping?.inputMax ?? 65535,
       "custom-signal-output-min": mapping.mapping?.outputMin ?? 0,
       "custom-signal-output-max": mapping.mapping?.outputMax ?? 100,
+      "custom-signal-false-mode": mapping.mapping?.valueMap?.falseValue === "__preserve__" ? "preserve" : "set",
+      "custom-signal-false-value": mapping.mapping?.valueMap?.falseValue === "__preserve__" ? "" : mapping.mapping?.valueMap?.falseValue ?? "",
+      "custom-signal-true-value": mapping.mapping?.valueMap?.trueValue ?? "",
+      "custom-signal-value-table": (mapping.mapping?.valueTable || []).map((row) => `${row.input} = ${row.value}`).join("\n"),
       "custom-signal-unit": binding.effect.unit || mapping.mapping?.unit || "",
       "custom-signal-state-scope": binding.effect.stateScope || "all",
     };
@@ -18652,6 +18662,25 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     renderCustomPropertyLiveTest();
     restoreCustomPropertyEditSession(pinnedEditSession);
   }
+  function customSignalUsesTwoValueMap(type, direction, action) {
+    return type === "digital" && direction === "input" &&
+      ["mappedProperty", "mappedText", "mappedVisibility"].includes(action);
+  }
+  function customSignalUsesIndexedValueMap(type, direction, action) {
+    return type === "analog" && direction === "input" &&
+      ["indexedProperty", "indexedText", "indexedVisibility"].includes(action);
+  }
+  function customSignalMappedValue(value, action) {
+    if (["mappedVisibility", "indexedVisibility"].includes(action))
+      return /^(?:true|1|yes|on|show|shown|visible)$/i.test(String(value).trim());
+    return String(value ?? "");
+  }
+  function parseCustomSignalValueTable(source, action) {
+    return String(source || "").split(/\r?\n/).map((line) => {
+      const match = line.match(/^\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:=|:)\s*(.*)$/);
+      return match ? { input: Number(match[1]), value: customSignalMappedValue(match[2], action) } : null;
+    }).filter(Boolean);
+  }
   function refreshCustomSignalCreator() {
     const type = $("custom-signal-capability-type").value,
       direction = $("custom-signal-capability-direction").value,
@@ -18674,27 +18703,41 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-signal-capability-help").textContent = `${action[2]} Available because ${targetLabel} is classified as ${customWorkbenchRoleLabel(role)}.`;
     const digitalOutput = type === "digital" && direction === "output",
       analog = type === "analog",
-      needsParameter = ["classState", "mappedProperty", "attribute", "standardStateText", "selectedStateText", "customEvent"].includes(action[0]),
+      twoValueMap = customSignalUsesTwoValueMap(type, direction, action[0]),
+      indexedValueMap = customSignalUsesIndexedValueMap(type, direction, action[0]),
+      needsParameter = ["classState", "mappedProperty", "indexedProperty", "attribute", "standardStateText", "selectedStateText", "customEvent"].includes(action[0]),
       targetPartId = $("custom-signal-target").selectedOptions[0]?.dataset.partId || "",
       repeatedTarget = customWorkbenchDraft?.parts.find((part) => part.id === targetPartId)?.multiple;
     $("custom-signal-parameter-row").hidden = !needsParameter;
+    $("custom-signal-false-mode-row").hidden = !twoValueMap;
+    $("custom-signal-false-value-row").hidden = !twoValueMap || $("custom-signal-false-mode").value !== "set";
+    $("custom-signal-true-value-row").hidden = !twoValueMap;
+    $("custom-signal-value-table-row").hidden = !indexedValueMap;
     $("custom-signal-parameter-label").textContent = ["standardStateText", "selectedStateText"].includes(action[0])
       ? "Selected-state CSS class"
-      : action[0] === "classState"
-        ? "CSS class"
+        : action[0] === "classState"
+          ? "CSS class"
+        : ["mappedProperty", "indexedProperty"].includes(action[0])
+          ? "CSS property, variable, or DOM property"
         : action[0] === "attribute"
           ? "HTML attribute"
           : "CSS/DOM property";
+    if (["mappedProperty", "indexedProperty"].includes(action[0]))
+      $("custom-signal-parameter").setAttribute("list", "custom-signal-style-properties");
+    else $("custom-signal-parameter").removeAttribute("list");
     $("custom-signal-hold-row").hidden = !(digitalOutput && ["press", "held"].includes(action[0]));
     $("custom-signal-pulse-row").hidden = !(digitalOutput && ["release", "pulse", "held", "completed", "customEvent"].includes(action[0]));
     $("custom-signal-exclusive-row").hidden = !(digitalOutput && action[0] === "press");
-    ["input-min", "input-max", "output-min", "output-max", "unit", "invert", "clamp", "zero"].forEach(
+    ["input-min", "input-max", "unit", "invert", "clamp", "zero"].forEach(
       (name) => ($(`custom-signal-${name}-row`).hidden = !analog),
+    );
+    ["output-min", "output-max"].forEach(
+      (name) => ($(`custom-signal-${name}-row`).hidden = !analog || indexedValueMap),
     );
     $("custom-signal-per-item-row").hidden = !repeatedTarget;
     const signalOptions = $("custom-signal-options"),
       eventTiming = digitalOutput && ["press", "release", "pulse", "held", "completed", "customEvent"].includes(action[0]),
-      requiredOptions = analog || needsParameter || eventTiming || repeatedTarget;
+      requiredOptions = analog || twoValueMap || needsParameter || eventTiming || repeatedTarget;
     signalOptions.querySelector("summary").textContent = analog
       ? "Analog conversion and connection options"
       : eventTiming
@@ -18702,8 +18745,27 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : "Advanced connection options";
     if (requiredOptions) signalOptions.open = true;
     if (needsParameter && !$("custom-signal-parameter").dataset.edited) {
-      const defaults = { classState: "selected", mappedProperty: "--value", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
+      const defaults = { classState: "selected", mappedProperty: "background-color", indexedProperty: "background-color", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
       $("custom-signal-parameter").value = defaults[action[0]];
+    }
+    if (twoValueMap) {
+      if (!$("custom-signal-false-mode").dataset.edited)
+        $("custom-signal-false-mode").value = ["mappedText", "mappedVisibility"].includes(action[0]) ? "set" : "preserve";
+      if (!$("custom-signal-true-value").dataset.edited)
+        $("custom-signal-true-value").value = action[0] === "mappedVisibility" ? "true" : action[0] === "mappedText" ? "Active" : "#ff0000";
+      if (!$("custom-signal-false-value").dataset.edited)
+        $("custom-signal-false-value").value = action[0] === "mappedVisibility" ? "false" : "";
+      $("custom-signal-false-value-row").hidden = $("custom-signal-false-mode").value !== "set";
+    }
+    if (indexedValueMap && !$("custom-signal-value-table").dataset.edited)
+      $("custom-signal-value-table").value = action[0] === "indexedVisibility"
+        ? "0 = false\n1 = true"
+        : action[0] === "indexedText"
+          ? "0 = Off\n1 = Red\n2 = Blue\n3 = Green"
+          : "0 = #ff0000\n1 = #0066ff\n2 = #00b050\n3 = transparent";
+    if (indexedValueMap) {
+      if (!$("custom-signal-input-min").dataset.edited) $("custom-signal-input-min").value = "0";
+      if (!$("custom-signal-input-max").dataset.edited) $("custom-signal-input-max").value = "3";
     }
     const config = collectCustomSignalCreatorConfig();
     $("custom-signal-sentence").innerHTML = customConnectionSentence(config);
@@ -18727,14 +18789,26 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function collectCustomSignalCreatorConfig() {
     const type = $("custom-signal-capability-type").value,
       direction = $("custom-signal-capability-direction").value,
+      action = $("custom-signal-capability-action").value,
       finiteField = (id, fallback) => {
         const value = Number($(id).value);
         return Number.isFinite(value) ? value : fallback;
-      };
+      },
+      twoValueMap = customSignalUsesTwoValueMap(type, direction, action),
+      indexedValueMap = customSignalUsesIndexedValueMap(type, direction, action),
+      numericMapping = type === "analog" ? {
+        inputMin: finiteField("custom-signal-input-min", 0),
+        inputMax: finiteField("custom-signal-input-max", indexedValueMap ? 3 : 65535),
+        outputMin: finiteField("custom-signal-output-min", 0),
+        outputMax: finiteField("custom-signal-output-max", 100),
+        unit: $("custom-signal-unit").value.trim(),
+        invert: $("custom-signal-invert").checked,
+        clamp: $("custom-signal-clamp").checked,
+      } : null;
     return {
       type,
       direction,
-      action: $("custom-signal-capability-action").value,
+      action,
       selector: $("custom-signal-target").value,
       key: scopedCustomKey($("custom-signal-capability-key").value, "signal"),
       name: $("custom-signal-capability-label").value.trim(),
@@ -18746,15 +18820,17 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       exclusive: $("custom-signal-exclusive").checked,
       perItem: $("custom-signal-per-item").checked,
       zeroBased: $("custom-signal-zero-based").checked,
-      mapping: type === "analog" ? {
-        inputMin: finiteField("custom-signal-input-min", 0),
-        inputMax: finiteField("custom-signal-input-max", 65535),
-        outputMin: finiteField("custom-signal-output-min", 0),
-        outputMax: finiteField("custom-signal-output-max", 100),
-        unit: $("custom-signal-unit").value.trim(),
-        invert: $("custom-signal-invert").checked,
-        clamp: $("custom-signal-clamp").checked,
-      } : null,
+      mapping: twoValueMap ? {
+        valueMap: {
+          falseValue: $("custom-signal-false-mode").value === "preserve"
+            ? "__preserve__"
+            : customSignalMappedValue($("custom-signal-false-value").value, action),
+          trueValue: customSignalMappedValue($("custom-signal-true-value").value, action),
+        },
+      } : indexedValueMap ? {
+        ...numericMapping,
+        valueTable: parseCustomSignalValueTable($("custom-signal-value-table").value, action),
+      } : numericMapping,
     };
   }
   function customScopedSignalJavascript(type, direction, action, selector, key, config = {}) {
@@ -18785,6 +18861,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (direction === "input") {
       const sharedActions = new Set([
         "selected", "charging", "classState", "checkedState",
+        "mappedText", "mappedVisibility", "indexedProperty", "indexedText", "indexedVisibility",
         "text", "name", "asset", "url", "attribute",
         "value", "mappedProperty", "glowStrength", "width", "height",
         "opacity", "fill", "rotation", "positionX", "positionY",
@@ -25084,11 +25161,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     "custom-signal-input-max",
     "custom-signal-output-min",
     "custom-signal-output-max",
+    "custom-signal-false-value",
+    "custom-signal-true-value",
+    "custom-signal-value-table",
     "custom-signal-unit",
   ].forEach((id) => ($(id).oninput = () => {
     $(id).dataset.edited = "true";
     refreshCustomSignalCreator();
   }));
+  $("custom-signal-false-mode").onchange = () => {
+    $("custom-signal-false-mode").dataset.edited = "true";
+    refreshCustomSignalCreator();
+  };
   [
     "custom-signal-exclusive",
     "custom-signal-invert",

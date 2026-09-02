@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(root, "editor.html"), "utf8");
 const javascript = fs.readFileSync(path.join(root, "editor.js"), "utf8");
 assert.ok(javascript.includes("mapping: structuredClone(mapping.mapping || mapping.connectionConfig?.mapping || null)"));
 assert.ok(javascript.includes('$("custom-signal-creator").hidden = true;'));
-assert.ok(javascript.includes('["input-min", "input-max", "output-min", "output-max", "unit"'));
+assert.ok(javascript.includes('["output-min", "output-max"].forEach'));
 
 [
   "custom-signal-hold-duration",
@@ -20,6 +20,11 @@ assert.ok(javascript.includes('["input-min", "input-max", "output-min", "output-
   "custom-signal-input-max",
   "custom-signal-output-min",
   "custom-signal-output-max",
+  "custom-signal-false-mode",
+  "custom-signal-false-value",
+  "custom-signal-true-value",
+  "custom-signal-value-table",
+  "custom-signal-style-properties",
   "custom-signal-invert",
   "custom-signal-clamp",
   "custom-signal-zero-based",
@@ -58,6 +63,11 @@ const connectionOptions = connectionCreatorMarkup.slice(
   "custom-signal-input-max",
   "custom-signal-output-min",
   "custom-signal-output-max",
+  "custom-signal-false-mode",
+  "custom-signal-false-value",
+  "custom-signal-true-value",
+  "custom-signal-value-table",
+  "custom-signal-style-properties",
   "custom-signal-unit",
   "custom-signal-invert",
   "custom-signal-clamp",
@@ -67,10 +77,20 @@ const connectionOptions = connectionCreatorMarkup.slice(
   `${id} should remain available in contextual conversion/connection options`,
 ));
 assert.ok(
-  javascript.includes('requiredOptions = analog || needsParameter || eventTiming || repeatedTarget') &&
+  javascript.includes('requiredOptions = analog || twoValueMap || needsParameter || eventTiming || repeatedTarget') &&
     javascript.includes('if (requiredOptions) signalOptions.open = true'),
   "conversion and event options should open automatically when the selected effect needs them",
 );
+for (const label of [
+  "Visual value — False / True",
+  "Text — False / True",
+  "Visibility — False / True",
+  "Indexed visual values",
+  "Indexed text values",
+  "Indexed visibility values",
+]) assert.ok(javascript.includes(label), `${label} basic binding option is missing`);
+assert.ok(javascript.includes("function parseCustomSignalValueTable("));
+assert.ok(javascript.includes('falseValue: $("custom-signal-false-mode").value === "preserve"'));
 
 [
   "function collectCustomSignalCreatorConfig(",

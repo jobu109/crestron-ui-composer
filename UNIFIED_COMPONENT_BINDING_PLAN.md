@@ -133,3 +133,11 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 - [ ] Run the full automated suite and complete physical desktop/touch testing.
   - [x] Full automated suite passed on 2026-09-02.
   - [ ] Physical desktop and touch-panel testing remains.
+
+### Phase 8 — Basic signal-driven values
+
+- [x] Add canonical Digital false/true value mappings with an optional preserve-existing false state.
+- [x] Add canonical Analog indexed value tables for discrete values such as 0–3.
+- [x] Expose CSS/DOM value, text, and visibility choices in the basic Crestron connection form.
+- [x] Use the same value resolver in Live Preview, Step 3, saved components, reopened components, and exports.
+- [x] Verify multi-input color selection, glow on/off, text add/remove, and analog indexed values.
