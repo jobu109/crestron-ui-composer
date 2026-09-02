@@ -196,6 +196,27 @@ assert.ok(
   editor.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"),
   "new and edited Workbench mappings must receive the canonical binding at insertion time",
 );
+const capabilityMappingCollection = editor.slice(
+  editor.indexOf("function applyCustomCapabilityMappingCollection("),
+  editor.indexOf("function customPartId("),
+);
+assert.ok(
+  capabilityMappingCollection.includes("mappings = Array.isArray(additions.canonicalMappings)") &&
+    capabilityMappingCollection.includes("applyCustomCapabilityMappingCollection(configuration, false)") &&
+    capabilityMappingCollection.includes("ordinary mapping"),
+  "capability bundles must resolve to a visible collection of ordinary canonical mappings",
+);
+const roleMappingBuilder = editor.slice(
+  editor.indexOf("function applyCustomElementRole("),
+  editor.indexOf("function addCustomBehaviorPreset("),
+);
+assert.ok(
+  roleMappingBuilder.includes("canonicalMappings = []") &&
+    roleMappingBuilder.includes("recordCanonicalMapping(registerCustomWorkbenchPropertyCapability") &&
+    roleMappingBuilder.includes("recordCanonicalMapping(registerCustomWorkbenchConnectionCapability") &&
+    roleMappingBuilder.includes('Object.defineProperty(added, "canonicalMappings"'),
+  "role presets must expose the exact canonical property and connection mappings they created",
+);
 assert.ok(
   editor.includes("ComposerComponentWorkbench.applyEntryBinding") &&
     editor.includes("custom-signal-preview-${mapping.id || mapping.key}"),

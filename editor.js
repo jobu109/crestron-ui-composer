@@ -20029,7 +20029,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       configuration.includedPropertyKeys = choices
         .filter(({ key }) => entry.recommendedPropertyKeys?.[key] !== false)
         .map(({ key }) => key);
-      additions += applyCustomElementRole(configuration, true)?.length || 0;
+      additions += applyCustomCapabilityMappingCollection(configuration, true).additions.length;
     });
     renderCustomPropertyMappings();
     renderCustomConnectionMappings();
@@ -20044,6 +20044,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       additions === 0,
     );
     setStatus(message);
+  }
+  function applyCustomCapabilityMappingCollection(configuration, deferRefresh = false) {
+    const additions = applyCustomElementRole(configuration, deferRefresh) || [],
+      mappings = Array.isArray(additions.canonicalMappings)
+        ? additions.canonicalMappings
+        : [];
+    return { additions, mappings };
   }
   function applyCustomCapabilityBundle(bundle) {
     const parts = customWorkbenchDraft?.parts || [],
@@ -20081,7 +20088,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         role,
         metadata: structuredClone(bundleInventory?.metadata || { tag: "div", text: part.name, className: "", id: "", ariaLabel: part.name }),
       },
-      additions = applyCustomElementRole(configuration, false) || [];
+      result = applyCustomCapabilityMappingCollection(configuration, false),
+      additions = result.additions,
+      mappings = result.mappings;
     renderCustomPropertyMappings();
     renderCustomConnectionMappings();
     refreshCustomPreview();
@@ -20092,7 +20101,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         ? "Toggle"
         : customWorkbenchRoleLabel(role),
       message = additions.length
-        ? `${bundleName} setup applied to ${targetName}. Added ${additions.length} missing ${additions.length === 1 ? "property or connection" : "properties and connections"}.`
+        ? `${bundleName} setup applied to ${targetName}. Added ${mappings.length || additions.length} ordinary mapping${(mappings.length || additions.length) === 1 ? "" : "s"}; each is now visible under Editable properties or Crestron connections.`
         : `${bundleName} setup is already complete on ${targetName}; no duplicate properties or connections were added.`;
     $("custom-capability-recommendation-status").textContent = message;
     $("custom-capability-recommendation-status").classList.toggle(
@@ -21797,6 +21806,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : null,
       excludedPropertyKeys = new Set(),
       added = [],
+      canonicalMappings = [],
+      recordCanonicalMapping = (mapping) => {
+        if (mapping?.binding && !canonicalMappings.some((entry) => entry.id === mapping.id))
+          canonicalMappings.push(mapping);
+        return mapping;
+      },
       scopedPropertyKeys = new Map(),
       property = (definition) => {
         if (includedPropertyKeys && !includedPropertyKeys.has(definition.key)) {
@@ -21851,11 +21866,11 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         if (resolved.source === "property") {
           const propertyDefinition = collectCustomProperties().find((entry) => entry.key === resolved.key);
           if (propertyDefinition)
-            registerCustomWorkbenchPropertyCapability(propertyDefinition, targetSelector, resolved, false);
+            recordCanonicalMapping(registerCustomWorkbenchPropertyCapability(propertyDefinition, targetSelector, resolved, false));
         } else if (["signal-input", "signal-output"].includes(resolved.source)) {
           const signalDefinition = collectCustomSignals().find((entry) => entry.key === resolved.key);
           if (signalDefinition)
-            registerCustomWorkbenchConnectionCapability(signalDefinition, targetSelector, resolved, false);
+            recordCanonicalMapping(registerCustomWorkbenchConnectionCapability(signalDefinition, targetSelector, resolved, false));
         }
       };
     if (role === "toggle") {
@@ -22259,6 +22274,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           ? "Ignored. The element remains in the original source but is excluded from Composer setup and review."
         : "This role was already configured; no duplicates were added.";
     if (!deferRefresh) refreshCustomPreview();
+    Object.defineProperty(added, "canonicalMappings", {
+      value: canonicalMappings,
+      enumerable: false,
+    });
     return added;
   }
   function addCustomBehaviorPreset() {

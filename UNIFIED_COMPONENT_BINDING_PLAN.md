@@ -110,7 +110,7 @@ Supported effects include text, CSS property, CSS custom property, class, attrib
 
 ### Phase 5 — Recommendations and Import & Translate
 
-- [ ] Rebuild capability bundles as collections of ordinary canonical mappings.
+- [x] Rebuild capability bundles as collections of ordinary canonical mappings.
 - [ ] Make recommendation buttons visibly select/configure mappings and explain the result.
 - [ ] Convert import detections into optional mapping suggestions using the same contract.
 - [ ] De-duplicate suggestions by resolved DOM target plus effect plus state.
