@@ -1350,7 +1350,10 @@
       optionalContent = {
         ...(entry.optionalContent || {}),
         ...detectTranslatedOptionalContent(entry.html),
-      };
+      },
+      runtimeBehaviors = entry.generatedAdapter
+        ? customCompatibilityBehaviorRules(entry.behaviors || [], entry.workbench)
+        : (entry.behaviors || []);
     window.ComposerRuntime.register({
       id: entry.id,
       name: entry.name,
@@ -1386,7 +1389,7 @@
         repeatedItems: entry.repeatedItems || null,
         repeatRuntime: customRepeatedFrameRuntime(entry.repeatedItems || null),
         behaviorRuntime: customBehaviorRuntime(
-          (entry.behaviors || []).filter(
+          runtimeBehaviors.filter(
             (behavior) =>
               !["visibility", "disabled"].includes(behavior.key) &&
               !["visibility", "disabledState"].includes(behavior.action),
@@ -1401,7 +1404,7 @@
           ),
         ),
         behaviorCss: customBehaviorCss(
-          (entry.behaviors || []).filter(
+          runtimeBehaviors.filter(
             (behavior) =>
               !["visibility", "disabled"].includes(behavior.key) &&
               !["visibility", "disabledState"].includes(behavior.action),
@@ -22483,6 +22486,35 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       .map(collectCustomBehaviorRow)
       .filter(Boolean);
   }
+  function customBehaviorRuleCoveredByMapping(rule, workbench = customWorkbenchDraft) {
+    const collection = rule.source === "property"
+        ? workbench?.properties || []
+        : ["signal-input", "signal-output"].includes(rule.source)
+          ? workbench?.connections || []
+          : [],
+      expectedDirection = rule.source === "signal-output" ? "output" : rule.source === "signal-input" ? "input" : "";
+    return collection.some((mapping) => {
+      if (mapping.key !== rule.key || (expectedDirection && mapping.direction !== expectedDirection)) return false;
+      const binding = window.ComposerComponentWorkbench.normalizeBinding(mapping.binding, mapping),
+        targets = binding.targets?.length ? binding.targets : [binding.target],
+        selectorMatches = targets.some((target) =>
+          stableCustomSelectorForAuthoredRule(`${target.selector || ""}${target.pseudoElement || ""}`) ===
+          stableCustomSelectorForAuthoredRule(rule.selector));
+      if (!selectorMatches) return false;
+      const actions = new Set([
+        mapping.action,
+        binding.effect.capability,
+        binding.effect.event,
+        binding.effect.name,
+        binding.effect.kind,
+      ].filter(Boolean));
+      if (!actions.has(rule.action)) return false;
+      return !rule.parameter || binding.effect.name === rule.parameter;
+    });
+  }
+  function customCompatibilityBehaviorRules(behaviors = collectCustomBehaviors(), workbench = customWorkbenchDraft) {
+    return behaviors.filter((rule) => !customBehaviorRuleCoveredByMapping(rule, workbench));
+  }
   function removeExactCustomDefinitionDuplicates() {
     const configurations = [
         {
@@ -23121,7 +23153,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     return adapter;
   }
   function refreshCustomGeneratedCode() {
-    const rules = collectCustomBehaviors(),
+    const rules = customCompatibilityBehaviorRules(),
       properties = Object.fromEntries(
         collectCustomProperties().map((property) => [
           property.key,
@@ -23794,7 +23826,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           : property.defaultValue,
       ]),
     );
-    const adapter = customGeneratedAdapter();
+    const adapter = customGeneratedAdapter(),
+      compatibilityBehaviors = customCompatibilityBehaviorRules();
     let source =
       composeCustomSource(true) +
       customRepeatedFrameRuntime(collectCustomRepeatedItems()).replace(
@@ -23804,8 +23837,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       (adapter.css ? `<style data-composer-adapter>${adapter.css}</style>` : "") +
       customAdapterRuntimeMarkup(adapter.javascript) +
       customWorkbenchStateSimulationBridge() +
-      `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
-      customBehaviorRuntime(collectCustomBehaviors(), previewProperties);
+      `<style data-composer-generated>${customBehaviorCss(compatibilityBehaviors)}</style>` +
+      customBehaviorRuntime(compatibilityBehaviors, previewProperties);
     collectCustomProperties().forEach((property) => {
       // Step 3 is a live simulator. Render its current Inspector value when
       // one has been entered instead of silently reverting to the saved
@@ -25284,12 +25317,13 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   function runCustomCompatibilityProbe() {
     const token = `custom-probe-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       source = composeCustomSource(true),
+      compatibilityBehaviors = customCompatibilityBehaviorRules(),
       generated =
         `<style data-composer-states>${customStateCss(collectCustomStateStyles())}</style>` +
         customStateRuntime(collectCustomStateStyles()) +
-        `<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>` +
+        `<style data-composer-generated>${customBehaviorCss(compatibilityBehaviors)}</style>` +
         customBehaviorRuntime(
-          collectCustomBehaviors(),
+          compatibilityBehaviors,
           Object.fromEntries(
             collectCustomProperties().map((property) => [property.key, property.defaultValue]),
           ),

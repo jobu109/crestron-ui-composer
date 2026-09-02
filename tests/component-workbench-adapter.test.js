@@ -21,6 +21,15 @@ assert.ok(editor.includes("adapterCss: entry.generatedAdapter?.css"));
 assert.ok(editor.includes("entry.generatedAdapter?.javascript || \"\""));
 assert.ok(editor.includes("generatedAdapter,"));
 assert.ok(!/upsertCustomManagedSource\("(?:css|javascript)", `(?:property|signal)-\$\{key\}`/.test(editor));
+assert.ok(editor.includes("function customBehaviorRuleCoveredByMapping("));
+assert.ok(editor.includes("function customCompatibilityBehaviorRules("));
+assert.ok(editor.includes("runtimeBehaviors = entry.generatedAdapter"));
+assert.ok(editor.includes("customBehaviorCss(compatibilityBehaviors)"));
+assert.ok(editor.includes("customBehaviorRuntime(compatibilityBehaviors, previewProperties)"));
+assert.ok(
+  !editor.includes("`<style data-composer-generated>${customBehaviorCss(collectCustomBehaviors())}</style>`"),
+  "preview and compatibility probes must not execute definition-row behaviors after the canonical adapter",
+);
 
 const value = workbench.normalize({
   adapter: {
