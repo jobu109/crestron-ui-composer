@@ -78,12 +78,8 @@ assert.match(
   "Workbench creation must be an explicit action rather than an implicit Enter-key submit",
 );
 assert.match(editorHtml, /type="button" value="cancel" data-close-custom-workbench/);
-assert.match(editorHtml, /Apply checked capability setups/);
-assert.match(editorJs, /No changes were needed\. All capabilities from the/);
-assert.match(editorJs, /review them under Editable properties and Crestron connections/);
-assert.match(editorJs, /setup selected for .*It is already complete/);
-assert.match(editorJs, /selectCustomWorkbenchPart\(part\.id\)/);
-assert.match(editorJs, /highlightCustomWorkbenchPart\(part\)/);
+assert.doesNotMatch(editorHtml, /Apply checked capability setups/);
+assert.doesNotMatch(editorHtml, /data-custom-capability-bundle/);
 assert.match(
   editorJs,
   /customWorkbenchForm\.addEventListener\("submit", \(event\) => \{\s*event\.preventDefault\(\);/s,

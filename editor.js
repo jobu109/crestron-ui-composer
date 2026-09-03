@@ -1327,12 +1327,12 @@
       declaredKeys = new Set(
         (entry.properties || []).map((property) => property.key),
       ),
-      translatedComponent = /data-translated-/i.test(
-        `${entry.html || ""}\n${entry.originalSource?.html || ""}`,
-      ),
-      fallbackAppearanceProperties = translatedComponent
-        ? appearanceProperties.filter((property) => property.key === "contentInset")
-        : appearanceProperties,
+      legacyAppearanceFallback = !entry.workbench?.authoredSource?.inventoryDriven &&
+        !entry.workbench?.authoredSource?.translated &&
+        !entry.workbench?.authoredSource?.sourceFirst,
+      fallbackAppearanceProperties = legacyAppearanceFallback
+        ? appearanceProperties
+        : [],
       properties = [
         ...(entry.properties || []).filter(
           (property) =>
@@ -20424,7 +20424,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     host.hidden = !inventory.length;
     if (!inventory.length) {
       $("custom-apply-recommended").disabled = true;
-      renderCustomCapabilityRecommendations([]);
       const empty = document.createElement("small");
       empty.textContent = "No meaningful elements were detected in the current HTML.";
       host.appendChild(empty);
@@ -20486,7 +20485,6 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       (entry) => entry.role !== "ignore",
     );
     renderCustomCapabilityQuestions(inventory);
-    renderCustomCapabilityRecommendations(inventory);
   }
   function customCapabilityRecommendationExplanation(entry = {}) {
     const descriptions = {
@@ -25537,9 +25535,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       entry?.preservedRelationships || [],
     );
     customPickedElement = null;
-    $("custom-capability-recommendation-status").textContent =
-      "Checked setups add only missing Composer properties and Crestron connections; existing definitions are never duplicated.";
-    $("custom-capability-recommendation-status").classList.remove("no-changes");
     ensureCustomWorkbenchDraft(entry);
     $("custom-element-selector").value = "";
     $("custom-element-classifier").hidden = true;
@@ -26084,10 +26079,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   $("custom-element-apply-role").onclick = applyCustomElementRole;
   $("custom-analyze-elements").onclick = analyzeCustomElements;
   $("custom-apply-recommended").onclick = applyAllRecommendedCustomRoles;
-  $("custom-apply-safe-recommendations").onclick = applySelectedSafeCustomRecommendations;
-  document.querySelectorAll("[data-custom-capability-bundle]").forEach((button) => {
-    button.onclick = () => applyCustomCapabilityBundle(button.dataset.customCapabilityBundle);
-  });
   $("custom-audit-run").onclick = renderCustomCompatibilityAudit;
   $("custom-audit-repair").onclick = repairCustomSourceSafely;
   $("custom-audit-restore").onclick = () => {

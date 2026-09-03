@@ -261,22 +261,10 @@ assert.ok(
   editor.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"),
   "new and edited Workbench mappings must receive the canonical binding at insertion time",
 );
-const capabilityMappingCollection = editor.slice(
-  editor.indexOf("function applyCustomCapabilityMappingCollection("),
-  editor.indexOf("function customPartId("),
-);
 assert.ok(
-  capabilityMappingCollection.includes("mappings = Array.isArray(additions.canonicalMappings)") &&
-    capabilityMappingCollection.includes("applyCustomCapabilityMappingCollection(configuration, false)") &&
-    capabilityMappingCollection.includes("ordinary mapping"),
-  "capability bundles must resolve to a visible collection of ordinary canonical mappings",
-);
-assert.ok(
-  editorHtml.includes('aria-pressed="false" data-custom-capability-bundle="button"') &&
-    capabilityMappingCollection.includes('button.setAttribute("aria-pressed", String(active))') &&
-    capabilityMappingCollection.includes("customCanonicalMappingSummary") &&
-    capabilityMappingCollection.includes("Configured:"),
-  "recommendation buttons must visibly select their preset and explain the canonical mappings they configured",
+  !editorHtml.includes("data-custom-capability-bundle") &&
+    !editorHtml.includes("custom-apply-safe-recommendations"),
+  "source-first creation must not expose mixed property/connection capability bundles",
 );
 const roleMappingBuilder = editor.slice(
   editor.indexOf("function applyCustomElementRole("),

@@ -75,10 +75,10 @@ Starter templates prefill source, properties, and compatible signal recommendati
 
 ## Phase 6 — Remove obsolete generation paths
 
-- [ ] Remove mixed property/connection capability bundles from custom creation.
-- [ ] Remove automatic generic appearance injection for custom components.
-- [ ] Remove duplicate legacy behavior generation after migration coverage is verified.
-- [ ] Retain compatibility readers for existing `.cuicomponent` packages and saved projects.
+- [x] Remove mixed property/connection capability bundles from custom creation.
+- [x] Remove automatic generic appearance injection for custom components.
+- [x] Remove duplicate legacy behavior generation after migration coverage is verified.
+- [x] Retain compatibility readers for existing `.cuicomponent` packages and saved projects.
 
 ## Phase 7 — Verification and release
 

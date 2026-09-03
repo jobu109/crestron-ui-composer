@@ -365,15 +365,10 @@ assert.match(toggleCss, /input:checked \+ \.slider::before\s*\{[^}]*\{\{selected
 assert.strictEqual((toggleCss.match(/\{\{trackColor\}\}/g) || []).length, 1, "Standard track token must not leak into selected track");
 assert.strictEqual((toggleCss.match(/\{\{knobColor\}\}/g) || []).length, 1, "Standard knob token must not leak into selected knob");
 
-const recommendationRenderer = javascript.slice(
-  javascript.indexOf("function customRecommendedPropertyChoices("),
-  javascript.indexOf("function applyCustomCapabilityBundle("),
-);
 assert.ok(
-  recommendationRenderer.includes('legend.textContent = "Editable properties to include"') &&
-    recommendationRenderer.includes("entry.recommendedPropertyKeys[key] = input.checked") &&
-    recommendationRenderer.includes("configuration.includedPropertyKeys = choices"),
-  "recommended capability setups must expose and preserve an independent include/exclude choice for every suggested property",
+  !html.includes("custom-capability-recommendations") &&
+    !html.includes("data-custom-capability-bundle"),
+  "obsolete mixed capability recommendations must be absent from source-first creation",
 );
 const roleApplicator = javascript.slice(
   javascript.indexOf("function applyCustomElementRole("),

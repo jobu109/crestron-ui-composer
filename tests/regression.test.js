@@ -875,8 +875,8 @@ run("translated components discard unused generated properties and safe iframe r
   assert.ok(editor.includes("generatedPropertyKeys.has(key)"));
   assert.ok(!editor.includes('add("global-css", "CSS targets html, body, or :root.'));
   assert.ok(editor.includes('finding.code === "duplicate-ids"'));
-  assert.ok(editor.includes("translatedComponent = /data-translated-/i.test"));
-  assert.ok(editor.includes('property.key === "contentInset"'));
+  assert.ok(editor.includes("legacyAppearanceFallback = !entry.workbench?.authoredSource?.inventoryDriven"));
+  assert.ok(editor.includes("fallbackAppearanceProperties = legacyAppearanceFallback"));
 });
 
 run("custom component creator provides functional starter templates", () => {
@@ -2104,14 +2104,9 @@ run("custom element picker classifies elements and generates standard capabiliti
   assert.ok(editor.includes("function customSignalActionApplies("));
   assert.ok(editor.includes("function customConnectionInlineTester("));
   assert.ok(css.includes(".custom-connection-inline-tester"));
-  assert.ok(html.includes('data-custom-capability-bundle="button"'));
-  assert.ok(html.includes('data-custom-capability-bundle="toggle"'));
-  assert.ok(html.includes('data-custom-capability-bundle="slider"'));
-  assert.ok(html.includes('data-custom-capability-bundle="textInput"'));
-  assert.ok(html.includes('data-custom-capability-bundle="repeated"'));
-  assert.ok(editor.includes("function renderCustomCapabilityRecommendations("));
-  assert.ok(editor.includes("function applySelectedSafeCustomRecommendations("));
-  assert.ok(editor.includes("function applyCustomCapabilityBundle("));
+  assert.ok(!html.includes("data-custom-capability-bundle"));
+  assert.ok(!html.includes("custom-apply-safe-recommendations"));
+  assert.ok(editor.includes("legacyAppearanceFallback = !entry.workbench?.authoredSource?.inventoryDriven"));
   assert.ok(editor.includes("function upsertCustomWorkbenchMapping("));
   assert.ok(editor.includes("function registerCustomWorkbenchPropertyCapability("));
   assert.ok(editor.includes("function registerCustomWorkbenchConnectionCapability("));

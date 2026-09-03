@@ -5,7 +5,8 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 // Normalize line endings: git's core.autocrlf can check this file out with
 // CRLF on Windows, and the multi-line substring checks below are LF-only.
-const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8").replace(/\r\n/g, "\n");
+const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8").replace(/\r\n/g, "\n"),
+  html = fs.readFileSync(path.join(root, "editor.html"), "utf8").replace(/\r\n/g, "\n");
 
 assert.ok(editor.includes("function populateCustomWorkbenchFromTranslation"));
 assert.ok(editor.includes("function customCanonicalTranslationSuggestion"));
@@ -65,12 +66,7 @@ assert.ok(handoff.includes('$("translate-snippet-dialog").showModal()'));
 assert.ok(handoff.includes("repairMissingTranslatedTargetMarkers();"), "translated targets should be repaired before the Workbench captures its source");
 assert.ok(editor.includes("function repairMissingTranslatedTargetMarkers()"));
 assert.ok(editor.includes('target.setAttribute("data-translated-button", String(index))'));
-const recommendations = editor.slice(
-  editor.indexOf("function renderCustomCapabilityRecommendations("),
-  editor.indexOf("function applySelectedSafeCustomRecommendations("),
-);
-assert.ok(recommendations.includes("customWorkbenchDraft?.authoredSource?.translated"), "translated choices must not be replaced by a second inferred recommendation screen");
-assert.ok(recommendations.includes('host.innerHTML = ""'), "stale recommendation cards must be removed for translated handoffs");
+assert.ok(!html.includes("custom-capability-recommendations"), "translated choices must not be followed by a second recommendation screen");
 assert.ok(editor.includes("function preserveLockedCustomAuthoringDecisions("), "translated navigation must preserve prior user choices");
 assert.ok(editor.includes("selectionLocked: true"), "translated selections must be locked against automatic re-inference");
 assert.ok(editor.includes("selectedPropertyKeys: workbench.properties.map"));
