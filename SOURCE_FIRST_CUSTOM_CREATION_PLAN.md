@@ -62,9 +62,9 @@ Starter templates prefill source, properties, and compatible signal recommendati
 
 - [x] Test every proposed property before saving it.
 - [x] Test every proposed connection before saving it.
-- [ ] Keep authored preview, mapped preview, Step 4 runtime, registered component, and export behavior identical.
-- [ ] Validate generated adapter JavaScript after token resolution before allowing creation.
-- [ ] Add regression fixtures for blank source, each starter template, imported buttons, toggles, state families, text, analog controls, and pseudo-elements.
+- [x] Keep authored preview, mapped preview, Step 4 runtime, registered component, and export behavior identical.
+- [x] Validate generated adapter JavaScript after token resolution before allowing creation.
+- [x] Add regression fixtures for blank source, each starter template, imported buttons, toggles, state families, text, analog controls, and pseudo-elements.
 
 ## Phase 5 — Templates and import
 

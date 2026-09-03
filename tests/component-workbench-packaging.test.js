@@ -8,6 +8,9 @@ const assert = require("node:assert/strict"),
   fixtureRoot = path.join(__dirname, "fixtures", "component-workbench"),
   manifest = JSON.parse(fs.readFileSync(path.join(fixtureRoot, "fixture-manifest.json"), "utf8"));
 
+for (const role of ["blank", "button", "toggle", "gauge", "state-family", "text-input", "analog-control", "pseudo-element", "repeated-list"])
+  assert.ok(manifest.fixtures.some((fixture) => fixture.role === role), `source-first ${role} fixture is missing`);
+
 for (const persistenceMarker of [
   "writeComponentLibrary",
   "readComponentLibrary",

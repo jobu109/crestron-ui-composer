@@ -23840,6 +23840,32 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
       ? `<script data-composer-adapter-runtime>${body.replace(/<\/script/gi, "<\\/script")}<\/script>`
       : "";
   }
+  function resolveCustomAdapterTokens(source, properties = []) {
+    const values = Object.fromEntries(
+      (properties || []).map((property) => [property.key, property.defaultValue ?? ""]),
+    );
+    return String(source || "").replace(
+      /\{\{([A-Za-z_$][\w$]*)(Json)?\}\}/g,
+      (_, key, json) => json ? JSON.stringify(values[key] ?? "") : String(values[key] ?? ""),
+    );
+  }
+  function validateResolvedCustomAdapter(adapter, properties = []) {
+    const resolved = resolveCustomAdapterTokens(
+      customAdapterRuntimeMarkup(adapter?.javascript || "")
+        .replace(/<script\b[^>]*>/gi, "")
+        .replace(/<\/script\s*>/gi, ""),
+      properties,
+    );
+    const unresolved = [...resolved.matchAll(/\{\{([^}]+)\}\}/g)].map((match) => match[1]);
+    if (unresolved.length)
+      return { valid: false, message: `Generated adapter contains unresolved tokens: ${[...new Set(unresolved)].join(", ")}` };
+    try {
+      new Function(resolved);
+      return { valid: true, javascript: resolved };
+    } catch (error) {
+      return { valid: false, message: `Generated adapter is invalid after property-token resolution: ${error.message}` };
+    }
+  }
   function customAdapterCollisions(adapter) {
     const css = $("custom-source-css").value, javascript = $("custom-source-javascript").value, findings = [];
     adapter.blocks.forEach((block) => {
@@ -27092,7 +27118,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     }
     let entry = state.customComponents.find(
       (candidate) => candidate.id === customEditingId,
-    );
+    ), createdEntry = false;
     if (!entry) {
       const id = `custom-${name
         .toLowerCase()
@@ -27100,6 +27126,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         .replace(/^-+|-+$/g, "")}-${uid().slice(-6)}`;
       entry = { id };
       state.customComponents.push(entry);
+      createdEntry = true;
     }
     const repeatedItems = collectCustomRepeatedItems(),
       preservedOriginalSource = structuredClone(
@@ -27147,6 +27174,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         };
       });
     const generatedAdapter = customGeneratedAdapter();
+    const resolvedAdapterValidation = validateResolvedCustomAdapter(
+      generatedAdapter,
+      customProperties,
+    );
+    if (!resolvedAdapterValidation.valid) {
+      if (createdEntry)
+        state.customComponents = state.customComponents.filter((candidate) => candidate !== entry);
+      alert(`The component was not saved. ${resolvedAdapterValidation.message}`);
+      setCustomWizardStep(2);
+      return;
+    }
     customWorkbenchDraft.adapter = {
       version: generatedAdapter.version,
       rules: generatedAdapter.blocks.map((block) => ({

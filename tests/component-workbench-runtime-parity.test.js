@@ -36,6 +36,19 @@ for (const lifecycleMarker of [
   "function parseCustomComponentPackage(packageValue)",
 ]) assert.ok(editor.includes(lifecycleMarker), `${lifecycleMarker} lifecycle stage is missing`);
 
+for (const adapterValidationMarker of [
+  "function resolveCustomAdapterTokens(",
+  "function validateResolvedCustomAdapter(",
+  "validateResolvedCustomAdapter(",
+  "Generated adapter is invalid after property-token resolution",
+  "Generated adapter contains unresolved tokens",
+]) assert.ok(editor.includes(adapterValidationMarker), `${adapterValidationMarker} adapter validation is missing`);
+
+const adapterValidationCall = editor.indexOf("const resolvedAdapterValidation = validateResolvedCustomAdapter(");
+const persistedAdapter = editor.indexOf("customWorkbenchDraft.adapter =", adapterValidationCall);
+assert.ok(adapterValidationCall >= 0 && persistedAdapter > adapterValidationCall,
+  "the resolved adapter must validate before it is persisted or registered");
+
 const saveLifecycle = editor.slice(
   editor.indexOf('$("custom-component-save").onclick'),
   editor.indexOf('$("custom-package-file").onchange'),

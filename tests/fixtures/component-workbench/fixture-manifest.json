@@ -8,6 +8,10 @@
     { "file": "text-input.html", "role": "text-input", "requires": ["type=\"text\"", "placeholder"] },
     { "file": "repeated-list.html", "role": "repeated-list", "requires": ["dataset.index", "for(let index=0", "appendChild"] },
     { "file": "advanced-js.html", "role": "advanced-javascript", "requires": ["ResizeObserver", "setTimeout", "@keyframes", "--speed"] },
-    { "file": "dynamic-elements.html", "role": "dynamic-elements", "requires": ["setTimeout", "createElement", "dynamic-control", "appendChild"] }
+    { "file": "dynamic-elements.html", "role": "dynamic-elements", "requires": ["setTimeout", "createElement", "dynamic-control", "appendChild"] },
+    { "file": "blank-source.html", "role": "blank", "requires": ["data-source-first-blank"] },
+    { "file": "authored-gauge.html", "role": "gauge", "requires": ["role=\"meter\"", "--gauge-value", "aria-valuenow"] },
+    { "file": "authored-state-family.html", "role": "state-family", "requires": ["state-idle", "state-pairing", "state-paired"] },
+    { "file": "authored-pseudo-element.html", "role": "pseudo-element", "requires": [".indicator::before", "content:", "box-shadow"] }
   ]
 }
