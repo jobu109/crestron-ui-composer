@@ -622,6 +622,12 @@
   function inventoryAuthoredProperties({ html = "", css = "" } = {}) {
     const entries = [], source = String(css || "");
     const addDeclaration = ({ selector, property, value, atRules = [], sourceKind = "css", index = 0 }) => {
+      // html/body/:root rules describe the preview document canvas, not the
+      // component placed in Composer. Exposing their width, height, margin,
+      // or background would let an Inspector property alter the component's
+      // host environment and is never a valid component-level mapping.
+      const owner = String(selector || "").trim().toLowerCase();
+      if (["html", "body", ":root", "*"].includes(owner)) return;
       const pseudoMatch = String(selector).match(/(::?(?:before|after))\s*$/i), pseudoElement = pseudoMatch ? pseudoMatch[1].replace(/^:(?!:)/, "::").toLowerCase() : "";
       entries.push({
         id: `authored-${entries.length + 1}`,
@@ -666,7 +672,7 @@
       splitAuthoredDeclarations(match[4]).forEach(({ property, value }) => addDeclaration({ selector, property, value, sourceKind: "inline-style", index: match.index || 0 }));
     }
     for (const match of markup.matchAll(/<([a-z][\w-]*)([^>]*)>([^<]+)<\/\1\s*>/gi)) {
-      if (/^(?:style|script)$/i.test(match[1])) continue;
+      if (/^(?:html|head|body|title|style|script|meta|link)$/i.test(match[1])) continue;
       const value = match[3].replace(/\s+/g, " ").trim();
       if (!value) continue;
       entries.push({ id: `authored-${entries.length + 1}`, kind: "text-content", selector: authoredSelectorIdentity(match[1], match[2]), pseudoElement: "", property: "text-content", value, stateScope: "standard", atRules: [], controlType: "text", sourceIndex: match.index || 0 });

@@ -26,6 +26,14 @@ assert.strictEqual(find((entry) => entry.property === "width", "media declaratio
 assert.strictEqual(find((entry) => entry.kind === "text-content", "authored text missing").value, "Pair");
 assert.ok(!entries.some((entry) => entry.property === "box-shadow"), "inventory must not synthesize absent appearance declarations");
 
+const componentOnlyEntries = workbench.inventoryAuthoredProperties({
+  html: '<title>Preview title</title><label class="switch">Toggle</label>',
+  css: 'html, body { width:100%; height:100%; margin:0; background:transparent } :root { color:#fff } * { box-sizing:border-box } .switch { width:68px; background:#444 }',
+});
+assert.ok(!componentOnlyEntries.some((entry) => ["html", "body", ":root", "*"].includes(entry.selector)), "document canvas declarations must not be offered as component properties");
+assert.ok(!componentOnlyEntries.some((entry) => entry.selector === "title"), "document metadata must not be offered as component text");
+assert.ok(componentOnlyEntries.some((entry) => entry.selector === ".switch" && entry.property === "width"), "real component declarations must remain available");
+
 const grouped = workbench.groupAuthoredProperties([
   { kind: "css-declaration", selector: ".pair", pseudoElement: "", property: "color", value: "#fff", stateScope: "standard", controlType: "color", sourceIndex: 10, atRules: [] },
   { kind: "css-declaration", selector: ".pair", pseudoElement: "", property: "color", value: "#ddd", stateScope: "standard", controlType: "color", sourceIndex: 40, atRules: ["@media (max-width: 480px)"] },
