@@ -17478,8 +17478,47 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (!targets.length) add("Whole component", "body > *:first-child");
     return targets;
   }
-  function fillCustomScopeTarget(select, includePseudo = true) {
+  function customInventoriedConnectionTargets() {
+    const values = new Map(), add = (selector, label, compatibility) => {
+      selector = String(selector || "").trim();
+      if (!selector) return;
+      if (!values.has(selector)) values.set(selector, { selector, label, compatibility: [] });
+      const target = values.get(selector);
+      compatibility.forEach((entry) => {
+        if (!target.compatibility.some((candidate) => candidate.type === entry.type && candidate.direction === entry.direction && candidate.action === entry.action && (candidate.parameter || "") === (entry.parameter || "")))
+          target.compatibility.push(entry);
+      });
+    };
+    customAuthoredPropertyGroups().forEach((group) => {
+      const selector = customAuthoredPropertySelector(group), parameter = group.property;
+      if (group.kind === "text-content") add(selector, `Authored text — ${selector}`, [
+        { type: "serial", direction: "input", action: "text" },
+        { type: "digital", direction: "input", action: "mappedText" },
+        { type: "analog", direction: "input", action: "indexedText" },
+      ]);
+      else if (group.controlType === "number") add(selector, `${parameter} — ${selector}`, [
+        { type: "analog", direction: "input", action: "mappedProperty", parameter },
+        { type: "digital", direction: "input", action: "mappedProperty", parameter },
+      ]);
+      else add(selector, `${parameter} — ${selector}`, [
+        { type: "digital", direction: "input", action: "mappedProperty", parameter },
+        { type: "analog", direction: "input", action: "indexedProperty", parameter },
+      ]);
+    });
+    customAuthoredInteractiveTargets().forEach((target) => add(target.selector, `Interactive target — ${target.selector}`,
+      target.events.map((action) => ({ type: "digital", direction: "output", action }))));
+    customAuthoredStateTargets().forEach((target) => add(target.selector, `${target.stateKind} state — ${target.selector}`, [
+      { type: "digital", direction: "input", action: target.action, parameter: target.parameter || "" },
+    ]));
+    customAuthoredValueTargets().filter((target) => target.action === "value").forEach((target) => add(target.selector, `Numeric control — ${target.selector}`, [
+      { type: "analog", direction: "input", action: "value", parameter: "value" },
+      { type: "analog", direction: "output", action: "valueSet", parameter: "value" },
+    ]));
+    return [...values.values()];
+  }
+  function fillCustomScopeTarget(select, includePseudo = true, includeConnectionInventory = false) {
     const previous = select.value,
+      previousWasSourceTarget = select.selectedOptions[0]?.dataset.sourceTarget === "true",
       preferredPartId = select.dataset.preferPartId || "",
       targets = customScopeTargets(includePseudo),
       recommended = targets.filter((target) => !target.advanced),
@@ -17507,6 +17546,19 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       advanced.forEach((target) => append(group, target));
       select.appendChild(group);
     }
+    if (includeConnectionInventory) {
+      const sourceTargets = customInventoriedConnectionTargets(), group = document.createElement("optgroup");
+      group.label = "Inventoried source targets";
+      sourceTargets.forEach((target) => {
+        const option = new Option(target.label, target.selector);
+        option.title = target.selector;
+        option.dataset.sourceTarget = "true";
+        option.dataset.compatibility = JSON.stringify(target.compatibility);
+        option.dataset.partId = customWorkbenchDraft?.parts?.find((part) => stableCustomSelectorForAuthoredRule(part.selector) === stableCustomSelectorForAuthoredRule(target.selector))?.id || "";
+        group.appendChild(option);
+      });
+      if (group.children.length) select.appendChild(group);
+    }
     const options = [...select.options],
       // An empty preferredPartId means there is no preferred Component Map
       // part. Do not let it match the first selector-only option (commonly
@@ -17514,7 +17566,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       preferredOption = preferredPartId
         ? options.find((option) => option.dataset.partId === preferredPartId)
         : null,
-      previousOption = options.find((option) => option.value === previous);
+      previousOption = options.find((option) => option.value === previous && (!previousWasSourceTarget || option.dataset.sourceTarget === "true"));
     // Do not assign select.value here: duplicate visual selectors are valid and
     // value assignment always selects the first one (often Knob instead of Track).
     if (preferredOption) select.selectedIndex = preferredOption.index;
@@ -19097,12 +19149,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const type = $("custom-signal-capability-type").value,
       direction = $("custom-signal-capability-direction").value,
       actionSelect = $("custom-signal-capability-action"), previous = actionSelect.value;
-    fillCustomScopeTarget($("custom-signal-target"), false);
+    fillCustomScopeTarget($("custom-signal-target"), true, true);
     const role = customSignalTargetRole(),
+      selectedTarget = $("custom-signal-target").selectedOptions[0],
+      compatibility = (() => { try { return JSON.parse(selectedTarget?.dataset.compatibility || "[]"); } catch (_) { return []; } })(),
       actions = (customScopedSignalActions[`${type}:${direction}`] || [])
-        .filter(([value]) => customSignalActionApplies(value, type, direction, role));
+        .filter(([value]) => customSignalActionApplies(value, type, direction, role))
+        .filter(([value]) => !selectedTarget?.dataset.sourceTarget || compatibility.some((entry) => entry.type === type && entry.direction === direction && entry.action === value));
     actionSelect.innerHTML = actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
     if (actions.some(([value]) => value === previous)) actionSelect.value = previous;
+    const compatible = compatibility.find((entry) => entry.type === type && entry.direction === direction && entry.action === actionSelect.value);
     fillCustomStateScopeSelect($("custom-signal-state-scope"), customWorkbenchActiveState);
     const action = actions.find(([value]) => value === actionSelect.value) || actions[0] || ["signal", "Signal", ""],
       targetLabel = $("custom-signal-target").selectedOptions[0]?.textContent.split(" — ")[0] || "Component",
@@ -19160,7 +19216,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (requiredOptions) signalOptions.open = true;
     if (needsParameter && !$("custom-signal-parameter").dataset.edited) {
       const defaults = { classState: "selected", mappedProperty: "background-color", indexedProperty: "background-color", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
-      $("custom-signal-parameter").value = defaults[action[0]];
+      $("custom-signal-parameter").value = compatible?.parameter || defaults[action[0]];
     }
     if (twoValueMap) {
       if (!$("custom-signal-false-mode").dataset.edited)

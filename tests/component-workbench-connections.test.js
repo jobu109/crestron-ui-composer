@@ -137,6 +137,7 @@ assert.ok(javascript.includes('falseValue: $("custom-signal-false-mode").value =
 
 [
   "function collectCustomSignalCreatorConfig(",
+  "function customInventoriedConnectionTargets(",
   "function renderCustomConnectionMappings(",
   "function customScopePartLabel(",
   "function editCustomConnectionMapping(",
@@ -146,6 +147,9 @@ assert.ok(javascript.includes('falseValue: $("custom-signal-false-mode").value =
   "composer-state-change",
   "durationScale=4-(ratio*3.8)",
 ].forEach((value) => assert.ok(javascript.includes(value), value));
+assert.ok(javascript.includes('group.label = "Inventoried source targets"'));
+assert.ok(javascript.includes('option.dataset.compatibility = JSON.stringify(target.compatibility)'));
+assert.ok(javascript.includes('fillCustomScopeTarget($("custom-signal-target"), true, true)'));
 assert.ok(html.includes("Press fires only when released before Held duration"));
 assert.ok(javascript.includes('["standardStateText", "Standard-state text"'));
 assert.ok(javascript.includes('["selectedStateText", "Selected-state text"'));

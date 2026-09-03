@@ -55,7 +55,7 @@ Starter templates prefill source, properties, and compatible signal recommendati
 - [x] Infer Selected/Disabled/mode inputs only from authored classes, attributes, DOM properties, or JavaScript state hooks.
 - [x] Infer Analog/Serial inputs only where a compatible authored value target exists.
 - [x] Make every recommendation optional and show the exact target and effect/event before adding it.
-- [ ] Support manual selection of any inventoried source target and compatible Digital/Analog/Serial action.
+- [x] Support manual selection of any inventoried source target and compatible Digital/Analog/Serial action.
 - [ ] Prevent connection creation from adding unrelated Composer properties or source declarations.
 
 ## Phase 4 — Live editing and test parity
