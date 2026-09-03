@@ -68,10 +68,10 @@ Starter templates prefill source, properties, and compatible signal recommendati
 
 ## Phase 5 — Templates and import
 
-- [ ] Feed starter templates through the same source inventory rather than hard-coded property/connection rows.
-- [ ] Prefill only template mappings backed by the template source.
-- [ ] Carry Import & Translate selections into the same inventories without re-inference or replacement.
-- [ ] Preserve imported local JavaScript and CSS behavior unless the user explicitly changes it.
+- [x] Feed starter templates through the same source inventory rather than hard-coded property/connection rows.
+- [x] Prefill only template mappings backed by the template source.
+- [x] Carry Import & Translate selections into the same inventories without re-inference or replacement.
+- [x] Preserve imported local JavaScript and CSS behavior unless the user explicitly changes it.
 
 ## Phase 6 — Remove obsolete generation paths
 

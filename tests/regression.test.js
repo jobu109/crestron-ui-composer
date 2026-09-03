@@ -2364,7 +2364,7 @@ run("component creation uses a source-first four-step workflow", () => {
   assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored" data-capability-panel="advanced"'));
   assert.ok(html.includes('id="custom-legacy-behavior-storage" hidden'));
   assert.ok(editor.includes("function setCustomWizardStep(step = 0, { refreshPreview = true } = {})"));
-  assert.ok(editor.includes("if (customWizardStep === 1 || customWizardStep === 2) analyzeCustomElements()"));
+  assert.ok(editor.includes("preserveLockedCustomAuthoringDecisions(() => analyzeCustomElements())"));
   assert.ok(editor.includes("if (customWizardStep === 3) refreshCustomPreview()"));
   assert.ok(css.includes("custom-wizard-step-1 .custom-step-imported"));
   assert.ok(css.includes("custom-wizard-step-2 .custom-builder-controls"));

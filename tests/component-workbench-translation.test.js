@@ -71,6 +71,12 @@ const recommendations = editor.slice(
 );
 assert.ok(recommendations.includes("customWorkbenchDraft?.authoredSource?.translated"), "translated choices must not be replaced by a second inferred recommendation screen");
 assert.ok(recommendations.includes('host.innerHTML = ""'), "stale recommendation cards must be removed for translated handoffs");
+assert.ok(editor.includes("function preserveLockedCustomAuthoringDecisions("), "translated navigation must preserve prior user choices");
+assert.ok(editor.includes("selectionLocked: true"), "translated selections must be locked against automatic re-inference");
+assert.ok(editor.includes("selectedPropertyKeys: workbench.properties.map"));
+assert.ok(editor.includes("selectedConnectionKeys: workbench.connections.map"));
+assert.ok(editor.includes("sourceFingerprint: customAuthoredSourceFingerprint"), "the handed-off authored CSS/JavaScript needs an integrity fingerprint");
+assert.ok(editor.includes("preserveLockedCustomAuthoringDecisions(() => analyzeCustomElements())"));
 assert.ok(!handoff.includes('generatedLabel.textContent = "Toggle"'), "toggle imports must not invent a visible Toggle label");
 assert.ok(!editor.includes('generatedLabel.setAttribute("data-translated-generic-label", "")'), "imports without authored text must not synthesize a generic label");
 assert.ok(editor.includes("Preserve the authored structure exactly"), "translation should document its no-synthetic-parts contract");

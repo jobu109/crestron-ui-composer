@@ -17,6 +17,9 @@ for (const key of ["button", "toggle", "slider", "gauge", "text", "repeated", "b
 
 assert.ok(editor.includes("function populateCustomWorkbenchFromStarterTemplate"));
 assert.ok(editor.includes("populateCustomWorkbenchFromStarterTemplate(template, key)"));
+assert.ok(editor.includes("propertyEvidence = propertyDefinitions.map"), "starter properties must come from authored inventory evidence");
+assert.ok(editor.includes("signalEvidence = signalDefinitions.filter"), "starter connections must have authored runtime evidence");
+assert.ok(editor.includes("inventoryDriven: true"), "starter Workbench metadata must record the inventory-driven path");
 assert.ok(editor.includes("refreshCustomPreview({ refreshSimulator: false });"), "Step 2 must rebuild its preview from the current Workbench source");
 assert.ok(editor.includes('kind: "authored-token"'));
 assert.ok(editor.includes('kind: "authored-runtime"'));
@@ -59,7 +62,7 @@ assert.ok(editor.includes("function removeCustomAuthoredProperty(mapping)"));
 assert.ok(stepSwitcher.includes('switchCustomSourceTab("html")'));
 assert.ok(stepSwitcher.includes("refreshCustomPreview()"));
 assert.ok(
-  stepSwitcher.indexOf('if (customWizardStep === 0)') < stepSwitcher.indexOf('if (customWizardStep === 1 || customWizardStep === 2) analyzeCustomElements()'),
+  stepSwitcher.indexOf('if (customWizardStep === 0)') < stepSwitcher.indexOf('preserveLockedCustomAuthoringDecisions(() => analyzeCustomElements())'),
   "authored source must render before Step 2 analyzes or presents mappings",
 );
 

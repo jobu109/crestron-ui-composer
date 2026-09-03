@@ -21045,6 +21045,34 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       return true;
     });
   }
+  function customAuthoredSourceFingerprint(source = {}) {
+    const value = `${source.html || ""}\u0000${source.css || ""}\u0000${source.javascript || ""}`;
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `source-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  }
+  function preserveLockedCustomAuthoringDecisions(callback) {
+    if (!customWorkbenchDraft?.authoredSource?.selectionLocked) return callback();
+    const source = {
+        html: $("custom-source-html").value,
+        css: $("custom-source-css").value,
+        javascript: $("custom-source-javascript").value,
+      },
+      properties = structuredClone(customWorkbenchDraft.properties || []),
+      connections = structuredClone(customWorkbenchDraft.connections || []),
+      result = callback();
+    // Rescanning may refine the Component Map, but navigation must never
+    // reinterpret or replace choices already made in Import & Translate.
+    customWorkbenchDraft.properties = properties;
+    customWorkbenchDraft.connections = connections;
+    $("custom-source-html").value = source.html;
+    $("custom-source-css").value = source.css;
+    $("custom-source-javascript").value = source.javascript;
+    return result;
+  }
   function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems, detected } = {}) {
     const api = window.ComposerComponentWorkbench,
       propertyDefinitions = properties || collectCustomProperties(),
@@ -21176,6 +21204,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       originalSourceField: "originalSource",
       preserveLocalBehavior: true,
       translated: true,
+      selectionLocked: true,
+      selectedPropertyKeys: workbench.properties.map((entry) => entry.key),
+      selectedConnectionKeys: workbench.connections.map((entry) => entry.key),
+      sourceFingerprint: customAuthoredSourceFingerprint({
+        html: $("custom-source-html").value,
+        css: $("custom-source-css").value,
+        javascript: $("custom-source-javascript").value,
+      }),
     };
     workbench.translationReview = {
       source: "import-and-translate",
@@ -25139,6 +25175,19 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const selector = customStarterRootSelector(template),
       propertyDefinitions = collectCustomProperties(),
       signalDefinitions = collectCustomSignals(),
+      authoredProperties = window.ComposerComponentWorkbench.groupAuthoredProperties(
+        window.ComposerComponentWorkbench.inventoryAuthoredProperties({
+          html: template.html || "",
+          css: template.css || "",
+        }),
+      ),
+      propertyEvidence = propertyDefinitions.map((property) => ({
+        property,
+        group: authoredProperties.find((group) =>
+          group.values.some((value) => String(value).includes(`{{${property.key}}}`))),
+      })).filter((entry) => entry.group),
+      signalEvidence = signalDefinitions.filter((signal) =>
+        new RegExp(`\\b(?:signals|ComposerSignals)\\s*\\.\\s*(?:publish|subscribe)\\s*\\(\\s*['\"]${String(signal.key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}['\"]`).test(template.javascript || "")),
       role = {
         button: "button",
         toggle: "toggle",
@@ -25155,7 +25204,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         multiple: false,
         metadata: { starterTemplate: templateKey, authored: true },
       },
-      properties = propertyDefinitions.map((property, index) => ({
+      properties = propertyEvidence.map(({ property, group }, index) => ({
         id: `property-${property.key || index + 1}`,
         key: property.key,
         label: property.name || property.key,
@@ -25165,12 +25214,20 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         ...(property.max != null ? { max: property.max } : {}),
         ...(property.step != null ? { step: property.step } : {}),
         ...(property.unit ? { unit: property.unit } : {}),
-        target: { kind: "authored-token", partId: part.id, selector, name: `{{${property.key}}}` },
-        targets: [{ kind: "authored-token", partId: part.id, selector, name: `{{${property.key}}}` }],
+        target: { kind: "authored-token", partId: part.id, selector: group.selector, pseudoElement: group.pseudoElement || "", name: `{{${property.key}}}` },
+        targets: [{ kind: "authored-token", partId: part.id, selector: group.selector, pseudoElement: group.pseudoElement || "", name: `{{${property.key}}}` }],
         capability: "authoredToken",
+        stateScope: group.stateScope || "standard",
+        authoredCss: {
+          selector: `${group.selector}${group.pseudoElement || ""}`,
+          property: group.property,
+          sourceValue: group.value,
+          originalValue: group.value,
+          syntheticDeclaration: false,
+        },
         starterTemplate: true,
       })),
-      connections = signalDefinitions.map((signal, index) => ({
+      connections = signalEvidence.map((signal, index) => ({
         id: `connection-${signal.key || index + 1}`,
         key: signal.key,
         label: signal.name || signal.key,
@@ -25201,6 +25258,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         originalSourceField: "originalSource",
         preserveLocalBehavior: true,
         starterTemplate: templateKey,
+        inventoryDriven: true,
       },
     });
     renderCustomWorkbenchParts();
@@ -25363,7 +25421,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       switchCustomSourceTab("html");
       if (refreshPreview) refreshCustomPreview({ sourceRefresh: true });
     }
-    if (customWizardStep === 1 || customWizardStep === 2) analyzeCustomElements();
+    if (customWizardStep === 1 || customWizardStep === 2)
+      preserveLockedCustomAuthoringDecisions(() => analyzeCustomElements());
     if (customWizardStep === 1 || customWizardStep === 2) {
       setCustomCapabilityPage(customWizardStep === 1 ? "properties" : "connections");
       refreshCustomPropertyCreator();
