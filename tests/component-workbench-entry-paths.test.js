@@ -49,6 +49,13 @@ assert.ok(editor.includes("function requireCurrentCustomSourcePreview()"));
 assert.ok(editor.includes('customPreviewSourceRevision === customSourceRevision'));
 assert.ok(editor.includes('refreshCustomPreview({ sourceRefresh: true })'));
 assert.ok(editor.includes('"Source changed — refresh preview"'));
+assert.ok(html.includes('id="custom-authored-property-inventory"'));
+assert.ok(html.includes('id="custom-authored-property-list"'));
+assert.ok(editor.includes("function renderCustomAuthoredPropertyInventory()"));
+assert.ok(editor.includes("authoredTargetLocked"));
+assert.ok(editor.includes('customize.textContent = mapping ? "Customize" : "Map…"'));
+assert.ok(editor.includes("function addCustomAuthoredProperty(group)"));
+assert.ok(editor.includes("function removeCustomAuthoredProperty(mapping)"));
 assert.ok(stepSwitcher.includes('switchCustomSourceTab("html")'));
 assert.ok(stepSwitcher.includes("refreshCustomPreview()"));
 assert.ok(

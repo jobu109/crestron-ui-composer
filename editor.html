@@ -1520,6 +1520,13 @@
                 <button id="custom-scope-add-property" type="button" class="primary">+ Add editable property</button>
                 <button id="custom-scope-add-signal" type="button" class="primary">+ Add Crestron connection</button>
               </div>
+              <section id="custom-authored-property-inventory" class="custom-authored-property-inventory" data-capability-panel="properties">
+                <div class="custom-builder-heading">
+                  <div><h2>Properties found in your source</h2><p class="hint">Check only the existing HTML or CSS values that should be editable in Composer.</p></div>
+                </div>
+                <div id="custom-authored-property-list" class="custom-authored-property-list"></div>
+                <p id="custom-authored-property-status" class="hint" role="status" aria-live="polite"></p>
+              </section>
               <section id="custom-property-creator" class="custom-scope-creator" data-capability-panel="properties" hidden>
                 <div class="custom-builder-heading"><h2>Add editable property</h2><button type="button" data-close-scope-creator>×</button></div>
                 <div class="custom-scope-grid">

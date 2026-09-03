@@ -35,4 +35,16 @@ assert.deepStrictEqual(grouped[0].values, ["#fff", "#ddd"]);
 assert.strictEqual(grouped[0].locations.length, 2, "every authored declaration location must remain available");
 assert.deepStrictEqual(grouped[0].locations[1].atRules, ["@media (max-width: 480px)"]);
 
+const restored = workbench.restoreAuthoredCssMapping(
+  ".pair { color: {{faceColor}}; }",
+  {
+    key: "faceColor",
+    unit: "",
+    target: { kind: "authored-token", selector: ".pair" },
+    authoredCss: { selector: ".pair", property: "color", originalValue: "#fff" },
+  },
+);
+assert.strictEqual(restored.changed, true);
+assert.ok(restored.css.includes("color: #fff"), "unchecking an authored property must restore its literal source value");
+
 console.log("source-property-inventory.test.js passed");

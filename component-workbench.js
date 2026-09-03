@@ -543,6 +543,30 @@
     }
     return { css: next, changed, matched };
   }
+  function restoreAuthoredCssMapping(css, mapping) {
+    const authored = mapping?.authoredCss || {},
+      selector = normalizeCssSelector(authored.selector || mapping?.target?.selector),
+      property = String(authored.property || "").trim(),
+      key = String(mapping?.key || "").trim(),
+      sourceValue = authored.originalValue ?? authored.sourceValue;
+    if (!selector || !property || !key || sourceValue == null || authored.syntheticDeclaration)
+      return { css: String(css || ""), changed: false };
+    const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      token = new RegExp(`\\{\\{${escapeRegExp(key)}\\}\\}(?:${escapeRegExp(mapping.unit || "")})?`, "g");
+    let changed = false;
+    const marker = "__COMPOSER_RESTORE_TOKEN__",
+      protectedCss = String(css || "").replace(token, marker),
+      next = protectedCss.replace(/([^{}]+)\{([^{}]*)\}/g, (rule, selectors, body) => {
+      const owns = String(selectors).split(",").some((candidate) => normalizeCssSelector(candidate) === selector);
+      if (!owns || !body.includes(marker)) return rule;
+      changed = true;
+      return `${selectors}{${body.split(marker).join(String(sourceValue))}}`;
+    });
+    return {
+      css: next.split(marker).join(`{{${key}}}${mapping.unit || ""}`),
+      changed,
+    };
+  }
   function splitAuthoredDeclarations(body) {
     const declarations = [];
     let start = 0, quote = "", depth = 0;
@@ -696,6 +720,7 @@
     normalizeBinding,
     withCanonicalBinding,
     materializeAuthoredCssMapping,
+    restoreAuthoredCssMapping,
     inventoryAuthoredProperties,
     groupAuthoredProperties,
   };

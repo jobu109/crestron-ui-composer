@@ -17131,6 +17131,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const parts = detectedCustomVisualParts(),
       panel = $("custom-visual-parts"),
       list = $("custom-visual-parts-list");
+    // The strict authored inventory is the only normal property source.
+    // Retain this older role shortcut solely for package migration; showing
+    // it would synthesize options such as a glow that the source never had.
+    panel.hidden = true;
+    list.innerHTML = "";
+    return;
     panel.hidden = !parts.length;
     list.innerHTML = "";
     parts.forEach((part) => {
@@ -18138,6 +18144,143 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (javascript) lines.push(`\nJavaScript adapter\n${javascript}`);
     return lines.join("\n");
   }
+  function customAuthoredPropertyGroups() {
+    return window.ComposerComponentWorkbench.groupAuthoredProperties(
+      window.ComposerComponentWorkbench.inventoryAuthoredProperties({
+        html: $("custom-source-html").value,
+        css: $("custom-source-css").value,
+      }),
+    );
+  }
+  function customAuthoredPropertySelector(group) {
+    return `${group.selector || ""}${group.pseudoElement || ""}`;
+  }
+  function customAuthoredPropertyMapping(group) {
+    const selector = customAuthoredPropertySelector(group);
+    return (customWorkbenchDraft?.properties || []).find((mapping) =>
+      group.kind === "text-content"
+        ? customCanonicalBinding(mapping).effect.kind === "text-content" &&
+          customCanonicalBindingSelector(mapping) === group.selector
+        : String(mapping.authoredCss?.selector || "") === selector &&
+          String(mapping.authoredCss?.property || "") === group.property,
+    );
+  }
+  function customAuthoredPropertyLabel(group) {
+    const property = group.property === "text-content"
+      ? "Text"
+      : group.property.replace(/^--/, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return `${group.stateScope === "standard" ? "" : `${customStateScopeLabel(group.stateScope)} — `}${property}`;
+  }
+  function uniqueCustomAuthoredPropertyKey(group) {
+    const prefix = group.stateScope === "standard" ? "" : group.stateScope,
+      base = normalizeCustomKey(`${prefix} ${group.property === "text-content" ? "text" : group.property}`) || "property",
+      used = new Set(collectCustomProperties().map((property) => property.key));
+    let key = base, index = 2;
+    while (used.has(key)) key = `${base}${index++}`;
+    return key;
+  }
+  function addCustomAuthoredProperty(group) {
+    if (!customWorkbenchDraft) return null;
+    const existingMapping = customAuthoredPropertyMapping(group);
+    if (existingMapping) return existingMapping;
+    const key = uniqueCustomAuthoredPropertyKey(group),
+      label = customAuthoredPropertyLabel(group),
+      selector = group.selector,
+      exactSelector = customAuthoredPropertySelector(group),
+      numeric = group.controlType === "number" && String(group.value).trim().match(/^(-?\d*\.?\d+)([a-z%]*)$/i),
+      defaultValue = numeric ? Number(numeric[1]) : group.value,
+      unit = numeric?.[2] || "",
+      partId = customWorkbenchPartIdForSelector(selector, customFriendlyTargetName(selector)),
+      effectKind = group.kind === "text-content"
+        ? "text-content"
+        : group.property.startsWith("--") ? "css-custom-property" : "css-property",
+      targetKind = group.kind === "text-content" ? "adapter-value" : "authored-token",
+      target = { kind: targetKind, partId, selector, name: group.kind === "text-content" ? "text" : `{{${key}}}` },
+      mapping = window.ComposerComponentWorkbench.withCanonicalBinding({
+        id: `property-${key}`,
+        key,
+        label,
+        type: group.controlType,
+        defaultValue,
+        ...(unit ? { unit } : {}),
+        target,
+        targets: [structuredClone(target)],
+        capability: group.kind === "text-content" ? "text" : group.property.startsWith("--") ? "cssVariable" : "cssProperty",
+        stateScope: group.stateScope,
+        ...(group.kind === "text-content" ? {} : {
+          authoredCss: {
+            selector: exactSelector,
+            property: group.property,
+            sourceValue: group.value,
+            originalValue: group.value,
+            syntheticDeclaration: false,
+          },
+        }),
+        binding: {
+          version: 1,
+          target: { partId, selector, pseudoElement: group.pseudoElement || "" },
+          effect: { kind: effectKind, name: group.kind === "text-content" ? "" : group.property, stateScope: group.stateScope, unit },
+        },
+      });
+    addCustomPropertyRow({ key, name: label, type: group.controlType, defaultValue, ...(unit ? { unit } : {}) });
+    customWorkbenchDraft.properties.push(mapping);
+    materializeCustomAuthoredCssMapping(mapping);
+    customWorkbenchDraft = window.ComposerComponentWorkbench.normalize(customWorkbenchDraft);
+    renderCustomPropertyMappings();
+    refreshCustomPreview();
+    return customWorkbenchDraft.properties.find((property) => property.id === mapping.id) || mapping;
+  }
+  function removeCustomAuthoredProperty(mapping) {
+    if (mapping?.target?.kind === "authored-token" && mapping.authoredCss) {
+      const restored = window.ComposerComponentWorkbench.restoreAuthoredCssMapping(
+        $("custom-source-css").value,
+        mapping,
+      );
+      if (restored.changed) $("custom-source-css").value = restored.css;
+    }
+    customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter((candidate) => candidate !== mapping);
+    customDefinitionRow("custom-property-list", mapping.key)?.remove();
+    renderCustomPropertyMappings();
+    refreshCustomPreview();
+  }
+  function renderCustomAuthoredPropertyInventory() {
+    const host = $("custom-authored-property-list"), status = $("custom-authored-property-status");
+    if (!host || !status) return;
+    const groups = customAuthoredPropertyGroups();
+    host.replaceChildren();
+    groups.forEach((group) => {
+      const row = document.createElement("label"), checkbox = document.createElement("input"), title = document.createElement("strong"), target = document.createElement("small"), value = document.createElement("code"), customize = document.createElement("button"), mapping = customAuthoredPropertyMapping(group);
+      row.className = "custom-authored-property-row";
+      checkbox.type = "checkbox";
+      checkbox.checked = !!mapping;
+      title.textContent = customAuthoredPropertyLabel(group);
+      target.textContent = `${customAuthoredPropertySelector(group)} · ${group.stateScope}${group.locations.some((location) => location.atRules.length) ? " · responsive variant" : ""}`;
+      value.textContent = `${group.property}: ${group.values.join(" | ")} · ${group.controlType}`;
+      customize.type = "button";
+      customize.textContent = mapping ? "Customize" : "Map…";
+      customize.title = "Customize the Inspector control while retaining this exact authored target";
+      customize.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const selected = customAuthoredPropertyMapping(group) || addCustomAuthoredProperty(group);
+        const current = selected?.id
+          ? customWorkbenchDraft?.properties?.find((property) => property.id === selected.id)
+          : customAuthoredPropertyMapping(group);
+        if (current) editCustomPropertyMapping(current);
+      };
+      checkbox.onchange = () => {
+        const existing = customAuthoredPropertyMapping(group);
+        if (checkbox.checked) addCustomAuthoredProperty(group);
+        else if (existing) removeCustomAuthoredProperty(existing);
+        renderCustomAuthoredPropertyInventory();
+      };
+      row.append(checkbox, title, target, value, customize);
+      host.appendChild(row);
+    });
+    status.textContent = groups.length
+      ? `${groups.length} authored value${groups.length === 1 ? "" : "s"} found. Nothing else will be added unless you select it.`
+      : "No editable CSS declarations or text were found in the authored source.";
+  }
   function renderCustomPropertyMappings() {
     const host = $("custom-property-mapping-list");
     if (!host) return;
@@ -18177,6 +18320,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         };
         info.onclick = () => focusCustomAdapterMapping(mapping.id);
         duplicate.onclick = () => duplicateCustomPropertyMapping(mapping);
+        duplicate.disabled = !!mapping.authoredCss || binding.effect.kind === "text-content";
+        if (duplicate.disabled) duplicate.title = "Each authored source value can be exposed once";
         up.disabled = index === 0;
         down.disabled = index === mappings.length - 1;
         up.onclick = () => {
@@ -18198,6 +18343,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         host.appendChild(card);
       });
     renderCustomGeneratedAdapter();
+    renderCustomAuthoredPropertyInventory();
   }
   function editCustomPropertyMapping(mapping) {
     customPropertyEditGeneration += 1;
@@ -18224,6 +18370,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       // mapping's authoritative form/session has been established.
       if (stateScope !== "all") setCustomWorkbenchActiveState(stateScope, { apply: false });
       openCustomScopeCreator("property", { key: mapping.key, id: mapping.id || "" });
+      const authoredTargetLocked = !!mapping.authoredCss || binding.effect.kind === "text-content";
+      $("custom-property-creator").dataset.authoredTargetLocked = String(authoredTargetLocked);
       const capability = customScopedPropertyTypes.some((entry) => entry.value === mapping.capability)
           ? mapping.capability
           : binding.effect.kind === "css-custom-property" ? "cssVariable"
@@ -18269,6 +18417,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       $("custom-property-create").dataset.editingId = mapping.id || "";
       $("custom-property-create").textContent = "Save property changes";
       if (partId) customWorkbenchSelectedPartId = partId;
+      if (authoredTargetLocked) {
+        $("custom-property-target").disabled = true;
+        $("custom-property-capability").disabled = true;
+        $("custom-property-state-scope").disabled = true;
+        $("custom-property-additional-targets").disabled = true;
+        $("custom-property-target-name").disabled = true;
+        $("custom-property-capability-help").textContent = "This property remains attached to the exact declaration or content found in your source. You may customize its Inspector label, key, control, and range.";
+      }
       captureCustomPropertyEditSession();
       setTimeout(previewPendingCustomPropertyEdit, 0);
       return;
@@ -18423,6 +18579,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function removeCustomPropertyMapping(mapping) {
     if (!confirm(`Remove editable property “${mapping.label || mapping.key}” and its managed source?`)) return;
+    if (mapping?.target?.kind === "authored-token" && mapping.authoredCss) {
+      const restored = window.ComposerComponentWorkbench.restoreAuthoredCssMapping($("custom-source-css").value, mapping);
+      if (restored.changed) $("custom-source-css").value = restored.css;
+    }
     customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter((candidate) => candidate !== mapping);
     const row = customDefinitionRow("custom-property-list", mapping.key);
     row?.remove();
@@ -19049,6 +19209,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (target && customWorkbenchSelectedPartId && !editContext)
       target.dataset.preferPartId = customWorkbenchSelectedPartId;
     if (property) {
+      $("custom-property-creator").dataset.authoredTargetLocked = "false";
+      ["custom-property-target", "custom-property-capability", "custom-property-state-scope", "custom-property-additional-targets", "custom-property-target-name"]
+        .forEach((id) => { if ($(id)) $(id).disabled = false; });
       $("custom-property-create").dataset.editingKey = editContext?.key || "";
       $("custom-property-create").dataset.editingId = editContext?.id || "";
       $("custom-property-create").textContent = editContext
@@ -19113,12 +19276,17 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       existingWorkbenchMapping = editingId
         ? customWorkbenchDraft?.properties?.find((property) => property.id === editingId)
         : customWorkbenchDraft?.properties?.find((property) => property.key === editingKey),
+      authoredTargetLocked = $("custom-property-creator")?.dataset.authoredTargetLocked === "true",
       // An authored CSS token may continue to own the mapping only while the
       // user keeps the state in which that CSS declaration was authored. If a
       // Standard declaration is reassigned to Selected, Composer must create a
       // state-scoped adapter instead of replacing the base declaration and
       // consequently changing both appearances.
       preserveAuthoredTarget = existingWorkbenchMapping?.target?.kind === "authored-token";
+    if (authoredTargetLocked && !existingWorkbenchMapping) {
+      alert("Choose an existing declaration or text value from the authored-property inventory.");
+      return;
+    }
     if (editingKey && editingKey !== key) {
       customDefinitionRow("custom-property-list", editingKey)?.remove();
       customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter(
@@ -20140,6 +20308,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       host = $("custom-capability-recommendation-list"),
       entries = customSafeRecommendationEntries(inventory);
     if (!panel || !host) return;
+    // Mixed role bundles inferred appearance and signals together. The
+    // source-first workflow presents only authored property rows here and
+    // handles compatible signal recommendations in the next step.
+    panel.hidden = true;
+    host.innerHTML = "";
+    return;
     // Import & Translate already presented this decision screen and handed
     // us only the choices the user kept. Showing a second, freshly inferred
     // recommendation set here makes those choices appear to have vanished
@@ -24891,7 +25065,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     // shows, and the whole row disappears on every other tab.
     const scopeActionsRow = document.querySelector(".custom-scope-actions");
     if (scopeActionsRow) scopeActionsRow.hidden = !["properties", "connections"].includes(customCapabilityPage);
-    $("custom-scope-add-property").hidden = customCapabilityPage !== "properties";
+    // The authored checklist creates new Inspector properties. The legacy
+    // form still opens when an existing mapping is edited, but cannot be used
+    // to invent a new declaration from the normal workflow.
+    $("custom-scope-add-property").hidden = true;
     $("custom-scope-add-signal").hidden = customCapabilityPage !== "connections";
     if (customCapabilityPage === "properties") {
       refreshCustomPropertyCreator();

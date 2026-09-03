@@ -44,10 +44,10 @@ Starter templates prefill source, properties, and compatible signal recommendati
 
 - [x] Inventory CSS declarations, CSS custom properties, pseudo-elements, inline styles, authored text, and applicable media/state variants.
 - [x] Group duplicate declarations by target, declaration, and state while retaining every authored location.
-- [ ] Present checkboxes with exact target, state, authored value, Inspector label, and control type.
-- [ ] Remove role-based properties that lack authored evidence.
-- [ ] Never generate missing CSS declarations from a checked property.
-- [ ] Allow manual property mapping only to an existing authored declaration/content target.
+- [x] Present checkboxes with exact target, state, authored value, Inspector label, and control type.
+- [x] Remove role-based properties that lack authored evidence.
+- [x] Never generate missing CSS declarations from a checked property.
+- [x] Allow manual property mapping only to an existing authored declaration/content target.
 
 ## Phase 3 — Source-compatible Crestron connections
 
