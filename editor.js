@@ -93,6 +93,8 @@
   let customEditingId = "";
   let customWizardStep = 0;
   let customCapabilityPage = "properties";
+  let customSourceRevision = 0;
+  let customPreviewSourceRevision = -1;
   let customWorkbenchActiveState = "standard";
   let customWorkbenchPreviewDocument = "";
   let editingSubpagePagesId = "";
@@ -24015,7 +24017,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     else stateSelect.add(new Option("No mapped states or modes", ""));
   }
-  function refreshCustomPreview({ refreshSimulator = true } = {}) {
+  function refreshCustomPreview({ refreshSimulator = true, sourceRefresh = false } = {}) {
+    const sourceRevision = customSourceRevision;
+    if (sourceRefresh)
+      setCustomSourceRefreshStatus("pending", "Refreshing authored source…");
     // Capture ownership when the refresh starts, not when its iframe happens
     // to finish.  A newer edit invalidates this snapshot via the generation.
     const previewEditGeneration = customPropertyEditGeneration,
@@ -24130,6 +24135,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     fitCustomWorkbenchPreviewToPane(previewFrame);
     previewFrame.onload = () => {
+      if (sourceRefresh && sourceRevision === customSourceRevision) {
+        customPreviewSourceRevision = sourceRevision;
+        setCustomSourceRefreshStatus("valid", "Source preview is current");
+      }
       // A live-preview refresh may refine inventory while browsing, but an
       // open property editor must not be reconstructed underneath the user.
       if ($("custom-property-creator")?.hidden) renderCustomWorkbenchParts();
@@ -24710,7 +24719,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       repeatedItemSignals(template.repeatedItems).forEach(addCustomSignalRow);
     }
     populateCustomWorkbenchFromStarterTemplate(template, key);
-    if (refresh) refreshCustomPreview();
+    if (refresh) refreshCustomPreview({ sourceRefresh: true });
   }
   function setCustomRepeatedControls(config) {
     $("custom-repeat-enabled").checked = !!config;
@@ -24826,7 +24835,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const authoredPanel = dialog.querySelector(".custom-step-authored");
       if (authoredPanel) authoredPanel.hidden = false;
       switchCustomSourceTab("html");
-      if (refreshPreview) refreshCustomPreview();
+      if (refreshPreview) refreshCustomPreview({ sourceRefresh: true });
     }
     if (customWizardStep === 1 || customWizardStep === 2) analyzeCustomElements();
     if (customWizardStep === 1 || customWizardStep === 2) {
@@ -24901,12 +24910,32 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     renderCustomWorkbenchStateToolbar();
     dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
+  function setCustomSourceRefreshStatus(stateName, message) {
+    const status = $("custom-source-refresh-status");
+    if (!status) return;
+    status.className = `custom-source-refresh-status ${stateName || ""}`.trim();
+    status.textContent = message || "";
+  }
+  function customSourcePreviewIsCurrent() {
+    return customPreviewSourceRevision === customSourceRevision;
+  }
+  function requireCurrentCustomSourcePreview() {
+    if (customSourcePreviewIsCurrent()) return true;
+    setCustomSourceRefreshStatus(
+      "pending",
+      "Refresh the source preview before continuing",
+    );
+    $("custom-preview-refresh")?.focus();
+    return false;
+  }
   function openCustomBuilder(item = null, entry = null, starterTemplate = "button", { deferInitialLoad = false } = {}) {
     customEditingId = entry?.id || "";
     customPropertyEditGeneration += 1;
     customPropertyEditSession = null;
     customSimulatorPropertyValues.clear();
     customTemporaryPropertyValues.clear();
+    customSourceRevision = 0;
+    customPreviewSourceRevision = -1;
     customSimulatorSignalValues.clear();
     customBuilderSourceItemId = item?.id || "";
     customDraftNaturalSize = null;
@@ -25144,10 +25173,19 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       $("custom-component-name").focus();
       return;
     }
+    if (customWizardStep === 0 && !requireCurrentCustomSourcePreview()) return;
     setCustomWizardStep(customWizardStep + 1);
   };
   document.querySelectorAll("[data-custom-wizard-step]").forEach((button) => {
-    button.onclick = () => setCustomWizardStep(button.dataset.customWizardStep);
+    button.onclick = () => {
+      if (
+        Number(button.dataset.customWizardStep) > 0 &&
+        customWizardStep === 0 &&
+        !requireCurrentCustomSourcePreview()
+      )
+        return;
+      setCustomWizardStep(button.dataset.customWizardStep);
+    };
   });
   document.querySelectorAll("[data-custom-capability-page]").forEach((button) => {
     button.onclick = () => setCustomCapabilityPage(button.dataset.customCapabilityPage);
@@ -25504,7 +25542,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   ].forEach((id) => {
     $(id).onchange = syncCustomRepeatedRows;
   });
-  $("custom-preview-refresh").onclick = refreshCustomPreview;
+  $("custom-preview-refresh").onclick = () =>
+    refreshCustomPreview({ sourceRefresh: true });
   $("custom-preview-send").onclick = () => {
     const key = $("custom-preview-signal").value,
       raw = $("custom-preview-value").value,
@@ -26140,8 +26179,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         inlineOutput.classList.toggle("active", event.data.value === true || Number(event.data.value) > 0 || String(event.data.value || "").length > 0);
       });
     }
-    if (event.data?.type === "composer-preview-error")
+    if (event.data?.type === "composer-preview-error") {
+      customPreviewSourceRevision = -1;
+      setCustomSourceRefreshStatus(
+        "invalid",
+        `Preview error: ${event.data.message || "Unknown error"}`,
+      );
       $("custom-preview-log").textContent += `\nERROR: ${event.data.message}`;
+    }
     if (event.data?.type === "composer-self-test-complete") {
       const resolve = customSelfTestResolve;
       customSelfTestResolve = null;
@@ -26490,8 +26535,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   ].forEach(
     (id) =>
       ($(id).oninput = () => {
+        customSourceRevision += 1;
+        customPreviewSourceRevision = -1;
+        setCustomSourceRefreshStatus("pending", "Source changed — refresh preview");
         renderCustomGeneratedAdapter();
-        refreshCustomPreview();
+        if (customWizardStep !== 0)
+          refreshCustomPreview({ sourceRefresh: true });
         if (customWizardStep === 1 || customWizardStep === 2) {
           renderCustomVisualParts();
           refreshCustomPropertyCreator();

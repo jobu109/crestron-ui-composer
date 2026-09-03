@@ -23,7 +23,7 @@ for (const marker of [
 ]) assert.ok(editor.includes(marker), `${marker} parity evidence is missing`);
 
 for (const lifecycleMarker of [
-  "function refreshCustomPreview({ refreshSimulator = true } = {})",
+  "function refreshCustomPreview({ refreshSimulator = true, sourceRefresh = false } = {})",
   "function createScopedCustomProperty()",
   "function createScopedCustomSignal()",
   "if (customWizardStep === 3) refreshCustomPreview()",

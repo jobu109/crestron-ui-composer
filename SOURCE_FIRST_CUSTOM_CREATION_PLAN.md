@@ -36,9 +36,9 @@ Starter templates prefill source, properties, and compatible signal recommendati
 ## Phase 1 — Wizard and data-flow separation
 
 - [x] Replace the combined three-step wizard with Source, Editable properties, Crestron connections, and Test & create.
-- [ ] Keep source editors and authored preview visible only in the Source step (with an Advanced source editor available later).
-- [ ] Require a successful source refresh before deriving properties or connections.
-- [ ] Preserve source inventory and user selections when moving forward or backward.
+- [x] Keep source editors and authored preview visible only in the Source step (with an Advanced source editor available later).
+- [x] Require a successful source refresh before deriving properties or connections.
+- [x] Preserve source inventory and user selections when moving forward or backward.
 
 ## Phase 2 — Strict authored-property inventory
 

@@ -44,6 +44,11 @@ for (const [step, label] of [[0, "Source &amp; preview"], [1, "Editable properti
 assert.ok(stepSwitcher.includes('if (customWizardStep === 0)'));
 assert.ok(stepSwitcher.includes('Math.min(3, Number(step) || 0)'));
 assert.ok(stepSwitcher.includes('customWizardStep === 1 ? "properties" : "connections"'));
+assert.ok(html.includes('id="custom-source-refresh-status"'));
+assert.ok(editor.includes("function requireCurrentCustomSourcePreview()"));
+assert.ok(editor.includes('customPreviewSourceRevision === customSourceRevision'));
+assert.ok(editor.includes('refreshCustomPreview({ sourceRefresh: true })'));
+assert.ok(editor.includes('"Source changed — refresh preview"'));
 assert.ok(stepSwitcher.includes('switchCustomSourceTab("html")'));
 assert.ok(stepSwitcher.includes("refreshCustomPreview()"));
 assert.ok(

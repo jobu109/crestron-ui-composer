@@ -1134,6 +1134,10 @@ h2 {
   background: #078f7d;
   color: #fff;
 }
+.custom-source-refresh-status { color:#9cb8b5;font-size:12px; }
+.custom-source-refresh-status.pending { color:#ffe08a; }
+.custom-source-refresh-status.valid { color:#75f0d8; }
+.custom-source-refresh-status.invalid { color:#ffaaa4; }
 .custom-capability-nav {
   position: sticky;
   z-index: 18;
