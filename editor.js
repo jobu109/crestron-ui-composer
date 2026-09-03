@@ -17249,6 +17249,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       ["charging", "Charging feedback", "Applies a charging state to a battery or status indicator."],
       ["classState", "Custom class feedback", "Adds or removes a named authored CSS class."],
       ["checkedState", "Checked feedback", "Sets the native checked state and dispatches change."],
+      ["disabledState", "Disabled feedback", "Sets the native disabled state and aria-disabled."],
     ],
     "digital:output": [
       ["press", "Press", "Publishes a press. It can be delayed until release to remain exclusive from Held."],
@@ -18597,6 +18598,13 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       javascript: $("custom-source-javascript").value,
     });
   }
+  function customAuthoredStateTargets() {
+    return window.ComposerComponentWorkbench.inventoryAuthoredStateTargets({
+      html: $("custom-source-html").value,
+      css: $("custom-source-css").value,
+      javascript: $("custom-source-javascript").value,
+    });
+  }
   function configureCustomAuthoredOutput(target, action) {
     const partId = customWorkbenchPartIdForSelector(target.selector, customFriendlyTargetName(target.selector));
     customWorkbenchSelectedPartId = partId;
@@ -18631,10 +18639,48 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-signal-capability-help").textContent = `${label} is supported because ${target.evidence.join("; ")}. The exact target is ${target.selector}.`;
     $("custom-signal-creator").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+  function configureCustomAuthoredStateInput(target) {
+    const partId = customWorkbenchPartIdForSelector(target.selector, customFriendlyTargetName(target.selector));
+    customWorkbenchSelectedPartId = partId;
+    openCustomScopeCreator("signal");
+    $("custom-signal-capability-type").value = "digital";
+    $("custom-signal-capability-direction").value = "input";
+    refreshCustomSignalCreator();
+    const targetSelect = $("custom-signal-target");
+    let option = [...targetSelect.options].find((entry) => entry.value === target.selector);
+    if (!option) {
+      option = new Option(`${customFriendlyTargetName(target.selector)} — authored ${target.stateKind} target`, target.selector);
+      option.dataset.partId = partId;
+      targetSelect.appendChild(option);
+    }
+    targetSelect.value = target.selector;
+    targetSelect.dataset.edited = "true";
+    refreshCustomSignalCreator();
+    $("custom-signal-capability-action").value = target.action;
+    $("custom-signal-capability-action").dataset.edited = "true";
+    if (target.parameter) {
+      $("custom-signal-parameter").value = target.parameter;
+      $("custom-signal-parameter").dataset.edited = "true";
+    }
+    const base = scopedCustomKey(`${customFriendlyTargetName(target.selector)} ${target.stateKind}`, target.stateKind),
+      used = new Set(collectCustomSignals().map((signal) => signal.key));
+    let key = base, index = 2;
+    while (used.has(key)) key = `${base}${index++}`;
+    const label = `${customFriendlyTargetName(target.selector)} ${target.stateKind.replace(/^./, (letter) => letter.toUpperCase())}`,
+      contractBase = scopedCustomKey($("custom-component-name").value, "CustomComponent");
+    [
+      ["custom-signal-capability-key", key],
+      ["custom-signal-capability-label", label],
+      ["custom-signal-capability-address", `${contractBase}.${target.stateKind.replace(/^./, (letter) => letter.toUpperCase())}`],
+    ].forEach(([id, value]) => { $(id).value = value; $(id).dataset.edited = "true"; });
+    refreshCustomSignalCreator();
+    $("custom-signal-capability-help").textContent = `${label} is supported because ${target.evidence.join("; ")}. The exact target is ${target.selector}.`;
+    $("custom-signal-creator").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
   function renderCustomAuthoredConnectionRecommendations() {
     const host = $("custom-authored-connection-list"), status = $("custom-authored-connection-status");
     if (!host || !status) return;
-    const targets = customAuthoredInteractiveTargets();
+    const targets = customAuthoredInteractiveTargets(), stateTargets = customAuthoredStateTargets();
     host.replaceChildren();
     targets.forEach((target) => {
       const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div");
@@ -18652,9 +18698,22 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       row.append(selector, evidence, actions);
       host.appendChild(row);
     });
-    status.textContent = targets.length
-      ? `${targets.length} authored interactive target${targets.length === 1 ? "" : "s"} found. No event output is added until you configure and save it.`
-      : "No authored interactive target was found, so Press, Release, and Held are not recommended.";
+    stateTargets.forEach((target) => {
+      const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div"), button = document.createElement("button");
+      row.className = "custom-authored-connection-row";
+      actions.className = "custom-authored-connection-actions";
+      selector.textContent = target.selector;
+      evidence.textContent = target.evidence.join("; ");
+      button.type = "button";
+      button.textContent = `Configure ${target.stateKind.replace(/^./, (letter) => letter.toUpperCase())}`;
+      button.onclick = () => configureCustomAuthoredStateInput(target);
+      actions.appendChild(button);
+      row.append(selector, evidence, actions);
+      host.appendChild(row);
+    });
+    status.textContent = targets.length || stateTargets.length
+      ? `${targets.length} interactive and ${stateTargets.length} state target${stateTargets.length === 1 ? "" : "s"} found. Nothing is added until you configure and save it.`
+      : "No authored interactive or state target was found, so no event or state connection is recommended.";
   }
   function renderCustomConnectionMappings() {
     const host = $("custom-connection-mapping-list");
@@ -19146,7 +19205,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     }
     if (direction === "input") {
       const sharedActions = new Set([
-        "selected", "charging", "classState", "checkedState",
+        "selected", "charging", "classState", "checkedState", "disabledState",
         "mappedText", "mappedVisibility", "indexedProperty", "indexedText", "indexedVisibility",
         "text", "name", "asset", "url", "attribute",
         "value", "mappedProperty", "glowStrength", "width", "height",

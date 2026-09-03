@@ -29,6 +29,19 @@ const scriptedTargets = workbench.inventoryAuthoredInteractiveTargets({
 });
 assert.deepStrictEqual(scriptedTargets.map((target) => target.selector), ["#other", ".tile"]);
 assert.deepStrictEqual(workbench.inventoryAuthoredInteractiveTargets({ html: '<div class="plain"></div>' }), []);
+const stateTargets = workbench.inventoryAuthoredStateTargets({
+  html: '<input id="power" type="checkbox"><button id="locked" disabled>Locked</button>',
+  css: '.tile.selected{color:red}.tile.disabled{opacity:.5}.panel.mode-night{background:black}',
+  javascript: "const tile=document.querySelector('.tile'); tile.classList.toggle('active', on); const field=document.querySelector('.field'); field.disabled=true;",
+});
+assert.ok(stateTargets.some((target) => target.selector === "#power" && target.action === "checkedState"));
+assert.ok(stateTargets.some((target) => target.selector === "#locked" && target.action === "disabledState"));
+assert.ok(stateTargets.some((target) => target.selector === ".tile" && target.stateKind === "selected"));
+assert.ok(stateTargets.some((target) => target.selector === ".tile" && target.stateKind === "disabled"));
+assert.ok(stateTargets.some((target) => target.selector === ".panel" && target.parameter === "mode-night"));
+assert.ok(stateTargets.some((target) => target.selector === ".field" && target.action === "disabledState"));
+assert.deepStrictEqual(workbench.inventoryAuthoredStateTargets({ html: '<div class="plain"></div>', css: '.plain{color:red}' }), []);
+assert.deepStrictEqual(workbench.inventoryAuthoredStateTargets({ css: '.selected .unknown-owner{color:red}' }), []);
 
 [
   "custom-signal-hold-duration",

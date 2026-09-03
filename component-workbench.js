@@ -70,6 +70,7 @@
         classState: "class-presence",
         charging: "class-presence",
         checkedState: "dom-property",
+        disabledState: "dom-property",
         name: "text-content",
         standardStateText: "text-content",
         selectedStateText: "text-content",
@@ -135,7 +136,7 @@
     if (effect.kind === "class-presence" && !effect.name)
       effect.name = entry.action === "charging" ? "charging" : String(legacyTarget.parameter || entry.parameter || "selected");
     if (effect.kind === "dom-property" && !effect.name)
-      effect.name = entry.action === "checkedState" ? "checked" : entry.action === "url" ? "src" : "value";
+      effect.name = entry.action === "checkedState" ? "checked" : entry.action === "disabledState" ? "disabled" : entry.action === "url" ? "src" : "value";
     if (effect.kind === "css-property" && !effect.name)
       effect.name = { glowStrength: "filter", rotation: "transform", positionX: "left", positionY: "top" }[entry.action] || String(entry.action || "");
     if (effect.kind === "css-custom-property" && !effect.name)
@@ -735,6 +736,59 @@
       if (variables.has(match[1])) add(variables.get(match[1]), `authored JavaScript listens for ${match[3]}`, "javascript", ["press", "release", "held"]);
     return [...targets.values()].map((target, index) => ({ id: `interactive-${index + 1}`, ...target }));
   }
+  function inventoryAuthoredStateTargets({ html = "", css = "", javascript = "" } = {}) {
+    const targets = new Map(), add = ({ selector, stateKind, action, parameter = "", evidence }) => {
+      selector = String(selector || "").trim();
+      if (!selector || !stateKind || !action) return;
+      const identity = [selector, stateKind, action, parameter].join("\u0000");
+      if (!targets.has(identity)) targets.set(identity, { selector, stateKind, action, parameter, evidence: [] });
+      if (evidence && !targets.get(identity).evidence.includes(evidence)) targets.get(identity).evidence.push(evidence);
+    }, stateFromToken = (selector, match, token) => {
+      const owner = selector.slice(0, match.index).trim().replace(/[>+~]\s*$/, "").trim();
+      // `.selected .child` proves a state exists, but does not identify which
+      // source element owns `.selected`. Do not recommend a guessed target.
+      if (!owner) return;
+      if (/disabled/i.test(token)) add({ selector: owner, stateKind: "disabled", action: "disabledState", evidence: `authored CSS uses ${token}` });
+      else if (/^(?:\.selected|\.active|:checked|\[aria-(?:checked|pressed|selected))/i.test(token)) {
+        const nativeChecked = /^:checked/i.test(token);
+        add({ selector: owner, stateKind: "selected", action: nativeChecked ? "checkedState" : "classState", parameter: nativeChecked ? "" : token.replace(/^\./, "").replace(/\[.*$/, "selected"), evidence: `authored CSS uses ${token}` });
+      } else {
+        const name = token.replace(/^\./, "");
+        add({ selector: owner, stateKind: "mode", action: "classState", parameter: name, evidence: `authored CSS uses mode class ${token}` });
+      }
+    };
+    const sourceCss = String(css || "");
+    for (const rule of sourceCss.matchAll(/([^{}]+)\{/g)) {
+      const prelude = rule[1].replace(/\/\*[\s\S]*?\*\//g, " ").trim();
+      if (!prelude || prelude.startsWith("@")) continue;
+      prelude.split(",").map((value) => value.trim()).forEach((selector) => {
+        const pattern = /\.selected\b|\.active\b|:checked\b|:disabled\b|\.disabled\b|\[(?:disabled|aria-disabled\s*=\s*["']?true|aria-(?:checked|pressed|selected)\s*=\s*["']?true)[^\]]*\]|\.(?:state|mode|is)-[A-Za-z0-9_-]+/gi;
+        for (const match of selector.matchAll(pattern)) stateFromToken(selector, match, match[0]);
+      });
+    }
+    const markup = String(html || "");
+    for (const match of markup.matchAll(/<([a-z][\w-]*)([^>]*)>/gi)) {
+      const selector = authoredSelectorIdentity(match[1], match[2]), attributes = match[2] || "",
+        type = attributes.match(/\btype\s*=\s*["']?([^\s"'>]+)/i)?.[1]?.toLowerCase() || "";
+      if (match[1].toLowerCase() === "input" && ["checkbox", "radio"].includes(type))
+        add({ selector, stateKind: "selected", action: "checkedState", evidence: `authored HTML contains input type=${type}` });
+      if (/\bdisabled(?:\s|=|$)/i.test(attributes) || /\baria-disabled\s*=\s*["']?true/i.test(attributes))
+        add({ selector, stateKind: "disabled", action: "disabledState", evidence: "authored HTML contains a disabled state" });
+    }
+    const sourceJs = String(javascript || ""), variables = new Map();
+    for (const match of sourceJs.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document|root)\.(querySelector|getElementById)\(\s*(["'])([^"'\r\n]*)\3\s*\)/g))
+      variables.set(match[1], match[2] === "getElementById" ? `#${match[4].replace(/[^A-Za-z0-9_-]/g, "")}` : match[4]);
+    for (const match of sourceJs.matchAll(/\b([A-Za-z_$][\w$]*)\.classList\.(?:toggle|add|remove)\(\s*(["'])([^"'\r\n]+)\2/g)) {
+      const selector = variables.get(match[1]), name = match[3];
+      if (!selector) continue;
+      add({ selector, stateKind: /selected|active|checked|on/i.test(name) ? "selected" : "mode", action: "classState", parameter: name, evidence: `authored JavaScript changes class ${name}` });
+    }
+    for (const match of sourceJs.matchAll(/\b([A-Za-z_$][\w$]*)\.(checked|disabled)\s*=/g)) {
+      const selector = variables.get(match[1]);
+      if (selector) add({ selector, stateKind: match[2] === "checked" ? "selected" : "disabled", action: match[2] === "checked" ? "checkedState" : "disabledState", evidence: `authored JavaScript sets ${match[2]}` });
+    }
+    return [...targets.values()].map((target, index) => ({ id: `state-target-${index + 1}`, ...target }));
+  }
   return {
     SCHEMA_VERSION,
     BINDING_VERSION,
@@ -759,5 +813,6 @@
     inventoryAuthoredProperties,
     groupAuthoredProperties,
     inventoryAuthoredInteractiveTargets,
+    inventoryAuthoredStateTargets,
   };
 });
