@@ -13,8 +13,22 @@ assert.ok(javascript.includes('$("custom-signal-creator").hidden = true;'));
 assert.ok(javascript.includes('["output-min", "output-max"].forEach'));
 assert.ok(html.includes('id="custom-authored-classes"'));
 assert.ok(javascript.includes("function customAuthoredClassNames()"));
+assert.ok(javascript.includes("function renderCustomAuthoredConnectionRecommendations()"));
+assert.ok(html.includes('id="custom-authored-connection-list"'));
 assert.ok(javascript.includes('definition.value === "classPresence"'));
 assert.ok(javascript.includes('["classState", "standardStateText", "selectedStateText"].includes(action[0])'));
+
+const semanticTargets = workbench.inventoryAuthoredInteractiveTargets({
+  html: '<div class="decoration"></div><button id="save">Save</button><div class="switch" role="switch"></div>',
+});
+assert.deepStrictEqual(semanticTargets.map((target) => target.selector), ["#save", ".switch"]);
+assert.ok(semanticTargets.every((target) => ["press", "release", "held"].every((event) => target.events.includes(event))));
+const scriptedTargets = workbench.inventoryAuthoredInteractiveTargets({
+  html: '<div class="tile"></div><div id="other"></div>',
+  javascript: "const tile=document.querySelector('.tile'); tile.addEventListener('pointerdown', begin); document.getElementById('other').addEventListener('click', run);",
+});
+assert.deepStrictEqual(scriptedTargets.map((target) => target.selector), ["#other", ".tile"]);
+assert.deepStrictEqual(workbench.inventoryAuthoredInteractiveTargets({ html: '<div class="plain"></div>' }), []);
 
 [
   "custom-signal-hold-duration",

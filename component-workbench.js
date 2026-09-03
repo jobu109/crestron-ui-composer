@@ -700,6 +700,41 @@
     });
     return [...groups.values()];
   }
+  function inventoryAuthoredInteractiveTargets({ html = "", javascript = "" } = {}) {
+    const targets = new Map(), add = (selector, evidence, sourceKind, events = []) => {
+      selector = String(selector || "").trim();
+      if (!selector) return;
+      if (!targets.has(selector)) targets.set(selector, { selector, evidence: [], sourceKinds: [], events: [] });
+      const target = targets.get(selector);
+      if (evidence && !target.evidence.includes(evidence)) target.evidence.push(evidence);
+      if (sourceKind && !target.sourceKinds.includes(sourceKind)) target.sourceKinds.push(sourceKind);
+      events.forEach((event) => { if (!target.events.includes(event)) target.events.push(event); });
+    };
+    const markup = String(html || "");
+    for (const match of markup.matchAll(/<([a-z][\w-]*)([^>]*)>/gi)) {
+      const tag = match[1].toLowerCase(), attributes = match[2] || "",
+        type = attributes.match(/\btype\s*=\s*["']?([^\s"'>]+)/i)?.[1]?.toLowerCase() || "",
+        role = attributes.match(/\brole\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase() || "",
+        semantic = tag === "button" || tag === "select" || tag === "textarea" ||
+          (tag === "a" && /\bhref\s*=/i.test(attributes)) ||
+          (tag === "input" && type !== "hidden") ||
+          ["button", "switch", "checkbox", "radio", "tab", "menuitem", "slider"].includes(role) ||
+          /\bcontenteditable(?:\s*=\s*["']?(?:true|plaintext-only))?/i.test(attributes) ||
+          /\btabindex\s*=\s*["']?(?:0|[1-9]\d*)/i.test(attributes);
+      if (semantic) add(authoredSelectorIdentity(tag, attributes), `${tag}${role ? ` role=${role}` : ""} is authored as an interactive element`, "html", ["press", "release", "held"]);
+    }
+    const source = String(javascript || ""), eventPattern = "(?:click|pointerdown|pointerup|mousedown|mouseup|touchstart|touchend|keydown|keyup)";
+    for (const match of source.matchAll(new RegExp(`(?:document|root)\\.querySelector\\(\\s*(["'])([^"'\\r\\n]*)\\1\\s*\\)\\.addEventListener\\(\\s*(["'])(${eventPattern})\\3`, "gi")))
+      add(match[2], `authored JavaScript listens for ${match[4]}`, "javascript", ["press", "release", "held"]);
+    for (const match of source.matchAll(new RegExp(`(?:document|root)\\.getElementById\\(\\s*(["'])([^"'\\r\\n]*)\\1\\s*\\)\\.addEventListener\\(\\s*(["'])(${eventPattern})\\3`, "gi")))
+      add(`#${match[2].replace(/[^A-Za-z0-9_-]/g, "")}`, `authored JavaScript listens for ${match[4]}`, "javascript", ["press", "release", "held"]);
+    const variables = new Map();
+    for (const match of source.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:document|root)\.(querySelector|getElementById)\(\s*(["'])(.*?)\3\s*\)/g))
+      variables.set(match[1], match[2] === "getElementById" ? `#${match[4].replace(/[^A-Za-z0-9_-]/g, "")}` : match[4]);
+    for (const match of source.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\.addEventListener\\(\\s*(["'])(${eventPattern})\\2`, "gi")))
+      if (variables.has(match[1])) add(variables.get(match[1]), `authored JavaScript listens for ${match[3]}`, "javascript", ["press", "release", "held"]);
+    return [...targets.values()].map((target, index) => ({ id: `interactive-${index + 1}`, ...target }));
+  }
   return {
     SCHEMA_VERSION,
     BINDING_VERSION,
@@ -723,5 +758,6 @@
     restoreAuthoredCssMapping,
     inventoryAuthoredProperties,
     groupAuthoredProperties,
+    inventoryAuthoredInteractiveTargets,
   };
 });

@@ -1578,6 +1578,13 @@
                 <button id="custom-property-create" type="button" class="primary">Add editable property</button>
               </section>
               <div id="custom-property-mapping-list" class="custom-property-mapping-list" data-capability-panel="properties"></div>
+              <section id="custom-authored-connection-recommendations" class="custom-authored-property-inventory" data-capability-panel="connections">
+                <div class="custom-builder-heading">
+                  <div><h2>Connections supported by your source</h2><p class="hint">Recommendations appear only for authored interactive targets. Choose an event to review its exact target before adding it.</p></div>
+                </div>
+                <div id="custom-authored-connection-list" class="custom-authored-connection-list"></div>
+                <p id="custom-authored-connection-status" class="hint" role="status" aria-live="polite"></p>
+              </section>
               <section id="custom-signal-creator" class="custom-scope-creator" data-capability-panel="connections" hidden>
                 <div class="custom-builder-heading"><h2>Add Crestron connection</h2><button type="button" data-close-scope-creator>×</button></div>
                 <div class="custom-scope-grid">

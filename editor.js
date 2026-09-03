@@ -18591,6 +18591,71 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     renderCustomPropertyMappings();
     refreshCustomPreview();
   }
+  function customAuthoredInteractiveTargets() {
+    return window.ComposerComponentWorkbench.inventoryAuthoredInteractiveTargets({
+      html: $("custom-source-html").value,
+      javascript: $("custom-source-javascript").value,
+    });
+  }
+  function configureCustomAuthoredOutput(target, action) {
+    const partId = customWorkbenchPartIdForSelector(target.selector, customFriendlyTargetName(target.selector));
+    customWorkbenchSelectedPartId = partId;
+    openCustomScopeCreator("signal");
+    $("custom-signal-capability-type").value = "digital";
+    $("custom-signal-capability-direction").value = "output";
+    refreshCustomSignalCreator();
+    const targetSelect = $("custom-signal-target");
+    let option = [...targetSelect.options].find((entry) => entry.value === target.selector);
+    if (!option) {
+      option = new Option(`${customFriendlyTargetName(target.selector)} — authored interactive target`, target.selector);
+      option.dataset.partId = partId;
+      targetSelect.appendChild(option);
+    }
+    targetSelect.value = target.selector;
+    targetSelect.dataset.edited = "true";
+    refreshCustomSignalCreator();
+    $("custom-signal-capability-action").value = action;
+    $("custom-signal-capability-action").dataset.edited = "true";
+    const base = scopedCustomKey(`${customFriendlyTargetName(target.selector)} ${action}`, action),
+      used = new Set(collectCustomSignals().map((signal) => signal.key));
+    let key = base, index = 2;
+    while (used.has(key)) key = `${base}${index++}`;
+    const label = `${customFriendlyTargetName(target.selector)} ${action.replace(/^./, (letter) => letter.toUpperCase())}`,
+      contractBase = scopedCustomKey($("custom-component-name").value, "CustomComponent");
+    [
+      ["custom-signal-capability-key", key],
+      ["custom-signal-capability-label", label],
+      ["custom-signal-capability-address", `${contractBase}.${action.replace(/^./, (letter) => letter.toUpperCase())}`],
+    ].forEach(([id, value]) => { $(id).value = value; $(id).dataset.edited = "true"; });
+    refreshCustomSignalCreator();
+    $("custom-signal-capability-help").textContent = `${label} is supported because ${target.evidence.join("; ")}. The exact target is ${target.selector}.`;
+    $("custom-signal-creator").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function renderCustomAuthoredConnectionRecommendations() {
+    const host = $("custom-authored-connection-list"), status = $("custom-authored-connection-status");
+    if (!host || !status) return;
+    const targets = customAuthoredInteractiveTargets();
+    host.replaceChildren();
+    targets.forEach((target) => {
+      const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div");
+      row.className = "custom-authored-connection-row";
+      actions.className = "custom-authored-connection-actions";
+      selector.textContent = target.selector;
+      evidence.textContent = target.evidence.join("; ");
+      target.events.forEach((action) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = `Configure ${action.replace(/^./, (letter) => letter.toUpperCase())}`;
+        button.onclick = () => configureCustomAuthoredOutput(target, action);
+        actions.appendChild(button);
+      });
+      row.append(selector, evidence, actions);
+      host.appendChild(row);
+    });
+    status.textContent = targets.length
+      ? `${targets.length} authored interactive target${targets.length === 1 ? "" : "s"} found. No event output is added until you configure and save it.`
+      : "No authored interactive target was found, so Press, Release, and Held are not recommended.";
+  }
   function renderCustomConnectionMappings() {
     const host = $("custom-connection-mapping-list");
     if (!host) return;
@@ -18643,6 +18708,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         host.appendChild(card);
       });
     renderCustomGeneratedAdapter();
+    renderCustomAuthoredConnectionRecommendations();
   }
   function customConnectionInlineTester(mapping) {
     const binding = customCanonicalBinding(mapping),
