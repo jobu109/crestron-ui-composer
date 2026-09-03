@@ -15,6 +15,9 @@ assert.ok(html.includes('id="custom-authored-classes"'));
 assert.ok(javascript.includes("function customAuthoredClassNames()"));
 assert.ok(javascript.includes("function renderCustomAuthoredConnectionRecommendations()"));
 assert.ok(html.includes('id="custom-authored-connection-list"'));
+assert.ok(javascript.includes('button.textContent = existing ? "Edit existing" : "Configure (optional)"'));
+assert.ok(javascript.includes('Exact target: ${exactSelector}'));
+assert.ok(javascript.includes('row.dataset.recommendation = `${type}:${direction}:${effect}`'));
 assert.ok(javascript.includes('definition.value === "classPresence"'));
 assert.ok(javascript.includes('["classState", "standardStateText", "selectedStateText"].includes(action[0])'));
 

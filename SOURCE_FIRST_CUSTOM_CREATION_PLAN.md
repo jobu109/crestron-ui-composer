@@ -54,7 +54,7 @@ Starter templates prefill source, properties, and compatible signal recommendati
 - [x] Infer Press/Held/Release outputs only from a real interactive target.
 - [x] Infer Selected/Disabled/mode inputs only from authored classes, attributes, DOM properties, or JavaScript state hooks.
 - [x] Infer Analog/Serial inputs only where a compatible authored value target exists.
-- [ ] Make every recommendation optional and show the exact target and effect/event before adding it.
+- [x] Make every recommendation optional and show the exact target and effect/event before adding it.
 - [ ] Support manual selection of any inventoried source target and compatible Digital/Analog/Serial action.
 - [ ] Prevent connection creation from adding unrelated Composer properties or source declarations.
 

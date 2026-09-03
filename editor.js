@@ -18737,50 +18737,51 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (!host || !status) return;
     const targets = customAuthoredInteractiveTargets(), stateTargets = customAuthoredStateTargets(), valueTargets = customAuthoredValueTargets();
     host.replaceChildren();
-    targets.forEach((target) => {
-      const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div");
+    let recommendationCount = 0;
+    const appendRecommendation = ({ type, direction, selector: exactSelector, effect, parameter = "", evidence = [], configure }) => {
+      const row = document.createElement("div"), summary = document.createElement("code"), reason = document.createElement("small"), actions = document.createElement("div"), button = document.createElement("button"),
+        existing = (customWorkbenchDraft?.connections || []).find((mapping) => {
+          const binding = customCanonicalBinding(mapping),
+            action = mapping.action || binding.effect.event || binding.effect.capability || binding.effect.kind,
+            mappedParameter = mapping.parameter || mapping.target?.parameter || binding.effect.name || "";
+          return mapping.type === type && mapping.direction === direction &&
+            customCanonicalBindingSelector(mapping) === exactSelector && action === effect &&
+            (!parameter || mappedParameter === parameter);
+        });
+      recommendationCount += 1;
       row.className = "custom-authored-connection-row";
+      row.dataset.recommendation = `${type}:${direction}:${effect}`;
       actions.className = "custom-authored-connection-actions";
-      selector.textContent = target.selector;
-      evidence.textContent = target.evidence.join("; ");
-      target.events.forEach((action) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = `Configure ${action.replace(/^./, (letter) => letter.toUpperCase())}`;
-        button.onclick = () => configureCustomAuthoredOutput(target, action);
-        actions.appendChild(button);
-      });
-      row.append(selector, evidence, actions);
+      summary.textContent = `${type} ${direction} · ${effect}${parameter ? ` (${parameter})` : ""}\nExact target: ${exactSelector}`;
+      reason.textContent = evidence.join("; ");
+      button.type = "button";
+      button.textContent = existing ? "Edit existing" : "Configure (optional)";
+      button.onclick = () => existing ? editCustomConnectionMapping(existing) : configure();
+      actions.appendChild(button);
+      row.append(summary, reason, actions);
       host.appendChild(row);
+    };
+    targets.forEach((target) => {
+      target.events.forEach((action) => appendRecommendation({
+        type: "digital", direction: "output", selector: target.selector, effect: action,
+        evidence: target.evidence, configure: () => configureCustomAuthoredOutput(target, action),
+      }));
     });
     stateTargets.forEach((target) => {
-      const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div"), button = document.createElement("button");
-      row.className = "custom-authored-connection-row";
-      actions.className = "custom-authored-connection-actions";
-      selector.textContent = target.selector;
-      evidence.textContent = target.evidence.join("; ");
-      button.type = "button";
-      button.textContent = `Configure ${target.stateKind.replace(/^./, (letter) => letter.toUpperCase())}`;
-      button.onclick = () => configureCustomAuthoredStateInput(target);
-      actions.appendChild(button);
-      row.append(selector, evidence, actions);
-      host.appendChild(row);
+      appendRecommendation({
+        type: "digital", direction: "input", selector: target.selector, effect: target.action,
+        parameter: target.parameter, evidence: target.evidence, configure: () => configureCustomAuthoredStateInput(target),
+      });
     });
     valueTargets.forEach((target) => {
-      const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div"), button = document.createElement("button"), exactSelector = `${target.selector}${target.pseudoElement || ""}`;
-      row.className = "custom-authored-connection-row";
-      actions.className = "custom-authored-connection-actions";
-      selector.textContent = `${target.type} · ${exactSelector} · ${target.parameter || target.action}`;
-      evidence.textContent = target.evidence.join("; ");
-      button.type = "button";
-      button.textContent = `Configure ${target.type === "analog" ? "Analog" : "Serial"}`;
-      button.onclick = () => configureCustomAuthoredValueInput(target);
-      actions.appendChild(button);
-      row.append(selector, evidence, actions);
-      host.appendChild(row);
+      const exactSelector = `${target.selector}${target.pseudoElement || ""}`;
+      appendRecommendation({
+        type: target.type, direction: "input", selector: exactSelector, effect: target.action,
+        parameter: target.parameter, evidence: target.evidence, configure: () => configureCustomAuthoredValueInput(target),
+      });
     });
-    status.textContent = targets.length || stateTargets.length || valueTargets.length
-      ? `${targets.length} interactive, ${stateTargets.length} state, and ${valueTargets.length} compatible value target${valueTargets.length === 1 ? "" : "s"} found. Nothing is added until you configure and save it.`
+    status.textContent = recommendationCount
+      ? `${recommendationCount} optional source-backed recommendation${recommendationCount === 1 ? "" : "s"}. Nothing is added until you configure and save it.`
       : "No authored interactive, state, or compatible value target was found, so no connection is recommended.";
   }
   function renderCustomConnectionMappings() {
