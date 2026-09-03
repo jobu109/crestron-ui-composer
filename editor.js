@@ -18605,6 +18605,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       javascript: $("custom-source-javascript").value,
     });
   }
+  function customAuthoredValueTargets() {
+    return window.ComposerComponentWorkbench.inventoryAuthoredValueTargets({
+      html: $("custom-source-html").value,
+      css: $("custom-source-css").value,
+    });
+  }
   function configureCustomAuthoredOutput(target, action) {
     const partId = customWorkbenchPartIdForSelector(target.selector, customFriendlyTargetName(target.selector));
     customWorkbenchSelectedPartId = partId;
@@ -18677,10 +18683,59 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-signal-capability-help").textContent = `${label} is supported because ${target.evidence.join("; ")}. The exact target is ${target.selector}.`;
     $("custom-signal-creator").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+  function configureCustomAuthoredValueInput(target) {
+    const exactSelector = `${target.selector}${target.pseudoElement || ""}`,
+      partId = customWorkbenchPartIdForSelector(target.selector, customFriendlyTargetName(target.selector));
+    customWorkbenchSelectedPartId = partId;
+    openCustomScopeCreator("signal");
+    $("custom-signal-capability-type").value = target.type;
+    $("custom-signal-capability-direction").value = "input";
+    refreshCustomSignalCreator();
+    $("custom-signal-capability-action").value = target.action;
+    $("custom-signal-capability-action").dataset.edited = "true";
+    if (target.parameter) {
+      $("custom-signal-parameter").value = target.parameter;
+      $("custom-signal-parameter").dataset.edited = "true";
+    }
+    if (target.unit) {
+      $("custom-signal-unit").value = target.unit;
+      $("custom-signal-unit").dataset.edited = "true";
+    }
+    if (target.type === "analog") {
+      $("custom-signal-output-min").value = "0";
+      $("custom-signal-output-max").value = String(Math.max(100, Number(target.value) || 0));
+      $("custom-signal-output-min").dataset.edited = "true";
+      $("custom-signal-output-max").dataset.edited = "true";
+    }
+    refreshCustomSignalCreator();
+    const targetSelect = $("custom-signal-target");
+    let option = [...targetSelect.options].find((entry) => entry.value === exactSelector);
+    if (!option) {
+      option = new Option(`${customFriendlyTargetName(exactSelector)} — exact authored value target`, exactSelector);
+      option.dataset.partId = partId;
+      targetSelect.appendChild(option);
+    }
+    targetSelect.value = exactSelector;
+    targetSelect.dataset.edited = "true";
+    const base = scopedCustomKey(`${customFriendlyTargetName(exactSelector)} ${target.parameter || target.action}`, target.type),
+      used = new Set(collectCustomSignals().map((signal) => signal.key));
+    let key = base, index = 2;
+    while (used.has(key)) key = `${base}${index++}`;
+    const label = `${customFriendlyTargetName(exactSelector)} ${target.type === "serial" ? "Text" : target.parameter || "Value"}`,
+      contractBase = scopedCustomKey($("custom-component-name").value, "CustomComponent");
+    [
+      ["custom-signal-capability-key", key],
+      ["custom-signal-capability-label", label],
+      ["custom-signal-capability-address", `${contractBase}.${key.replace(/^./, (letter) => letter.toUpperCase())}`],
+    ].forEach(([id, value]) => { $(id).value = value; $(id).dataset.edited = "true"; });
+    $("custom-signal-capability-help").textContent = `${label} is compatible because ${target.evidence.join("; ")}. The exact target is ${exactSelector}.`;
+    $("custom-signal-sentence").innerHTML = customConnectionSentence(collectCustomSignalCreatorConfig());
+    $("custom-signal-creator").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
   function renderCustomAuthoredConnectionRecommendations() {
     const host = $("custom-authored-connection-list"), status = $("custom-authored-connection-status");
     if (!host || !status) return;
-    const targets = customAuthoredInteractiveTargets(), stateTargets = customAuthoredStateTargets();
+    const targets = customAuthoredInteractiveTargets(), stateTargets = customAuthoredStateTargets(), valueTargets = customAuthoredValueTargets();
     host.replaceChildren();
     targets.forEach((target) => {
       const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div");
@@ -18711,9 +18766,22 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       row.append(selector, evidence, actions);
       host.appendChild(row);
     });
-    status.textContent = targets.length || stateTargets.length
-      ? `${targets.length} interactive and ${stateTargets.length} state target${stateTargets.length === 1 ? "" : "s"} found. Nothing is added until you configure and save it.`
-      : "No authored interactive or state target was found, so no event or state connection is recommended.";
+    valueTargets.forEach((target) => {
+      const row = document.createElement("div"), selector = document.createElement("code"), evidence = document.createElement("small"), actions = document.createElement("div"), button = document.createElement("button"), exactSelector = `${target.selector}${target.pseudoElement || ""}`;
+      row.className = "custom-authored-connection-row";
+      actions.className = "custom-authored-connection-actions";
+      selector.textContent = `${target.type} · ${exactSelector} · ${target.parameter || target.action}`;
+      evidence.textContent = target.evidence.join("; ");
+      button.type = "button";
+      button.textContent = `Configure ${target.type === "analog" ? "Analog" : "Serial"}`;
+      button.onclick = () => configureCustomAuthoredValueInput(target);
+      actions.appendChild(button);
+      row.append(selector, evidence, actions);
+      host.appendChild(row);
+    });
+    status.textContent = targets.length || stateTargets.length || valueTargets.length
+      ? `${targets.length} interactive, ${stateTargets.length} state, and ${valueTargets.length} compatible value target${valueTargets.length === 1 ? "" : "s"} found. Nothing is added until you configure and save it.`
+      : "No authored interactive, state, or compatible value target was found, so no connection is recommended.";
   }
   function renderCustomConnectionMappings() {
     const host = $("custom-connection-mapping-list");

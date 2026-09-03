@@ -789,6 +789,40 @@
     }
     return [...targets.values()].map((target, index) => ({ id: `state-target-${index + 1}`, ...target }));
   }
+  function inventoryAuthoredValueTargets({ html = "", css = "" } = {}) {
+    const targets = [], seen = new Set(), add = (target) => {
+      const identity = [target.type, target.selector, target.pseudoElement || "", target.action, target.parameter || ""].join("\u0000");
+      if (!seen.has(identity)) { seen.add(identity); targets.push({ id: `value-target-${targets.length + 1}`, ...target }); }
+    };
+    groupAuthoredProperties(inventoryAuthoredProperties({ html, css })).forEach((group) => {
+      if (group.kind === "text-content") {
+        add({ type: "serial", selector: group.selector, pseudoElement: "", action: "text", parameter: "", stateScope: group.stateScope, value: group.value, evidence: [`authored HTML contains the text “${String(group.value).slice(0, 60)}”`] });
+        return;
+      }
+      if (group.controlType !== "number") return;
+      const numeric = String(group.value).trim().match(/^(-?\d*\.?\d+)([a-z%]*)$/i);
+      if (!numeric) return;
+      add({
+        type: "analog",
+        selector: group.selector,
+        pseudoElement: group.pseudoElement || "",
+        action: "mappedProperty",
+        parameter: group.property,
+        stateScope: group.stateScope,
+        value: Number(numeric[1]),
+        unit: numeric[2] || "",
+        evidence: [`authored CSS contains ${group.property}: ${group.value}`],
+      });
+    });
+    const markup = String(html || "");
+    for (const match of markup.matchAll(/<(input|meter|progress)([^>]*)>/gi)) {
+      const tag = match[1].toLowerCase(), attributes = match[2] || "",
+        type = attributes.match(/\btype\s*=\s*["']?([^\s"'>]+)/i)?.[1]?.toLowerCase() || "";
+      if (tag !== "input" || ["range", "number"].includes(type))
+        add({ type: "analog", selector: authoredSelectorIdentity(tag, attributes), pseudoElement: "", action: "value", parameter: "value", stateScope: "all", value: Number(attributes.match(/\bvalue\s*=\s*["']?(-?\d*\.?\d+)/i)?.[1]) || 0, unit: "", evidence: [`authored HTML contains a numeric ${tag}${type ? ` type=${type}` : ""} control`] });
+    }
+    return targets;
+  }
   return {
     SCHEMA_VERSION,
     BINDING_VERSION,
@@ -814,5 +848,6 @@
     groupAuthoredProperties,
     inventoryAuthoredInteractiveTargets,
     inventoryAuthoredStateTargets,
+    inventoryAuthoredValueTargets,
   };
 });

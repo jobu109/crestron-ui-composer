@@ -42,6 +42,15 @@ assert.ok(stateTargets.some((target) => target.selector === ".panel" && target.p
 assert.ok(stateTargets.some((target) => target.selector === ".field" && target.action === "disabledState"));
 assert.deepStrictEqual(workbench.inventoryAuthoredStateTargets({ html: '<div class="plain"></div>', css: '.plain{color:red}' }), []);
 assert.deepStrictEqual(workbench.inventoryAuthoredStateTargets({ css: '.selected .unknown-owner{color:red}' }), []);
+const valueTargets = workbench.inventoryAuthoredValueTargets({
+  html: '<div class="label">Ready</div><input id="level" type="range" value="25"><div class="plain"></div>',
+  css: '.meter{width:40%;background:#ff0000}.meter::before{opacity:.5}.plain{display:flex}',
+});
+assert.ok(valueTargets.some((target) => target.type === "serial" && target.selector === ".label" && target.action === "text"));
+assert.ok(valueTargets.some((target) => target.type === "analog" && target.selector === "#level" && target.action === "value"));
+assert.ok(valueTargets.some((target) => target.type === "analog" && target.selector === ".meter" && target.parameter === "width" && target.unit === "%"));
+assert.ok(valueTargets.some((target) => target.type === "analog" && target.selector === ".meter" && target.pseudoElement === "::before" && target.parameter === "opacity"));
+assert.ok(!valueTargets.some((target) => target.parameter === "background" || target.parameter === "display"));
 
 [
   "custom-signal-hold-duration",
