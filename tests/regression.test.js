@@ -1499,6 +1499,89 @@ run("linked subpages persist, render, export, and travel in design libraries", (
   assert.ok(exporter.includes("contractSourcePageId"));
 });
 
+run("exporting two independent subpages never clones one onto the other's master page", () => {
+  // Regression for a real reported bug: Header content was showing up on
+  // Footer too, but only in the exported/live-preview runtime, never in the
+  // editor's own canvas. The export loop iterated every project.pages entry
+  // when cloning a subpage's source items, including *other* subpages' own
+  // master pages — so Header's clone landed on Footer's master page, and
+  // Footer's own subsequent clone pass then picked those up as if they were
+  // its own source content. The editor canvas already excluded master pages
+  // via subpageApplies(); the exporter needed the same guard.
+  vm.runInThisContext(read("component-runtime.js"), { filename: "component-runtime.js" });
+  ComposerRuntime.register({
+    id: "regression-label",
+    name: "Regression Label",
+    template: '<div class="regression-label"></div>',
+    styles: "",
+    properties: [{ key: "text", type: "text", defaultValue: "" }],
+    signals: [],
+    data: {},
+    mount(root, properties) {
+      root.querySelector(".regression-label").textContent = properties.text;
+    },
+  });
+  vm.runInThisContext(read("exporter.js"), { filename: "exporter.js" });
+  const html = ComposerExporter.exportProject({
+    version: 4,
+    width: 1920,
+    height: 1200,
+    pages: [
+      { id: "page-a", name: "Page A", background: "#000", bindingMode: "none" },
+      { id: "page-b", name: "Page B", background: "#000", bindingMode: "none" },
+      { id: "header-master", name: "Header Master", background: "#000", bindingMode: "none", subpageMasterId: "header-subpage" },
+      { id: "footer-master", name: "Footer Master", background: "#000", bindingMode: "none", subpageMasterId: "footer-subpage" },
+    ],
+    subpages: [
+      {
+        // excludedPages matches createBlankSubpage's real default exactly:
+        // only the subpage's own master page, never the other subpage's.
+        // Relying on excludedPages to also cover other subpages' masters
+        // would hide the exact bug this test exists to catch.
+        id: "header-subpage", name: "Header", sourcePageId: "header-master", placement: "top",
+        width: 1920, height: 100, includedPages: [], excludedPages: ["header-master"],
+        visibilityEnabled: false, bindingMode: "contract", bindingScope: "shared", visibility: "Header_Visibility",
+        z: 9000, instanceOverrides: {}, deviceOverrides: {},
+      },
+      {
+        id: "footer-subpage", name: "Footer", sourcePageId: "footer-master", placement: "bottom",
+        width: 1920, height: 100, includedPages: [], excludedPages: ["footer-master"],
+        visibilityEnabled: false, bindingMode: "contract", bindingScope: "shared", visibility: "Footer_Visibility",
+        z: 9000, instanceOverrides: {}, deviceOverrides: {},
+      },
+    ],
+    items: [
+      {
+        id: "header-content", pageId: "header-master", name: "Header content", componentId: "regression-label",
+        x: 0, y: 0, w: 200, h: 50, z: 1, properties: { text: "HEADER-ONLY-TEXT" }, signalBindings: {},
+      },
+      {
+        id: "footer-content", pageId: "footer-master", name: "Footer content", componentId: "regression-label",
+        x: 0, y: 0, w: 200, h: 50, z: 1, properties: { text: "FOOTER-ONLY-TEXT" }, signalBindings: {},
+      },
+    ],
+    assets: [],
+  });
+  assert.ok(html.includes("HEADER-ONLY-TEXT"), "Header's own content must still export");
+  assert.ok(html.includes("FOOTER-ONLY-TEXT"), "Footer's own content must still export");
+  // The exact clone-id shape a leak produces: cloning Header's item onto
+  // Footer's own master page. This id (or the further-compounded id from
+  // Footer's own subsequent pass re-cloning that leaked item onto Page A/B)
+  // can only exist if a subpage's items were cloned onto another subpage's
+  // master page, which is precisely the bug being guarded against here —
+  // a much more specific signal than counting text occurrences, since
+  // normal export output legitimately serializes each item's properties
+  // more than once (markup plus mount data).
+  assert.ok(
+    !html.includes("subpage-header-subpage-footer-master-"),
+    "Header's items must never be cloned onto Footer's own master page",
+  );
+  assert.ok(
+    !html.includes("subpage-footer-subpage-header-master-"),
+    "Footer's items must never be cloned onto Header's own master page",
+  );
+});
+
 run("Widget List exports nested component identities and styling", () => {
   const exporter = read("exporter.js"), widgetList = read("widget-list.component.js"), editor = read("editor.js");
   assert.ok(exporter.includes("{id:${JSON.stringify(id)},template:"));

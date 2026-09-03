@@ -148,13 +148,25 @@
             height: Math.round((Number(pageOverride.height ?? entry.height) || 100) * project.height / baseHeight),
           };
         return { ...entry, ...pageOverride, ...fallback, ...targetOverride,
-          width: Math.max(1, Number(targetOverride.width ?? fallback.width ?? pageOverride.width ?? entry.width) || project.width),
-          height: Math.max(1, Number(targetOverride.height ?? fallback.height ?? pageOverride.height ?? entry.height) || 100) };
+          // Same 20px floor as editor.js's subpageResolved and the canvas
+          // drag-resize handle — this responsive fallback previously had no
+          // floor at all, which could bake a near-zero exported size in
+          // permanently.
+          width: Math.max(20, Number(targetOverride.width ?? fallback.width ?? pageOverride.width ?? entry.width) || project.width),
+          height: Math.max(20, Number(targetOverride.height ?? fallback.height ?? pageOverride.height ?? entry.height) || 100) };
       };
     (project.subpages || []).forEach((entry) => {
       const sourceItems = project.items.filter((item) => item.pageId === entry.sourcePageId && !item.master);
       project.pages.forEach((page) => {
-        if (page.id === entry.sourcePageId || (entry.excludedPages || []).includes(page.id) || (entry.includedPages?.length && !entry.includedPages.includes(page.id))) return;
+        // A subpage's own master page (e.g. Footer's master) must never
+        // receive another subpage's (e.g. Header's) cloned items — the
+        // editor canvas already excludes these via the same check
+        // (editor.js's subpageApplies). Without it, this loop clones Header
+        // onto Footer's master page, and because sourceItems below is
+        // re-derived from project.items on every subpages.forEach pass,
+        // Footer's own subsequent clone pass then picks up Header's
+        // now-resident items as if they were Footer's source content.
+        if (page.id === entry.sourcePageId || page.subpageMasterId || (entry.excludedPages || []).includes(page.id) || (entry.includedPages?.length && !entry.includedPages.includes(page.id))) return;
         const override = entry.instanceOverrides?.[page.id] || {}, resolved = resolveSubpage(entry, page.id),
           width = Math.max(1, Number(resolved.width) || project.width), height = Math.max(1, Number(resolved.height) || 100),
           offset = Number.isFinite(Number(resolved.x)) && Number.isFinite(Number(resolved.y)) ? { x: Number(resolved.x), y: Number(resolved.y) }
