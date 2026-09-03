@@ -42,8 +42,8 @@ Starter templates prefill source, properties, and compatible signal recommendati
 
 ## Phase 2 — Strict authored-property inventory
 
-- [ ] Inventory CSS declarations, CSS custom properties, pseudo-elements, inline styles, authored text, and applicable media/state variants.
-- [ ] Group duplicate declarations by target, declaration, and state while retaining every authored location.
+- [x] Inventory CSS declarations, CSS custom properties, pseudo-elements, inline styles, authored text, and applicable media/state variants.
+- [x] Group duplicate declarations by target, declaration, and state while retaining every authored location.
 - [ ] Present checkboxes with exact target, state, authored value, Inspector label, and control type.
 - [ ] Remove role-based properties that lack authored evidence.
 - [ ] Never generate missing CSS declarations from a checked property.

@@ -543,6 +543,139 @@
     }
     return { css: next, changed, matched };
   }
+  function splitAuthoredDeclarations(body) {
+    const declarations = [];
+    let start = 0, quote = "", depth = 0;
+    const commit = (end) => {
+      const source = String(body || "").slice(start, end).trim();
+      if (!source) return;
+      let colon = -1, localQuote = "", localDepth = 0;
+      for (let index = 0; index < source.length; index += 1) {
+        const character = source[index];
+        if (localQuote) {
+          if (character === localQuote && source[index - 1] !== "\\") localQuote = "";
+        } else if (character === '"' || character === "'") localQuote = character;
+        else if (character === "(") localDepth += 1;
+        else if (character === ")") localDepth = Math.max(0, localDepth - 1);
+        else if (character === ":" && localDepth === 0) { colon = index; break; }
+      }
+      if (colon < 1) return;
+      const property = source.slice(0, colon).trim(), value = source.slice(colon + 1).trim();
+      if (/^(?:--[\w-]+|[a-z-]+)$/i.test(property) && value)
+        declarations.push({ property: property.toLowerCase(), value });
+    };
+    for (let index = 0; index <= String(body || "").length; index += 1) {
+      const character = String(body || "")[index] || ";";
+      if (quote) {
+        if (character === quote && String(body || "")[index - 1] !== "\\") quote = "";
+      } else if (character === '"' || character === "'") quote = character;
+      else if (character === "(") depth += 1;
+      else if (character === ")") depth = Math.max(0, depth - 1);
+      else if (character === ";" && depth === 0) { commit(index); start = index + 1; }
+    }
+    return declarations;
+  }
+  function authoredStateScope(selector) {
+    const value = String(selector || "").toLowerCase();
+    if (/:checked|\[aria-(?:checked|pressed)=["']?true|\.(?:selected|active|checked)\b/.test(value)) return "selected";
+    if (/:active|\.(?:pressed|pressing)\b/.test(value)) return "pressed";
+    if (/:disabled|\[disabled\]|\[aria-disabled=["']?true|\.disabled\b/.test(value)) return "disabled";
+    if (/:hover|\.hover\b/.test(value)) return "hover";
+    return "standard";
+  }
+  function authoredControlType(property, value) {
+    if (/color|fill|stroke/i.test(property) || /#[\da-f]{3,8}\b|(?:rgb|hsl)a?\(/i.test(value)) return /rgba|hsla|#[\da-f]{8}\b/i.test(value) ? "color-alpha" : "color";
+    if (/^(?:-?\d*\.?\d+)(?:px|em|rem|%|deg|ms|s|vh|vw)?$/i.test(String(value).trim())) return "number";
+    return "text";
+  }
+  function authoredSelectorIdentity(tag, attributes) {
+    const id = String(attributes || "").match(/\bid\s*=\s*["']([^"']+)["']/i)?.[1];
+    if (id) return `#${id.replace(/[^A-Za-z0-9_-]/g, "")}`;
+    const className = String(attributes || "").match(/\bclass\s*=\s*["']([^"']+)["']/i)?.[1]?.trim().split(/\s+/)[0];
+    return className ? `.${className.replace(/[^A-Za-z0-9_-]/g, "")}` : String(tag || "").toLowerCase();
+  }
+  function inventoryAuthoredProperties({ html = "", css = "" } = {}) {
+    const entries = [], source = String(css || "");
+    const addDeclaration = ({ selector, property, value, atRules = [], sourceKind = "css", index = 0 }) => {
+      const pseudoMatch = String(selector).match(/(::?(?:before|after))\s*$/i), pseudoElement = pseudoMatch ? pseudoMatch[1].replace(/^:(?!:)/, "::").toLowerCase() : "";
+      entries.push({
+        id: `authored-${entries.length + 1}`,
+        kind: property.startsWith("--") ? "css-custom-property" : sourceKind,
+        selector: pseudoMatch ? String(selector).slice(0, -pseudoMatch[1].length).trim() : String(selector).trim(),
+        pseudoElement,
+        property,
+        value,
+        stateScope: authoredStateScope(selector),
+        atRules: atRules.slice(),
+        controlType: authoredControlType(property, value),
+        sourceIndex: index,
+      });
+    };
+    const scan = (fragment, contexts = [], offset = 0) => {
+      let cursor = 0;
+      while (cursor < fragment.length) {
+        const open = fragment.indexOf("{", cursor);
+        if (open < 0) break;
+        const prelude = fragment.slice(cursor, open).replace(/\/\*[\s\S]*?\*\//g, " ").trim();
+        let depth = 1, quote = "", close = open + 1;
+        for (; close < fragment.length && depth; close += 1) {
+          const character = fragment[close];
+          if (quote) { if (character === quote && fragment[close - 1] !== "\\") quote = ""; }
+          else if (character === '"' || character === "'") quote = character;
+          else if (character === "{") depth += 1;
+          else if (character === "}") depth -= 1;
+        }
+        if (depth) break;
+        const body = fragment.slice(open + 1, close - 1);
+        if (/^@(media|supports|container|layer|document)\b/i.test(prelude)) scan(body, contexts.concat(prelude), offset + open + 1);
+        else if (!/^@(?:keyframes|-webkit-keyframes|font-face|page|property)\b/i.test(prelude))
+          prelude.split(",").map((value) => value.trim()).filter(Boolean).forEach((selector) =>
+            splitAuthoredDeclarations(body).forEach(({ property, value }) => addDeclaration({ selector, property, value, atRules: contexts, index: offset + open })));
+        cursor = close;
+      }
+    };
+    scan(source);
+    const markup = String(html || "");
+    for (const match of markup.matchAll(/<([a-z][\w-]*)([^>]*)\bstyle\s*=\s*(["'])([\s\S]*?)\3[^>]*>/gi)) {
+      const selector = authoredSelectorIdentity(match[1], match[2]);
+      splitAuthoredDeclarations(match[4]).forEach(({ property, value }) => addDeclaration({ selector, property, value, sourceKind: "inline-style", index: match.index || 0 }));
+    }
+    for (const match of markup.matchAll(/<([a-z][\w-]*)([^>]*)>([^<]+)<\/\1\s*>/gi)) {
+      if (/^(?:style|script)$/i.test(match[1])) continue;
+      const value = match[3].replace(/\s+/g, " ").trim();
+      if (!value) continue;
+      entries.push({ id: `authored-${entries.length + 1}`, kind: "text-content", selector: authoredSelectorIdentity(match[1], match[2]), pseudoElement: "", property: "text-content", value, stateScope: "standard", atRules: [], controlType: "text", sourceIndex: match.index || 0 });
+    }
+    return entries;
+  }
+  function groupAuthoredProperties(entries = []) {
+    const groups = new Map();
+    (entries || []).forEach((entry) => {
+      const identity = [entry.kind, entry.selector, entry.pseudoElement || "", entry.property, entry.stateScope || "standard"].join("\u0000");
+      if (!groups.has(identity))
+        groups.set(identity, {
+          id: `authored-group-${groups.size + 1}`,
+          kind: entry.kind,
+          selector: entry.selector,
+          pseudoElement: entry.pseudoElement || "",
+          property: entry.property,
+          stateScope: entry.stateScope || "standard",
+          controlType: entry.controlType || "text",
+          value: entry.value,
+          values: [],
+          locations: [],
+        });
+      const group = groups.get(identity);
+      if (!group.values.includes(entry.value)) group.values.push(entry.value);
+      group.locations.push({
+        sourceIndex: Number(entry.sourceIndex) || 0,
+        sourceKind: entry.kind,
+        value: entry.value,
+        atRules: (entry.atRules || []).slice(),
+      });
+    });
+    return [...groups.values()];
+  }
   return {
     SCHEMA_VERSION,
     BINDING_VERSION,
@@ -563,5 +696,7 @@
     normalizeBinding,
     withCanonicalBinding,
     materializeAuthoredCssMapping,
+    inventoryAuthoredProperties,
+    groupAuthoredProperties,
   };
 });
