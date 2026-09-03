@@ -2006,8 +2006,9 @@ run("Component Creator provides one unified import and starter workflow", () => 
   assert.ok(editor.includes("openCustomBuilder(null, null, button.dataset.creatorTemplate)"));
   assert.ok(!html.includes('id="custom-mode-guided"'));
   assert.ok(!html.includes('id="custom-mode-advanced"'));
-  assert.ok(html.includes("Imported setup</span>"));
-  assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
+  assert.ok(html.includes("Source &amp; preview</span>"));
+  assert.ok(html.includes("Editable properties</span>"));
+  assert.ok(html.includes("Crestron connections</span>"));
   assert.ok(html.includes('id="custom-capability-panel"'));
   assert.ok(html.includes('id="custom-repeat-held-signal"'));
   assert.ok(editor.includes("function renderCustomCapabilityQuestions"));
@@ -2196,7 +2197,7 @@ run("custom components include reversible compatibility auditing and safe repair
   assert.ok(editor.includes('body{padding:{{contentInset}}px!important;}'));
   assert.ok(editor.includes('!/composer-glow-safe-layout/.test(css)'));
   assert.ok(editor.includes('renderCustomCompatibilityAudit();'));
-  assert.ok(editor.includes('if (customWizardStep === 2) runCustomComponentSelfTestSafely();'));
+  assert.ok(editor.includes('if (customWizardStep === 3) runCustomComponentSelfTestSafely();'));
   assert.ok(editor.includes("customOriginalSourceSnapshot.properties.forEach(addCustomPropertyRow)"));
   assert.ok(editor.includes("function customLocalDependencyReferences(source)"));
   assert.ok(editor.includes("function customAssetForLocalReference(reference)"));
@@ -2350,11 +2351,12 @@ run("custom component creation is gated by blocking automated errors", () => {
   assert.ok(editor.includes("parseCustomComponentPackage(JSON.parse(JSON.stringify(probe)))"));
 });
 
-run("component creation uses one three-step workflow with authored source before mappings", () => {
+run("component creation uses a source-first four-step workflow", () => {
   const editor = read("editor.js"), html = read("editor.html"), css = read("editor.css");
-  assert.equal((html.match(/data-custom-wizard-step=/g) || []).length, 3);
-  assert.ok(html.includes("Imported setup</span>"));
-  assert.ok(html.includes("Add capabilities &amp; edit code</span>"));
+  assert.equal((html.match(/data-custom-wizard-step=/g) || []).length, 4);
+  assert.ok(html.includes("Source &amp; preview</span>"));
+  assert.ok(html.includes("Editable properties</span>"));
+  assert.ok(html.includes("Crestron connections</span>"));
   assert.ok(html.includes("Test &amp; create</span>"));
   assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored"'));
   assert.ok(!html.includes('data-custom-capability-page="code"'));
@@ -2362,8 +2364,8 @@ run("component creation uses one three-step workflow with authored source before
   assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored" data-capability-panel="advanced"'));
   assert.ok(html.includes('id="custom-legacy-behavior-storage" hidden'));
   assert.ok(editor.includes("function setCustomWizardStep(step = 0, { refreshPreview = true } = {})"));
-  assert.ok(editor.includes("if (customWizardStep === 1) analyzeCustomElements()"));
-  assert.ok(editor.includes("if (customWizardStep === 2)"));
+  assert.ok(editor.includes("if (customWizardStep === 1 || customWizardStep === 2) analyzeCustomElements()"));
+  assert.ok(editor.includes("if (customWizardStep === 3) refreshCustomPreview()"));
   assert.ok(css.includes("custom-wizard-step-1 .custom-step-imported"));
   assert.ok(css.includes("custom-wizard-step-2 .custom-builder-controls"));
 });

@@ -26,7 +26,7 @@ for (const lifecycleMarker of [
   "function refreshCustomPreview({ refreshSimulator = true } = {})",
   "function createScopedCustomProperty()",
   "function createScopedCustomSignal()",
-  "if (customWizardStep === 2) refreshCustomPreview()",
+  "if (customWizardStep === 3) refreshCustomPreview()",
   '$("custom-component-save").onclick = async (event) =>',
   "workbench: window.ComposerComponentWorkbench.normalize(customWorkbenchDraft)",
   "registerCustomComponent(entry)",

@@ -1098,7 +1098,7 @@ h2 {
 /* Manual controls remain available in Guided mode so every generated choice can be inspected and edited. */
 .custom-wizard-nav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 14px;
 }

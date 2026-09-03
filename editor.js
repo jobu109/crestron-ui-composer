@@ -16396,7 +16396,7 @@ if(!Object.hasOwn){Object.hasOwn=function(object,key){return Object.prototype.ha
     // finding. Previously the source changed, but the old finding and the
     // readiness result stayed on screen, which made the button appear inert.
     renderCustomCompatibilityAudit();
-    if (customWizardStep === 2) runCustomComponentSelfTestSafely();
+    if (customWizardStep === 3) runCustomComponentSelfTestSafely();
     setStatus(`Applied ${selected.size} reversible compatibility repair${selected.size === 1 ? "" : "s"}`);
   }
   function prepareCustomSource(source) {
@@ -24801,11 +24801,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   }
   function setCustomWizardStep(step = 0, { refreshPreview = true } = {}) {
     const dialog = $("custom-component-dialog");
-    customWizardStep = Math.max(0, Math.min(2, Number(step) || 0));
+    customWizardStep = Math.max(0, Math.min(3, Number(step) || 0));
+    // Keep the established capability and test layouts while properties and
+    // connections become distinct, ordered workflow steps.
+    const layoutStep = customWizardStep === 3 ? 2 : customWizardStep === 2 ? 1 : customWizardStep;
     [0, 1, 2, 3].forEach((index) =>
       dialog.classList.toggle(
         `custom-wizard-step-${index}`,
-        index === customWizardStep,
+        index === layoutStep,
       ),
     );
     dialog.querySelectorAll("[data-custom-wizard-step]").forEach((button) => {
@@ -24818,16 +24821,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     });
     $("custom-wizard-back").disabled = customWizardStep === 0;
-    $("custom-wizard-next").hidden = customWizardStep === 2;
+    $("custom-wizard-next").hidden = customWizardStep === 3;
     if (customWizardStep === 0) {
       const authoredPanel = dialog.querySelector(".custom-step-authored");
       if (authoredPanel) authoredPanel.hidden = false;
       switchCustomSourceTab("html");
       if (refreshPreview) refreshCustomPreview();
     }
-    if (customWizardStep === 1) analyzeCustomElements();
-    if (customWizardStep === 1) {
-      setCustomCapabilityPage(customCapabilityPage || "properties");
+    if (customWizardStep === 1 || customWizardStep === 2) analyzeCustomElements();
+    if (customWizardStep === 1 || customWizardStep === 2) {
+      setCustomCapabilityPage(customWizardStep === 1 ? "properties" : "connections");
       refreshCustomPropertyCreator();
       refreshCustomSignalCreator();
       renderCustomPropertyMappings();
@@ -24844,7 +24847,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     // neither one can retain the starter/template document until Refresh is
     // clicked. This also applies the current Inspector simulation values to
     // the Composer frame before the user begins testing it.
-    if (customWizardStep === 2) refreshCustomPreview();
+    if (customWizardStep === 3) refreshCustomPreview();
     renderCustomWorkbenchStateToolbar();
     dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -26489,7 +26492,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ($(id).oninput = () => {
         renderCustomGeneratedAdapter();
         refreshCustomPreview();
-        if (customWizardStep === 1) {
+        if (customWizardStep === 1 || customWizardStep === 2) {
           renderCustomVisualParts();
           refreshCustomPropertyCreator();
           refreshCustomSignalCreator();
