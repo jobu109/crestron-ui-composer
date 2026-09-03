@@ -4105,8 +4105,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ...override,
       ...responsiveFallback,
       ...targetOverride,
-      width: Math.max(1, Number(targetOverride.width ?? responsiveFallback.width ?? override.width ?? entry.width) || state.width),
-      height: Math.max(1, Number(targetOverride.height ?? responsiveFallback.height ?? override.height ?? entry.height) || 100),
+      // Same 20px floor as the canvas drag-resize handle and the properties
+      // dialog — a responsive scale-down with no floor at all was the other
+      // way a subpage could end up stuck at a few px with an unusably tiny
+      // resize handle.
+      width: Math.max(20, Number(targetOverride.width ?? responsiveFallback.width ?? override.width ?? entry.width) || state.width),
+      height: Math.max(20, Number(targetOverride.height ?? responsiveFallback.height ?? override.height ?? entry.height) || 100),
       itemOverrides: override.itemOverrides || {},
     };
   }
@@ -4349,8 +4353,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       if (!selection.pageId && !selection.targetKey) entry.name = $("subpage-property-name").value.trim() || entry.name;
       Object.assign(layer, {
         placement: $("subpage-property-placement").value,
-        width: Math.max(1, Number($("subpage-property-width").value) || 1),
-        height: Math.max(1, Number($("subpage-property-height").value) || 1),
+        // Match the canvas drag-resize handle's own floor (below). Anything
+        // smaller shrinks the resize handle past its own clickable area
+        // (14px, clipped by the surface's overflow:hidden), leaving no way
+        // to grow the subpage back through the canvas at all.
+        width: Math.max(20, Number($("subpage-property-width").value) || 20),
+        height: Math.max(20, Number($("subpage-property-height").value) || 20),
         z: Number($("subpage-property-z").value) || 9000,
         bindingScope: $("subpage-property-scope").value,
         visibilityEnabled: $("subpage-property-visibility-enabled").checked,
@@ -6118,9 +6126,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         ? [
             ...declaredProperties.filter((property) => !property.group),
             ...dynamicProperties,
+            ...declaredProperties.filter((property) => property.group === "Included Widget Size"),
             ...declaredProperties.filter((property) => property.group === "Included Widget Graphics"),
             ...declaredProperties.filter((property) => property.group === "Included Widget Interaction & Animation"),
-            ...declaredProperties.filter((property) => property.group && property.group !== "Included Widget Graphics" && property.group !== "Included Widget Interaction & Animation"),
+            ...declaredProperties.filter((property) => property.group && !["Included Widget Size", "Included Widget Graphics", "Included Widget Interaction & Animation"].includes(property.group)),
           ]
         : [...declaredProperties, ...dynamicProperties],
       properties = orderedProperties.filter(

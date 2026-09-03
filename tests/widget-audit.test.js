@@ -245,6 +245,15 @@ widgetListChoices.forEach((id) => {
   assert.ok(definitions.has(id), `Widget List references missing included widget ${id}`);
   assert.notEqual(id, "widget-list", "Widget List cannot recursively include itself");
 });
+// The unified "one place to edit the shared inner widget" is the Widget
+// List item's own Inspector: reported as effectively undiscoverable when
+// its size fields (unlike its color/text/graphics fields) had no group and
+// rendered as unlabeled top-level fields mixed in with orientation/count.
+["useWidgetDefaultSize", "itemWidth", "itemHeight"].forEach((key) => {
+  const property = widgetListDefinition.properties.find((entry) => entry.key === key);
+  assert.ok(property, `Widget List is missing its ${key} property`);
+  assert.equal(property.group, "Included Widget Size", `${key} must be grouped with the other included-widget settings, not left as an unlabeled top-level field`);
+});
 const widgetListDefaults = Object.fromEntries((widgetListDefinition.properties || []).map((property) => [property.key, property.defaultValue])),
   nestedWidgetListItems = widgetListChoices.map((id, index) => {
     const nested = definitions.get(id), properties = { ...widgetListDefaults, widgetType: id, defaultCount: "2" };
