@@ -1434,11 +1434,15 @@
           signals = context.options.definitionData.signals || [],
           raw = String(context.options.definitionData.html || ""),
           managedGlow = context.options.definitionData.managedGlow || {},
-          resolved = raw.replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) => {
-            if (key.endsWith("Json"))
-              return JSON.stringify(properties[key.slice(0, -4)] ?? "");
-            return String(properties[key] ?? "");
-          }),
+          resolvePropertyTokens = (source) =>
+            String(source || "").replace(
+              /\{\{([A-Za-z_$][\w$]*)\}\}/g,
+              (_, key) =>
+                key.endsWith("Json")
+                  ? JSON.stringify(properties[key.slice(0, -4)] ?? "")
+                  : String(properties[key] ?? ""),
+            ),
+          resolved = resolvePropertyTokens(raw),
           appearanceEnabled =
             properties.appearanceEnabled === true ||
             properties.appearanceEnabled === 1 ||
@@ -1501,10 +1505,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           adapterStyle = adapterCss
             ? `<style data-composer-adapter>${adapterCss}</style>`
             : "",
-          adapterRuntime = String(
+          // JavaScript-facing tokens use the `{{keyJson}}` form so strings,
+          // quotes, newlines, booleans, and null-like values remain valid JS.
+          // Treating `textJson` as a literal property key used to replace it
+          // with an unquoted empty value (`textContent=;`) in saved widgets.
+          adapterRuntime = resolvePropertyTokens(
             context.options.definitionData.adapterRuntime || "",
-          ).replace(/\{\{([A-Za-z_$][\w$]*)\}\}/g, (_, key) =>
-            String(properties[key] ?? ""),
           ),
           // The widget's own behaviorRuntime paints a real, live glow via
           // inline box-shadow (customBehaviorRuntime's appearance() helper)
@@ -14371,7 +14377,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         // (re-)addition further down.
         if (
           existing &&
-          (buttonCount > 1 || (key === "selected" && detected.stateFamily))
+          (buttonCount > 1 || (["selected", "name"].includes(key) && detected.stateFamily))
         )
           signals.splice(signals.indexOf(existing), 1);
       });
@@ -14512,6 +14518,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       // still redundant with the analog state input once a state family is
       // detected, even though it arrived through a different detector.
       .filter((entry) => !(detected.stateFamily && /^selected\d*$/.test(entry.key)))
+      .filter((entry) => !(detected.stateFamily && entry.key === "name" && entry.action === "text"))
       .forEach((entry) =>
         addSignal({
           key: entry.key,
@@ -15050,15 +15057,19 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       });
       syncCustomRepeatedRows();
     }
+    // The translator has already made the user's selected-property and
+    // signal decisions. Repair its stable target markers before inventory
+    // creation so the Workbench never builds parts from pre-repair markup.
+    repairMissingTranslatedTargetMarkers();
     analyzeCustomElements();
     populateCustomWorkbenchFromTranslation({
       properties: collectCustomProperties(),
       signals: collectCustomSignals(),
       behaviors: collectCustomBehaviors(),
       repeatedItems: collectCustomRepeatedItems(),
+      detected,
     });
         reconcileImportedCssPropertyMappings(properties);
-        repairMissingTranslatedTargetMarkers();
         captureCustomOriginalSource();
         // This is the first preview load for this handoff. At this point the
         // translated source, mappings, state definitions, and repairs all
@@ -16853,7 +16864,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function customContractBase() {
     return (
-      $("custom-name")
+      $("custom-component-name")
         .value.trim()
         .replace(/[^A-Za-z0-9_]/g, "") || "CustomComponent"
     );
@@ -20127,6 +20138,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       host = $("custom-capability-recommendation-list"),
       entries = customSafeRecommendationEntries(inventory);
     if (!panel || !host) return;
+    // Import & Translate already presented this decision screen and handed
+    // us only the choices the user kept. Showing a second, freshly inferred
+    // recommendation set here makes those choices appear to have vanished
+    // and invites duplicate mappings. The canonical imported property and
+    // connection rows below are the authoritative Step 2 configuration.
+    if (customWorkbenchDraft?.authoredSource?.translated) {
+      panel.hidden = true;
+      host.innerHTML = "";
+      return;
+    }
     panel.hidden = !entries.length;
     host.innerHTML = "";
     entries.forEach((entry, index) => {
@@ -20138,7 +20159,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       checkbox.type = "checkbox";
       checkbox.checked = entry.recommendedEnabled;
       checkbox.dataset.recommendationIndex = String(index);
-      checkbox.onchange = () => { entry.recommendedEnabled = checkbox.checked; };
+      checkbox.onchange = () => {
+        entry.recommendedEnabled = checkbox.checked;
+        $("custom-apply-safe-recommendations").disabled = !entries.some((candidate) => candidate.recommendedEnabled);
+      };
       title.textContent = `${friendlyCustomPartName(entry)} — ${customWorkbenchRoleLabel(entry.role)}`;
       detail.textContent = entry.confidence === "low"
         ? `Review first: ${customCapabilityRecommendationExplanation(entry)}`
@@ -20178,25 +20202,37 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       return;
     }
     let additions = 0;
+    const failures = [];
     entries.forEach((entry) => {
-      const configuration = customRecommendationConfiguration(entry),
-        choices = customRecommendedPropertyChoices(configuration);
-      configuration.includedPropertyKeys = choices
-        .filter(({ key }) => entry.recommendedPropertyKeys?.[key] !== false)
-        .map(({ key }) => key);
-      additions += applyCustomCapabilityMappingCollection(configuration, true).additions.length;
+      // A failure on one recommendation must not silently abort every other
+      // checked one, and must never leave the status text simply unchanged
+      // with no indication anything went wrong — that looked exactly like
+      // the button doing nothing at all.
+      try {
+        const configuration = customRecommendationConfiguration(entry),
+          choices = customRecommendedPropertyChoices(configuration);
+        configuration.includedPropertyKeys = choices
+          .filter(({ key }) => entry.recommendedPropertyKeys?.[key] !== false)
+          .map(({ key }) => key);
+        additions += applyCustomCapabilityMappingCollection(configuration, true).additions.length;
+      } catch (error) {
+        console.error("Failed to apply capability setup", entry, error);
+        failures.push(`${friendlyCustomPartName(entry)}: ${error?.message || error}`);
+      }
     });
     renderCustomPropertyMappings();
     renderCustomConnectionMappings();
     refreshCustomPreview();
     renderCustomCapabilityRecommendations();
-    const message = additions
-      ? `Applied ${entries.length} checked setup${entries.length === 1 ? "" : "s"}. Added ${additions} missing ${additions === 1 ? "property or connection" : "properties and connections"}; review them under Editable properties and Crestron connections.`
-      : `No changes were needed. All capabilities from the ${entries.length} checked setup${entries.length === 1 ? " is" : "s are"} already present.`;
+    const message = failures.length
+      ? `Applied ${entries.length - failures.length} of ${entries.length} checked setups (added ${additions}). ${failures.length} failed — see the browser console for details: ${failures.join("; ")}`
+      : additions
+        ? `Applied ${entries.length} checked setup${entries.length === 1 ? "" : "s"}. Added ${additions} missing ${additions === 1 ? "property or connection" : "properties and connections"}; review them under Editable properties and Crestron connections.`
+        : `No changes were needed. All capabilities from the ${entries.length} checked setup${entries.length === 1 ? " is" : "s are"} already present.`;
     $("custom-capability-recommendation-status").textContent = message;
     $("custom-capability-recommendation-status").classList.toggle(
       "no-changes",
-      additions === 0,
+      additions === 0 && !failures.length,
     );
     setStatus(message);
   }
@@ -20353,6 +20389,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     stable = stable
       .replace(/::?(?:before|after)\b/gi, "")
       .replace(/:(?:checked|active|focus|hover|disabled)\b/gi, "")
+      // Authored state classes are transient runtime conditions, not part
+      // of an element's Component Map identity. Keeping state-idle (etc.)
+      // here made a correct target become "Not found" as soon as the
+      // simulator switched to another state.
+      .replace(/\.(?:(?:state|mode|is)-[A-Za-z0-9_-]+|selected|active|pressed|disabled|checked|on|off|open|closed)\b/gi, "")
+      .replace(/\s+/g, " ")
       .trim();
     return stable || String(selector || "").trim();
   }
@@ -20490,20 +20532,18 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     });
   }
   function effectiveCustomMappingSuggestions(mappings = []) {
-    const frameDocument = $("custom-component-preview")?.contentDocument;
     return mappings.filter((mapping) => {
       if (mapping.suggestion?.selected === false) return false;
-      const binding = customCanonicalBinding(mapping);
-      if (!binding.target.selector || binding.effect.kind === "unresolved") return false;
-      const stableSelector = stableCustomSelectorForAuthoredRule(binding.target.selector),
-        inventoried = customAnalyzedElements.some((entry) =>
-          stableCustomSelectorForAuthoredRule(entry.selector) === stableSelector);
-      if (inventoried || !frameDocument) return true;
-      try { return !!frameDocument.querySelector(binding.target.selector); }
-      catch (_) { return false; }
+      // This collection already consists solely of choices explicitly kept
+      // on the Import & Translate screen. A missing ordinary behavior row
+      // can mean the connection is owned by authored/generated runtime (for
+      // example state/stateFeedback/stateText0..N), not that the user
+      // unchecked it. Never silently discard an explicit selection here;
+      // retain genuinely unresolved choices for visible repair instead.
+      return true;
     });
   }
-  function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems } = {}) {
+  function populateCustomWorkbenchFromTranslation({ properties, signals, behaviors, repeatedItems, detected } = {}) {
     const api = window.ComposerComponentWorkbench,
       propertyDefinitions = properties || collectCustomProperties(),
       signalDefinitions = signals || collectCustomSignals(),
@@ -20579,7 +20619,19 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       const source = signal.direction === "output" ? "signal-output" : "signal-input",
         matching = rules.filter((rule) => rule.source === source && rule.key === signal.key),
         primary = matching[0] || {},
-        part = ensurePart(primary.selector, "signal-target"),
+        stateRuntimeSelector = detected?.stateFamily
+          ? /^stateText\d+$/.test(signal.key)
+            ? `[data-translated-text="${detected.textKeys?.[0] || "text"}"]`
+            : ["state", "stateFeedback"].includes(signal.key)
+              ? detected.stateFamily.baseSelector
+                ? `.${detected.stateFamily.baseSelector}`
+                : '[data-translated-button="0"]'
+              : ""
+          : "",
+        selector = primary.selector || stateRuntimeSelector,
+        authoredRuntime = !primary.action && !!stateRuntimeSelector,
+        action = primary.action || (authoredRuntime ? "authoredRuntime" : ""),
+        part = ensurePart(selector, "signal-target"),
         range = signal.range || (primary.perItem
           ? { perItem: true, zeroBased: true, keyPattern: `${signal.key}_{n}`, addressPattern: `${signal.defaultValue}_{n}` }
           : null);
@@ -20590,9 +20642,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         type: signal.type || "digital",
         direction: signal.direction || "input",
         defaultValue: signal.defaultValue || "",
-        action: primary.action || "",
-        target: primary.action
-          ? { kind: primary.action, partId: part?.id || "", selector: primary.selector || "", parameter: primary.parameter || "" }
+        action,
+        target: action
+          ? { kind: authoredRuntime ? "authored-runtime" : action, partId: part?.id || "", selector, parameter: authoredRuntime ? signal.key : primary.parameter || "" }
           : { kind: "unresolved", partId: "", selector: "", parameter: "" },
         mapping: structuredClone(primary.mapping || signal.connectionConfig?.mapping),
         holdDuration: primary.holdDuration || signal.connectionConfig?.holdDuration,
@@ -24782,15 +24834,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       renderCustomConnectionMappings();
       renderCustomVisualParts();
       refreshCustomGeneratedCode();
-      // The initial handoff into this dialog calls refreshCustomPreview()
-      // while customWizardStep is still 0 (fitCustomWorkbenchPreviewToPane
-      // bails out for any step but 1), and switching steps afterward never
-      // re-ran it — so the preview stayed at its unscaled size until some
-      // unrelated action (e.g. closing the part picker) happened to call
-      // refreshCustomPreview() again while actually on step 1. Re-fit here
-      // too, every time step 1 becomes active, not just when the preview
-      // itself gets rebuilt.
-      fitCustomWorkbenchPreviewToPane($("custom-component-preview"));
+      // Entering Step 2 must load the source currently in the Workbench,
+      // especially after Import & Translate. Merely fitting the prior iframe
+      // allowed a stale starter/blank document to survive the handoff and
+      // made every correctly detected translated selector look missing.
+      refreshCustomPreview({ refreshSimulator: false });
     }
     // Step 3 owns two runtime frames. Populate both immediately on entry so
     // neither one can retain the starter/template document until Refresh is
@@ -24982,7 +25030,13 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     } else {
       // Do not let a document from the previously opened component
       // participate in the static inventory pass performed by the handoff.
-      $("custom-component-preview").srcdoc = "";
+      // Clearing onload too matters just as much as clearing srcdoc: if the
+      // previous component's navigation was still in flight, its onload
+      // closure would otherwise fire against the just-reset workbench state
+      // before this handoff's own refreshCustomPreview call ever runs.
+      const previewFrame = $("custom-component-preview");
+      previewFrame.onload = null;
+      previewFrame.srcdoc = "";
     }
     customWizardStep = 0;
     customCapabilityPage = "properties";

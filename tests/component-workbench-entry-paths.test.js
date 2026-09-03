@@ -3,8 +3,12 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8");
-const html = fs.readFileSync(path.join(root, "editor.html"), "utf8");
+// Normalize line endings: this file's assertions embed literal "\n" to
+// match specific multi-line source snippets, and a CRLF checkout of
+// editor.js/editor.html would otherwise make every one of those .includes()
+// checks fail even though the actual source content is unchanged.
+const editor = fs.readFileSync(path.join(root, "editor.js"), "utf8").replace(/\r\n/g, "\n");
+const html = fs.readFileSync(path.join(root, "editor.html"), "utf8").replace(/\r\n/g, "\n");
 
 for (const key of ["button", "toggle", "slider", "gauge", "text", "repeated", "blank"]) {
   assert.ok(html.includes(`data-creator-template="${key}"`), `${key} creator entry is missing`);
@@ -13,6 +17,7 @@ for (const key of ["button", "toggle", "slider", "gauge", "text", "repeated", "b
 
 assert.ok(editor.includes("function populateCustomWorkbenchFromStarterTemplate"));
 assert.ok(editor.includes("populateCustomWorkbenchFromStarterTemplate(template, key)"));
+assert.ok(editor.includes("refreshCustomPreview({ refreshSimulator: false });"), "Step 2 must rebuild its preview from the current Workbench source");
 assert.ok(editor.includes('kind: "authored-token"'));
 assert.ok(editor.includes('kind: "authored-runtime"'));
 assert.ok(editor.includes('starterTemplate: templateKey'));

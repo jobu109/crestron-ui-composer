@@ -304,6 +304,7 @@ const { evaluateComponentRequirementRules } = extractConstThroughFunction(
   "evaluateComponentRequirementRules",
 );
 const detectStateFamilies = extractFunction(editorSource, "detectStateFamilies");
+const stableCustomSelectorForAuthoredRule = extractFunction(editorSource, "stableCustomSelectorForAuthoredRule");
 const translatedStateFamilyRuntime = extractFunction(
   editorSource,
   "translatedStateFamilyRuntime",
@@ -1022,6 +1023,17 @@ run("detectStateFamilies promotes the resting state to index 0 even when it isn'
     family.states,
     ["state-idle", "state-pairing", "state-paired"],
     "idle must be analog value 0 regardless of CSS text order, since that's what a SIMPL programmer expects the resting state to be",
+  );
+});
+
+run("stable authored targets exclude mutable state classes from Component Map identity", () => {
+  assert.equal(
+    stableCustomSelectorForAuthoredRule(".bluetooth-button.state-pairing .bluetooth-led-dot"),
+    ".bluetooth-button .bluetooth-led-dot",
+  );
+  assert.equal(
+    stableCustomSelectorForAuthoredRule(".control.active > .label::before"),
+    ".control > .label",
   );
 });
 

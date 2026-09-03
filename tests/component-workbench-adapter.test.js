@@ -16,6 +16,15 @@ assert.ok(editor.includes("function customAdapterRuntimeMarkup(javascript)"));
 assert.ok(editor.includes("customAdapterRuntimeMarkup(adapter.javascript)"));
 assert.ok(editor.includes("adapterRuntime: customAdapterRuntimeMarkup("));
 assert.ok(!editor.includes("adapterRuntime = customAdapterRuntimeMarkup("));
+assert.ok(editor.includes("resolvePropertyTokens = (source) =>"));
+assert.ok(editor.includes("key.endsWith(\"Json\")"));
+assert.ok(editor.includes("adapterRuntime = resolvePropertyTokens("));
+assert.ok(
+  !editor.includes(
+    'adapterRuntime = String(\n            context.options.definitionData.adapterRuntime || "",\n          ).replace',
+  ),
+  "mounted adapters must JSON-encode {{keyJson}} tokens instead of treating them as ordinary property keys",
+);
 assert.ok(editor.includes("focusCustomAdapterMapping"));
 assert.ok(editor.includes("adapterCss: entry.generatedAdapter?.css"));
 assert.ok(editor.includes("entry.generatedAdapter?.javascript || \"\""));

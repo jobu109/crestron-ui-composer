@@ -1916,7 +1916,7 @@ run("Import and Translate skips the redundant Selected signal for a detected mul
   // added) and the per-button loop's own (re-)addition.
   assert.ok(
     editor.includes(
-      '(buttonCount > 1 || (key === "selected" && detected.stateFamily))',
+      '(buttonCount > 1 || (["selected", "name"].includes(key) && detected.stateFamily))',
     ),
     "the preset's baseline Selected signal must be explicitly removed for a single-button state-family widget, not just guarded against re-addition by the loop below",
   );
