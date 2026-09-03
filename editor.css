@@ -1078,6 +1078,8 @@ h2 {
 .custom-authored-property-row code { color:#8cf4df;white-space:normal;overflow-wrap:anywhere; }
 @media(max-width:900px){.custom-authored-property-row{grid-template-columns:auto 1fr}.custom-authored-property-row small,.custom-authored-property-row code{grid-column:2}}
 .custom-authored-connection-list{display:grid;gap:8px}
+.custom-authored-connection-include{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.custom-authored-connection-include input{width:auto;margin:0}
 .custom-authored-connection-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1.5fr) auto;gap:10px;align-items:center;padding:9px;border:1px solid #294b49;border-radius:5px;background:#102627}
 .custom-authored-connection-row code{color:#8cf4df;white-space:pre-wrap;overflow-wrap:anywhere}.custom-authored-connection-actions{display:flex;gap:6px;flex-wrap:wrap}
 @media(max-width:900px){.custom-authored-connection-row{grid-template-columns:1fr}.custom-authored-connection-actions{justify-content:flex-start}}

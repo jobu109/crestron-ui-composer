@@ -18811,11 +18811,22 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function renderCustomAuthoredConnectionRecommendations() {
     const host = $("custom-authored-connection-list"), status = $("custom-authored-connection-status");
     if (!host || !status) return;
-    const targets = customAuthoredInteractiveTargets(), stateTargets = customAuthoredStateTargets(), valueTargets = customAuthoredValueTargets();
+    const targets = customAuthoredInteractiveTargets(), stateTargets = customAuthoredStateTargets(),
+      // A literal numeric declaration is not, by itself, evidence that a
+      // programmer wants a Crestron analog join. Treating every width, inset,
+      // top, left, opacity, and transition value as a recommendation buried
+      // the actual component behaviors under implementation details (hidden
+      // checkbox dimensions were a particularly confusing example). Numeric
+      // HTML controls and explicitly authored CSS variables are intentional
+      // value interfaces; every other CSS declaration remains available from
+      // the manual connection editor when the programmer actually wants it.
+      valueTargets = customAuthoredValueTargets().filter((target) =>
+        target.type === "serial" || target.action === "value" ||
+        String(target.parameter || "").startsWith("--"));
     host.replaceChildren();
     let recommendationCount = 0;
     const appendRecommendation = ({ type, direction, selector: exactSelector, effect, parameter = "", evidence = [], configure }) => {
-      const row = document.createElement("div"), summary = document.createElement("code"), reason = document.createElement("small"), actions = document.createElement("div"), button = document.createElement("button"),
+      const row = document.createElement("div"), summary = document.createElement("code"), reason = document.createElement("small"), actions = document.createElement("div"), includeLabel = document.createElement("label"), include = document.createElement("input"), button = document.createElement("button"),
         existing = (customWorkbenchDraft?.connections || []).find((mapping) => {
           const binding = customCanonicalBinding(mapping),
             action = mapping.action || binding.effect.event || binding.effect.capability || binding.effect.kind,
@@ -18828,12 +18839,30 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       row.className = "custom-authored-connection-row";
       row.dataset.recommendation = `${type}:${direction}:${effect}`;
       actions.className = "custom-authored-connection-actions";
+      includeLabel.className = "custom-authored-connection-include";
+      include.type = "checkbox";
+      include.checked = !!existing;
+      include.setAttribute("aria-label", `Include ${type} ${direction} ${effect}${parameter ? ` ${parameter}` : ""}`);
+      includeLabel.append(include, document.createTextNode(existing ? " Included" : " Include"));
       summary.textContent = `${type} ${direction} · ${effect}${parameter ? ` (${parameter})` : ""}\nExact target: ${exactSelector}`;
       reason.textContent = evidence.join("; ");
       button.type = "button";
       button.textContent = existing ? "Edit existing" : "Configure (optional)";
       button.onclick = () => existing ? editCustomConnectionMapping(existing) : configure();
-      actions.appendChild(button);
+      include.onchange = () => {
+        if (!include.checked && existing) {
+          removeCustomConnectionMapping(existing);
+          return;
+        }
+        if (include.checked && !existing) {
+          // A join name and any conversion details still need an explicit
+          // review. Opening the prefilled editor makes the checked choice
+          // actionable without silently inventing a contract.
+          configure();
+          include.checked = false;
+        }
+      };
+      actions.append(includeLabel, button);
       row.append(summary, reason, actions);
       host.appendChild(row);
     };
@@ -18857,7 +18886,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       });
     });
     status.textContent = recommendationCount
-      ? `${recommendationCount} optional source-backed recommendation${recommendationCount === 1 ? "" : "s"}. Nothing is added until you configure and save it.`
+      ? `${recommendationCount} source-backed recommendation${recommendationCount === 1 ? "" : "s"}. Check Include (or Configure) to review its join before saving; uncheck an included connection to remove it.`
       : "No authored interactive, state, or compatible value target was found, so no connection is recommended.";
   }
   function renderCustomConnectionMappings() {
@@ -24650,7 +24679,13 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       previewColor = (value, fallback) =>
         /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
     if (originalFrame) {
-      const original = customOriginalSourceSnapshot || currentCustomSourceSnapshot(),
+      // On Source & preview, "original" means the current authored editors.
+      // The prior snapshot was captured when the blank builder opened, so
+      // using it here made pasted HTML/CSS/JS remain blank even after Refresh
+      // and only appear after advancing to the generated preview in Step 2.
+      const original = sourceRefresh || customWizardStep === 0
+          ? currentCustomSourceSnapshot()
+          : customOriginalSourceSnapshot || currentCustomSourceSnapshot(),
         originalProperties = Object.fromEntries((original.properties || []).map((property) => [property.key, property.defaultValue ?? ""]));
       let originalSource = `${original.css ? `<style>${original.css}</style>` : ""}${original.html || ""}${original.javascript ? customJavascriptRuntime(original.javascript) : ""}`;
       Object.entries(originalProperties).forEach(([key, value]) => {
