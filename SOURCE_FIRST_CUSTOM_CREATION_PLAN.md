@@ -82,7 +82,7 @@ Starter templates prefill source, properties, and compatible signal recommendati
 
 ## Phase 7 — Verification and release
 
-- [ ] Run targeted source-inventory, mapping, preview, runtime, packaging, and migration tests.
-- [ ] Run the complete automated suite.
+- [x] Run targeted source-inventory, mapping, preview, runtime, packaging, and migration tests.
+- [x] Run the complete automated suite.
 - [ ] Complete physical desktop and touch-panel testing.
 - [ ] Commit, push, and publish only after acceptance testing.
