@@ -56,12 +56,12 @@ Starter templates prefill source, properties, and compatible signal recommendati
 - [x] Infer Analog/Serial inputs only where a compatible authored value target exists.
 - [x] Make every recommendation optional and show the exact target and effect/event before adding it.
 - [x] Support manual selection of any inventoried source target and compatible Digital/Analog/Serial action.
-- [ ] Prevent connection creation from adding unrelated Composer properties or source declarations.
+- [x] Prevent connection creation from adding unrelated Composer properties or source declarations.
 
 ## Phase 4 — Live editing and test parity
 
-- [ ] Test every proposed property before saving it.
-- [ ] Test every proposed connection before saving it.
+- [x] Test every proposed property before saving it.
+- [x] Test every proposed connection before saving it.
 - [ ] Keep authored preview, mapped preview, Step 4 runtime, registered component, and export behavior identical.
 - [ ] Validate generated adapter JavaScript after token resolution before allowing creation.
 - [ ] Add regression fixtures for blank source, each starter template, imported buttons, toggles, state families, text, analog controls, and pseudo-elements.

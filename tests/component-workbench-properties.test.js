@@ -77,6 +77,9 @@ const propertyCreator = javascript.slice(
   javascript.indexOf("function createScopedCustomProperty()"),
   javascript.indexOf("function createScopedCustomSignal()"),
 );
+assert.ok(javascript.includes("function testCustomProposedPropertyTarget("));
+assert.ok(javascript.includes("function testCustomProposedPropertyMapping("));
+assert.ok(propertyCreator.includes("testCustomProposedPropertyTarget(definition, selector, key)"));
 assert.ok(propertyCreator.includes('$("custom-property-create").dataset.editingKey = ""'), "a saved property should leave edit mode so the next property is added");
 assert.ok(propertyCreator.includes('$("custom-property-creator").hidden = true'), "the property creator should close after saving, matching Crestron connections");
 

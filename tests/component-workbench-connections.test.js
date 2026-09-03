@@ -137,6 +137,8 @@ assert.ok(javascript.includes('falseValue: $("custom-signal-false-mode").value =
 
 [
   "function collectCustomSignalCreatorConfig(",
+  "function testCustomProposedConnection(",
+  "function enforceCustomConnectionIsolation(",
   "function customInventoriedConnectionTargets(",
   "function renderCustomConnectionMappings(",
   "function customScopePartLabel(",
@@ -196,6 +198,8 @@ const connectionCreator = javascript.slice(
 assert.ok(connectionCreator.includes("customWorkbenchDraft?.connections?.find((connection) => connection.id === editingId)"));
 assert.ok(connectionCreator.includes("findIndex((connection) => connection.id === editingId)"));
 assert.ok(connectionCreator.includes("ComposerComponentWorkbench.withCanonicalBinding(mapping)"));
+assert.ok(connectionCreator.includes("testCustomProposedConnection(config, javascript)"));
+assert.ok(connectionCreator.includes("enforceCustomConnectionIsolation(isolationSnapshot)"));
 
 const connectionChangeHandlers = javascript.slice(
   javascript.indexOf('["custom-signal-capability-type", "custom-signal-capability-direction"]'),

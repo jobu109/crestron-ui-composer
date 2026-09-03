@@ -18224,6 +18224,28 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       : group.property.replace(/^--/, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
     return `${group.stateScope === "standard" ? "" : `${customStateScopeLabel(group.stateScope)} — `}${property}`;
   }
+  function customPreviewHasTarget(selector) {
+    const owner = stableCustomSelectorForAuthoredRule(selector), documentValue = $("custom-component-preview")?.contentDocument;
+    if (!owner || !documentValue) return false;
+    try { return !!documentValue.querySelector(owner); } catch (_) { return false; }
+  }
+  function testCustomProposedPropertyTarget(definition, selector, key) {
+    if (!customPreviewHasTarget(selector)) return { valid: false, message: `The authored target ${selector} is not present in Live Preview.` };
+    const css = customScopedPropertyCss(definition, selector, key), javascript = customScopedPropertyJavascript(definition, selector, key);
+    if (!css && !javascript) return { valid: false, message: "This selection has no compatible property adapter." };
+    if (javascript) {
+      try { new Function(javascript); } catch (error) { return { valid: false, message: `The property adapter is invalid: ${error.message}` }; }
+    }
+    return { valid: true };
+  }
+  function testCustomProposedPropertyMapping(mapping) {
+    const documentValue = $("custom-component-preview")?.contentDocument,
+      binding = customCanonicalBinding(mapping), selector = customCanonicalBindingSelector(mapping);
+    if (!documentValue || !customPreviewHasTarget(selector)) return { valid: false, message: `The authored target ${selector} is not present in Live Preview.` };
+    const result = window.ComposerComponentWorkbench.applyEntryBinding(documentValue, mapping, mapping.defaultValue, { styleId: `composer-proposed-property-${mapping.key}` });
+    documentValue.getElementById(`composer-proposed-property-${mapping.key}`)?.remove();
+    return result.applied ? { valid: true } : { valid: false, message: `The proposed property could not be applied to ${selector}.` };
+  }
   function uniqueCustomAuthoredPropertyKey(group) {
     const prefix = group.stateScope === "standard" ? "" : group.stateScope,
       base = normalizeCustomKey(`${prefix} ${group.property === "text-content" ? "text" : group.property}`) || "property",
@@ -18275,6 +18297,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           effect: { kind: effectKind, name: group.kind === "text-content" ? "" : group.property, stateScope: group.stateScope, unit },
         },
       });
+    const test = testCustomProposedPropertyMapping(mapping);
+    if (!test.valid) { alert(test.message); return null; }
     addCustomPropertyRow({ key, name: label, type: group.controlType, defaultValue, ...(unit ? { unit } : {}) });
     customWorkbenchDraft.properties.push(mapping);
     materializeCustomAuthoredCssMapping(mapping);
@@ -19537,6 +19561,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       alert("Choose an existing declaration or text value from the authored-property inventory.");
       return;
     }
+    const proposedTest = testCustomProposedPropertyTarget(definition, selector, key);
+    if (!proposedTest.valid) { alert(proposedTest.message); return; }
     if (editingKey && editingKey !== key) {
       customDefinitionRow("custom-property-list", editingKey)?.remove();
       customWorkbenchDraft.properties = customWorkbenchDraft.properties.filter(
@@ -19668,6 +19694,47 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     $("custom-property-creator").hidden = true;
     setStatus(`Added editable Composer property “${name}”`);
   }
+  function testCustomProposedConnection(config, javascript) {
+    if (!customPreviewHasTarget(config.selector)) return { valid: false, message: `The source target ${config.selector} is not present in Live Preview.` };
+    try { new Function(javascript); } catch (error) { return { valid: false, message: `The generated connection adapter is invalid: ${error.message}` }; }
+    if (config.direction !== "input") return { valid: true };
+    const documentValue = $("custom-component-preview")?.contentDocument,
+      entry = window.ComposerComponentWorkbench.withCanonicalBinding({
+        key: config.key,
+        type: config.type,
+        direction: config.direction,
+        action: config.action,
+        parameter: config.parameter || "",
+        stateScope: config.stateScope || "all",
+        unit: config.mapping?.unit || "",
+        mapping: config.mapping || null,
+        target: { kind: config.action, selector: config.selector, parameter: config.parameter || "" },
+      }),
+      sample = config.type === "digital" ? true : config.type === "analog" ? (config.mapping?.inputMin ?? 0) : "Composer test",
+      styleId = `composer-proposed-connection-${String(config.key || "input").replace(/[^a-z0-9_-]+/gi, "-")}`,
+      result = window.ComposerComponentWorkbench.applyEntryBinding(documentValue, entry, sample, { styleId });
+    documentValue?.getElementById(styleId)?.remove();
+    refreshCustomPreview({ refreshSimulator: false });
+    return result.applied ? { valid: true } : { valid: false, message: `The proposed ${config.type} input could not affect ${config.selector}.` };
+  }
+  function enforceCustomConnectionIsolation(snapshot) {
+    const sourceChanged = $("custom-source-html").value !== snapshot.html ||
+      $("custom-source-css").value !== snapshot.css ||
+      $("custom-source-javascript").value !== snapshot.javascript,
+      propertiesChanged = JSON.stringify(customWorkbenchDraft?.properties || []) !== JSON.stringify(snapshot.properties);
+    if (sourceChanged) {
+      $("custom-source-html").value = snapshot.html;
+      $("custom-source-css").value = snapshot.css;
+      $("custom-source-javascript").value = snapshot.javascript;
+    }
+    if (propertiesChanged) {
+      customWorkbenchDraft.properties = structuredClone(snapshot.properties);
+      renderCustomPropertyMappings();
+    }
+    if (sourceChanged || propertiesChanged)
+      setStatus("The Crestron connection was added without retaining an unrelated source or Inspector-property change");
+    return !sourceChanged && !propertiesChanged;
+  }
   function createScopedCustomSignal() {
     const config = collectCustomSignalCreatorConfig(),
       { type, direction, action, selector, key, defaultValue } = config,
@@ -19677,6 +19744,14 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       alert("Choose a target, action, and contract name or join before adding the connection.");
       return;
     }
+    const proposedTest = testCustomProposedConnection(config, javascript);
+    if (!proposedTest.valid) { alert(proposedTest.message); return; }
+    const isolationSnapshot = {
+      html: $("custom-source-html").value,
+      css: $("custom-source-css").value,
+      javascript: $("custom-source-javascript").value,
+      properties: structuredClone(customWorkbenchDraft?.properties || []),
+    };
     const editingKey = $("custom-signal-create").dataset.editingKey || "",
       editingId = $("custom-signal-create").dataset.editingId || "",
       existingWorkbenchMapping = editingId
@@ -19747,6 +19822,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const definitionRow = customDefinitionRow("custom-signal-list", key);
     if (definitionRow) definitionRow.dataset.mappingId = mapping.id || "";
     renderCustomConnectionMappings();
+    enforceCustomConnectionIsolation(isolationSnapshot);
     refreshCustomPreview();
     // A completed mapping must leave edit mode. Otherwise the next use of
     // the form silently replaces this connection instead of adding another.
