@@ -144,6 +144,22 @@ assert.ok(
   workbench.scopeCssSelector(".track", "selected").includes("input:checked + .track"),
   "Selected-only properties must support checkbox sibling tracks",
 );
+const rollingToggleCapabilities = workbench.inventoryPartCapabilities({
+  html: '<label class="switch"><input id="toggle" type="checkbox"><span class="track"></span><span class="knob"></span></label>',
+  css: '.track{inset:0;background-color:#4a4f5c;border-radius:8px}.knob{width:28px;border-radius:5px}input:checked + .track{background-color:#14b8a6}',
+});
+assert.ok(
+  rollingToggleCapabilities.some((entry) => entry.part.selector === ".track" && entry.capability === "cornerRadius" && entry.source.property === "border-radius"),
+  "part-first authoring must expose Track corner radius from the authored declaration, not unrelated inset/layout values",
+);
+assert.ok(
+  rollingToggleCapabilities.some((entry) => entry.part.selector === "#toggle" && entry.capability === "selected"),
+  "part-first authoring must expose an exact authored checkbox Selected state",
+);
+assert.ok(
+  !rollingToggleCapabilities.some((entry) => entry.source.property === "inset"),
+  "basic capabilities must omit implementation-only layout declarations",
+);
 assert.ok(
   javascript.includes('style.textContent = `${scopedSelector} { ${declaration.split(";")'),
   "temporary property previews must override authored component CSS",

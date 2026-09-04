@@ -860,6 +860,79 @@
     }
     return targets;
   }
+  // The basic component-authoring UI uses these descriptors rather than
+  // exposing raw CSS names. Each descriptor still carries the exact authored
+  // target/effect so the same canonical executor can be used by Inspector
+  // properties, signal connections, preview, export, and runtime.
+  function inventoryPartCapabilities({ html = "", css = "", javascript = "" } = {}) {
+    const descriptors = [], used = new Set(), add = (descriptor) => {
+      const identity = [descriptor.part.selector, descriptor.part.pseudoElement || "", descriptor.capability, descriptor.binding.effect.stateScope].join("\u0000");
+      if (used.has(identity)) return;
+      used.add(identity);
+      descriptors.push({ id: `part-capability-${descriptors.length + 1}`, ...descriptor });
+    };
+    const declarationCapabilities = {
+      background: ["backgroundColor", "Background color"],
+      "background-color": ["backgroundColor", "Background color"],
+      color: ["textColor", "Text / icon color"],
+      "border-color": ["borderColor", "Border color"],
+      "border-width": ["borderWidth", "Border width"],
+      "border-radius": ["cornerRadius", "Corner radius"],
+      width: ["width", "Width"],
+      height: ["height", "Height"],
+      opacity: ["opacity", "Opacity"],
+      "box-shadow": ["shadow", "Shadow"],
+      transform: ["transform", "Transform"],
+      filter: ["filter", "Filter"],
+      display: ["visibility", "Visibility"],
+      visibility: ["visibility", "Visibility"],
+    };
+    groupAuthoredProperties(inventoryAuthoredProperties({ html, css })).forEach((entry) => {
+      if (entry.kind === "text-content") {
+        add({
+          part: { selector: entry.selector, pseudoElement: "" },
+          capability: "text",
+          label: "Text",
+          controlType: "text",
+          source: { property: "text-content", value: entry.value, evidence: "authored HTML text" },
+          binding: withCanonicalBinding({ target: { selector: entry.selector }, action: "text", stateScope: entry.stateScope }).binding,
+        });
+        return;
+      }
+      const definition = declarationCapabilities[entry.property];
+      if (!definition) return;
+      const unit = String(entry.value || "").trim().match(/^-?\d*\.?\d+([a-z%]+)$/i)?.[1] || "";
+      add({
+        part: { selector: entry.selector, pseudoElement: entry.pseudoElement || "" },
+        capability: definition[0],
+        label: definition[1],
+        controlType: entry.controlType,
+        unit,
+        source: { property: entry.property, value: entry.value, evidence: `authored CSS contains ${entry.property}: ${entry.value}` },
+        binding: withCanonicalBinding({
+          target: { selector: entry.selector, pseudoElement: entry.pseudoElement || "" },
+          action: entry.property === "visibility" || entry.property === "display" ? "mappedVisibility" : "cssProperty",
+          parameter: entry.property,
+          stateScope: entry.stateScope,
+          unit,
+        }).binding,
+      });
+    });
+    inventoryAuthoredStateTargets({ html, css, javascript }).forEach((target) => {
+      const state = target.action === "checkedState" ? ["selected", "Selected state"]
+        : target.action === "disabledState" ? ["disabled", "Disabled state"] : null;
+      if (!state) return;
+      add({
+        part: { selector: target.selector, pseudoElement: "" },
+        capability: state[0],
+        label: state[1],
+        controlType: "boolean",
+        source: { property: target.action, value: "", evidence: target.evidence },
+        binding: withCanonicalBinding({ target: { selector: target.selector }, action: target.action, stateScope: "all" }).binding,
+      });
+    });
+    return descriptors;
+  }
   return {
     SCHEMA_VERSION,
     BINDING_VERSION,
@@ -886,5 +959,6 @@
     inventoryAuthoredInteractiveTargets,
     inventoryAuthoredStateTargets,
     inventoryAuthoredValueTargets,
+    inventoryPartCapabilities,
   };
 });
