@@ -334,6 +334,16 @@
       .replace(/\s+/g, " ")
       .trim();
   }
+  function relaxedSelectorIdentity(selector) {
+    // Parts are registered from a live DOM walk and can pick up a
+    // tag-qualified selector (label.switch) for uniqueness, while capability
+    // inventory reads the same element's identity back out of the literal
+    // authored CSS/HTML text (.switch, if that's what was written). Both
+    // name the same element; strip a leading bare tag name immediately
+    // before a class/id/attribute selector so the two forms compare equal
+    // without loosening any other selector match.
+    return String(selector || "").replace(/^[a-z][a-z0-9-]*(?=[.#[])/i, "");
+  }
   function authoredSelectorOwner(value) {
     const selector = normalizeCssSelector(value).replace(/::?(?:before|after)$/i, "");
     // State rules often describe a visual child through its interactive
@@ -642,8 +652,16 @@
     return "standard";
   }
   function authoredControlType(property, value) {
-    if (/color|fill|stroke/i.test(property) || /#[\da-f]{3,8}\b|(?:rgb|hsl)a?\(/i.test(value)) return /rgba|hsla|#[\da-f]{8}\b/i.test(value) ? "color-alpha" : "color";
-    if (/^(?:-?\d*\.?\d+)(?:px|em|rem|%|deg|ms|s|vh|vw)?$/i.test(String(value).trim())) return "number";
+    // A value is only a color control when the *entire* declaration is one
+    // color token. A compound/shorthand value that merely contains a color
+    // somewhere inside it (box-shadow's trailing color, filter's
+    // drop-shadow(...) color) must not become a bare color picker — saving
+    // through one would silently discard the rest of the authored value
+    // (offsets, blur, other filter functions).
+    const trimmed = String(value).trim(),
+      bareColor = /^#[\da-f]{3,8}$/i.test(trimmed) || /^(?:rgb|hsl)a?\([^()]*\)$/i.test(trimmed);
+    if (/color|fill|stroke/i.test(property) || bareColor) return /rgba|hsla|#[\da-f]{8}\b/i.test(trimmed) ? "color-alpha" : "color";
+    if (/^(?:-?\d*\.?\d+)(?:px|em|rem|%|deg|ms|s|vh|vw)?$/i.test(trimmed)) return "number";
     return "text";
   }
   function authoredSelectorIdentity(tag, attributes) {
@@ -896,6 +914,9 @@
       width: ["width", "Width"],
       height: ["height", "Height"],
       opacity: ["opacity", "Opacity"],
+      "font-size": ["fontSize", "Text size"],
+      "font-weight": ["fontWeight", "Text weight"],
+      "font-family": ["fontFamily", "Text font"],
       "box-shadow": ["shadow", "Shadow"],
       transform: ["transform", "Transform"],
       filter: ["filter", "Filter"],
@@ -959,12 +980,13 @@
     const materialized = generated.map((descriptor) => {
       const identity = [descriptor.part.selector, descriptor.part.pseudoElement || "", descriptor.capability, descriptor.binding.effect.stateScope || "all"].join("\u0000"),
         existing = saved.get(identity),
+        matchesPseudo = (candidate) => String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || ""),
         part = value.parts.find((candidate) =>
-          normalizeCssSelector(candidate.selector) === normalizeCssSelector(descriptor.part.selector) &&
-          String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || "")) ||
+          normalizeCssSelector(candidate.selector) === normalizeCssSelector(descriptor.part.selector) && matchesPseudo(candidate)) ||
           value.parts.find((candidate) =>
-            normalizeCssSelector(candidate.selector) === authoredSelectorOwner(descriptor.part.selector) &&
-            String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || ""));
+            normalizeCssSelector(candidate.selector) === authoredSelectorOwner(descriptor.part.selector) && matchesPseudo(candidate)) ||
+          value.parts.find((candidate) =>
+            relaxedSelectorIdentity(normalizeCssSelector(candidate.selector)) === relaxedSelectorIdentity(normalizeCssSelector(descriptor.part.selector)) && matchesPseudo(candidate));
       return {
         ...descriptor,
         ...(existing ? {
@@ -1011,7 +1033,18 @@
         part: { ...(entry.part || {}), partId: part?.id || entry.part?.partId || "" },
       });
     });
-    return materialized;
+    // A {{token}} value is not authored content to offer as a *new*
+    // suggestion — it's a placeholder left by an already-completed mapping
+    // (Import & Translate tokenizes the source as part of building its own
+    // property/connection mappings, the same way accepting a part-first
+    // capability tokenizes its own declaration below). Filtering here,
+    // after the accepted/selected merge above has already run, drops only
+    // never-accepted token-sourced suggestions — Import & Translate's own
+    // generic multi-selector boilerplate commonly carries these and would
+    // otherwise explode into many near-duplicate rows for one real value —
+    // while leaving an already-accepted capability's own self-tokenized
+    // declaration (and therefore its resolvability on the next scan) alone.
+    return materialized.filter((entry) => entry.selected || !/\{\{[^{}]+\}\}/.test(String(entry.source?.value ?? "")));
   }
   return {
     SCHEMA_VERSION,

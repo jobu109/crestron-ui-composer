@@ -1615,6 +1615,14 @@
                 <p id="custom-signal-capability-help" class="hint"></p>
                 <div id="custom-signal-sentence" class="custom-mapping-sentence" aria-live="polite"></div>
                 <div id="custom-signal-conflict" class="custom-mapping-warning" hidden></div>
+                <section id="custom-signal-live-test" class="custom-property-live-test" aria-label="Test proposed Crestron connection" hidden>
+                  <div>
+                    <strong>Test before adding</strong>
+                    <small>This temporary value changes the Live Preview only, the same way Crestron sending this signal would. It does not modify the component until you add the connection.</small>
+                  </div>
+                  <label><span id="custom-signal-test-label">Test value</span><span id="custom-signal-test-control"></span></label>
+                  <button id="custom-signal-test-reset" type="button">Reset preview</button>
+                </section>
                 <details class="custom-property-generation-preview custom-generated-details">
                   <summary>Advanced: generated JavaScript</summary>
                   <pre id="custom-signal-generation-preview">Choose a connection type and target part.</pre>

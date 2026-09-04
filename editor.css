@@ -1245,6 +1245,9 @@ h2 {
 .part-first-property strong,.part-first-property small { display: block; }
 .part-first-property small { margin-top: 3px; color: #9cbab6; }
 .part-first-property code { color: #77e8d4; overflow-wrap: anywhere; white-space: normal; }
+.part-first-property-test { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid #1c3634; }
+.part-first-property-test input { flex: 0 0 auto; }
+.part-first-property-test input[type="text"] { flex: 1 1 auto; min-width: 0; }
 .part-first-property-state { justify-self: start; padding: 2px 7px; border: 1px solid #315b58; border-radius: 99px; color: #bde3dd; font-size: 11px; text-transform: capitalize; }
 #custom-signal-source-capability { padding: 8px 10px; border: 1px solid #315b58; border-radius: 5px; background: #0a201f; color: #80ead7; overflow-wrap: anywhere; }
 #custom-component-dialog.custom-authoring-step-properties .custom-authored-property-inventory[data-capability-panel="properties"],

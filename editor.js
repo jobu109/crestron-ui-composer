@@ -18935,7 +18935,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       include.setAttribute("aria-label", `Include ${type} ${direction} ${effect}${parameter ? ` ${parameter}` : ""}`);
       includeLabel.append(include, document.createTextNode(existing ? " Included" : " Include"));
       const part = (customWorkbenchDraft?.parts || []).find((candidate) =>
-        normalizeCssSelector(candidate.selector) === normalizeCssSelector(String(exactSelector).replace(/::(?:before|after)$/i, "")));
+        window.ComposerComponentWorkbench.normalizeCssSelector(candidate.selector) === window.ComposerComponentWorkbench.normalizeCssSelector(String(exactSelector).replace(/::(?:before|after)$/i, "")));
       summary.textContent = `${type === "digital" ? "Digital" : type === "analog" ? "Analog" : "Serial"} ${direction === "input" ? "input" : "output"} — ${label || `${part?.partFirst?.name || part?.name || customFriendlyTargetName(exactSelector)} ${String(effect || "value").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").toLowerCase()}`}`;
       reason.textContent = evidence.join("; ");
       button.type = "button";
@@ -19420,6 +19420,91 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       config.perItem ? "Per-item range: zero-based; use {n} or {index} in the address." : "",
       "\nJavaScript adapter\n" + (customScopedSignalJavascript(config.type, config.direction, config.action, config.selector, config.key, config) || "No valid adapter rule for this selection."),
     ].filter(Boolean).join("\n");
+    renderCustomSignalLiveTest(config);
+  }
+  function customSignalTestEntry(config) {
+    // Same canonical-binding shape the exported runtime uses for this action
+    // (see customScopedSignalJavascript) so testing before Add previews
+    // exactly what Crestron sending this signal would actually do.
+    return window.ComposerComponentWorkbench.withCanonicalBinding({
+      key: config.key,
+      type: config.type,
+      direction: config.direction,
+      action: config.action,
+      parameter: config.parameter || "",
+      stateScope: config.stateScope || "all",
+      unit: config.mapping?.unit || "",
+      mapping: config.mapping || null,
+      target: { kind: config.action, selector: config.selector, parameter: config.parameter || "" },
+    });
+  }
+  function customSignalLiveTestStyleId(config) {
+    return `custom-signal-live-test-${String(config.key || "signal").replace(/[^a-z0-9_-]+/gi, "-")}`;
+  }
+  function renderCustomSignalLiveTest(config) {
+    const section = $("custom-signal-live-test"), host = $("custom-signal-test-control"),
+      // Re-fetched at interaction time, not captured here — refreshCustomPreview()
+      // reloads the iframe via srcdoc (asynchronous), and this can run
+      // immediately after that call fires; see the matching note in
+      // renderPartFirstPropertyTest.
+      previewDocument = () => $("custom-component-preview")?.contentDocument;
+    if (!section || !host) return;
+    // Only Crestron-input connections have a value to simulate; an output
+    // connection (Press/Release/Held) is already testable through Step 4's
+    // simulator buttons and preview log once added, which is a better fit
+    // for "did the component fire the right event" than a value control.
+    if (config.direction !== "input" || !config.selector || !previewDocument()) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    $("custom-signal-test-label").textContent = config.type === "digital"
+      ? "Simulated digital value"
+      : config.type === "analog"
+        ? "Simulated analog value"
+        : "Simulated serial value";
+    host.replaceChildren();
+    let control = document.createElement("input");
+    if (config.type === "digital") {
+      control.type = "checkbox";
+    } else if (config.type === "analog") {
+      control.type = "number";
+      control.min = String(config.mapping?.inputMin ?? 0);
+      control.max = String(config.mapping?.inputMax ?? 65535);
+      control.value = control.min;
+    } else {
+      control.type = "text";
+      control.placeholder = "Sample text";
+    }
+    control.id = "custom-signal-temporary-control";
+    control.oninput = control.onchange = () => {
+      const frameDocument = previewDocument();
+      if (!frameDocument) return;
+      const entry = customSignalTestEntry(config),
+        value = control.type === "checkbox" ? control.checked : control.value;
+      window.ComposerComponentWorkbench.applyEntryBinding(frameDocument, entry, value, {
+        styleId: customSignalLiveTestStyleId(config),
+        important: true,
+      });
+    };
+    host.appendChild(control);
+    $("custom-signal-test-reset").onclick = () => {
+      const frameDocument = previewDocument();
+      if (frameDocument) {
+        const entry = customSignalTestEntry(config), styleId = customSignalLiveTestStyleId(config),
+          off = control.type === "checkbox" ? false : control.type === "number" ? Number(control.min) || 0 : "";
+        // A css-property effect is reversible by simply removing the
+        // temporary style, but a direct DOM mutation (state-activation /
+        // dom-property — a checkbox's real .checked, a class) is not undone
+        // that way, so it needs an explicit "off" value applied first.
+        // Removing the style afterward then lets any CSS-based effect fall
+        // back to its authored default rather than staying pinned at "off."
+        window.ComposerComponentWorkbench.applyEntryBinding(frameDocument, entry, off, { styleId, important: true });
+        window.ComposerComponentWorkbench.applyBinding(frameDocument, entry.binding, "__preserve__", { styleId });
+      }
+      if (control.type === "checkbox") control.checked = false;
+      else control.value = "";
+    };
   }
   function collectCustomSignalCreatorConfig() {
     const type = $("custom-signal-capability-type").value,
@@ -25693,6 +25778,61 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     customWorkbenchDraft = window.ComposerComponentWorkbench.normalize(customWorkbenchDraft);
     renderPartFirstProperties();
   }
+  function partFirstPropertyOriginalValue(descriptor) {
+    const raw = descriptor.source?.value;
+    if (descriptor.controlType !== "number") return { value: raw, unit: "" };
+    const numeric = String(raw ?? "").trim().match(/^(-?\d*\.?\d+)([a-z%]*)$/i);
+    return numeric ? { value: Number(numeric[1]), unit: numeric[2] || "" } : { value: raw, unit: "" };
+  }
+  function renderPartFirstPropertyTest(descriptor, mapping) {
+    // Checking a capability already adds it at its authored default, so
+    // there is nothing to preview until the author actually tries a
+    // different value here — Reset restores the exact authored default
+    // captured in descriptor.source (kept stable across refresh; see
+    // materializePartCapabilities), not just whatever was last typed.
+    //
+    // Re-fetch the preview iframe's document on every interaction rather
+    // than once here: refreshCustomPreview() reloads the iframe via srcdoc,
+    // which is asynchronous, and this row is rendered immediately after
+    // that call fires (see setCustomWizardStep/setPartFirstPropertyIncluded)
+    // — capturing contentDocument once at render time can grab the
+    // about-to-be-replaced document and silently style a detached iframe.
+    const previewDocument = () => $("custom-component-preview")?.contentDocument;
+    if (!mapping || !previewDocument() || !["color", "color-alpha", "number", "text"].includes(descriptor.controlType))
+      return null;
+    const wrap = document.createElement("span"), control = document.createElement("input"), reset = document.createElement("button"),
+      styleId = `part-first-live-test-${mapping.key}`,
+      apply = (value) => {
+        const frameDocument = previewDocument();
+        if (frameDocument) window.ComposerComponentWorkbench.applyEntryBinding(frameDocument, mapping, value, { styleId, important: true });
+      };
+    wrap.className = "part-first-property-test";
+    control.type = descriptor.controlType === "color" || descriptor.controlType === "color-alpha" ? "color" : descriptor.controlType === "number" ? "number" : "text";
+    control.value = control.type === "color" && !/^#[0-9a-f]{6}$/i.test(String(mapping.defaultValue))
+      ? "#000000"
+      : String(mapping.defaultValue ?? "");
+    control.setAttribute("aria-label", `Test ${descriptor.label} value`);
+    control.onclick = (event) => event.stopPropagation();
+    control.oninput = () => apply(control.type === "number" ? Number(control.value) : control.value);
+    control.onchange = () => {
+      const value = control.type === "number" ? Number(control.value) : control.value;
+      mapping.defaultValue = value;
+      apply(value);
+    };
+    reset.type = "button";
+    reset.textContent = "Reset";
+    reset.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const original = partFirstPropertyOriginalValue(descriptor), frameDocument = previewDocument();
+      mapping.defaultValue = original.value;
+      if (original.unit) mapping.unit = original.unit;
+      control.value = String(original.value);
+      if (frameDocument) window.ComposerComponentWorkbench.applyBinding(frameDocument, mapping.binding, "__preserve__", { styleId });
+    };
+    wrap.append(control, reset);
+    return wrap;
+  }
   function renderPartFirstProperties() {
     const panel = $("part-first-properties-step"), list = $("part-first-properties-list"), status = $("part-first-properties-status");
     if (!panel || !list || !status || !customWorkbenchDraft) return;
@@ -25725,6 +25865,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       highlight.onclick = (event) => { event.preventDefault(); event.stopPropagation(); if (descriptor.unresolved) setPartFirstPropertyIncluded(descriptor, false); else if (part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
       row.onclick = () => { if (!descriptor.unresolved && part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
       row.append(include, title, evidence, state, highlight);
+      if (mapping && !descriptor.unresolved) {
+        const test = renderPartFirstPropertyTest(descriptor, mapping);
+        if (test) row.append(test);
+      }
       list.append(row);
     });
     panel.hidden = false;
