@@ -18,8 +18,8 @@ assert.ok(
   "live property changes must not rebuild and reset their own Inspector control",
 );
 assert.ok(
-  editor.includes("if (customWizardStep === 3) refreshCustomPreview()"),
-  "entering Step 4 must populate both preview frames without requiring Refresh",
+  editor.includes("if (customWizardStep === 4) refreshCustomPreview()"),
+  "entering Test & create must populate both preview frames without requiring Refresh",
 );
 
 assert.ok(editor.includes("function customSimulatorAnalogScale(signal)"));

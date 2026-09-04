@@ -70,7 +70,7 @@ code remain available in **Advanced mapping** for exceptional components.
 
 ## Phase 2 — Parts step
 
-- [ ] Add the dedicated Parts wizard step between Source & preview and
+- [x] Add the dedicated Parts wizard step between Source & preview and
   Composer properties.
 - [ ] Reuse the existing Component Map/preview picker to select a real target;
   allow the friendly name and role to be accepted or corrected.

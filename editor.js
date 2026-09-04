@@ -16407,7 +16407,7 @@ if(!Object.hasOwn){Object.hasOwn=function(object,key){return Object.prototype.ha
     // finding. Previously the source changed, but the old finding and the
     // readiness result stayed on screen, which made the button appear inert.
     renderCustomCompatibilityAudit();
-    if (customWizardStep === 3) runCustomComponentSelfTestSafely();
+    if (customWizardStep === 4) runCustomComponentSelfTestSafely();
     setStatus(`Applied ${selected.size} reversible compatibility repair${selected.size === 1 ? "" : "s"}`);
   }
   function prepareCustomSource(source) {
@@ -22177,7 +22177,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   // requiring every trigger to be found and called out individually.
   let customWorkbenchPreviewResizeObserver = null;
   function applyCustomWorkbenchPreviewFit(previewFrame, pane) {
-    if (customWizardStep !== 1 || !previewFrame.isConnected) {
+    if (![1, 2, 3].includes(customWizardStep) || !previewFrame.isConnected) {
       previewFrame.style.transform = "";
       return;
     }
@@ -25483,13 +25483,69 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     return source;
   }
+  function renderPartFirstParts() {
+    const panel = $("part-first-parts-step"), list = $("part-first-parts-list"), status = $("part-first-parts-status");
+    if (!panel || !list || !status || !customWorkbenchDraft) return;
+    const source = {
+      html: $("custom-source-html").value,
+      css: $("custom-source-css").value,
+      javascript: $("custom-source-javascript").value,
+    };
+    const descriptors = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source),
+      byPart = new Map();
+    descriptors.forEach((descriptor) => {
+      const key = descriptor.part.partId || `${descriptor.part.selector}\u0000${descriptor.part.pseudoElement || ""}`;
+      if (!byPart.has(key)) byPart.set(key, []);
+      byPart.get(key).push(descriptor);
+    });
+    customWorkbenchDraft.partCapabilities = descriptors;
+    list.replaceChildren();
+    const roles = [
+      ["container", "Container / component"], ["button", "Button"], ["toggle", "Toggle control"],
+      ["track", "Track"], ["handle", "Handle / knob"], ["label", "Label / text"],
+      ["input", "Input"], ["icon", "Icon / graphic"], ["element", "Other element"],
+    ];
+    const parts = (customWorkbenchDraft.parts || []).filter((part) => String(part.selector || "").trim());
+    parts.forEach((part) => {
+      const row = document.createElement("article"), include = document.createElement("input"), name = document.createElement("input"), role = document.createElement("select"), evidence = document.createElement("div"),
+        key = part.id || `${part.selector}\u0000${part.pseudoElement || ""}`,
+        capabilities = byPart.get(key) || [],
+        selected = part.partFirst?.included !== false;
+      row.className = "part-first-part";
+      include.type = "checkbox";
+      include.checked = selected;
+      include.setAttribute("aria-label", `Use ${part.name || part.selector} as a component part`);
+      name.value = part.partFirst?.name || part.name || customFriendlyTargetName(part.selector);
+      name.setAttribute("aria-label", "Part name");
+      roles.forEach(([value, label]) => role.add(new Option(label, value, false, (part.partFirst?.role || part.role || "element") === value)));
+      include.onchange = () => {
+        part.partFirst = { ...(part.partFirst || {}), included: include.checked, name: name.value.trim(), role: role.value };
+        renderPartFirstParts();
+      };
+      name.onchange = () => { part.name = name.value.trim() || part.name; part.partFirst = { ...(part.partFirst || {}), included: include.checked, name: name.value.trim(), role: role.value }; };
+      role.onchange = () => { part.role = role.value; part.partFirst = { ...(part.partFirst || {}), included: include.checked, name: name.value.trim(), role: role.value }; };
+      evidence.className = "part-first-evidence";
+      const target = document.createElement("code");
+      target.textContent = `${part.selector}${part.pseudoElement || ""}`;
+      evidence.append(target, document.createTextNode(capabilities.length
+        ? ` — source supports ${capabilities.map((entry) => entry.label).filter((label, index, values) => values.indexOf(label) === index).join(", ")}.`
+        : " — no basic capability was found; keep it only if you plan to use Advanced mapping."));
+      row.append(include, name, role, evidence);
+      list.append(row);
+    });
+    panel.hidden = false;
+    const included = parts.filter((part) => part.partFirst?.included !== false).length;
+    status.textContent = parts.length
+      ? `${included} of ${parts.length} source part${parts.length === 1 ? " is" : "s are"} included. You can change the friendly name or role without changing the authored source.`
+      : "No usable component parts were found. Return to Source & preview, refresh the source, then try again.";
+  }
   function setCustomWizardStep(step = 0, { refreshPreview = true } = {}) {
     const dialog = $("custom-component-dialog");
-    customWizardStep = Math.max(0, Math.min(3, Number(step) || 0));
+    customWizardStep = Math.max(0, Math.min(4, Number(step) || 0));
     // Keep the established capability and test layouts while properties and
     // connections become distinct, ordered workflow steps.
-    const layoutStep = customWizardStep === 3 ? 2 : customWizardStep === 2 ? 1 : customWizardStep;
-    [0, 1, 2, 3].forEach((index) =>
+    const layoutStep = customWizardStep === 4 ? 2 : customWizardStep === 0 ? 0 : 1;
+    [0, 1, 2].forEach((index) =>
       dialog.classList.toggle(
         `custom-wizard-step-${index}`,
         index === layoutStep,
@@ -25505,17 +25561,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     });
     $("custom-wizard-back").disabled = customWizardStep === 0;
-    $("custom-wizard-next").hidden = customWizardStep === 3;
+    $("custom-wizard-next").hidden = customWizardStep === 4;
+    dialog.classList.toggle("custom-authoring-step-parts", customWizardStep === 1);
     if (customWizardStep === 0) {
       const authoredPanel = dialog.querySelector(".custom-step-authored");
       if (authoredPanel) authoredPanel.hidden = false;
       switchCustomSourceTab("html");
       if (refreshPreview) refreshCustomPreview({ sourceRefresh: true });
     }
-    if (customWizardStep === 1 || customWizardStep === 2)
+    if ([1, 2, 3].includes(customWizardStep))
       preserveLockedCustomAuthoringDecisions(() => analyzeCustomElements());
-    if (customWizardStep === 1 || customWizardStep === 2) {
-      setCustomCapabilityPage(customWizardStep === 1 ? "properties" : "connections");
+    if (customWizardStep === 1) {
+      renderPartFirstParts();
+      refreshCustomPreview({ refreshSimulator: false });
+    }
+    if (customWizardStep === 2 || customWizardStep === 3) {
+      setCustomCapabilityPage(customWizardStep === 2 ? "properties" : "connections");
       refreshCustomPropertyCreator();
       refreshCustomSignalCreator();
       renderCustomPropertyMappings();
@@ -25532,7 +25593,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     // neither one can retain the starter/template document until Refresh is
     // clicked. This also applies the current Inspector simulation values to
     // the Composer frame before the user begins testing it.
-    if (customWizardStep === 3) refreshCustomPreview();
+    if (customWizardStep === 4) refreshCustomPreview();
     renderCustomWorkbenchStateToolbar();
     dialog.querySelector("form")?.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -27225,8 +27286,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         renderCustomGeneratedAdapter();
         if (customWizardStep !== 0)
           refreshCustomPreview({ sourceRefresh: true });
-        if (customWizardStep === 1 || customWizardStep === 2) {
+        if ([1, 2, 3].includes(customWizardStep)) {
           renderCustomVisualParts();
+          if (customWizardStep === 1) renderPartFirstParts();
           refreshCustomPropertyCreator();
           refreshCustomSignalCreator();
         }

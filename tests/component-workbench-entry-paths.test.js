@@ -34,7 +34,7 @@ for (const page of ["properties", "connections", "states", "repeated", "advanced
 assert.ok(!html.includes('data-custom-capability-page="code"'));
 assert.ok(html.includes('class="custom-source-code custom-step-capabilities custom-step-authored" data-capability-panel="advanced"'));
 assert.ok(editor.includes("function setCustomCapabilityPage"));
-assert.ok(editor.includes('setCustomCapabilityPage(customWizardStep === 1 ? "properties" : "connections")'));
+assert.ok(editor.includes('setCustomCapabilityPage(customWizardStep === 2 ? "properties" : "connections")'));
 assert.ok(html.includes("custom-step-authored"));
 assert.ok(html.includes("custom-step-authored-preview"));
 assert.ok(html.includes("custom-imported-mappings"));
@@ -42,11 +42,15 @@ const stepSwitcher = editor.slice(
   editor.indexOf("function setCustomWizardStep"),
   editor.indexOf("function setCustomCapabilityPage"),
 );
-for (const [step, label] of [[0, "Source &amp; preview"], [1, "Editable properties"], [2, "Crestron connections"], [3, "Test &amp; create"]])
+for (const [step, label] of [[0, "Source &amp; preview"], [1, "Parts"], [2, "Composer properties"], [3, "Crestron connections"], [4, "Test &amp; create"]])
   assert.ok(html.includes(`data-custom-wizard-step="${step}"><strong>${step + 1}</strong><span>${label}</span>`));
 assert.ok(stepSwitcher.includes('if (customWizardStep === 0)'));
-assert.ok(stepSwitcher.includes('Math.min(3, Number(step) || 0)'));
-assert.ok(stepSwitcher.includes('customWizardStep === 1 ? "properties" : "connections"'));
+assert.ok(stepSwitcher.includes('Math.min(4, Number(step) || 0)'));
+assert.ok(stepSwitcher.includes('customWizardStep === 2 ? "properties" : "connections"'));
+assert.ok(html.includes('id="part-first-parts-step"'));
+assert.ok(html.includes('id="part-first-parts-list"'));
+assert.ok(editor.includes("function renderPartFirstParts()"));
+assert.ok(editor.includes("materializePartCapabilities(customWorkbenchDraft, source)"));
 assert.ok(html.includes('id="custom-source-refresh-status"'));
 assert.ok(editor.includes("function requireCurrentCustomSourcePreview()"));
 assert.ok(editor.includes('customPreviewSourceRevision === customSourceRevision'));
