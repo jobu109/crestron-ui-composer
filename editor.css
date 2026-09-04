@@ -1241,6 +1241,7 @@ h2 {
 .part-first-properties-list { display: grid; gap: 9px; }
 .part-first-property { display: grid; grid-template-columns: auto minmax(180px, 1fr) minmax(190px, 1.25fr) auto auto; gap: 9px; align-items: center; padding: 10px; border: 1px solid #294744; border-radius: 7px; background: #0e1d1f; }
 .part-first-property.included { border-color: #00bca2; background: #0b2826; }
+.part-first-property.needs-attention { border-color: #b68728; background: #2b2413; }
 .part-first-property strong,.part-first-property small { display: block; }
 .part-first-property small { margin-top: 3px; color: #9cbab6; }
 .part-first-property code { color: #77e8d4; overflow-wrap: anywhere; white-space: normal; }

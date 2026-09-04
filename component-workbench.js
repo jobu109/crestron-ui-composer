@@ -943,8 +943,9 @@
       saved = new Map((value.partCapabilities || []).map((entry) => [
         [entry.part?.selector || "", entry.part?.pseudoElement || "", entry.capability || "", entry.binding?.effect?.stateScope || "all"].join("\u0000"),
         entry,
-      ]));
-    return generated.map((descriptor) => {
+      ])),
+      generatedIdentities = new Set();
+    const materialized = generated.map((descriptor) => {
       const identity = [descriptor.part.selector, descriptor.part.pseudoElement || "", descriptor.capability, descriptor.binding.effect.stateScope || "all"].join("\u0000"),
         existing = saved.get(identity),
         part = value.parts.find((candidate) =>
@@ -975,6 +976,28 @@
         part: { ...descriptor.part, partId: part?.id || "" },
       };
     });
+    generated.forEach((descriptor) => generatedIdentities.add([
+      descriptor.part.selector,
+      descriptor.part.pseudoElement || "",
+      descriptor.capability,
+      descriptor.binding.effect.stateScope || "all",
+    ].join("\u0000")));
+    // Never discard an accepted capability merely because its declaration was
+    // removed or changed outside Composer. Keeping it visible as unresolved
+    // lets the author remove it (or deliberately retarget it in Advanced)
+    // instead of silently changing the saved mapping.
+    saved.forEach((entry, identity) => {
+      if (generatedIdentities.has(identity) || !entry.selected) return;
+      const part = value.parts.find((candidate) =>
+        normalizeCssSelector(candidate.selector) === normalizeCssSelector(entry.part?.selector || "") &&
+        String(candidate.pseudoElement || "") === String(entry.part?.pseudoElement || ""));
+      materialized.push({
+        ...entry,
+        unresolved: true,
+        part: { ...(entry.part || {}), partId: part?.id || entry.part?.partId || "" },
+      });
+    });
+    return materialized;
   }
   return {
     SCHEMA_VERSION,

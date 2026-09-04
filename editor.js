@@ -18890,12 +18890,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // choice, unlike an arbitrary CSS declaration. It can therefore offer an
     // Analog input here (for example Track corner radius) without restoring
     // the old, overwhelming raw-property list.
-    const capabilityTargets = window.ComposerComponentWorkbench
-      .materializePartCapabilities(customWorkbenchDraft || window.ComposerComponentWorkbench.empty(), {
-        html: $("custom-source-html").value,
-        css: $("custom-source-css").value,
-        javascript: $("custom-source-javascript").value,
-      })
+    const capabilityTargets = materializeCustomPartCapabilities()
       .filter((descriptor) => descriptor.controlType === "number")
       .filter((descriptor) => {
         const part = (customWorkbenchDraft?.parts || []).find((candidate) => candidate.id === descriptor.part.partId);
@@ -25411,6 +25406,34 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         inventoryDriven: true,
       },
     });
+    // Templates use the same source-backed capability model as custom
+    // authoring. Their existing Inspector properties are merely preselected
+    // capabilities, not a parallel template-only property system.
+    customWorkbenchDraft.partCapabilities = window.ComposerComponentWorkbench
+      .materializePartCapabilities(customWorkbenchDraft, {
+        html: template.html || "",
+        css: template.css || "",
+        javascript: template.javascript || "",
+      })
+      .map((descriptor) => {
+        const mapped = properties.find((property) =>
+          property.authoredCss &&
+          property.authoredCss.selector === `${descriptor.part.selector}${descriptor.part.pseudoElement || ""}` &&
+          property.authoredCss.property === descriptor.source.property &&
+          property.stateScope === (descriptor.binding?.effect?.stateScope || "all"));
+        return mapped ? {
+          ...descriptor,
+          selected: true,
+          name: mapped.label || descriptor.label,
+          controlType: mapped.type || descriptor.controlType,
+          unit: mapped.unit || descriptor.unit,
+          source: {
+            ...descriptor.source,
+            value: String(mapped.defaultValue ?? descriptor.source.value),
+            evidence: `starter template exposes ${mapped.label || descriptor.label} from authored ${descriptor.source.property}`,
+          },
+        } : descriptor;
+      });
     renderCustomWorkbenchParts();
     renderCustomPropertyMappings();
     renderCustomConnectionMappings();
@@ -25542,22 +25565,43 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
     return source;
   }
-  function renderPartFirstParts() {
-    const panel = $("part-first-parts-step"), list = $("part-first-parts-list"), status = $("part-first-parts-status");
-    if (!panel || !list || !status || !customWorkbenchDraft) return;
+  function materializeCustomPartCapabilities() {
+    if (!customWorkbenchDraft) return [];
     const source = {
       html: $("custom-source-html").value,
       css: $("custom-source-css").value,
       javascript: $("custom-source-javascript").value,
     };
-    const descriptors = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source),
+    const descriptors = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source);
+    descriptors.forEach((descriptor) => {
+      const exactSelector = `${descriptor.part.selector}${descriptor.part.pseudoElement || ""}`,
+        mapped = (customWorkbenchDraft.properties || []).find((property) =>
+          (property.authoredCss?.selector === exactSelector && property.authoredCss?.property === descriptor.source.property) ||
+          (descriptor.capability === "text" && customCanonicalBinding(property).effect.kind === "text-content" && customCanonicalBindingSelector(property) === descriptor.part.selector));
+      if (!mapped) return;
+      descriptor.selected = true;
+      descriptor.name = mapped.label || mapped.name || descriptor.label;
+      descriptor.controlType = mapped.type || descriptor.controlType;
+      descriptor.unit = mapped.unit || descriptor.unit;
+      if (mapped.authoredCss?.originalValue != null) descriptor.source = {
+        ...descriptor.source,
+        value: mapped.authoredCss.originalValue,
+        evidence: `existing Composer property exposes authored ${descriptor.source.property}: ${mapped.authoredCss.originalValue}`,
+      };
+    });
+    customWorkbenchDraft.partCapabilities = descriptors;
+    return descriptors;
+  }
+  function renderPartFirstParts() {
+    const panel = $("part-first-parts-step"), list = $("part-first-parts-list"), status = $("part-first-parts-status");
+    if (!panel || !list || !status || !customWorkbenchDraft) return;
+    const descriptors = materializeCustomPartCapabilities(),
       byPart = new Map();
     descriptors.forEach((descriptor) => {
       const key = descriptor.part.partId || `${descriptor.part.selector}\u0000${descriptor.part.pseudoElement || ""}`;
       if (!byPart.has(key)) byPart.set(key, []);
       byPart.get(key).push(descriptor);
     });
-    customWorkbenchDraft.partCapabilities = descriptors;
     list.replaceChildren();
     const roles = [
       ["container", "Container / component"], ["button", "Button"], ["toggle", "Toggle control"],
@@ -25652,27 +25696,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   function renderPartFirstProperties() {
     const panel = $("part-first-properties-step"), list = $("part-first-properties-list"), status = $("part-first-properties-status");
     if (!panel || !list || !status || !customWorkbenchDraft) return;
-    const source = {
-      html: $("custom-source-html").value,
-      css: $("custom-source-css").value,
-      javascript: $("custom-source-javascript").value,
-    };
     const partsById = new Map((customWorkbenchDraft.parts || []).map((part) => [part.id, part]));
-    const descriptors = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source)
+    const descriptors = materializeCustomPartCapabilities()
       .filter((descriptor) => !["selected", "disabled"].includes(descriptor.capability))
       .filter((descriptor) => partsById.get(descriptor.part.partId || "")?.partFirst?.included !== false);
-    customWorkbenchDraft.partCapabilities = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source);
     list.replaceChildren();
     descriptors.forEach((descriptor) => {
       const part = partsById.get(descriptor.part.partId || ""), mapping = partFirstPropertyMapping(descriptor), row = document.createElement("label"), include = document.createElement("input"), title = document.createElement("div"), evidence = document.createElement("div"), state = document.createElement("span"), highlight = document.createElement("button");
       row.className = "part-first-property";
       row.classList.toggle("included", !!mapping);
+      row.classList.toggle("needs-attention", !!descriptor.unresolved);
       include.type = "checkbox";
       include.checked = !!mapping;
       include.setAttribute("aria-label", `Expose ${part?.partFirst?.name || part?.name || descriptor.part.selector} ${descriptor.label} in Composer`);
       title.innerHTML = "<strong></strong><small></small>";
       title.querySelector("strong").textContent = `${part?.partFirst?.name || part?.name || customFriendlyTargetName(descriptor.part.selector)} — ${descriptor.label}`;
-      title.querySelector("small").textContent = "Composer property";
+      title.querySelector("small").textContent = descriptor.unresolved ? "Source changed — remove this mapping or retarget it in Advanced mapping" : "Composer property";
       evidence.innerHTML = "<code></code><details><summary>Binding details</summary><code></code></details>";
       evidence.querySelector("code").textContent = descriptor.source.evidence;
       const technical = evidence.querySelectorAll("code")[1], binding = descriptor.binding || {}, effect = binding.effect || {};
@@ -25680,11 +25719,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       state.className = "part-first-property-state";
       state.textContent = customStateScopeLabel(descriptor.binding?.effect?.stateScope || "all");
       highlight.type = "button";
-      highlight.textContent = "Highlight";
+      highlight.textContent = descriptor.unresolved ? "Remove mapping" : "Highlight";
       include.onclick = (event) => event.stopPropagation();
       include.onchange = () => setPartFirstPropertyIncluded(descriptor, include.checked);
-      highlight.onclick = (event) => { event.preventDefault(); event.stopPropagation(); if (part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
-      row.onclick = () => { if (part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
+      highlight.onclick = (event) => { event.preventDefault(); event.stopPropagation(); if (descriptor.unresolved) setPartFirstPropertyIncluded(descriptor, false); else if (part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
+      row.onclick = () => { if (!descriptor.unresolved && part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
       row.append(include, title, evidence, state, highlight);
       list.append(row);
     });

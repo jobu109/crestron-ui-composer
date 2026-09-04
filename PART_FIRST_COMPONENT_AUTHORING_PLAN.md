@@ -101,18 +101,18 @@ code remain available in **Advanced mapping** for exceptional components.
 
 ## Phase 5 — Templates, imports, and recommendations
 
-- [ ] Have starter templates preselect their parts/capabilities using the same
+- [x] Have starter templates preselect their parts/capabilities using the same
   descriptor path.
-- [ ] Carry Import & Translate detections into Parts and capability selections
+- [x] Carry Import & Translate detections into Parts and capability selections
   without re-inference or replacement.
-- [ ] Present recommendations as optional preselected capabilities/connections,
+- [x] Present recommendations as optional preselected capabilities/connections,
   each with source evidence and an editable target.
 
 ## Phase 6 — Runtime and validation parity
 
-- [ ] Route basic capability test controls, Crestron simulator values, Apply,
+- [x] Route basic capability test controls, Crestron simulator values, Apply,
   package export, and registered runtime through canonical bindings.
-- [ ] Validate that every selected capability still resolves after source edits;
+- [x] Validate that every selected capability still resolves after source edits;
   offer retarget/remove rather than silently changing it.
 - [ ] Add end-to-end tests for Inspector-only properties, Digital/Analog/Serial
   mappings, every supported state scope, source refresh, reopen, export, and

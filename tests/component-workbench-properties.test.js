@@ -215,6 +215,10 @@ const tokenizedCapabilities = workbench.materializePartCapabilities(capabilityWo
 });
 assert.strictEqual(tokenizedCapabilities.find((entry) => entry.id === "saved-track-radius").source.value, "8px", "an accepted capability must retain its authored evidence after Composer tokenizes the declaration");
 assert.strictEqual(tokenizedCapabilities.find((entry) => entry.id === "saved-track-radius").controlType, "number");
+const removedSourceCapabilities = workbench.materializePartCapabilities(capabilityWorkbench, {
+  html: '<span class="track"></span>', css: '.track{opacity:.5}',
+});
+assert.ok(removedSourceCapabilities.some((entry) => entry.id === "saved-track-radius" && entry.unresolved), "a selected capability whose source declaration disappears must remain visible for remove/retarget instead of silently changing");
 assert.ok(
   javascript.includes('style.textContent = `${scopedSelector} { ${declaration.split(";")'),
   "temporary property previews must override authored component CSS",

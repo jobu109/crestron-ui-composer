@@ -25,6 +25,8 @@ assert.ok(editor.includes('kind: "authored-token"'));
 assert.ok(editor.includes('kind: "authored-runtime"'));
 assert.ok(editor.includes('starterTemplate: templateKey'));
 assert.ok(editor.includes('repeatedCollections: template.repeatedItems ? [structuredClone(template.repeatedItems)] : []'));
+assert.ok(editor.includes('starter template exposes ${mapped.label || descriptor.label}'));
+assert.ok(editor.includes('selected: true,'), "starter template properties should become preselected part capabilities");
 assert.ok(editor.includes('openCustomBuilder(null, null, button.dataset.creatorTemplate)'));
 assert.ok(editor.includes('openCustomBuilder(null, null, "button", { deferInitialLoad: true })'));
 assert.ok(editor.includes('if (!deferInitialLoad) {\n      loadCustomOriginalSource(entry);'));
