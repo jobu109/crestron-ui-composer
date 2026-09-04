@@ -137,6 +137,11 @@
       effect.name = entry.action === "charging" ? "charging" : String(legacyTarget.parameter || entry.parameter || "selected");
     if (effect.kind === "dom-property" && !effect.name)
       effect.name = entry.action === "checkedState" ? "checked" : entry.action === "disabledState" ? "disabled" : entry.action === "url" ? "src" : "value";
+    // Native checked/disabled values are source state, rather than visual
+    // overrides. They must always reach the actual control regardless of the
+    // Workbench preview-state toolbar; normalize older saved mappings too.
+    if (effect.kind === "dom-property" && ["checked", "disabled"].includes(effect.name))
+      effect.stateScope = "all";
     if (effect.kind === "css-property" && !effect.name)
       effect.name = { glowStrength: "filter", rotation: "transform", positionX: "left", positionY: "top" }[entry.action] || String(entry.action || "");
     if (effect.kind === "css-custom-property" && !effect.name)
@@ -433,7 +438,20 @@
       if (effect.kind === "text-content") target.textContent = String(value ?? "");
       else if (effect.kind === "attribute") target.setAttribute(name, String(value ?? ""));
       else if (effect.kind === "data-attribute") target.setAttribute(`data-${name}`, String(value ?? ""));
-      else if (effect.kind === "dom-property") target[name] = value;
+      else if (effect.kind === "dom-property") {
+        const nativeBoolean = ["checked", "disabled"].includes(name);
+        target[name] = nativeBoolean ? bindingBoolean(value) : value;
+        if (nativeBoolean) {
+          if (name === "checked") target.setAttribute?.("aria-checked", String(target[name]));
+          if (name === "disabled") target.setAttribute?.("aria-disabled", String(target[name]));
+          // Authored components commonly render a checkbox's state in a
+          // change handler in addition to CSS :checked rules. Dispatch both
+          // normal native notifications so preview, generated runtime, and
+          // real Crestron feedback have identical behavior.
+          try { target.dispatchEvent?.(new Event("input", { bubbles: true })); } catch (_) {}
+          try { target.dispatchEvent?.(new Event("change", { bubbles: true })); } catch (_) {}
+        }
+      }
       else if (effect.kind === "class-presence") target.classList.toggle(name, bindingBoolean(value));
       else if (effect.kind === "visibility") target.style.display = bindingBoolean(value) ? "" : "none";
       else if (effect.kind === "foreground-asset") {
@@ -793,7 +811,20 @@
       const selector = variables.get(match[1]);
       if (selector) add({ selector, stateKind: match[2] === "checked" ? "selected" : "disabled", action: match[2] === "checked" ? "checkedState" : "disabledState", evidence: `authored JavaScript sets ${match[2]}` });
     }
-    return [...targets.values()].map((target, index) => ({ id: `state-target-${index + 1}`, ...target }));
+    // A selector such as `input:checked + .track` describes the *visual
+    // consequence* of a checkbox, not a second generic input that should
+    // receive its own join. When authored HTML gives us one exact checkbox
+    // identity (#toggle, for example), keep that precise target and discard
+    // the redundant bare `input` inference.
+    const exactNativeSelectors = [...targets.values()]
+      .filter((target) => target.action === "checkedState" && /^#[A-Za-z0-9_-]+$/.test(target.selector))
+      .map((target) => target.selector);
+    const normalizedTargets = [...targets.values()].filter((target) => !(
+      target.action === "checkedState" &&
+      /^(?:input|input\[[^\]]+\])$/i.test(target.selector) &&
+      exactNativeSelectors.length === 1
+    ));
+    return normalizedTargets.map((target, index) => ({ id: `state-target-${index + 1}`, ...target }));
   }
   function inventoryAuthoredValueTargets({ html = "", css = "" } = {}) {
     const targets = [], seen = new Set(), add = (target) => {

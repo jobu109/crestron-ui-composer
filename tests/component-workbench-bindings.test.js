@@ -218,6 +218,29 @@ const selectedEntry = workbench.withCanonicalBinding({
 target.classes.delete("selected");
 workbench.applyEntryBinding(fakeDocument, selectedEntry, true);
 assert.ok(target.classes.has("selected"));
+const checkboxEvents = [], checkboxTarget = {
+  checked: false,
+  attributes: {},
+  setAttribute(name, value) { this.attributes[name] = value; },
+  dispatchEvent(event) { checkboxEvents.push(event.type); return true; },
+};
+workbench.applyEntryBinding(
+  { nodeType: 9, querySelectorAll() { return [checkboxTarget]; } },
+  workbench.withCanonicalBinding({
+    action: "checkedState",
+    stateScope: "standard",
+    target: { selector: "#toggle" },
+  }),
+  "true",
+);
+assert.strictEqual(checkboxTarget.checked, true, "checkedState must set the real native checkbox property");
+assert.strictEqual(checkboxTarget.attributes["aria-checked"], "true");
+assert.deepStrictEqual(checkboxEvents, ["input", "change"], "checkedState must notify authored input/change handlers");
+assert.strictEqual(
+  workbench.normalizeBinding(null, { action: "checkedState", stateScope: "standard", target: { selector: "#toggle" } }).effect.stateScope,
+  "all",
+  "native checkbox state must never be constrained to one visual state",
+);
 const installedExecutor = Function(`return ${workbench.bindingExecutorSource()}`)(),
   installedTarget = fakeTarget(),
   installedDocument = { nodeType: 9, querySelectorAll() { return [installedTarget]; } };

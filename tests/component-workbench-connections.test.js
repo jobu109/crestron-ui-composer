@@ -48,6 +48,15 @@ assert.ok(stateTargets.some((target) => target.selector === ".panel" && target.p
 assert.ok(stateTargets.some((target) => target.selector === ".field" && target.action === "disabledState"));
 assert.deepStrictEqual(workbench.inventoryAuthoredStateTargets({ html: '<div class="plain"></div>', css: '.plain{color:red}' }), []);
 assert.deepStrictEqual(workbench.inventoryAuthoredStateTargets({ css: '.selected .unknown-owner{color:red}' }), []);
+const checkboxStateTargets = workbench.inventoryAuthoredStateTargets({
+  html: '<input id="toggle" type="checkbox"><span class="track"></span>',
+  css: 'input:checked + .track { background: teal; }',
+});
+assert.deepStrictEqual(
+  checkboxStateTargets.filter((target) => target.action === "checkedState").map((target) => target.selector),
+  ["#toggle"],
+  "a checkbox visual rule must recommend the exact authored input once, not an additional generic input join",
+);
 const valueTargets = workbench.inventoryAuthoredValueTargets({
   html: '<div class="label">Ready</div><input id="level" type="range" value="25"><div class="plain"></div>',
   css: '.meter{width:40%;background:#ff0000}.meter::before{opacity:.5}.plain{display:flex}',

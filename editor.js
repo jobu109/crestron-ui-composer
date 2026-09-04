@@ -18749,6 +18749,15 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     refreshCustomSignalCreator();
     $("custom-signal-capability-action").value = target.action;
     $("custom-signal-capability-action").dataset.edited = "true";
+    // checked/disabled are native DOM properties. They do not belong to one
+    // visual preview state: applying a "standard only" scope to a checkbox
+    // made the saved mapping misleading and could leave a generated adapter
+    // fighting the preview-state bridge. These inputs always affect the
+    // authored control directly, in every state.
+    if (["checkedState", "disabledState"].includes(target.action)) {
+      $("custom-signal-state-scope").value = "all";
+      $("custom-signal-state-scope").dataset.edited = "true";
+    }
     if (target.parameter) {
       $("custom-signal-parameter").value = target.parameter;
       $("custom-signal-parameter").dataset.edited = "true";
@@ -18765,6 +18774,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       ["custom-signal-capability-address", `${contractBase}.${target.stateKind.replace(/^./, (letter) => letter.toUpperCase())}`],
     ].forEach(([id, value]) => { $(id).value = value; $(id).dataset.edited = "true"; });
     refreshCustomSignalCreator();
+    if (["checkedState", "disabledState"].includes(target.action))
+      $("custom-signal-state-scope").value = "all";
     $("custom-signal-capability-help").textContent = `${label} is supported because ${target.evidence.join("; ")}. The exact target is ${target.selector}.`;
     $("custom-signal-creator").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
