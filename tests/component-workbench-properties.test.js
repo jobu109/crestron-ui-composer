@@ -208,6 +208,13 @@ assert.strictEqual(materializedRadius.part.partId, "part-track", "a descriptor m
 assert.strictEqual(materializedRadius.id, "saved-track-radius", "accepted part-first capability metadata must survive source re-inventory");
 assert.strictEqual(materializedRadius.name, "Track shape");
 assert.strictEqual(materializedRadius.selected, true);
+capabilityWorkbench.partCapabilities[0].source = { property: "border-radius", value: "8px", evidence: "authored CSS contains border-radius: 8px" };
+capabilityWorkbench.partCapabilities[0].controlType = "number";
+const tokenizedCapabilities = workbench.materializePartCapabilities(capabilityWorkbench, {
+  html: '<span class="track"></span>', css: '.track{border-radius:{{track_radius}}}',
+});
+assert.strictEqual(tokenizedCapabilities.find((entry) => entry.id === "saved-track-radius").source.value, "8px", "an accepted capability must retain its authored evidence after Composer tokenizes the declaration");
+assert.strictEqual(tokenizedCapabilities.find((entry) => entry.id === "saved-track-radius").controlType, "number");
 assert.ok(
   javascript.includes('style.textContent = `${scopedSelector} { ${declaration.split(";")'),
   "temporary property previews must override authored component CSS",

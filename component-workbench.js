@@ -952,7 +952,26 @@
           String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || ""));
       return {
         ...descriptor,
-        ...(existing ? { id: existing.id || descriptor.id, selected: !!existing.selected, name: existing.name || descriptor.label } : {}),
+        ...(existing ? {
+          id: existing.id || descriptor.id,
+          selected: !!existing.selected,
+          name: existing.name || descriptor.label,
+          // Once a capability is accepted its authored declaration is
+          // deliberately tokenized (for example border-radius: {{radius}}).
+          // Keep the original source evidence and friendly control metadata
+          // on that accepted descriptor instead of turning it into an opaque
+          // text value on the next render.
+          ...(existing.selected ? {
+            controlType: existing.controlType || descriptor.controlType,
+            unit: existing.unit || descriptor.unit,
+            source: existing.source || descriptor.source,
+            binding: existing.binding ? {
+              ...descriptor.binding,
+              ...existing.binding,
+              effect: { ...descriptor.binding?.effect, ...existing.binding?.effect },
+            } : descriptor.binding,
+          } : {}),
+        } : {}),
         part: { ...descriptor.part, partId: part?.id || "" },
       };
     });

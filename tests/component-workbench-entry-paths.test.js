@@ -54,6 +54,14 @@ assert.ok(editor.includes("materializePartCapabilities(customWorkbenchDraft, sou
 assert.ok(editor.includes('highlight.textContent = "Highlight"'));
 assert.ok(editor.includes('showCustomWorkbenchPartHighlight(part)'));
 assert.ok(editor.includes('!/^(?:html|body|:root|\\*)$/i.test(String(part.selector).trim())'));
+assert.ok(html.includes('id="part-first-properties-step"'));
+assert.ok(html.includes('id="part-first-properties-list"'));
+assert.ok(html.includes('id="part-first-properties-advanced"'));
+assert.ok(editor.includes("function renderPartFirstProperties()"));
+assert.ok(editor.includes("function setPartFirstPropertyIncluded(descriptor, included)"));
+assert.ok(editor.includes("partCapabilityId = descriptor.id"));
+assert.ok(editor.includes('<summary>Binding details</summary>'));
+assert.ok(stepSwitcher.includes('custom-authoring-step-properties'));
 assert.ok(html.includes('id="custom-source-refresh-status"'));
 assert.ok(editor.includes("function requireCurrentCustomSourcePreview()"));
 assert.ok(editor.includes('customPreviewSourceRevision === customSourceRevision'));

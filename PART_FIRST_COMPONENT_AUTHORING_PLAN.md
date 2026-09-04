@@ -79,14 +79,14 @@ code remain available in **Advanced mapping** for exceptional components.
 
 ## Phase 3 — Basic Composer capabilities
 
-- [ ] Replace the normal raw-property picker with part-aware capability cards.
-- [ ] Group authored declarations into human-readable capabilities (color,
+- [x] Replace the normal raw-property picker with part-aware capability cards.
+- [x] Group authored declarations into human-readable capabilities (color,
   border color, border width, corner radius, size, opacity, shadow/glow,
   text, transform, visibility) only when source evidence exists.
-- [ ] Let authors choose a state when the source has a real state variant.
-- [ ] Show the generated canonical target/effect only as a read-only detail;
+- [x] Let authors choose a state when the source has a real state variant.
+- [x] Show the generated canonical target/effect only as a read-only detail;
   move direct selector/property editing to Advanced mapping.
-- [ ] Keep the current source-property inventory as an Advanced audit view.
+- [x] Keep the current source-property inventory as an Advanced audit view.
 
 ## Phase 4 — Part-aware Crestron connections
 

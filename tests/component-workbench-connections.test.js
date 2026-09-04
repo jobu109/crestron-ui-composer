@@ -19,7 +19,8 @@ assert.ok(javascript.includes('button.textContent = existing ? "Edit existing" :
 assert.ok(javascript.includes('include.type = "checkbox"'));
 assert.ok(javascript.includes('removeCustomConnectionMapping(existing)'));
 assert.ok(javascript.includes('target.action === "value"'));
-assert.ok(javascript.includes('Exact target: ${exactSelector}'));
+assert.ok(javascript.includes('source-backed visual capability'));
+assert.ok(javascript.includes('Digital" : type === "analog" ? "Analog" : "Serial"'));
 assert.ok(javascript.includes('row.dataset.recommendation = `${type}:${direction}:${effect}`'));
 assert.ok(javascript.includes('definition.value === "classPresence"'));
 assert.ok(javascript.includes('["classState", "standardStateText", "selectedStateText"].includes(action[0])'));

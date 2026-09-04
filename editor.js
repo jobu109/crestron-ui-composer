@@ -18875,9 +18875,41 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       valueTargets = customAuthoredValueTargets().filter((target) =>
         target.type === "serial" || target.action === "value" ||
         String(target.parameter || "").startsWith("--"));
+    // A selected source-backed visual capability is an intentional authoring
+    // choice, unlike an arbitrary CSS declaration. It can therefore offer an
+    // Analog input here (for example Track corner radius) without restoring
+    // the old, overwhelming raw-property list.
+    const capabilityTargets = window.ComposerComponentWorkbench
+      .materializePartCapabilities(customWorkbenchDraft || window.ComposerComponentWorkbench.empty(), {
+        html: $("custom-source-html").value,
+        css: $("custom-source-css").value,
+        javascript: $("custom-source-javascript").value,
+      })
+      .filter((descriptor) => descriptor.controlType === "number")
+      .filter((descriptor) => {
+        const part = (customWorkbenchDraft?.parts || []).find((candidate) => candidate.id === descriptor.part.partId);
+        return part?.partFirst?.included !== false;
+      })
+      .map((descriptor) => ({
+        type: "analog",
+        action: "mappedProperty",
+        selector: descriptor.part.selector,
+        pseudoElement: descriptor.part.pseudoElement || "",
+        parameter: descriptor.source.property,
+        unit: descriptor.unit || "",
+        value: descriptor.source.value,
+        capability: descriptor.capability,
+        label: descriptor.label,
+        evidence: [descriptor.source.evidence],
+      }));
+    const valueTargetKeys = new Set(valueTargets.map((target) => `${target.type}\u0000${target.selector}\u0000${target.pseudoElement || ""}\u0000${target.parameter || target.action}`));
+    capabilityTargets.forEach((target) => {
+      const key = `${target.type}\u0000${target.selector}\u0000${target.pseudoElement || ""}\u0000${target.parameter || target.action}`;
+      if (!valueTargetKeys.has(key)) valueTargets.push(target);
+    });
     host.replaceChildren();
     let recommendationCount = 0;
-    const appendRecommendation = ({ type, direction, selector: exactSelector, effect, parameter = "", evidence = [], configure }) => {
+    const appendRecommendation = ({ type, direction, selector: exactSelector, effect, parameter = "", evidence = [], label = "", configure }) => {
       const row = document.createElement("div"), summary = document.createElement("code"), reason = document.createElement("small"), actions = document.createElement("div"), includeLabel = document.createElement("label"), include = document.createElement("input"), button = document.createElement("button"),
         existing = (customWorkbenchDraft?.connections || []).find((mapping) => {
           const binding = customCanonicalBinding(mapping),
@@ -18896,7 +18928,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       include.checked = !!existing;
       include.setAttribute("aria-label", `Include ${type} ${direction} ${effect}${parameter ? ` ${parameter}` : ""}`);
       includeLabel.append(include, document.createTextNode(existing ? " Included" : " Include"));
-      summary.textContent = `${type} ${direction} · ${effect}${parameter ? ` (${parameter})` : ""}\nExact target: ${exactSelector}`;
+      const part = (customWorkbenchDraft?.parts || []).find((candidate) =>
+        normalizeCssSelector(candidate.selector) === normalizeCssSelector(String(exactSelector).replace(/::(?:before|after)$/i, "")));
+      summary.textContent = `${type === "digital" ? "Digital" : type === "analog" ? "Analog" : "Serial"} ${direction === "input" ? "input" : "output"} — ${label || `${part?.partFirst?.name || part?.name || customFriendlyTargetName(exactSelector)} ${String(effect || "value").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").toLowerCase()}`}`;
       reason.textContent = evidence.join("; ");
       button.type = "button";
       button.textContent = existing ? "Edit existing" : "Configure (optional)";
@@ -18921,20 +18955,20 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     targets.forEach((target) => {
       target.events.forEach((action) => appendRecommendation({
         type: "digital", direction: "output", selector: target.selector, effect: action,
-        evidence: target.evidence, configure: () => configureCustomAuthoredOutput(target, action),
+        evidence: target.evidence, label: `${customFriendlyTargetName(target.selector)} ${action.replace(/^./, (letter) => letter.toUpperCase())}`, configure: () => configureCustomAuthoredOutput(target, action),
       }));
     });
     stateTargets.forEach((target) => {
       appendRecommendation({
         type: "digital", direction: "input", selector: target.selector, effect: target.action,
-        parameter: target.parameter, evidence: target.evidence, configure: () => configureCustomAuthoredStateInput(target),
+        parameter: target.parameter, evidence: target.evidence, label: `${customFriendlyTargetName(target.selector)} ${target.stateKind || "state"}`, configure: () => configureCustomAuthoredStateInput(target),
       });
     });
     valueTargets.forEach((target) => {
       const exactSelector = `${target.selector}${target.pseudoElement || ""}`;
       appendRecommendation({
         type: target.type, direction: "input", selector: exactSelector, effect: target.action,
-        parameter: target.parameter, evidence: target.evidence, configure: () => configureCustomAuthoredValueInput(target),
+        parameter: target.parameter, evidence: target.evidence, label: `${customFriendlyTargetName(target.selector)} ${target.label || (target.type === "serial" ? "Text" : target.capability || "Value")}`, configure: () => configureCustomAuthoredValueInput(target),
       });
     });
     status.textContent = recommendationCount
@@ -25547,6 +25581,94 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ? `${included} of ${parts.length} source part${parts.length === 1 ? " is" : "s are"} included. You can change the friendly name or role without changing the authored source.`
       : "No usable component parts were found. Return to Source & preview, refresh the source, then try again.";
   }
+  function partFirstPropertyGroup(descriptor) {
+    return customAuthoredPropertyGroups().find((group) =>
+      group.selector === descriptor.part.selector &&
+      String(group.pseudoElement || "") === String(descriptor.part.pseudoElement || "") &&
+      group.property === descriptor.source.property &&
+      group.stateScope === (descriptor.binding?.effect?.stateScope || "all"),
+    ) || null;
+  }
+  function partFirstPropertyMapping(descriptor) {
+    const marked = (customWorkbenchDraft?.properties || []).find(
+      (mapping) => mapping.partCapabilityId === descriptor.id,
+    );
+    return marked || (partFirstPropertyGroup(descriptor)
+      ? customAuthoredPropertyMapping(partFirstPropertyGroup(descriptor))
+      : null);
+  }
+  function setPartFirstPropertyIncluded(descriptor, included) {
+    const saved = customWorkbenchDraft?.partCapabilities?.find((entry) => entry.id === descriptor.id);
+    if (saved) saved.selected = included;
+    if (included) {
+      const group = partFirstPropertyGroup(descriptor);
+      if (!group) {
+        alert("This source value is no longer available. Refresh Source & preview, then try again.");
+        return;
+      }
+      const mapping = addCustomAuthoredProperty(group);
+      if (mapping) {
+        mapping.partCapabilityId = descriptor.id;
+        mapping.partCapability = {
+          label: descriptor.label,
+          capability: descriptor.capability,
+          selector: descriptor.part.selector,
+          pseudoElement: descriptor.part.pseudoElement || "",
+          stateScope: descriptor.binding?.effect?.stateScope || "all",
+        };
+      }
+    } else {
+      const mapping = partFirstPropertyMapping(descriptor);
+      if (mapping) removeCustomAuthoredProperty(mapping);
+    }
+    customWorkbenchDraft = window.ComposerComponentWorkbench.normalize(customWorkbenchDraft);
+    renderPartFirstProperties();
+  }
+  function renderPartFirstProperties() {
+    const panel = $("part-first-properties-step"), list = $("part-first-properties-list"), status = $("part-first-properties-status");
+    if (!panel || !list || !status || !customWorkbenchDraft) return;
+    const source = {
+      html: $("custom-source-html").value,
+      css: $("custom-source-css").value,
+      javascript: $("custom-source-javascript").value,
+    };
+    const partsById = new Map((customWorkbenchDraft.parts || []).map((part) => [part.id, part]));
+    const descriptors = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source)
+      .filter((descriptor) => !["selected", "disabled"].includes(descriptor.capability))
+      .filter((descriptor) => partsById.get(descriptor.part.partId || "")?.partFirst?.included !== false);
+    customWorkbenchDraft.partCapabilities = window.ComposerComponentWorkbench.materializePartCapabilities(customWorkbenchDraft, source);
+    list.replaceChildren();
+    descriptors.forEach((descriptor) => {
+      const part = partsById.get(descriptor.part.partId || ""), mapping = partFirstPropertyMapping(descriptor), row = document.createElement("label"), include = document.createElement("input"), title = document.createElement("div"), evidence = document.createElement("div"), state = document.createElement("span"), highlight = document.createElement("button");
+      row.className = "part-first-property";
+      row.classList.toggle("included", !!mapping);
+      include.type = "checkbox";
+      include.checked = !!mapping;
+      include.setAttribute("aria-label", `Expose ${part?.partFirst?.name || part?.name || descriptor.part.selector} ${descriptor.label} in Composer`);
+      title.innerHTML = "<strong></strong><small></small>";
+      title.querySelector("strong").textContent = `${part?.partFirst?.name || part?.name || customFriendlyTargetName(descriptor.part.selector)} — ${descriptor.label}`;
+      title.querySelector("small").textContent = "Composer property";
+      evidence.innerHTML = "<code></code><details><summary>Binding details</summary><code></code></details>";
+      evidence.querySelector("code").textContent = descriptor.source.evidence;
+      const technical = evidence.querySelectorAll("code")[1], binding = descriptor.binding || {}, effect = binding.effect || {};
+      technical.textContent = `Target: ${descriptor.part.selector}${descriptor.part.pseudoElement || ""}\nEffect: ${effect.kind || "value"}${effect.name ? ` (${effect.name})` : ""}\nState: ${customStateScopeLabel(effect.stateScope || "all")}`;
+      state.className = "part-first-property-state";
+      state.textContent = customStateScopeLabel(descriptor.binding?.effect?.stateScope || "all");
+      highlight.type = "button";
+      highlight.textContent = "Highlight";
+      include.onclick = (event) => event.stopPropagation();
+      include.onchange = () => setPartFirstPropertyIncluded(descriptor, include.checked);
+      highlight.onclick = (event) => { event.preventDefault(); event.stopPropagation(); if (part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
+      row.onclick = () => { if (part) { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); } };
+      row.append(include, title, evidence, state, highlight);
+      list.append(row);
+    });
+    panel.hidden = false;
+    const included = descriptors.filter((descriptor) => !!partFirstPropertyMapping(descriptor)).length;
+    status.textContent = descriptors.length
+      ? `${included} of ${descriptors.length} source-backed ${descriptors.length === 1 ? "capability is" : "capabilities are"} exposed in Composer. State controls are offered in the next Crestron connections step.`
+      : "No basic editable capabilities were found on the included parts. Use Advanced mapping only when the source intentionally needs a custom adapter.";
+  }
   function setCustomWizardStep(step = 0, { refreshPreview = true } = {}) {
     const dialog = $("custom-component-dialog");
     customWizardStep = Math.max(0, Math.min(4, Number(step) || 0));
@@ -25571,6 +25693,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("custom-wizard-back").disabled = customWizardStep === 0;
     $("custom-wizard-next").hidden = customWizardStep === 4;
     dialog.classList.toggle("custom-authoring-step-parts", customWizardStep === 1);
+    dialog.classList.toggle("custom-authoring-step-properties", customWizardStep === 2);
     if (customWizardStep === 0) {
       const authoredPanel = dialog.querySelector(".custom-step-authored");
       if (authoredPanel) authoredPanel.hidden = false;
@@ -25597,6 +25720,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       // made every correctly detected translated selector look missing.
       refreshCustomPreview({ refreshSimulator: false });
     }
+    if (customWizardStep === 2) renderPartFirstProperties();
     // Step 3 owns two runtime frames. Populate both immediately on entry so
     // neither one can retain the starter/template document until Refresh is
     // clicked. This also applies the current Inspector simulation values to
@@ -25943,6 +26067,15 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   if ($("custom-behavior-preset-add")) $("custom-behavior-preset-add").onclick = addCustomBehaviorPreset;
   $("custom-scope-add-property").onclick = () => openCustomScopeCreator("property");
   $("custom-scope-add-signal").onclick = () => openCustomScopeCreator("signal");
+  if ($("part-first-properties-advanced")) $("part-first-properties-advanced").onclick = () => {
+    const dialog = $("custom-component-dialog"), opening = !dialog.classList.contains("custom-authoring-show-advanced-properties");
+    dialog.classList.toggle("custom-authoring-show-advanced-properties", opening);
+    $("part-first-properties-advanced").textContent = opening ? "Hide advanced mapping" : "Advanced mapping";
+    if (opening) {
+      renderCustomAuthoredPropertyInventory();
+      renderCustomPropertyMappings();
+    }
+  };
   $("custom-property-test-reset").onclick = () => {
     const editingKey = $("custom-property-create")?.dataset.editingKey || "";
     if (editingKey) customTemporaryPropertyValues.delete(editingKey);
