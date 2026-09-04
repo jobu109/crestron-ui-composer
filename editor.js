@@ -21620,7 +21620,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function selectCustomWorkbenchPart(partId) {
     customWorkbenchSelectedPartId = partId || "";
-    document.querySelectorAll(".custom-part-row").forEach((row) => {
+    document.querySelectorAll(".custom-part-row, .part-first-part").forEach((row) => {
       row.classList.toggle("selected", row.dataset.partId === customWorkbenchSelectedPartId);
     });
   }
@@ -25505,32 +25505,40 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ["track", "Track"], ["handle", "Handle / knob"], ["label", "Label / text"],
       ["input", "Input"], ["icon", "Icon / graphic"], ["element", "Other element"],
     ];
-    const parts = (customWorkbenchDraft.parts || []).filter((part) => String(part.selector || "").trim());
+    const parts = (customWorkbenchDraft.parts || []).filter((part) =>
+      String(part.selector || "").trim() && !/^(?:html|body|:root|\*)$/i.test(String(part.selector).trim()));
     parts.forEach((part) => {
-      const row = document.createElement("article"), include = document.createElement("input"), name = document.createElement("input"), role = document.createElement("select"), evidence = document.createElement("div"),
+      const row = document.createElement("article"), include = document.createElement("input"), name = document.createElement("input"), role = document.createElement("select"), highlight = document.createElement("button"), evidence = document.createElement("div"),
         key = part.id || `${part.selector}\u0000${part.pseudoElement || ""}`,
         capabilities = byPart.get(key) || [],
         selected = part.partFirst?.included !== false;
       row.className = "part-first-part";
+      row.dataset.partId = part.id || "";
+      row.classList.toggle("selected", part.id === customWorkbenchSelectedPartId);
       include.type = "checkbox";
       include.checked = selected;
       include.setAttribute("aria-label", `Use ${part.name || part.selector} as a component part`);
       name.value = part.partFirst?.name || part.name || customFriendlyTargetName(part.selector);
       name.setAttribute("aria-label", "Part name");
       roles.forEach(([value, label]) => role.add(new Option(label, value, false, (part.partFirst?.role || part.role || "element") === value)));
+      [include, name, role].forEach((control) => (control.onclick = (event) => event.stopPropagation()));
       include.onchange = () => {
         part.partFirst = { ...(part.partFirst || {}), included: include.checked, name: name.value.trim(), role: role.value };
         renderPartFirstParts();
       };
       name.onchange = () => { part.name = name.value.trim() || part.name; part.partFirst = { ...(part.partFirst || {}), included: include.checked, name: name.value.trim(), role: role.value }; };
       role.onchange = () => { part.role = role.value; part.partFirst = { ...(part.partFirst || {}), included: include.checked, name: name.value.trim(), role: role.value }; };
+      highlight.type = "button";
+      highlight.textContent = "Highlight";
+      highlight.onclick = (event) => { event.stopPropagation(); selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); };
+      row.onclick = () => { selectCustomWorkbenchPart(part.id); showCustomWorkbenchPartHighlight(part); };
       evidence.className = "part-first-evidence";
       const target = document.createElement("code");
       target.textContent = `${part.selector}${part.pseudoElement || ""}`;
       evidence.append(target, document.createTextNode(capabilities.length
         ? ` — source supports ${capabilities.map((entry) => entry.label).filter((label, index, values) => values.indexOf(label) === index).join(", ")}.`
         : " — no basic capability was found; keep it only if you plan to use Advanced mapping."));
-      row.append(include, name, role, evidence);
+      row.append(include, name, role, highlight, evidence);
       list.append(row);
     });
     panel.hidden = false;

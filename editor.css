@@ -1227,7 +1227,8 @@ h2 {
 }
 .part-first-parts-step { min-width: 0; }
 .part-first-parts-list { display: grid; gap: 9px; }
-.part-first-part { display: grid; grid-template-columns: auto minmax(130px, 1fr) minmax(145px, 1fr); gap: 8px; align-items: center; padding: 10px; border: 1px solid #294744; border-radius: 7px; background: #0e1d1f; }
+.part-first-part { display: grid; grid-template-columns: auto minmax(130px, 1fr) minmax(145px, 1fr) auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #294744; border-radius: 7px; background: #0e1d1f; cursor: pointer; }
+.part-first-part.selected { border-color: #00e5c3; box-shadow: 0 0 0 1px #00e5c3 inset; }
 .part-first-part > label { margin: 0; }
 .part-first-part .part-first-evidence { grid-column: 2 / -1; color: #9cbab6; font-size: 12px; }
 .part-first-part code { color: #66e6d1; overflow-wrap: anywhere; }

@@ -72,10 +72,10 @@ code remain available in **Advanced mapping** for exceptional components.
 
 - [x] Add the dedicated Parts wizard step between Source & preview and
   Composer properties.
-- [ ] Reuse the existing Component Map/preview picker to select a real target;
+- [x] Reuse the existing Component Map/preview picker to select a real target;
   allow the friendly name and role to be accepted or corrected.
-- [ ] Display source evidence and preview highlight for every part.
-- [ ] Prevent document canvas/support nodes from becoming component parts.
+- [x] Display source evidence and preview highlight for every part.
+- [x] Prevent document canvas/support nodes from becoming component parts.
 
 ## Phase 3 — Basic Composer capabilities
 
