@@ -18696,6 +18696,31 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       css: $("custom-source-css").value,
     });
   }
+  function refreshCustomSignalStylePropertyChoices() {
+    const list = $("custom-signal-style-properties");
+    if (!list) return [];
+    const selector = $("custom-signal-target")?.value || "",
+      type = $("custom-signal-capability-type")?.value || "digital",
+      action = $("custom-signal-capability-action")?.value || "",
+      exactSelector = String(selector).trim(),
+      authored = window.ComposerComponentWorkbench.inventoryAuthoredProperties({
+        html: $("custom-source-html").value,
+        css: $("custom-source-css").value,
+      }),
+      choices = [...new Map(authored
+        .filter((entry) => entry.kind === "css" || entry.kind === "css-custom-property" || entry.kind === "inline-style")
+        .filter((entry) => `${entry.selector || ""}${entry.pseudoElement || ""}` === exactSelector)
+        // An analog is a continuous number, so colors, text, and other
+        // non-numeric declarations cannot be mapped meaningfully here.
+        .filter((entry) => type !== "analog" || action !== "mappedProperty" || entry.controlType === "number")
+        .map((entry) => [entry.property, entry])).values()];
+    list.innerHTML = choices.map((entry) =>
+      `<option value="${escapeHtml(entry.property)}" label="${escapeHtml(`${entry.property}: ${entry.value}`)}"></option>`).join("");
+    $("custom-signal-parameter").placeholder = choices.length
+      ? "Choose an authored property, or type a custom CSS/DOM property"
+      : "Type a CSS property, variable, or DOM property";
+    return choices;
+  }
   function configureCustomAuthoredOutput(target, action) {
     const partId = customWorkbenchPartIdForSelector(target.selector, customFriendlyTargetName(target.selector));
     customWorkbenchSelectedPartId = partId;
@@ -19263,8 +19288,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : action[0] === "attribute"
           ? "HTML attribute"
           : "CSS/DOM property";
-    if (["mappedProperty", "indexedProperty"].includes(action[0]))
+    if (["mappedProperty", "indexedProperty"].includes(action[0])) {
+      refreshCustomSignalStylePropertyChoices();
       $("custom-signal-parameter").setAttribute("list", "custom-signal-style-properties");
+    }
     else if (["classState", "standardStateText", "selectedStateText"].includes(action[0]))
       refreshCustomAuthoredClassChoices($("custom-signal-parameter"), true);
     else $("custom-signal-parameter").removeAttribute("list");
@@ -19288,7 +19315,10 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : "Advanced connection options";
     if (requiredOptions) signalOptions.open = true;
     if (needsParameter && !$("custom-signal-parameter").dataset.edited) {
-      const defaults = { classState: "selected", mappedProperty: "background-color", indexedProperty: "background-color", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
+      const authoredProperty = ["mappedProperty", "indexedProperty"].includes(action[0])
+        ? refreshCustomSignalStylePropertyChoices()[0]?.property
+        : "";
+      const defaults = { classState: "selected", mappedProperty: authoredProperty || "background-color", indexedProperty: authoredProperty || "background-color", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
       $("custom-signal-parameter").value = compatible?.parameter || defaults[action[0]];
     }
     if (twoValueMap) {
