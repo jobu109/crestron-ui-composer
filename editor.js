@@ -18272,7 +18272,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (existingMapping) return existingMapping;
     const key = uniqueCustomAuthoredPropertyKey(group),
       label = customAuthoredPropertyLabel(group),
-      selector = group.selector,
+      selector = stableCustomSelectorForAuthoredRule(group.selector),
       exactSelector = customAuthoredPropertySelector(group),
       numeric = group.controlType === "number" && String(group.value).trim().match(/^(-?\d*\.?\d+)([a-z%]*)$/i),
       defaultValue = numeric ? Number(numeric[1]) : group.value,

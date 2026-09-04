@@ -114,7 +114,7 @@ code remain available in **Advanced mapping** for exceptional components.
   package export, and registered runtime through canonical bindings.
 - [x] Validate that every selected capability still resolves after source edits;
   offer retarget/remove rather than silently changing it.
-- [ ] Add end-to-end tests for Inspector-only properties, Digital/Analog/Serial
+- [x] Add end-to-end tests for Inspector-only properties, Digital/Analog/Serial
   mappings, every supported state scope, source refresh, reopen, export, and
   installed runtime.
 

@@ -334,6 +334,17 @@
       .replace(/\s+/g, " ")
       .trim();
   }
+  function authoredSelectorOwner(value) {
+    const selector = normalizeCssSelector(value).replace(/::?(?:before|after)$/i, "");
+    // State rules often describe a visual child through its interactive
+    // sibling (input:checked + .track). The child remains the Component Map
+    // part and canonical binding target; the full selector stays in authored
+    // source metadata elsewhere for precise token replacement.
+    const sibling = selector.match(/\+\s*([^+>~]+)$/);
+    if (sibling) return sibling[1].trim();
+    const descendant = selector.split(/[>~\s]+/).filter(Boolean).pop();
+    return descendant || selector;
+  }
   function scopeCssSelector(selector, scope = "all") {
     const normalizedScope = String(scope || "all").replace(/^state-/, "").toLowerCase(),
       candidates = String(selector || "").split(",").map(normalizeCssSelector).filter(Boolean),
@@ -914,7 +925,7 @@
         unit,
         source: { property: entry.property, value: entry.value, evidence: `authored CSS contains ${entry.property}: ${entry.value}` },
         binding: withCanonicalBinding({
-          target: { selector: entry.selector, pseudoElement: entry.pseudoElement || "" },
+          target: { selector: authoredSelectorOwner(entry.selector), pseudoElement: entry.pseudoElement || "" },
           action: entry.property === "visibility" || entry.property === "display" ? "mappedVisibility" : "cssProperty",
           parameter: entry.property,
           stateScope: entry.stateScope,
@@ -950,7 +961,10 @@
         existing = saved.get(identity),
         part = value.parts.find((candidate) =>
           normalizeCssSelector(candidate.selector) === normalizeCssSelector(descriptor.part.selector) &&
-          String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || ""));
+          String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || "")) ||
+          value.parts.find((candidate) =>
+            normalizeCssSelector(candidate.selector) === authoredSelectorOwner(descriptor.part.selector) &&
+            String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || ""));
       return {
         ...descriptor,
         ...(existing ? {
