@@ -119,6 +119,8 @@
     <Content Include="..\dynamic-table.component.js" Link="Web\dynamic-table.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\number-stepper.component.js" Link="Web\number-stepper.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\drag-drop-list.component.js" Link="Web\drag-drop-list.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\image.component.js" Link="Web\image.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\favorites.component.js" Link="Web\favorites.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\components.manifest.json" Link="Web\components.manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\devices.manifest.json" Link="Web\devices.manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Packaging\CrComLib\package\build_bundles\umd\cr-com-lib.js" Link="Packaging\cr-com-lib.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

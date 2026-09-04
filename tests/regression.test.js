@@ -1610,7 +1610,7 @@ run("Widget List exports nested component identities and styling", () => {
   assert.ok(editor.indexOf('property.group === "Included Widget Graphics"') < editor.indexOf('property.group === "Included Widget Interaction & Animation"'));
   assert.ok(editor.includes('function resolvedRangeBindings(definition, item)'));
   assert.ok(exporter.includes('optionalContent:${JSON.stringify(d.optionalContent || {})}'));
-  assert.ok(exporter.includes('properties.includedGraphicAssetData = assetUrl'));
+  assert.ok(exporter.includes('if (property.type === "asset") properties[`${property.key}Data`] = assetUrl(properties[property.key]);'));
   assert.ok(editor.includes('function widgetListResponsiveSnapshot(item)'));
   assert.ok(editor.includes('function fitWidgetListItems(item, rect = item)'));
   assert.ok(editor.includes('scrolling lists'));
@@ -1618,6 +1618,48 @@ run("Widget List exports nested component identities and styling", () => {
   assert.ok(editor.includes('unavailable or recursive included widget'));
   assert.ok(editor.includes('simultaneous effects across a large list'));
   assert.ok(read("editor.html").includes('id="widget-list-responsive-tools"'));
+});
+
+run("exporting a generic type:\"asset\" property resolves its data URL, not just the asset id", () => {
+  // Regression for the Image component: the live editor canvas resolves
+  // any type:"asset" property's companion ${key}Data generically (see
+  // editor.js's asset-picker save paths), but exporter.js only ever
+  // hardcoded that resolution for widget-list's own two asset keys. A
+  // component with its own generic asset property (like Image's "asset")
+  // would render correctly in the editor canvas but export blank, since
+  // its mount() reads properties.assetData, which was never populated for
+  // the exported/real-panel runtime.
+  vm.runInThisContext(read("component-runtime.js"), { filename: "component-runtime.js" });
+  ComposerRuntime.register({
+    id: "regression-asset-widget",
+    name: "Regression Asset Widget",
+    template: '<img class="regression-asset-picture">',
+    styles: "",
+    properties: [{ key: "asset", type: "asset", defaultValue: "" }],
+    signals: [],
+    data: {},
+    mount(root, properties) {
+      root.querySelector(".regression-asset-picture").src = properties.assetData || "";
+    },
+  });
+  vm.runInThisContext(read("exporter.js"), { filename: "exporter.js" });
+  const html = ComposerExporter.exportProject({
+    version: 4,
+    width: 1920,
+    height: 1200,
+    pages: [{ id: "page-a", name: "Page A", background: "#000", bindingMode: "none" }],
+    items: [
+      {
+        id: "asset-widget", pageId: "page-a", name: "Asset widget", componentId: "regression-asset-widget",
+        x: 0, y: 0, w: 200, h: 50, z: 1, properties: { asset: "asset-1" }, signalBindings: {},
+      },
+    ],
+    assets: [{ id: "asset-1", type: "image", dataUrl: "data:image/png;base64,REGRESSION-ASSET-DATA" }],
+  });
+  assert.ok(
+    html.includes("data:image/png;base64,REGRESSION-ASSET-DATA"),
+    "a generic type:\"asset\" property must have its data URL resolved for export, not just carry the asset id",
+  );
 });
 
 run("Video Switcher supports touch drag routing and per-item assets", () => {

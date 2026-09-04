@@ -351,11 +351,16 @@
       ? '<aside id="ch5-diagnostics"><strong onclick="var p=this.parentElement;if(p.style.left){p.style.left=\'\';p.style.bottom=\'\';p.style.right=\'30px\';p.style.top=\'30px\'}else{p.style.right=\'\';p.style.top=\'\';p.style.left=\'30px\';p.style.bottom=\'30px\'}">CH5 Signal Diagnostics — tap here to move</strong><pre id="ch5-communication-status"></pre><pre id="ch5-diagnostic-log"></pre></aside>'
       : "";
     const exportedProperties = (item) => {
-      const properties = contractProperties(item);
-      if (item.componentId === "widget-list") {
-        properties.includedGraphicAssetData = assetUrl(properties.includedGraphicAsset);
-        properties.includedSelectedGraphicAssetData = assetUrl(properties.includedSelectedGraphicAsset);
-      }
+      const properties = contractProperties(item),
+        definition = item.componentId ? global.ComposerRuntime.get(item.componentId) : null;
+      // Generic counterpart to editor.js's live-canvas resolution: any
+      // type:"asset" property needs its ${key}Data companion resolved to an
+      // actual data URL for the exported/real-panel runtime, not just an
+      // asset id. This also covers widget-list's includedGraphicAsset /
+      // includedSelectedGraphicAsset, which are declared type:"asset" too.
+      (definition?.properties || []).forEach((property) => {
+        if (property.type === "asset") properties[`${property.key}Data`] = assetUrl(properties[property.key]);
+      });
       return properties;
     };
     const scopedItems = outputPages.flatMap((page) =>

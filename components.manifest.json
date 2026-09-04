@@ -116,5 +116,7 @@
     ,{"file":"dynamicTable.html","componentId":"dynamic-table","runtime":"scoped","name":"Dynamic Table","category":"Text & Input","width":640,"height":420}
     ,{"file":"numberStepper.html","componentId":"number-stepper","runtime":"scoped","name":"Number Stepper","category":"Sliders & Levels","width":380,"height":200}
     ,{"file":"dragDropList.html","componentId":"drag-drop-list","runtime":"scoped","name":"Drag & Drop List","category":"Navigation & Menus","width":360,"height":420}
+    ,{"file":"image.html","componentId":"image","runtime":"scoped","name":"Image","category":"Visual Only","width":300,"height":200}
+    ,{"file":"favorites.html","componentId":"favorites","runtime":"scoped","name":"Favorites","category":"Lists & Selectors","width":480,"height":320}
   ]
 }
