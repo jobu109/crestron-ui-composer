@@ -42,7 +42,25 @@ public partial class MainWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "CrestronUiComposer",
                 "WebView2");
-            var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userData);
+            CoreWebView2Environment environment;
+            try
+            {
+                environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userData);
+            }
+            catch (COMException ex) when ((uint)ex.HResult == 0x800700AA)
+            {
+                // A forcibly-closed prior instance can briefly leave its
+                // WebView2 profile locked. Do not strand the application
+                // behind a startup dialog; an isolated session profile is
+                // safe because project/component persistence lives outside
+                // WebView2's browser cache.
+                var fallbackUserData = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "CrestronUiComposer",
+                    "WebView2-Sessions",
+                    Environment.ProcessId.ToString());
+                environment = await CoreWebView2Environment.CreateAsync(userDataFolder: fallbackUserData);
+            }
             await EditorView.EnsureCoreWebView2Async(environment);
             // The editor is shipped beside the executable and changes between
             // builds. Do not let WebView2 silently reuse an older editor.js or

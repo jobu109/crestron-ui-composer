@@ -57,7 +57,9 @@
     defaultSize: { width: 480, height: 320 },
     signals: [],
     itemSelector: ".fav-item",
-    data: { ICONS, REFERENCE_SIZE },
+    // mount() is serialized into the standalone Preview/CH5 runtime. Every
+    // closure value it uses must therefore travel through definitionData.
+    data: { ICONS, REFERENCE_SIZE, MAX_ITEMS },
     rangeBindings: [
       { name: "Digital item press range", type: "digital", direction: "output", baseKey: "pressBase", incrementKey: "signalIncrement" },
       { name: "Digital item selected range", type: "digital", direction: "input", baseKey: "feedbackBase", incrementKey: "signalIncrement" },
@@ -74,8 +76,8 @@
       { key: "labelBase", name: "Label base / pattern", type: "text", defaultValue: "Favorites.Items.{index}.Label", signalSetting: true },
       { key: "signalIncrement", name: "Join increment", type: "number", defaultValue: 1, signalSetting: true },
       { key: "backgroundColor", name: "Background color", type: "color", defaultValue: "transparent" },
-      { key: "itemColor", name: "Icon circle color", type: "color", defaultValue: "#2c2f35" },
-      { key: "selectedColor", name: "Item selected circle color", type: "color", defaultValue: "#04aa8e" },
+      { key: "itemColor", name: "Grid tile color", type: "color", defaultValue: "#2c2f35" },
+      { key: "selectedColor", name: "Selected grid tile color", type: "color", defaultValue: "#04aa8e" },
       { key: "iconColor", name: "Icon color", type: "color", defaultValue: "#ffffff" },
       { key: "labelColor", name: "Item label color", type: "color", defaultValue: "#ffffff" },
       { key: "glowColor", name: "Press / selected glow color", type: "color", defaultValue: "#04aa8e" },
@@ -83,13 +85,30 @@
       { key: "circleSize", name: "Icon circle size", type: "number", min: 24, max: 160, defaultValue: 64 },
       { key: "iconSize", name: "Icon size", type: "number", min: 10, max: 80, defaultValue: 28 },
       { key: "textSize", name: "Item label size", type: "number", min: 8, max: 32, defaultValue: 14 },
-      { key: "gap", name: "Item spacing", type: "number", min: 0, max: 60, defaultValue: 16 },
+      { key: "gap", name: "Row item spacing", type: "number", min: 0, max: 60, defaultValue: 16, visibleWhen: { key: "layout", equals: "row" } },
       { key: "cornerRadius", name: "Background corner radius", type: "number", min: 0, max: 80, defaultValue: 0 },
     ],
     template: '<div class="fav-card"><div class="fav-grid"></div></div>',
-    styles: '[data-component="favorites"],[data-component="favorites"] *{box-sizing:border-box}[data-component="favorites"]{display:block;width:100%;height:100%;font-family:"Segoe UI",sans-serif}[data-component="favorites"] .fav-card{position:relative;width:100%;height:100%;container-type:size;border-radius:var(--corner-radius-px);background:var(--background-color);overflow:hidden}[data-component="favorites"] .fav-grid{width:100%;height:100%;padding:var(--gap-px);display:grid;grid-template-columns:repeat(var(--columns),1fr);gap:var(--gap-px);align-content:start}[data-component="favorites"] .fav-grid.fav-row{display:flex;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden}[data-component="favorites"] .fav-item{display:flex;flex:none;flex-direction:column;align-items:center;justify-content:start;gap:clamp(2px,1.5cqmin,8px);width:100%;height:auto;padding:2px;border:0;background:transparent;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}[data-component="favorites"] .fav-grid.fav-row .fav-item{width:auto}[data-component="favorites"] .fav-item.pressed{transform:scale(.92)}[data-component="favorites"] .fav-icon-circle{position:relative;width:var(--circle-size-px);height:var(--circle-size-px);flex:none;border-radius:50%;background:var(--item-color);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:box-shadow .15s ease}[data-component="favorites"] .fav-item.pressed .fav-icon-circle,[data-component="favorites"] .fav-item.selected .fav-icon-circle{box-shadow:0 0 var(--glow-px) color-mix(in srgb,var(--glow-color) 70%,transparent)}[data-component="favorites"] .fav-item.selected .fav-icon-circle{background:var(--selected-color)}[data-component="favorites"] .fav-icon-circle svg{width:var(--icon-size-px);height:var(--icon-size-px);fill:none;stroke:var(--icon-color);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}[data-component="favorites"] .fav-icon-circle img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}[data-component="favorites"] .fav-item-label{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label-color);font-size:var(--text-size-px);text-align:center}',
+    styles:
+      '[data-component="favorites"],[data-component="favorites"] *{box-sizing:border-box}' +
+      '[data-component="favorites"]{display:block;width:100%;height:100%;font-family:"Segoe UI",sans-serif}' +
+      '[data-component="favorites"] .fav-card{position:relative;width:100%;height:100%;container-type:size;border-radius:var(--corner-radius-px);background:var(--background-color);overflow:auto}' +
+      '[data-component="favorites"] .fav-grid{width:100%;min-height:100%;padding:0;display:grid;grid-template-columns:repeat(var(--columns),minmax(0,1fr));gap:0;align-content:start}' +
+      '[data-component="favorites"] .fav-grid.fav-row{display:flex;height:100%;min-height:0;padding:var(--gap-px);gap:var(--gap-px);flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden}' +
+      '[data-component="favorites"] .fav-item{display:flex;min-width:0;aspect-ratio:1;flex-direction:column;align-items:center;justify-content:center;gap:clamp(2px,1.5cqmin,8px);width:100%;height:auto;padding:clamp(4px,2cqmin,12px);border:0;border-radius:0;background:var(--item-color);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color .15s ease,transform .15s ease,box-shadow .15s ease}' +
+      '[data-component="favorites"] .fav-grid.fav-row .fav-item{flex:none;width:auto;height:min(100%,var(--circle-size-px));padding:2px;border-radius:50%;background:transparent}' +
+      '[data-component="favorites"] .fav-item.pressed{transform:scale(.94);box-shadow:inset 0 0 var(--glow-px) var(--glow-color)}' +
+      '[data-component="favorites"] .fav-item.selected{background:var(--selected-color);box-shadow:inset 0 0 var(--glow-px) var(--glow-color)}' +
+      '[data-component="favorites"] .fav-icon-circle{position:relative;width:var(--circle-size-px);height:var(--circle-size-px);max-width:70%;max-height:70%;flex:none;border-radius:0;background:transparent;display:flex;align-items:center;justify-content:center;overflow:hidden}' +
+      '[data-component="favorites"] .fav-grid.fav-row .fav-icon-circle{max-width:none;max-height:none;border-radius:50%;background:var(--item-color)}' +
+      '[data-component="favorites"] .fav-grid.fav-row .fav-item.pressed .fav-icon-circle,[data-component="favorites"] .fav-grid.fav-row .fav-item.selected .fav-icon-circle{box-shadow:0 0 var(--glow-px) color-mix(in srgb,var(--glow-color) 70%,transparent)}' +
+      '[data-component="favorites"] .fav-grid.fav-row .fav-item.selected{background:transparent;box-shadow:none}' +
+      '[data-component="favorites"] .fav-grid.fav-row .fav-item.selected .fav-icon-circle{background:var(--selected-color)}' +
+      '[data-component="favorites"] .fav-icon-circle svg{width:var(--icon-size-px);height:var(--icon-size-px);fill:none;stroke:var(--icon-color);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}' +
+      '[data-component="favorites"] .fav-icon-circle img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}' +
+      '[data-component="favorites"] .fav-item-label{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label-color);font-size:var(--text-size-px);text-align:center}',
     mount(root, context) {
-      const p = context.options.properties || {}, data = context.options.definitionData || {}, icons = data.ICONS || {}, referenceSize = data.REFERENCE_SIZE || 400;
+      const p = context.options.properties || {}, data = context.options.definitionData || {}, icons = data.ICONS || {}, referenceSize = data.REFERENCE_SIZE || 400, maxItems = data.MAX_ITEMS || 12;
       const card = root.querySelector(".fav-card"), grid = root.querySelector(".fav-grid");
       const truthy = value => value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true";
       const toResponsiveSize = (px, min, max) => `clamp(${min}px, ${((Number(px) || 0) / referenceSize) * 100}cqmin, ${max}px)`;
@@ -110,7 +129,7 @@
       const isRow = p.layout === "row";
       grid.classList.toggle("fav-row", isRow);
 
-      const count = Math.max(1, Math.min(MAX_ITEMS, Number(p.itemCount) || 6));
+      const count = Math.max(1, Math.min(maxItems, Number(p.itemCount) || 6));
       const address = (base, index) => p.bindingMode === "join"
         ? String((Number(base) || 0) + index * (Number(p.signalIncrement) || 1))
         : String(base || "").replace(/\{n\}/g, index + 1).replace(/\{index\}/g, index);

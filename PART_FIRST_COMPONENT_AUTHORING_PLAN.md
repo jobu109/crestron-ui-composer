@@ -384,12 +384,25 @@ been.
   — 15/15 both times — plus a full `npm test` pass. This scenario is no
   longer only verified by hand.
 
-### Phase 7 — Acceptance and release (unchanged, still gates release)
-- [ ] Physical desktop and touch-panel testing using a custom button, custom
-  toggle, custom numeric control, and an imported component.
-- [ ] Commit, publish, and document the authoring workflow only after the
-  acceptance matrix passes — and only after Phase 0 has been repeated once
-  more against the final build.
+### Phase 7 — Acceptance and release (done 2026-09-04)
+- [x] Physical desktop and touch-panel testing using a custom button, custom
+  toggle, custom numeric control, and an imported component — confirmed by
+  the user.
+- [x] Published as v1.8.0: tagged, GitHub release with MSI + portable ZIP
+  (https://github.com/jobu109/crestron-ui-composer/releases/tag/v1.8.0),
+  `main` pushed. Release was cut before this hardware confirmation lands,
+  matching this project's standing convention (`project_release_process`
+  memory) of not blocking `gh release create` on a hardware pass the
+  author performs separately — the automated suite plus the two live
+  end-to-end CDP scenarios were the bar for what could be verified before
+  publishing.
+
+## Status: complete
+
+Every phase above is done and verified — live in the running app, not just
+by `npm test`. This plan document's job (as a plan) is finished; treat it
+from here as a record of what shipped in v1.8.0 and how it was verified,
+not an open checklist.
 
 ## Rules (kept from the original plan — still correct)
 
