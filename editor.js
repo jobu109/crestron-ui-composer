@@ -18697,8 +18697,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     });
   }
   function refreshCustomSignalStylePropertyChoices() {
-    const list = $("custom-signal-style-properties");
-    if (!list) return [];
+    const list = $("custom-signal-style-properties"), picker = $("custom-signal-parameter-choices"), parameter = $("custom-signal-parameter");
+    if (!list || !picker || !parameter) return [];
     const selector = $("custom-signal-target")?.value || "",
       type = $("custom-signal-capability-type")?.value || "digital",
       action = $("custom-signal-capability-action")?.value || "",
@@ -18716,8 +18716,15 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         .map((entry) => [entry.property, entry])).values()];
     list.innerHTML = choices.map((entry) =>
       `<option value="${escapeHtml(entry.property)}" label="${escapeHtml(`${entry.property}: ${entry.value}`)}"></option>`).join("");
-    $("custom-signal-parameter").placeholder = choices.length
-      ? "Choose an authored property, or type a custom CSS/DOM property"
+    const current = parameter.value.trim(), selected = choices.some((entry) => entry.property === current) ? current : "__custom__";
+    picker.innerHTML = choices.map((entry) =>
+      `<option value="${escapeHtml(entry.property)}">${escapeHtml(`${entry.property} — ${entry.value}`)}</option>`).join("") +
+      `<option value="__custom__">Custom CSS / DOM property…</option>`;
+    picker.hidden = false;
+    picker.value = selected;
+    parameter.hidden = selected !== "__custom__";
+    parameter.placeholder = choices.length
+      ? "Type a custom CSS variable or DOM property"
       : "Type a CSS property, variable, or DOM property";
     return choices;
   }
@@ -19290,9 +19297,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           : "CSS/DOM property";
     if (["mappedProperty", "indexedProperty"].includes(action[0])) {
       refreshCustomSignalStylePropertyChoices();
-      $("custom-signal-parameter").setAttribute("list", "custom-signal-style-properties");
     }
-    else if (["classState", "standardStateText", "selectedStateText"].includes(action[0]))
+    else {
+      $("custom-signal-parameter-choices").hidden = true;
+      $("custom-signal-parameter").hidden = false;
+    }
+    if (["classState", "standardStateText", "selectedStateText"].includes(action[0]))
       refreshCustomAuthoredClassChoices($("custom-signal-parameter"), true);
     else $("custom-signal-parameter").removeAttribute("list");
     $("custom-signal-hold-row").hidden = !(digitalOutput && ["press", "held"].includes(action[0]));
@@ -19315,11 +19325,9 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
         : "Advanced connection options";
     if (requiredOptions) signalOptions.open = true;
     if (needsParameter && !$("custom-signal-parameter").dataset.edited) {
-      const authoredProperty = ["mappedProperty", "indexedProperty"].includes(action[0])
-        ? refreshCustomSignalStylePropertyChoices()[0]?.property
-        : "";
-      const defaults = { classState: "selected", mappedProperty: authoredProperty || "background-color", indexedProperty: authoredProperty || "background-color", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
+      const defaults = { classState: "selected", mappedProperty: "", indexedProperty: "", attribute: "data-value", standardStateText: "selected", selectedStateText: "selected", customEvent: "complete" };
       $("custom-signal-parameter").value = compatible?.parameter || defaults[action[0]];
+      if (["mappedProperty", "indexedProperty"].includes(action[0])) refreshCustomSignalStylePropertyChoices();
     }
     if (twoValueMap) {
       if (!$("custom-signal-false-mode").dataset.edited)
@@ -25995,6 +26003,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $(id).dataset.edited = "true";
     refreshCustomSignalCreator();
   }));
+  $("custom-signal-parameter-choices").onchange = () => {
+    const picker = $("custom-signal-parameter-choices"), parameter = $("custom-signal-parameter");
+    if (picker.value === "__custom__") {
+      parameter.hidden = false;
+      parameter.focus();
+      return;
+    }
+    parameter.value = picker.value;
+    parameter.dataset.edited = "true";
+    parameter.hidden = true;
+    refreshCustomSignalCreator();
+  };
   $("custom-signal-false-mode").onchange = () => {
     $("custom-signal-false-mode").dataset.edited = "true";
     refreshCustomSignalCreator();
