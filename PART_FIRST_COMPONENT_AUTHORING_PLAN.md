@@ -65,7 +65,7 @@ code remain available in **Advanced mapping** for exceptional components.
 - [x] Store accepted descriptors independently and resolve them to real
   Component Map parts; legacy properties/connections remain compatibility-only
   and are not used to populate the new authoring UI.
-- [ ] Add fixtures for the rolling-square toggle, a button, label, numeric
+- [x] Add fixtures for the rolling-square toggle, a button, label, numeric
   control, pseudo-element knob, and imported component.
 
 ## Phase 2 — Parts step

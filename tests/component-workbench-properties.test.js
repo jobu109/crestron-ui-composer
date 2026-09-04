@@ -160,6 +160,36 @@ assert.ok(
   !rollingToggleCapabilities.some((entry) => entry.source.property === "inset"),
   "basic capabilities must omit implementation-only layout declarations",
 );
+const buttonCapabilities = workbench.inventoryPartCapabilities({
+  html: '<button class="action">Send</button>',
+  css: '.action{background-color:#263b3c;border-color:#00e5c3;border-radius:10px;opacity:.9}',
+});
+assert.ok(buttonCapabilities.some((entry) => entry.part.selector === ".action" && entry.capability === "backgroundColor"));
+assert.ok(buttonCapabilities.some((entry) => entry.part.selector === ".action" && entry.capability === "borderColor"));
+assert.ok(buttonCapabilities.some((entry) => entry.part.selector === ".action" && entry.capability === "cornerRadius"));
+assert.ok(buttonCapabilities.some((entry) => entry.part.selector === ".action" && entry.capability === "text"), "authored button text must become a basic Text capability");
+const labelCapabilities = workbench.inventoryPartCapabilities({
+  html: '<span class="status">Ready</span>', css: '.status{color:#ffffff;opacity:.75}',
+});
+assert.ok(labelCapabilities.some((entry) => entry.capability === "text"));
+assert.ok(labelCapabilities.some((entry) => entry.capability === "textColor"));
+assert.ok(labelCapabilities.some((entry) => entry.capability === "opacity"));
+const numericCapabilities = workbench.inventoryPartCapabilities({
+  html: '<input class="level" type="range" value="42">', css: '.level{width:120px;opacity:.8}',
+});
+assert.ok(numericCapabilities.some((entry) => entry.part.selector === ".level" && entry.capability === "width" && entry.unit === "px"));
+assert.ok(numericCapabilities.some((entry) => entry.part.selector === ".level" && entry.capability === "opacity"));
+const pseudoKnobCapabilities = workbench.inventoryPartCapabilities({
+  html: '<span class="track"></span>', css: '.track::before{content:"";background-color:#fff;border-radius:5px;width:28px}',
+});
+assert.ok(pseudoKnobCapabilities.some((entry) => entry.part.selector === ".track" && entry.part.pseudoElement === "::before" && entry.capability === "cornerRadius"));
+assert.ok(pseudoKnobCapabilities.some((entry) => entry.part.selector === ".track" && entry.part.pseudoElement === "::before" && entry.capability === "backgroundColor"));
+const importedComponentCapabilities = workbench.inventoryPartCapabilities({
+  html: '<!doctype html><html><body><div id="card">Imported</div></body></html>',
+  css: 'html,body{width:100%;height:100%;background:#000;margin:0}#card{background-color:#123456;border-radius:12px}',
+});
+assert.ok(importedComponentCapabilities.some((entry) => entry.part.selector === "#card" && entry.capability === "cornerRadius"));
+assert.ok(!importedComponentCapabilities.some((entry) => entry.part.selector === "body" || entry.source.property === "margin"), "imported document canvas CSS must not become a component capability");
 const capabilityWorkbench = workbench.empty();
 capabilityWorkbench.parts.push({ id: "part-track", name: "Track", selector: ".track", role: "track" });
 capabilityWorkbench.partCapabilities.push({
