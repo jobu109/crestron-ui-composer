@@ -90,13 +90,13 @@ code remain available in **Advanced mapping** for exceptional components.
 
 ## Phase 4 — Part-aware Crestron connections
 
-- [ ] Make the basic connection form choose **part + capability/event**, not a
+- [x] Make the basic connection form choose **part + capability/event**, not a
   CSS/DOM property.
-- [ ] Offer Digital native states/events, Analog numeric capabilities, and
+- [x] Offer Digital native states/events, Analog numeric capabilities, and
   Serial text/asset capabilities according to the selected descriptor.
-- [ ] Provide clear conversion controls only when a numeric capability is
+- [x] Provide clear conversion controls only when a numeric capability is
   selected, including source-derived units/ranges.
-- [ ] Retain Advanced mapping for classes, attributes, custom variables, DOM
+- [x] Retain Advanced mapping for classes, attributes, custom variables, DOM
   properties, and authored JavaScript hooks.
 
 ## Phase 5 — Templates, imports, and recommendations

@@ -17528,6 +17528,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function fillCustomScopeTarget(select, includePseudo = true, includeConnectionInventory = false) {
     const previous = select.value,
       previousWasSourceTarget = select.selectedOptions[0]?.dataset.sourceTarget === "true",
+      previousSourceCapability = select.selectedOptions[0]?.dataset.sourceCapability || "",
       preferredPartId = select.dataset.preferPartId || "",
       targets = customScopeTargets(includePseudo),
       recommended = targets.filter((target) => !target.advanced),
@@ -17580,6 +17581,8 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     // value assignment always selects the first one (often Knob instead of Track).
     if (preferredOption) select.selectedIndex = preferredOption.index;
     else if (previousOption) select.selectedIndex = previousOption.index;
+    if (previousSourceCapability && previousOption)
+      previousOption.dataset.sourceCapability = previousSourceCapability;
     delete select.dataset.preferPartId;
   }
   function fillCustomStateScopeSelect(select, preferred = "") {
@@ -18843,8 +18846,16 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       option.dataset.partId = partId;
       targetSelect.appendChild(option);
     }
+    if (target.capability) option.dataset.sourceCapability = JSON.stringify({
+      label: target.label || target.capability,
+      property: target.parameter || "",
+      unit: target.unit || "",
+      evidence: target.evidence || [],
+    });
+    else delete option.dataset.sourceCapability;
     targetSelect.value = exactSelector;
     targetSelect.dataset.edited = "true";
+    refreshCustomSignalCreator();
     const base = scopedCustomKey(`${customFriendlyTargetName(exactSelector)} ${target.parameter || target.action}`, target.type),
       used = new Set(collectCustomSignals().map((signal) => signal.key));
     let key = base, index = 2;
@@ -19292,6 +19303,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     const role = customSignalTargetRole(),
       selectedTarget = $("custom-signal-target").selectedOptions[0],
       compatibility = (() => { try { return JSON.parse(selectedTarget?.dataset.compatibility || "[]"); } catch (_) { return []; } })(),
+      sourceCapability = (() => { try { return JSON.parse(selectedTarget?.dataset.sourceCapability || ""); } catch (_) { return null; } })(),
       actions = (customScopedSignalActions[`${type}:${direction}`] || [])
         .filter(([value]) => customSignalActionApplies(value, type, direction, role))
         .filter(([value]) => !selectedTarget?.dataset.sourceTarget || compatibility.some((entry) => entry.type === type && entry.direction === direction && entry.action === value));
@@ -19330,11 +19342,24 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
           ? "HTML attribute"
           : "CSS/DOM property";
     if (["mappedProperty", "indexedProperty"].includes(action[0])) {
-      refreshCustomSignalStylePropertyChoices();
+      if (sourceCapability?.property) {
+        $("custom-signal-parameter-choices").hidden = true;
+        $("custom-signal-parameter").hidden = true;
+        $("custom-signal-source-capability").hidden = false;
+        $("custom-signal-source-capability").textContent = `${sourceCapability.label || "Source capability"}${sourceCapability.unit ? ` (${sourceCapability.unit})` : ""}`;
+        $("custom-signal-parameter-label").textContent = "Source-backed capability";
+        if (!$("custom-signal-parameter").dataset.edited)
+          $("custom-signal-parameter").value = sourceCapability.property;
+      } else {
+        $("custom-signal-source-capability").hidden = true;
+        $("custom-signal-parameter").hidden = false;
+        refreshCustomSignalStylePropertyChoices();
+      }
     }
     else {
       $("custom-signal-parameter-choices").hidden = true;
       $("custom-signal-parameter").hidden = false;
+      $("custom-signal-source-capability").hidden = true;
     }
     if (["classState", "standardStateText", "selectedStateText"].includes(action[0]))
       refreshCustomAuthoredClassChoices($("custom-signal-parameter"), true);
