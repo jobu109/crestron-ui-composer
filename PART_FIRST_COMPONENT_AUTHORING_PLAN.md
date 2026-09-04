@@ -49,16 +49,22 @@ code remain available in **Advanced mapping** for exceptional components.
   mapping behind the author's back.
 - Preview, test controls, saved components, exports, and installed runtime must
   use the same canonical binding executor.
+- Existing forms and role-based defaults are compatibility-only. Reuse an
+  existing subsystem only when it provides source parsing, exact target
+  resolution, canonical execution, package migration, or test coverage; do not
+  carry its UI or inferred choices into the new workflow merely because it
+  already exists.
 
 ## Phase 1 — Foundation and compatibility
 
 - [x] Define a source-backed `partCapability` descriptor: part, friendly
   capability, canonical binding, source evidence, state scope, control type,
   range/unit, and whether it is safe for Composer/Crestron use.
-- [ ] Derive descriptors from existing authored-property and state inventories
+- [x] Derive descriptors from existing authored-property and state inventories
   without changing their current package format.
-- [ ] Migrate current properties/connections into descriptors on read while
-  retaining all legacy mapping fields.
+- [x] Store accepted descriptors independently and resolve them to real
+  Component Map parts; legacy properties/connections remain compatibility-only
+  and are not used to populate the new authoring UI.
 - [ ] Add fixtures for the rolling-square toggle, a button, label, numeric
   control, pseudo-element knob, and imported component.
 

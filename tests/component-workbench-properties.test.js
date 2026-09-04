@@ -160,6 +160,24 @@ assert.ok(
   !rollingToggleCapabilities.some((entry) => entry.source.property === "inset"),
   "basic capabilities must omit implementation-only layout declarations",
 );
+const capabilityWorkbench = workbench.empty();
+capabilityWorkbench.parts.push({ id: "part-track", name: "Track", selector: ".track", role: "track" });
+capabilityWorkbench.partCapabilities.push({
+  id: "saved-track-radius",
+  name: "Track shape",
+  selected: true,
+  part: { selector: ".track", pseudoElement: "" },
+  capability: "cornerRadius",
+  binding: { effect: { stateScope: "standard" } },
+});
+const materializedCapabilities = workbench.materializePartCapabilities(capabilityWorkbench, {
+  html: '<span class="track"></span>', css: '.track{border-radius:8px}',
+});
+const materializedRadius = materializedCapabilities.find((entry) => entry.capability === "cornerRadius");
+assert.strictEqual(materializedRadius.part.partId, "part-track", "a descriptor must resolve to the selected Component Map part without using legacy property rows");
+assert.strictEqual(materializedRadius.id, "saved-track-radius", "accepted part-first capability metadata must survive source re-inventory");
+assert.strictEqual(materializedRadius.name, "Track shape");
+assert.strictEqual(materializedRadius.selected, true);
 assert.ok(
   javascript.includes('style.textContent = `${scopedSelector} { ${declaration.split(";")'),
   "temporary property previews must override authored component CSS",

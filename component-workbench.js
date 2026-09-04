@@ -29,6 +29,10 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       parts: [],
+      // New part-first authoring metadata. This is independent of the legacy
+      // property/connection rows so existing components remain readable
+      // without forcing their old UI model into new authoring sessions.
+      partCapabilities: [],
       properties: [],
       connections: [],
       states: [],
@@ -164,7 +168,7 @@
       // while unknown metadata survives open/save/package round trips.
       result = { ...clone(source), ...empty() };
     result.schemaVersion = Number(source.schemaVersion) || SCHEMA_VERSION;
-    ["parts", "properties", "connections", "states", "repeatedCollections"].forEach(
+    ["parts", "partCapabilities", "properties", "connections", "states", "repeatedCollections"].forEach(
       (key) => (result[key] = Array.isArray(source[key]) ? clone(source[key]) : []),
     );
     result.properties = result.properties.map(withCanonicalBinding);
@@ -933,6 +937,26 @@
     });
     return descriptors;
   }
+  function materializePartCapabilities(workbench, source = {}) {
+    const value = normalize(workbench),
+      generated = inventoryPartCapabilities(source),
+      saved = new Map((value.partCapabilities || []).map((entry) => [
+        [entry.part?.selector || "", entry.part?.pseudoElement || "", entry.capability || "", entry.binding?.effect?.stateScope || "all"].join("\u0000"),
+        entry,
+      ]));
+    return generated.map((descriptor) => {
+      const identity = [descriptor.part.selector, descriptor.part.pseudoElement || "", descriptor.capability, descriptor.binding.effect.stateScope || "all"].join("\u0000"),
+        existing = saved.get(identity),
+        part = value.parts.find((candidate) =>
+          normalizeCssSelector(candidate.selector) === normalizeCssSelector(descriptor.part.selector) &&
+          String(candidate.pseudoElement || "") === String(descriptor.part.pseudoElement || ""));
+      return {
+        ...descriptor,
+        ...(existing ? { id: existing.id || descriptor.id, selected: !!existing.selected, name: existing.name || descriptor.label } : {}),
+        part: { ...descriptor.part, partId: part?.id || "" },
+      };
+    });
+  }
   return {
     SCHEMA_VERSION,
     BINDING_VERSION,
@@ -960,5 +984,6 @@
     inventoryAuthoredStateTargets,
     inventoryAuthoredValueTargets,
     inventoryPartCapabilities,
+    materializePartCapabilities,
   };
 });
