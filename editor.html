@@ -223,11 +223,11 @@
             <button id="project-search">
               Project search <kbd>Ctrl+F</kbd>
             </button>
-            <button id="preview">Preview</button>
+            <button id="preview">Simulate</button>
             <button id="panel-compatibility">Panel fit</button>
             <button id="responsive-compare">Responsive compare</button>
             <button id="signal-manager">Signals</button>
-            <button id="signal-simulator">Simulate</button>
+            <button id="signal-simulator">Signal simulator</button>
           </div>
         </details>
         <details class="app-menu">
@@ -1093,6 +1093,47 @@
         </div>
       </form>
     </dialog>
+    <dialog id="preview-launch-dialog" class="preview-launch-dialog">
+      <form method="dialog">
+        <div class="dialog-title preview-launch-title">
+          <div>
+            <h2>Preview</h2>
+            <p class="hint">Run <strong id="preview-project-name">this project</strong> standalone or against a live Crestron processor.</p>
+          </div>
+        </div>
+        <fieldset class="preview-mode-options" aria-label="Preview mode">
+          <label class="preview-mode-card">
+            <input type="radio" name="preview-mode" value="standalone" checked />
+            <span><strong>Standalone</strong><small>Existing local preview<br />No processor connection</small></span>
+          </label>
+          <label class="preview-mode-card">
+            <input type="radio" name="preview-mode" value="webxpanel" />
+            <span><strong>Web XPanel</strong><small>Secure WebSocket<br />Processor authentication</small></span>
+          </label>
+        </fieldset>
+        <section id="preview-live-settings" class="preview-live-settings" hidden>
+          <label>Processor host / IP<input id="preview-processor-host" type="text" inputmode="url" autocomplete="off" placeholder="192.168.1.10" /></label>
+          <div class="preview-live-row">
+            <label>IP ID (hex)<input id="preview-ipid" type="text" inputmode="text" autocomplete="off" maxlength="4" value="03" /></label>
+            <label>Port (optional)<input id="preview-port" type="number" inputmode="numeric" min="1" max="65535" placeholder="49200" /></label>
+          </div>
+          <div id="preview-webxpanel-credentials" class="preview-webxpanel-credentials" hidden>
+            <label>Username<input id="preview-username" type="text" autocomplete="username" /></label>
+            <label>Password<input id="preview-password" type="password" autocomplete="current-password" /></label>
+            <small>Credentials are used only to request this preview session’s Web XPanel token and are not saved.</small>
+          </div>
+          <div class="preview-connection-test">
+            <button id="preview-test-connection" type="button">Test connection</button>
+            <span id="preview-connection-status" class="hint" role="status"></span>
+          </div>
+          <p id="preview-launch-error" class="preview-launch-error" role="alert" hidden></p>
+        </section>
+        <div class="dialog-actions">
+          <button value="cancel">Cancel</button>
+          <button id="preview-launch" type="button" class="primary">Launch</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="recovery-dialog" class="recovery-dialog">
       <form method="dialog">
         <h2>Recover unsaved work</h2>
@@ -1113,8 +1154,9 @@
       <form method="dialog">
         <h2>CH5 Deployment</h2>
         <p class="hint">
-          Deploys through Crestron ch5-cli. Credentials are entered only in the
-          official terminal prompt and are never stored by this editor.
+          Send to Panel deploys silently over SFTP using the password saved
+          below. The password is encrypted for your Windows user account only
+          and stored on this computer &mdash; never in the project file.
         </p>
         <div class="deployment-profile-toolbar">
           <label
@@ -1145,9 +1187,27 @@
               id="deploy-host"
               placeholder="192.168.1.100" /></label
           ><label
-            >Username <span class="hint">(reference only)</span
-            ><input id="deploy-username" autocomplete="off"
+            >Port<input
+              id="deploy-port"
+              type="number"
+              min="1"
+              max="65535"
+              placeholder="22"
           /></label>
+          <label
+            >Username<input id="deploy-username" autocomplete="off"
+          /></label
+          ><label
+            >Password <span id="deploy-password-hint" class="hint"></span
+            ><input
+              id="deploy-password"
+              type="password"
+              autocomplete="new-password"
+          /></label>
+          <label class="deployment-checkbox-field"
+            ><input id="deploy-password-clear" type="checkbox" /> Clear
+            stored password</label
+          >
         </div>
         <label
           >CH5 package<input
@@ -1157,23 +1217,36 @@
         /></label>
         <div class="deployment-actions">
           <button id="deploy-check" type="button">Check panel</button
+          ><button id="deploy-test-connection" type="button">
+            Test connection
+          </button
           ><button id="deploy-select" type="button">Select .ch5z</button
           ><button id="deploy-build" type="button">Build .ch5z</button
           ><button id="deploy-inspect" type="button">Inspect package</button
           ><button id="deploy-start" type="button" class="primary">
-            Deploy to panel
+            Send to Panel
           </button>
         </div>
         <p id="deploy-status" class="deployment-status">Ready.</p>
-        <h2>Deployment queue</h2>
-        <div class="deployment-actions">
-          <button id="deploy-check-all" type="button">Check selected</button>
-          <button id="deploy-start-selected" type="button" class="primary">
-            Deploy selected
-          </button>
-          <button id="deploy-retry-failed" type="button">Retry failed</button>
+        <div
+          id="deploy-progress-toast"
+          class="deployment-progress-toast"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <div class="deployment-progress-toast-header">
+            <strong id="deploy-progress-toast-title">Sending to panel</strong>
+            <button
+              id="deploy-progress-toast-close"
+              type="button"
+              aria-label="Dismiss"
+            >
+              &times;
+            </button>
+          </div>
+          <ol id="deploy-progress-toast-steps"></ol>
         </div>
-        <div id="deployment-profile-list" class="deployment-profile-list"></div>
         <h2>Build artifacts</h2>
         <div id="build-artifact-list" class="build-artifact-list"></div>
         <h2>Deployment history</h2>

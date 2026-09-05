@@ -951,6 +951,10 @@
         );
         return;
       }
+      if (m && m.type === "nativeProgress") {
+        nativePending.get(m.id)?.onProgress?.(m.step, m.message);
+        return;
+      }
       if (!m || m.type !== "nativeResponse") return;
       const pending = nativePending.get(m.id);
       if (!pending) return;
@@ -959,14 +963,14 @@
         ? pending.resolve(m.data)
         : pending.reject(new Error(m.error || "cancelled"));
     });
-  function nativeRequest(command, payload = null) {
+  function nativeRequest(command, payload = null, onProgress = null) {
     return new Promise((resolve, reject) => {
       if (!native) {
         reject(new Error("unavailable"));
         return;
       }
       const id = uid("request-");
-      nativePending.set(id, { resolve, reject });
+      nativePending.set(id, { resolve, reject, onProgress });
       native.postMessage({ id, command, payload });
     });
   }
@@ -8882,7 +8886,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   let simulatorTimer = 0,
     simulatorItemFilter = null;
   const deploymentSettingsKey = "crestron-ui-composer-deployment-v1";
-  const deploymentQueueStatus = new Map();
   function deploymentSettings() {
     try {
       return (
@@ -9039,50 +9042,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ? selectedId
       : "";
     loadDeploymentProfile(profileSelect.value);
-    renderDeploymentQueue();
-  }
-  function renderDeploymentQueue() {
-    const host = $("deployment-profile-list");
-    if (!host) return;
-    const hadEntries = host.querySelectorAll("input").length > 0,
-      checked = new Set(
-        [...host.querySelectorAll("input:checked")].map((input) => input.value),
-      );
-    host.innerHTML = "";
-    deploymentProfiles().forEach((profile) => {
-      const row = document.createElement("label"),
-        select = document.createElement("input"),
-        name = document.createElement("strong"),
-        target = document.createElement("small"),
-        stateLabel = document.createElement("span"),
-        device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
-        queue = deploymentQueueStatus.get(profile.id);
-      row.className = `deployment-queue-entry ${queue?.state || ""}`;
-      select.type = "checkbox";
-      select.value = profile.id;
-      select.checked = hadEntries ? checked.has(profile.id) : true;
-      name.textContent = profile.name;
-      target.textContent = `${profile.host || "No host"} · ${device?.model || "Unknown model"} · ${profile.deploymentType || defaultDeploymentType(profile.deviceId)} · ${profile.packagePath ? profile.packagePath.split(/[\\/]/).pop() : "No package"}`;
-      stateLabel.className = "deployment-queue-state";
-      stateLabel.textContent = queue?.message || "Not checked";
-      row.append(select, name, target, stateLabel);
-      host.appendChild(row);
-    });
-    if (!deploymentProfiles().length)
-      host.innerHTML =
-        '<p class="hint">Create and save a deployment profile to use the queue.</p>';
-  }
-  function selectedDeploymentQueueProfiles() {
-    const ids = new Set(
-      [
-        ...document.querySelectorAll("#deployment-profile-list input:checked"),
-      ].map((input) => input.value),
-    );
-    return deploymentProfiles().filter((profile) => ids.has(profile.id));
-  }
-  function setDeploymentQueueState(profileId, state, message, details = {}) {
-    deploymentQueueStatus.set(profileId, { state, message, ...details });
-    renderDeploymentQueue();
   }
   function loadDeploymentProfile(id) {
     const profile = deploymentProfiles().find((entry) => entry.id === id),
@@ -9093,13 +9052,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       profile?.deploymentType ||
       defaultDeploymentType(profile?.deviceId || state.targetDevice);
     $("deploy-host").value = profile?.host || settings.host || "";
+    $("deploy-port").value = profile?.port || "";
     $("deploy-username").value = profile?.username || "";
     $("deploy-package").value =
       profile?.packagePath || settings.packagePath || "";
+    $("deploy-password").value = "";
+    $("deploy-password-clear").checked = false;
     $("deploy-profile-delete").disabled = !profile;
     saveDeploymentSettings({ activeProfileId: profile?.id || "" });
+    refreshDeployPasswordHint(profile?.id || "");
   }
-  function saveCurrentDeploymentProfile() {
+  async function saveCurrentDeploymentProfile() {
     const settings = deploymentSettings(),
       profiles = deploymentProfiles(),
       selected = activeDeploymentProfile(),
@@ -9117,6 +9080,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       id: selected?.id || uid("deploy-"),
       name,
       host,
+      port: Number($("deploy-port").value) || 22,
       username: $("deploy-username").value.trim(),
       deviceId: $("deploy-profile-device").value,
       deploymentType: $("deploy-target-type").value,
@@ -9136,9 +9100,38 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       packagePath: profile.packagePath,
       slowMode: profile.slowMode,
     });
+    // The password itself never touches localStorage/the profile object —
+    // it's encrypted native-side, keyed only by profile id. A blank field
+    // leaves whatever is already stored alone unless "Clear stored
+    // password" is checked.
+    const password = $("deploy-password").value,
+      clearPassword = $("deploy-password-clear").checked;
+    $("deploy-password").value = "";
+    $("deploy-password-clear").checked = false;
+    try {
+      if (clearPassword)
+        await nativeRequest("deleteDeploymentCredential", { profileId: profile.id });
+      else if (password)
+        await nativeRequest("saveDeploymentCredential", { profileId: profile.id, password });
+    } catch (_) {}
     renderDeploymentProfiles(profile.id);
+    await refreshDeployPasswordHint(profile.id);
     $("deploy-status").textContent =
       `Saved deployment profile “${profile.name}”.`;
+  }
+  async function refreshDeployPasswordHint(profileId) {
+    const hint = $("deploy-password-hint");
+    if (!hint) return;
+    if (!profileId) {
+      hint.textContent = "";
+      return;
+    }
+    try {
+      const result = await nativeRequest("hasDeploymentCredential", { profileId });
+      hint.textContent = result?.hasPassword ? "(unchanged — leave blank to keep)" : "(not set)";
+    } catch (_) {
+      hint.textContent = "";
+    }
   }
   function updateActiveDeploymentProfile(patch) {
     const selected = activeDeploymentProfile();
@@ -28928,14 +28921,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("deploy-profile-device").value = state.targetDevice;
     $("deploy-target-type").value = defaultDeploymentType(state.targetDevice);
     $("deploy-host").value = "";
+    $("deploy-port").value = "";
     $("deploy-username").value = "";
     $("deploy-package").value = "";
+    $("deploy-password").value = "";
+    $("deploy-password-clear").checked = false;
     $("deploy-profile-delete").disabled = true;
     saveDeploymentSettings({ activeProfileId: "" });
+    refreshDeployPasswordHint("");
     $("deploy-profile-name").focus();
   };
   $("deploy-profile-save").onclick = saveCurrentDeploymentProfile;
-  $("deploy-profile-delete").onclick = () => {
+  $("deploy-profile-delete").onclick = async () => {
     const selected = activeDeploymentProfile();
     if (!selected || !confirm(`Delete deployment profile “${selected.name}”?`))
       return;
@@ -28945,6 +28942,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       ),
       activeProfileId: "",
     });
+    try {
+      await nativeRequest("deleteDeploymentCredential", { profileId: selected.id });
+    } catch (_) {}
     renderDeploymentProfiles("");
     $("deploy-status").textContent =
       `Deleted deployment profile “${selected.name}”.`;
@@ -28972,6 +28972,27 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     } catch (error) {
       $("deploy-status").textContent =
         `Reachability check failed: ${error.message}`;
+    }
+  };
+  $("deploy-test-connection").onclick = async () => {
+    const host = $("deploy-host").value.trim(),
+      port = Number($("deploy-port").value) || 22,
+      username = $("deploy-username").value.trim(),
+      profile = activeDeploymentProfile();
+    if (!host || !username) {
+      $("deploy-status").textContent = "Enter a panel host and username first.";
+      return;
+    }
+    if (!profile) {
+      $("deploy-status").textContent = "Save a deployment profile first.";
+      return;
+    }
+    $("deploy-status").textContent = `Testing SFTP connection to ${host}…`;
+    try {
+      await nativeRequest("testDeploymentConnection", { host, port, username, profileId: profile.id });
+      $("deploy-status").textContent = `Connected to ${host} — the saved password works.`;
+    } catch (error) {
+      $("deploy-status").textContent = `Connection test failed: ${error.message}`;
     }
   };
   $("deploy-select").onclick = async () => {
@@ -29034,141 +29055,134 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       $("deploy-status").textContent = `Package inspection failed: ${error.message}`;
     }
   };
+  async function recordDeploymentHistory(entry) {
+    const settings = deploymentSettings(),
+      history = [entry, ...(settings.history || [])].slice(0, 20);
+    saveDeploymentSettings({ history });
+    renderDeploymentHistory();
+  }
+  // The official Crestron ch5-cli terminal path this app always used before
+  // Send to Panel — kept as an automatic fallback (not a second visible
+  // button) for when the silent SSH deploy fails or no password is saved.
+  async function deployViaTerminalFallback(host, packagePath, slowMode, profile, deploymentType) {
+    $("deploy-status").textContent =
+      "Opening the Crestron deployment terminal…";
+    const result = await nativeRequest("deployCh5PackageWait", {
+      host,
+      packagePath,
+      slowMode,
+      deploymentType,
+    });
+    await recordDeploymentHistory({
+      time: new Date().toISOString(),
+      host,
+      packagePath,
+      backupPath: result.backupPath,
+      success: result.success === true,
+      message:
+        result.success === true
+          ? "Deployment succeeded (terminal fallback)"
+          : `Deployment failed with exit code ${result.exitCode}`,
+      logPath: result.logPath || "",
+      slowMode,
+      profileId: profile?.id || "",
+      profileName: profile?.name || "",
+      deviceId: profile?.deviceId || state.targetDevice,
+      deploymentType:
+        result.deploymentType || profile?.deploymentType || "touchscreen",
+      device:
+        deviceProfiles.find((device) => device.id === profile?.deviceId)
+          ?.name || selectedDevice().name,
+      resolution: `${state.width} × ${state.height}`,
+    });
+    saveDeploymentSettings({ host, packagePath, slowMode });
+    updateActiveDeploymentProfile({
+      host,
+      packagePath,
+      slowMode,
+      deploymentType: result.deploymentType,
+    });
+    $("deploy-status").textContent =
+      result.success === true
+        ? `Deployment succeeded. Detailed output was saved to ${result.logPath || "the deployment log folder"}.`
+        : `Deployment failed with exit code ${result.exitCode}. Detailed output was saved to ${result.logPath || "the deployment log folder"}.`;
+  }
+  function deployProgressToastReset(title) {
+    const toast = $("deploy-progress-toast");
+    $("deploy-progress-toast-steps").replaceChildren();
+    $("deploy-progress-toast-title").textContent = title;
+    toast.hidden = false;
+    toast.classList.remove("failed", "complete");
+  }
+  function deployProgressToastStep(step, message) {
+    const item = document.createElement("li");
+    item.className = `deployment-progress-step deployment-progress-step-${step}`;
+    item.textContent = message;
+    $("deploy-progress-toast-steps").appendChild(item);
+  }
+  $("deploy-progress-toast-close").onclick = () => {
+    $("deploy-progress-toast").hidden = true;
+  };
   $("deploy-start").onclick = async () => {
     const host = $("deploy-host").value.trim(),
+      port = Number($("deploy-port").value) || 22,
+      username = $("deploy-username").value.trim(),
       packagePath = $("deploy-package").value,
-      slowMode = true;
+      slowMode = true,
+      profile = activeDeploymentProfile(),
+      deploymentType =
+        profile?.deploymentType ||
+        defaultDeploymentType(profile?.deviceId || state.targetDevice);
     if (!host || !packagePath) {
       $("deploy-status").textContent =
         "Enter a panel host and select or build a .ch5z package.";
       return;
     }
     if (!approveExport()) return;
-    if (
-      !approveDeploymentArtifact(
-        packagePath,
-        activeDeploymentProfile()?.deviceId || state.targetDevice,
-      )
-    )
+    if (!approveDeploymentArtifact(packagePath, profile?.deviceId || state.targetDevice))
       return;
-    if (
-      !confirm(
-        `Deploy ${packagePath}\n\nto ${$("deploy-target-type").selectedOptions[0]?.textContent || "CH5 target"} at ${host}?\n\nA terminal will request the device credentials.`,
-      )
-    )
-      return;
-    $("deploy-status").textContent =
-      "Opening the Crestron deployment terminal…";
+    deployProgressToastReset(`Sending to ${profile?.name || host}`);
     try {
-      const result = await nativeRequest("deployCh5PackageWait", {
+      if (!profile || !username)
+        throw new Error("Save a deployment profile with a username first.");
+      deployProgressToastStep("start", "Building package…");
+      await nativeRequest(
+        "deploySshPackage",
+        { host, port, username, packagePath, deploymentType, profileId: profile.id },
+        (step, message) => deployProgressToastStep(step, message),
+      );
+      $("deploy-progress-toast").classList.add("complete");
+      await recordDeploymentHistory({
+        time: new Date().toISOString(),
         host,
         packagePath,
-        slowMode,
-        deploymentType:
-          activeDeploymentProfile()?.deploymentType ||
-          defaultDeploymentType(
-            activeDeploymentProfile()?.deviceId || state.targetDevice,
-          ),
+        success: true,
+        message: "Deployment succeeded (Send to Panel)",
+        profileId: profile.id,
+        profileName: profile.name || "",
+        deviceId: profile.deviceId,
+        deploymentType,
+        device:
+          deviceProfiles.find((device) => device.id === profile.deviceId)
+            ?.name || selectedDevice().name,
+        resolution: `${state.width} × ${state.height}`,
       });
-      const settings = deploymentSettings(),
-        profile = activeDeploymentProfile(),
-        history = [
-          {
-            time: new Date().toISOString(),
-            host,
-            packagePath,
-            backupPath: result.backupPath,
-            success: result.success === true,
-            message:
-              result.success === true
-                ? "Deployment succeeded"
-                : `Deployment failed with exit code ${result.exitCode}`,
-            logPath: result.logPath || "",
-            slowMode,
-            profileId: profile?.id || "",
-            profileName: profile?.name || "",
-            deviceId: profile?.deviceId || state.targetDevice,
-            deploymentType:
-              result.deploymentType || profile?.deploymentType || "touchscreen",
-            device:
-              deviceProfiles.find((device) => device.id === profile?.deviceId)
-                ?.name || selectedDevice().name,
-            resolution: `${state.width} × ${state.height}`,
-          },
-          ...(settings.history || []),
-        ].slice(0, 20);
-      saveDeploymentSettings({ host, packagePath, slowMode, history });
-      updateActiveDeploymentProfile({
-        host,
-        packagePath,
-        slowMode,
-        deploymentType: result.deploymentType,
-      });
-      renderDeploymentHistory();
-      $("deploy-status").textContent =
-        result.success === true
-          ? `Deployment succeeded. Detailed output was saved to ${result.logPath || "the deployment log folder"}.`
-          : `Deployment failed with exit code ${result.exitCode}. Detailed output was saved to ${result.logPath || "the deployment log folder"}.`;
+      saveDeploymentSettings({ host, packagePath, slowMode });
+      updateActiveDeploymentProfile({ host, packagePath, slowMode, deploymentType });
+      $("deploy-status").textContent = "Deployment complete.";
     } catch (error) {
+      deployProgressToastStep("failed", `Silent deploy failed: ${error.message}`);
+      $("deploy-progress-toast").classList.add("failed");
       $("deploy-status").textContent =
-        `Deployment failed to start: ${error.message}`;
-    }
-  };
-  async function checkDeploymentQueue(
-    profiles = selectedDeploymentQueueProfiles(),
-  ) {
-    if (!profiles.length) {
-      $("deploy-status").textContent =
-        "Select at least one deployment profile.";
-      return [];
-    }
-    const ready = [];
-    for (const profile of profiles) {
-      setDeploymentQueueState(profile.id, "running", "Checking…");
+        "Silent deploy failed — opening the deployment terminal…";
       try {
-        const result = await nativeRequest("checkDeploymentProfile", {
-          host: profile.host,
-          packagePath: profile.packagePath,
-          deviceId: profile.deviceId,
-        });
-        const mismatch =
-          result.targetDeviceId && result.targetDeviceId !== profile.deviceId;
-        if (result.reachable && result.packageValid && !mismatch) {
-          const message = `Ready · ${result.roundtripMs} ms · ${(result.size / 1024 / 1024).toFixed(2)} MB${result.targetDeviceId ? "" : " · target untagged"}`;
-          setDeploymentQueueState(profile.id, "ready", message, result);
-          ready.push(profile);
-        } else {
-          const message = mismatch
-            ? `Package targets ${result.targetDeviceId}`
-            : !result.packageValid
-              ? result.packageStatus
-              : `Unreachable · ${result.status}`;
-          setDeploymentQueueState(profile.id, "failed", message, result);
-        }
-      } catch (error) {
-        setDeploymentQueueState(profile.id, "failed", error.message);
+        await deployViaTerminalFallback(host, packagePath, slowMode, profile, deploymentType);
+      } catch (fallbackError) {
+        $("deploy-status").textContent =
+          `Deployment failed to start: ${fallbackError.message}`;
       }
     }
-    const checkedAt = new Date().toISOString();
-    saveDeploymentSettings({
-      profiles: deploymentProfiles().map((profile) => {
-        const status = deploymentQueueStatus.get(profile.id);
-        return profiles.some((entry) => entry.id === profile.id)
-          ? {
-              ...profile,
-              lastCheck: {
-                time: checkedAt,
-                state: status?.state,
-                message: status?.message,
-              },
-            }
-          : profile;
-      }),
-    });
-    $("deploy-status").textContent =
-      `${ready.length} of ${profiles.length} selected profiles are ready.`;
-    return ready;
-  }
+  };
   function appendDeploymentHistory(profile, result, success, message) {
     const settings = deploymentSettings(),
       device = deviceProfiles.find((entry) => entry.id === profile.deviceId),
@@ -29194,103 +29208,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     saveDeploymentSettings({ history });
     renderDeploymentHistory();
   }
-  async function deployProfileQueue(profiles) {
-    if (!approveExport()) return;
-    const artifactProblems = profiles.flatMap((profile) =>
-      deploymentArtifactProblems(profile.packagePath, profile.deviceId).map(
-        (problem) => `${profile.name}: ${problem}`,
-      ),
-    );
-    if (
-      artifactProblems.length &&
-      !confirm(
-        `Package verification warning:\n\n${artifactProblems.join("\n")}\n\nContinue with the deployment queue anyway?`,
-      )
-    )
-      return;
-    const ready = await checkDeploymentQueue(profiles);
-    if (!ready.length) return;
-    if (
-      !confirm(
-        `Deploy ${ready.length} ready profile${ready.length === 1 ? "" : "s"} sequentially?\n\nEach panel opens a Crestron terminal for its credential prompt.`,
-      )
-    )
-      return;
-    let successes = 0;
-    for (const profile of ready) {
-      setDeploymentQueueState(
-        profile.id,
-        "running",
-        "Deploying — complete the terminal prompt…",
-      );
-      try {
-        const result = await nativeRequest("deployCh5PackageWait", {
-          host: profile.host,
-          packagePath: profile.packagePath,
-          slowMode: true,
-          deploymentType:
-            profile.deploymentType || defaultDeploymentType(profile.deviceId),
-        });
-        if (result.success) {
-          successes++;
-          setDeploymentQueueState(
-            profile.id,
-            "ready",
-            "Deployment succeeded",
-            result,
-          );
-          appendDeploymentHistory(
-            profile,
-            result,
-            true,
-            "Deployment succeeded",
-          );
-        } else {
-          setDeploymentQueueState(
-            profile.id,
-            "failed",
-            `Deployment failed · exit ${result.exitCode} · ${result.logPath || "see terminal"}`,
-            result,
-          );
-          appendDeploymentHistory(
-            profile,
-            result,
-            false,
-            `CLI exit code ${result.exitCode}${result.logPath ? ` · ${result.logPath}` : ""}`,
-          );
-        }
-      } catch (error) {
-        setDeploymentQueueState(profile.id, "failed", error.message);
-        appendDeploymentHistory(profile, null, false, error.message);
-      }
-    }
-    $("deploy-status").textContent =
-      `${successes} of ${ready.length} deployments succeeded.`;
-  }
-  $("deploy-check-all").onclick = () => checkDeploymentQueue();
-  $("deploy-start-selected").onclick = () =>
-    deployProfileQueue(selectedDeploymentQueueProfiles());
-  $("deploy-retry-failed").onclick = () => {
-    const failedIds = new Set(
-      [...deploymentQueueStatus]
-        .filter(([, status]) => status.state === "failed")
-        .map(([id]) => id),
-    );
-    document
-      .querySelectorAll("#deployment-profile-list input")
-      .forEach((input) => {
-        input.checked = failedIds.has(input.value);
-      });
-    const failed = deploymentProfiles().filter((profile) =>
-      failedIds.has(profile.id),
-    );
-    if (!failed.length) {
-      $("deploy-status").textContent =
-        "There are no failed deployments to retry.";
-      return;
-    }
-    deployProfileQueue(failed);
-  };
   $("system-diagnostics").onclick = () => {
     if (!native) {
       alert("System diagnostics are available in the Windows application.");
@@ -29332,11 +29249,129 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") appMenus.forEach((menu) => (menu.open = false));
   });
-  $("preview").onclick = () => {
-    const w = open();
-    w.document.write(exportHtml());
-    w.document.close();
+  function openPreviewWindow(html) {
+    const previewWindow = open();
+    if (!previewWindow) {
+      alert("The preview window was blocked. Allow pop-ups for Crestron UI Composer and try again.");
+      return false;
+    }
+    previewWindow.document.write(html);
+    previewWindow.document.close();
+    return true;
+  }
+  function livePreviewHtml(host, ipid, port, authToken = "") {
+    const params = {
+      host,
+      ipid: `0x${ipid}`,
+      port: port || "49200",
+      tokenurl: `https://${host}/cws/websocket/getWebSocketToken`,
+    };
+    if (authToken) params.authtoken = authToken;
+    const connectionBadge = `<style id="composer-live-status-style">#composer-live-status{position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;align-items:center;gap:8px;max-width:min(620px,calc(100vw - 24px));padding:8px 12px;border:1px solid #b58a35;border-radius:999px;background:rgba(12,20,22,.94);color:#fff;font:600 13px/1.2 "Segoe UI",sans-serif;box-shadow:0 5px 18px rgba(0,0,0,.45);pointer-events:none}#composer-live-status-dot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#e5ab42;box-shadow:0 0 8px #e5ab42}#composer-live-status[data-state="connected"]{border-color:#21c997}#composer-live-status[data-state="connected"] #composer-live-status-dot{background:#21d79d;box-shadow:0 0 8px #21d79d}#composer-live-status[data-state="disconnected"],#composer-live-status[data-state="error"]{border-color:#d65d67}#composer-live-status[data-state="disconnected"] #composer-live-status-dot,#composer-live-status[data-state="error"] #composer-live-status-dot{background:#ee6672;box-shadow:0 0 8px #ee6672}#composer-live-status-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b9cecb;font-weight:400}</style><div id="composer-live-status" data-state="connecting"><span id="composer-live-status-dot"></span><span id="composer-live-status-label">Connecting…</span><span id="composer-live-status-detail">${host.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character])} · IP ID ${ipid}</span></div><script>(function(){var badge=document.getElementById('composer-live-status'),label=document.getElementById('composer-live-status-label'),timer=setTimeout(function(){setStatus('disconnected','Not connected')},12000);function reason(detail){if(!detail)return'';if(typeof detail==='string')return detail;return detail.reason||detail.message||detail.status||''}function setStatus(state,text){badge.dataset.state=state;label.textContent=text;if(state==='connected'||state==='error')clearTimeout(timer)}function handle(name,detail){var why=reason(detail);if(name==='CONNECT_CIP'||name==='CCS_ONLINE')setStatus('connected','Connected');else if(name==='DISCONNECT_CIP'||name==='DISCONNECT_WS'||name==='CCS_OFFLINE')setStatus('disconnected','Disconnected'+(why?' · '+why:''));else if(name==='ERROR_WS'||name==='WEB_WORKER_FAILED'||name==='AUTHENTICATION_FAILED'||name==='INVALID_CREDENTIALS'||name==='NOT_AUTHORIZED')setStatus('error',(name==='NOT_AUTHORIZED'?'Authorization required':'Connection error')+(why?' · '+why:''))}function attach(){var api=window.__composerWebXPanel;if(!api||!api.WebXPanelEvents)return false;var panel=api.WebXPanel&&(api.WebXPanel.default||api.WebXPanel);if(!panel||typeof panel.addEventListener!=='function')return false;Object.keys(api.WebXPanelEvents).forEach(function(name){panel.addEventListener(api.WebXPanelEvents[name],function(event){handle(name,event&&event.detail)})});if(window.__composerWebXPanelLastEvent)handle(window.__composerWebXPanelLastEvent.name,window.__composerWebXPanelLastEvent.detail);return true}var attempts=0,poll=setInterval(function(){if(window.__composerWebXPanelError){clearInterval(poll);setStatus('error',window.__composerWebXPanelError);return}if(attach()||++attempts>100)clearInterval(poll)},50)})();<\/script>`;
+    return exportHtml()
+      .replace(
+        "var params={},search=new URLSearchParams(window.location.search)",
+        `var params=${JSON.stringify(params)},search=new URLSearchParams()`,
+      )
+      .replace("</body>", `${connectionBadge}</body>`);
+  }
+  function selectedPreviewMode() {
+    return document.querySelector('input[name="preview-mode"]:checked')?.value || "standalone";
+  }
+  function updatePreviewLaunchDialog() {
+    const mode = selectedPreviewMode(), live = mode !== "standalone";
+    $("preview-live-settings").hidden = !live;
+    $("preview-webxpanel-credentials").hidden = mode !== "webxpanel";
+    $("preview-launch-error").hidden = true;
+    $("preview-launch").textContent = live ? "Connect & preview" : "Launch preview";
+  }
+  document.querySelectorAll('input[name="preview-mode"]').forEach((input) => {
+    input.onchange = updatePreviewLaunchDialog;
+  });
+  $("preview-test-connection").onclick = async () => {
+    const host = $("preview-processor-host").value.trim(),
+      button = $("preview-test-connection"),
+      status = $("preview-connection-status");
+    status.className = "hint";
+    if (!host || /[\s/?#]/.test(host)) {
+      status.textContent = "Enter a valid host or IP first.";
+      status.classList.add("is-error");
+      return;
+    }
+    button.disabled = true;
+    status.textContent = `Checking ${host}…`;
+    try {
+      const result = await nativeRequest("checkPanel", host);
+      status.textContent = result.reachable
+        ? `Reachable · ${result.roundtripMs} ms`
+        : `No response · ${result.status}`;
+      status.classList.add(result.reachable ? "is-success" : "is-error");
+    } catch (error) {
+      status.textContent = `Test failed · ${error.message}`;
+      status.classList.add("is-error");
+    } finally {
+      button.disabled = false;
+    }
   };
+  $("preview").onclick = () => {
+    $("preview-project-name").textContent = state.contract?.name || "Untitled project";
+    updatePreviewLaunchDialog();
+    $("preview-connection-status").textContent = "";
+    $("preview-launch-dialog").showModal();
+  };
+  $("preview-launch").onclick = async () => {
+    const mode = selectedPreviewMode(), live = mode !== "standalone";
+    if (!live) {
+      if (openPreviewWindow(exportHtml())) $("preview-launch-dialog").close();
+      return;
+    }
+    const host = $("preview-processor-host").value.trim(),
+      ipid = $("preview-ipid").value.trim().replace(/^0x/i, "").toUpperCase(),
+      port = $("preview-port").value.trim(),
+      error = $("preview-launch-error");
+    let message = "";
+    if (!host || /[\s/?#]/.test(host)) message = "Enter a valid processor host name or IP address.";
+    else if (!/^[0-9A-F]{2,4}$/.test(ipid) || parseInt(ipid, 16) < 3 || parseInt(ipid, 16) > 0xfe)
+      message = "IP ID must be hexadecimal from 03 through FE.";
+    else if (port && (Number(port) < 1 || Number(port) > 65535)) message = "Port must be between 1 and 65535.";
+    if (message) {
+      error.textContent = message;
+      error.hidden = false;
+      return;
+    }
+    localStorage.setItem("crestron-ui-composer-preview-connection", JSON.stringify({ host, ipid, port }));
+    const launchButton = $("preview-launch");
+    launchButton.disabled = true;
+    launchButton.textContent = "Connecting…";
+    try {
+      let authToken = "";
+      const username = $("preview-username").value,
+        password = $("preview-password").value;
+      if (username || password) {
+        if (!native) throw new Error("Authenticated Web XPanel preview is available in the Windows app.");
+        const result = await nativeRequest("getWebXPanelToken", { host, username, password });
+        authToken = result.token;
+      }
+      if (openPreviewWindow(livePreviewHtml(host, ipid, port, authToken))) {
+        $("preview-password").value = "";
+      } else return;
+      $("preview-launch-dialog").close();
+    } catch (launchError) {
+      error.textContent = `Could not launch Web XPanel preview: ${launchError.message}`;
+      error.hidden = false;
+    } finally {
+      launchButton.disabled = false;
+      launchButton.textContent = "Connect & preview";
+    }
+  };
+  try {
+    const savedPreviewConnection = JSON.parse(localStorage.getItem("crestron-ui-composer-preview-connection") || "null");
+    if (savedPreviewConnection) {
+      $("preview-processor-host").value = savedPreviewConnection.host || "";
+      $("preview-ipid").value = savedPreviewConnection.ipid || "03";
+      $("preview-port").value = savedPreviewConnection.port || "";
+    }
+  } catch (_) {}
   $("open-project").onchange = async (e) =>
     loadProjectText(
       await e.target.files[0].text(),

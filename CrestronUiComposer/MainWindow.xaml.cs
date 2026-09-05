@@ -1,5 +1,6 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
+using Renci.SshNet;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.IO;
@@ -9,6 +10,12 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net;
+using System.Net.Sockets;
+using System.Net.WebSockets;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
@@ -78,6 +85,51 @@ public partial class MainWindow : Window
                 CoreWebView2HostResourceAccessKind.Allow);
             EditorView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             EditorView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            // Live Preview (Web XPanel) connects directly to the
+            // user's own Crestron processor, which almost always presents a
+            // self-signed certificate. Without this, WebView2 silently fails
+            // the connection with no error surfaced to the page's JS at all
+            // (a WSS handshake to an untrusted cert just closes immediately)
+            // — matches the same trust decision already made for the native
+            // HttpClient token fetch (DangerousAcceptAnyServerCertificateValidator).
+            // This handler only covers the main editor window itself —
+            // ServerCertificateErrorDetected is per-CoreWebView2-instance, not
+            // environment-wide, so the popup opened for Live Preview needs
+            // its own copy of this same handler (see NewWindowRequested below).
+            EditorView.CoreWebView2.ServerCertificateErrorDetected += (_, args) =>
+                args.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
+            // window.open() (used for the standalone/Web XPanel preview
+            // popup) gets its own separate CoreWebView2 instance — the
+            // ServerCertificateErrorDetected handler above is per-instance,
+            // not environment-wide, so an unhandled NewWindowRequested would
+            // hand the page a default popup with none of this app's
+            // configuration (this exact gap was why the cert bypass above
+            // fixed nothing for the popup's own WebSocket connection).
+            // Host the popup in a real WPF window sharing the same
+            // environment and wire up the same handler on its CoreWebView2.
+            EditorView.CoreWebView2.NewWindowRequested += (_, args) =>
+            {
+                var deferral = args.GetDeferral();
+                var popupWindow = new Window { Title = "Crestron UI Composer — Live Preview", Width = 1366, Height = 850 };
+                var popupWebView = new Microsoft.Web.WebView2.Wpf.WebView2();
+                popupWindow.Content = popupWebView;
+                popupWindow.Closed += (_, _) => popupWebView.Dispose();
+                // WebView2 needs a real HWND to attach to before
+                // EnsureCoreWebView2Async can complete — show the window
+                // first, or that call (and therefore window.open() on the
+                // page, which blocks synchronously on this deferral) hangs.
+                popupWindow.Show();
+                popupWebView.EnsureCoreWebView2Async(EditorView.CoreWebView2.Environment).ContinueWith(_ =>
+                {
+                    // Already on the UI thread here (FromCurrentSynchronizationContext)
+                    // — an additional Dispatcher.Invoke would be a redundant
+                    // re-entrant dispatch onto the same thread and can hang.
+                    popupWebView.CoreWebView2.ServerCertificateErrorDetected += (_, certArgs) =>
+                        certArgs.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
+                    args.NewWindow = popupWebView.CoreWebView2;
+                    deferral.Complete();
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+            };
             EditorView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             EditorView.NavigationCompleted += (_, args) =>
             {
@@ -303,6 +355,9 @@ public partial class MainWindow : Window
                 case "checkPanel":
                     CheckPanel(id, root.GetProperty("payload").GetString() ?? "");
                     break;
+                case "getWebXPanelToken":
+                    GetWebXPanelToken(id, root.GetProperty("payload"));
+                    break;
                 case "checkDeploymentProfile":
                     CheckDeploymentProfile(id, root.GetProperty("payload"));
                     break;
@@ -311,6 +366,21 @@ public partial class MainWindow : Window
                     break;
                 case "deployCh5PackageWait":
                     DeployCh5PackageWait(id, root.GetProperty("payload"));
+                    break;
+                case "deploySshPackage":
+                    DeploySshPackage(id, root.GetProperty("payload"));
+                    break;
+                case "testDeploymentConnection":
+                    TestDeploymentConnection(id, root.GetProperty("payload"));
+                    break;
+                case "saveDeploymentCredential":
+                    SaveDeploymentCredential(id, root.GetProperty("payload"));
+                    break;
+                case "deleteDeploymentCredential":
+                    DeleteDeploymentCredential(id, root.GetProperty("payload"));
+                    break;
+                case "hasDeploymentCredential":
+                    HasDeploymentCredential(id, root.GetProperty("payload"));
                     break;
                 case "systemDiagnostics":
                     SystemDiagnostics(id);
@@ -1565,6 +1635,193 @@ exit $deploymentExitCode
         return value is "touchscreen" or "mobile" or "web" ? value : "touchscreen";
     }
 
+    // Matches ch5-cli deploy's own default --deviceDirectory: 'display' for
+    // touchscreen, 'HTML' for controlsystem/web/mobile.
+    private static string RemoteDeployDirectory(string deploymentType) =>
+        deploymentType == "touchscreen" ? "display" : "HTML";
+
+    private static readonly byte[] DeploymentCredentialEntropy = Encoding.UTF8.GetBytes("CrestronUiComposer.DeploymentCredential.v1");
+
+    private static string DeploymentCredentialsPath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer", "DeploymentCredentials.json");
+
+    private static Dictionary<string, string> LoadDeploymentCredentials()
+    {
+        var path = DeploymentCredentialsPath();
+        if (!File.Exists(path)) return [];
+        try { return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) ?? []; }
+        catch { return []; }
+    }
+
+    private static void SaveDeploymentCredentialsFile(Dictionary<string, string> credentials)
+    {
+        var path = DeploymentCredentialsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(credentials));
+    }
+
+    // DPAPI ties the ciphertext to this Windows user account; entropy is an
+    // additional fixed tag so another app's DPAPI blobs can't be swapped in.
+    private static string EncryptDeploymentPassword(string password) =>
+        Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(password), DeploymentCredentialEntropy, DataProtectionScope.CurrentUser));
+
+    private static string DecryptDeploymentPassword(string encrypted) =>
+        Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(encrypted), DeploymentCredentialEntropy, DataProtectionScope.CurrentUser));
+
+    private void SaveDeploymentCredential(string id, JsonElement payload)
+    {
+        try
+        {
+            var profileId = payload.GetProperty("profileId").GetString() ?? throw new InvalidOperationException("Missing profile id.");
+            var password = payload.TryGetProperty("password", out var passwordProperty) ? passwordProperty.GetString() ?? "" : "";
+            // A blank password on save means "leave the stored credential
+            // alone" (the profile's own field just shows "(unchanged)") —
+            // explicit clearing goes through deleteDeploymentCredential.
+            if (string.IsNullOrEmpty(password)) { Respond(id, true, new { saved = false }, null); return; }
+            var credentials = LoadDeploymentCredentials();
+            credentials[profileId] = EncryptDeploymentPassword(password);
+            SaveDeploymentCredentialsFile(credentials);
+            Respond(id, true, new { saved = true }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private void DeleteDeploymentCredential(string id, JsonElement payload)
+    {
+        try
+        {
+            var profileId = payload.GetProperty("profileId").GetString() ?? throw new InvalidOperationException("Missing profile id.");
+            var credentials = LoadDeploymentCredentials();
+            credentials.Remove(profileId);
+            SaveDeploymentCredentialsFile(credentials);
+            Respond(id, true, new { deleted = true }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private void HasDeploymentCredential(string id, JsonElement payload)
+    {
+        try
+        {
+            var profileId = payload.GetProperty("profileId").GetString() ?? "";
+            Respond(id, true, new { hasPassword = LoadDeploymentCredentials().ContainsKey(profileId) }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private void PostProgress(string id, string step, string message)
+    {
+        // SFTP/SSH callbacks below run on a background Task.Run thread, but
+        // CoreWebView2 requires its owning (UI) thread — unlike Respond,
+        // which today's deploy handlers only ever call after an await has
+        // already resumed on the UI thread's captured SynchronizationContext.
+        Dispatcher.Invoke(() =>
+            EditorView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "nativeProgress", id, step, message })));
+    }
+
+    // SSH.NET's own default connect timeout runs ~30s, which reads as a hang
+    // on an unreachable/wrong-IP panel. Fail fast instead, especially for
+    // the "Test connection" button meant to be a quick check.
+    private static Renci.SshNet.ConnectionInfo BuildDeploymentConnectionInfo(string host, int port, string username, string password, int timeoutSeconds) =>
+        new Renci.SshNet.PasswordConnectionInfo(host, port, username, password) { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
+
+    private async void TestDeploymentConnection(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
+            var port = payload.TryGetProperty("port", out var portProperty) && portProperty.TryGetInt32(out var portValue) && portValue > 0 ? portValue : 22;
+            var username = payload.GetProperty("username").GetString()?.Trim() ?? "";
+            var profileId = payload.GetProperty("profileId").GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
+            if (string.IsNullOrWhiteSpace(username)) throw new InvalidOperationException("Enter the SFTP username.");
+            if (!LoadDeploymentCredentials().TryGetValue(profileId, out var encrypted))
+                throw new InvalidOperationException("No stored password for this profile. Enter one and Save first.");
+            var password = DecryptDeploymentPassword(encrypted);
+            await Task.Run(() =>
+            {
+                using var client = new SftpClient(BuildDeploymentConnectionInfo(host, port, username, password, 8));
+                client.Connect();
+                client.Disconnect();
+            });
+            Respond(id, true, new { reachable = true }, null);
+        }
+        catch (Renci.SshNet.Common.SshAuthenticationException)
+        {
+            Respond(id, false, null, "Connected, but the username or password was rejected.");
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private async void DeploySshPackage(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
+            var port = payload.TryGetProperty("port", out var portProperty) && portProperty.TryGetInt32(out var portValue) && portValue > 0 ? portValue : 22;
+            var username = payload.GetProperty("username").GetString()?.Trim() ?? "";
+            var package = payload.GetProperty("packagePath").GetString() ?? "";
+            var profileId = payload.GetProperty("profileId").GetString() ?? "";
+            var deploymentType = DeploymentType(payload);
+            if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Enter the panel IP address or host name.");
+            if (string.IsNullOrWhiteSpace(username)) throw new InvalidOperationException("Enter the SFTP username.");
+            ValidateCh5Archive(package);
+            if (!LoadDeploymentCredentials().TryGetValue(profileId, out var encrypted))
+                throw new InvalidOperationException("No stored password for this profile. Enter one and Save, or use Deploy to panel.");
+            var password = DecryptDeploymentPassword(encrypted);
+            var fileName = Path.GetFileName(package);
+            var remotePath = $"{RemoteDeployDirectory(deploymentType)}/{fileName}";
+            var fileSize = (double)new FileInfo(package).Length;
+
+            await Task.Run(() =>
+            {
+                PostProgress(id, "connecting", $"Connecting to {host}…");
+                using var sftp = new SftpClient(BuildDeploymentConnectionInfo(host, port, username, password, 15));
+                sftp.Connect();
+
+                PostProgress(id, "uploading", $"Uploading {fileName} to {remotePath}…");
+                var lastReportedPercent = -1;
+                using (var stream = File.OpenRead(package))
+                    sftp.UploadFile(stream, remotePath, true, uploaded =>
+                    {
+                        var percent = fileSize > 0 ? (int)(uploaded / fileSize * 100) : 100;
+                        if (percent == lastReportedPercent) return;
+                        lastReportedPercent = percent;
+                        PostProgress(id, "uploading", $"Uploading {fileName}… {percent}%");
+                    });
+                sftp.Disconnect();
+
+                PostProgress(id, "reload", "Sending \"projectload\" to reload the project…");
+                using var ssh = new SshClient(BuildDeploymentConnectionInfo(host, port, username, password, 15));
+                ssh.Connect();
+                // The upload already succeeded at this point; a reload
+                // command failure is reported as part of a successful
+                // response rather than thrown, since the project is on the
+                // panel either way and this is exactly the kind of
+                // panel/firmware-specific detail the user's own hardware
+                // pass needs to confirm.
+                string? reloadWarning = null;
+                try
+                {
+                    var reloadResult = ssh.RunCommand("projectload");
+                    if (reloadResult.ExitStatus != 0) reloadWarning = reloadResult.Error;
+                }
+                catch (Exception reloadEx) { reloadWarning = reloadEx.Message; }
+                ssh.Disconnect();
+                if (reloadWarning is not null)
+                    PostProgress(id, "reload-warning", $"Uploaded, but reloading the panel may need attention: {reloadWarning}");
+            });
+
+            PostProgress(id, "complete", "Deployment complete");
+            Respond(id, true, new { deployed = true, host, packagePath = package, remotePath }, null);
+        }
+        catch (Renci.SshNet.Common.SshAuthenticationException)
+        {
+            Respond(id, false, null, "Connected, but the username or password was rejected.");
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
     private void SystemDiagnostics(string id)
     {
         var settingsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrestronUiComposer");
@@ -1687,6 +1944,100 @@ exit $deploymentExitCode
         using var stream = target.Open();
         using var document = JsonDocument.Parse(stream);
         return document.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+    }
+
+    private async void GetWebXPanelToken(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = payload.GetProperty("host").GetString()?.Trim() ?? "";
+            var username = payload.GetProperty("username").GetString() ?? "";
+            var password = payload.GetProperty("password").GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(host) || host.Any(ch => char.IsWhiteSpace(ch) || ch is '/' or '?' or '#'))
+                throw new InvalidOperationException("Enter a valid processor host or IP address.");
+            if (string.IsNullOrWhiteSpace(username)) throw new InvalidOperationException("Enter the processor username.");
+            var baseUri = new Uri($"https://{host}/");
+            using var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+                CookieContainer = new CookieContainer(),
+                AllowAutoRedirect = false,
+            };
+            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+            // HttpClient sends no User-Agent by default; the processor's web
+            // server rejects that (and requests without a same-origin
+            // Referer) with a bare server-level 403 before the request ever
+            // reaches Crestron's own login handling — set both the way a
+            // real browser would.
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) CrestronUiComposer/1.0");
+            var referer = new Uri(baseUri, "userlogin.html");
+            var tokenUri = new Uri(baseUri, "cws/websocket/getWebSocketToken");
+            // The processor's own /userlogin.html page authenticates with a
+            // session cookie, not HTTP Basic auth — confirmed by reading its
+            // served login form/script directly: it POSTs
+            // login=<user>&passwd=<pass> to /userlogin.html, then uses the
+            // resulting session cookie (and a CREST-XSRF-TOKEN response
+            // header, echoed back on later requests) for everything after.
+            // Critically, hitting the login page directly only sets a
+            // TRACKID cookie — the processor's own log names this failure
+            // "CookieBasedAuthentication" specifically because it also wants
+            // a second "redirectCookie" that only gets set when you arrive
+            // at the login page *by being redirected from the protected
+            // token endpoint* (confirmed via curl: an anonymous GET of the
+            // token URL sets both cookies; GETting the login page directly
+            // sets only one). Reproduce that exact path a real browser takes.
+            using var tokenProbeRequest = new HttpRequestMessage(HttpMethod.Get, tokenUri);
+            using (await client.SendAsync(tokenProbeRequest)) { }
+            using var loginRequest = new HttpRequestMessage(HttpMethod.Post, referer)
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["login"] = username, ["passwd"] = password }),
+            };
+            loginRequest.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded") { CharSet = "UTF-8" };
+            loginRequest.Headers.Referrer = referer;
+            // The two headers that actually mattered — confirmed by capturing
+            // a real successful browser login and diffing it against this
+            // request: the processor treats this endpoint as AJAX/CORS-only
+            // and 403s a request that doesn't look like one from its own
+            // page. Neither is sent by HttpClient by default.
+            loginRequest.Headers.Add("Origin", baseUri.GetLeftPart(UriPartial.Authority));
+            loginRequest.Headers.Add("X-Requested-With", "XMLHttpRequest");
+            using var loginResponse = await client.SendAsync(loginRequest);
+            if (loginResponse.StatusCode == HttpStatusCode.Forbidden)
+            {
+                var loginError = await loginResponse.Content.ReadAsStringAsync();
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(loginError) ? "Processor username or password was rejected." : loginError);
+            }
+            if (!loginResponse.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Processor login failed ({(int)loginResponse.StatusCode} {loginResponse.ReasonPhrase}).");
+            using var request = new HttpRequestMessage(HttpMethod.Get, tokenUri);
+            request.Headers.Referrer = referer;
+            request.Headers.Add("Origin", baseUri.GetLeftPart(UriPartial.Authority));
+            request.Headers.Add("X-Requested-With", "XMLHttpRequest");
+            if (loginResponse.Headers.TryGetValues("CREST-XSRF-TOKEN", out var xsrfValues) && xsrfValues.FirstOrDefault() is { Length: > 0 } xsrfToken)
+                request.Headers.Add("CREST-XSRF-TOKEN", xsrfToken);
+            using var response = await client.SendAsync(request);
+            if (response.StatusCode is HttpStatusCode.Redirect or HttpStatusCode.Found or HttpStatusCode.MovedPermanently or HttpStatusCode.SeeOther)
+                throw new InvalidOperationException("Processor session was not accepted for the token request.");
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                    ? "Processor session was not accepted for the token request."
+                    : $"Processor token request failed ({(int)response.StatusCode} {response.ReasonPhrase}).");
+            var token = body.Trim().Trim('"');
+            try
+            {
+                using var json = JsonDocument.Parse(body);
+                var value = json.RootElement;
+                foreach (var key in new[] { "token", "authToken", "access_token" })
+                    if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty(key, out var property) && !string.IsNullOrWhiteSpace(property.GetString()))
+                    { token = property.GetString()!; break; }
+            }
+            catch (JsonException) { }
+            if (string.IsNullOrWhiteSpace(token) || token.StartsWith("<", StringComparison.Ordinal))
+                throw new InvalidOperationException("The processor did not return a Web XPanel token.");
+            Respond(id, true, new { token }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
     }
 
     private void Respond(string id, bool ok, object? data, string? error)
