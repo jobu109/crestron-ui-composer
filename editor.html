@@ -223,7 +223,7 @@
             <button id="project-search">
               Project search <kbd>Ctrl+F</kbd>
             </button>
-            <button id="preview">Simulate</button>
+            <button id="preview">Emulate</button>
             <button id="panel-compatibility">Panel fit</button>
             <button id="responsive-compare">Responsive compare</button>
             <button id="signal-manager">Signals</button>
@@ -1107,6 +1107,10 @@
             <span><strong>Standalone</strong><small>Existing local preview<br />No processor connection</small></span>
           </label>
           <label class="preview-mode-card">
+            <input type="radio" name="preview-mode" value="directcip" />
+            <span><strong>Direct CIP</strong><small>TCP 41794 · IP + IP ID<br />Native desktop relay</small></span>
+          </label>
+          <label class="preview-mode-card">
             <input type="radio" name="preview-mode" value="webxpanel" />
             <span><strong>Web XPanel</strong><small>Secure WebSocket<br />Processor authentication</small></span>
           </label>
@@ -1483,11 +1487,11 @@
         <section id="custom-workbench-state-comparison" class="custom-workbench-state-comparison" hidden aria-label="Standard and Selected comparison">
           <article>
             <header><strong>Standard</strong><span>Independent preview</span></header>
-            <iframe id="custom-workbench-compare-standard" sandbox="allow-scripts allow-same-origin" title="Standard state preview"></iframe>
+            <iframe id="custom-workbench-compare-standard" sandbox="allow-scripts" title="Standard state preview"></iframe>
           </article>
           <article>
             <header><strong>Selected</strong><span>Independent preview</span></header>
-            <iframe id="custom-workbench-compare-selected" sandbox="allow-scripts allow-same-origin" title="Selected state preview"></iframe>
+            <iframe id="custom-workbench-compare-selected" sandbox="allow-scripts" title="Selected state preview"></iframe>
           </article>
         </section>
         <nav id="custom-capability-nav" class="custom-capability-nav custom-step-capabilities" aria-label="Component capability pages">
@@ -1632,7 +1636,7 @@
                   <button id="custom-property-test-reset" type="button">Reset preview</button>
                   <div id="custom-property-original-comparison" class="custom-property-original-comparison" hidden>
                     <strong>Original authored component</strong>
-                    <iframe id="custom-property-original-preview" sandbox="allow-scripts allow-same-origin" title="Original component before proposed property"></iframe>
+                    <iframe id="custom-property-original-preview" sandbox="allow-scripts" title="Original component before proposed property"></iframe>
                   </div>
                 </section>
                 <details class="custom-property-generation-preview custom-generated-details">
@@ -1949,7 +1953,7 @@
                     <strong>Original authored component</strong>
                     <iframe
                       id="custom-component-original-preview"
-                      sandbox="allow-scripts allow-same-origin"
+                      sandbox="allow-scripts"
                       title="Original authored component"
                     ></iframe>
                   </section>
@@ -1957,8 +1961,16 @@
                     <strong>Composer component</strong>
                     <iframe
                       id="custom-component-preview"
-                      sandbox="allow-scripts allow-same-origin"
+                      sandbox="allow-scripts"
                       title="Component with Composer capabilities"
+                    ></iframe>
+                    <iframe
+                      id="custom-component-inspection"
+                      class="custom-component-inspection"
+                      sandbox="allow-same-origin"
+                      aria-hidden="true"
+                      tabindex="-1"
+                      title="Script-disabled component inspection mirror"
                     ></iframe>
                   </section>
                 </div>
@@ -2149,7 +2161,7 @@
               <h2>Preview — original design with selected capabilities</h2>
               <div><button id="translate-preview-refresh" type="button">Reload simulator</button><button id="translate-test" type="button">Auto-test signals</button></div>
             </div>
-            <iframe id="translate-live-preview" sandbox="allow-scripts allow-same-origin" title="Translated component preview"></iframe>
+            <iframe id="translate-live-preview" sandbox="allow-scripts" title="Translated component preview"></iframe>
             <div id="translate-signal-simulator" class="translate-signal-simulator"></div>
             <small id="translate-test-result" class="hint"></small>
             <pre id="translate-signal-log" class="translate-signal-log">Signal activity will appear here.</pre>

@@ -384,6 +384,10 @@ run("exported action runtime is valid JavaScript", () => {
     html.includes("key==='NOT_AUTHORIZED'") && html.includes("window.location.replace(detail.redirectTo)"),
     "Web XPanel must follow the processor authentication redirect",
   );
+  assert.ok(
+    html.indexOf("panel.addEventListener(eventName") < html.indexOf("panel.initialize(configuration)"),
+    "Web XPanel event listeners must be attached before initialization can emit connection failures",
+  );
   assert.equal(
     (html.match(/<\/script>/g) || []).length,
     4,
@@ -1925,8 +1929,8 @@ run("the managed-glow escape uses a shape-sized proxy outside the iframe", () =>
     "the proxy must live outside the scoped component subtree so no iframe/host wrapper can clip it",
   );
   assert.ok(
-    editor.includes('radius = style.borderRadius || "0px"') &&
-      editor.includes("radius,"),
+    editor.includes("radius:style.borderRadius||'0px'") &&
+      editor.includes("composer-managed-glow-shape"),
     "must read the real border-radius off the widget's own largest visual element",
   );
   assert.ok(
@@ -1954,11 +1958,11 @@ run("measureShapeRadius breaks area ties in favor of the deeper/more specific el
   // which is the widget's real visual shape. Depth must break the tie.
   const editor = read("editor.js");
   assert.ok(
-    editor.includes("largestDepth = -1"),
+    editor.includes("largest=null,area=0,depth=-1"),
     "must track the depth of the current best candidate to break area ties",
   );
   assert.ok(
-    editor.includes("area > largestArea || (area === largestArea && depth > largestDepth)"),
+    editor.includes("nextArea>area||(nextArea===area&&nextDepth>depth)"),
     "an area tie must be broken in favor of the deeper element, not whichever came first in document order",
   );
 });
@@ -2184,7 +2188,7 @@ run("custom element picker classifies elements and generates standard capabiliti
   assert.ok(editor.includes("function refineWorkbenchPartsWithLivePreview()"));
   assert.ok(editor.includes("function observeCustomWorkbenchDynamicElements(frameDocument)"));
   assert.ok(editor.includes("function healComponentRootPart(frameDocument)"));
-  assert.ok(editor.includes("refineCustomElementInventoryWithLivePreview();\n      refineWorkbenchPartsWithLivePreview();\n      healComponentRootPart(previewFrame.contentDocument);\n      observeCustomWorkbenchDynamicElements(previewFrame.contentDocument);"));
+  assert.ok(editor.includes("refineCustomElementInventoryWithLivePreview();\n      refineWorkbenchPartsWithLivePreview();\n      healComponentRootPart(customInspectionDocument());\n      observeCustomWorkbenchDynamicElements(customInspectionDocument());"));
   // Phase 3: one state selector remains visible throughout Workbench and is
   // reapplied after every live-preview rebuild.
   assert.ok(html.includes('id="custom-workbench-state-toolbar"'));
@@ -2653,6 +2657,40 @@ run("custom components persist in the application-wide Composer library", () => 
   assert.ok(editor.includes("function exportCustomComponentEntry(entry)"));
   assert.ok(editor.includes("Installed component library"));
   assert.ok(editor.includes("Installed “${entry.name}” permanently in Composer"));
+});
+
+run("desktop bridge and live processor preview enforce trust boundaries", () => {
+  const desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), editor = read("editor.js"),
+    html = read("editor.html"), relay = read("CrestronUiComposer/DirectCipRelay.cs");
+  assert.ok(desktop.includes("if (!IsComposerUri(e.Source)) return"));
+  assert.ok(desktop.includes("bridgeToken"));
+  assert.ok(desktop.includes("NavigationStarting"));
+  assert.ok(desktop.includes("if (!IsComposerUri(args.Uri)) args.Cancel = true"));
+  assert.ok(!desktop.includes("DangerousAcceptAnyServerCertificateValidator"));
+  assert.ok(desktop.includes("ApprovePreviewCertificate"));
+  assert.ok(desktop.includes("checkProcessorConnection"));
+  assert.ok(desktop.includes("new SslStream"));
+  assert.ok(editor.includes('nativeRequest("prepareWebXPanelPreview"'));
+  assert.ok(editor.includes('nativeRequest("checkProcessorConnection"'));
+  assert.ok(editor.includes('nativeRequest("startDirectCipPreview"'));
+  assert.ok(html.includes('value="directcip"'));
+  assert.ok(relay.includes("new TcpListener(IPAddress.Loopback, 0)"));
+  assert.ok(relay.includes('origin.Equals("https://composer.local"'));
+  assert.ok(relay.includes("payloadLength + 3"));
+  assert.ok(!html.includes('sandbox="allow-scripts allow-same-origin"'));
+  assert.ok(!editor.includes('"allow-scripts allow-same-origin"'));
+  assert.ok(editor.includes("composer-managed-glow-shape"));
+  assert.ok(editor.includes("customInspectionDocument"));
+});
+
+run("desktop archive handling and child processes have resource safeguards", () => {
+  const desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
+  assert.ok(desktop.includes("MaxProjectPackageEntryBytes"));
+  assert.ok(desktop.includes("MaxCh5PayloadBytes"));
+  assert.ok(desktop.includes("MaxArchiveEntries"));
+  assert.ok(desktop.includes("ReadArchiveEntryWithLimit"));
+  assert.ok(desktop.includes("StandardOutput.ReadToEndAsync"));
+  assert.ok(desktop.includes("StandardError.ReadToEndAsync"));
 });
 
 if (process.exitCode) process.exit(process.exitCode);

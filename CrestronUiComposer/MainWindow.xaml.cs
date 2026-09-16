@@ -13,8 +13,10 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.Security;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Windows;
 using MessageBox = System.Windows.MessageBox;
@@ -26,10 +28,19 @@ namespace CrestronUiComposer;
 public partial class MainWindow : Window
 {
     private const string AppHost = "composer.local";
+    private const long MaxProjectPackageEntryBytes = 256L * 1024 * 1024;
+    private const long MaxCh5PayloadBytes = 512L * 1024 * 1024;
+    private const int MaxArchiveEntries = 10_000;
     private readonly string? _initialProjectPath = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(path => File.Exists(path));
+    private readonly string _webMessageToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private bool _editorReady;
     private bool _allowClose;
     private bool _closeCheckRunning;
+    private readonly HashSet<string> _previewCertificateHosts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _approvedPreviewCertificates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _previewCertificateHostsLock = new();
+    private readonly SemaphoreSlim _directCipRelayGate = new(1, 1);
+    private DirectCipRelay? _directCipRelay;
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -39,6 +50,110 @@ public partial class MainWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
         Closing += OnClosing;
+        Closed += async (_, _) => await StopDirectCipRelayAsync();
+    }
+
+    private static bool IsComposerUri(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+        uri.Host.Equals(AppHost, StringComparison.OrdinalIgnoreCase);
+
+    private static string ValidateNetworkHost(string? value)
+    {
+        var host = value?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(host) || host.Any(ch => char.IsWhiteSpace(ch) || ch is '/' or '?' or '#'))
+            throw new InvalidOperationException("Enter a valid processor host or IP address.");
+        return host;
+    }
+
+    private static MemoryStream ReadArchiveEntryWithLimit(ZipArchiveEntry entry, long maximumBytes, string description)
+    {
+        if (entry.Length > maximumBytes)
+            throw new InvalidDataException($"The {description} exceeds the supported size limit of {maximumBytes / 1024 / 1024} MB.");
+        if (entry.Length > 10 * 1024 * 1024 && entry.CompressedLength > 0 && entry.Length / Math.Max(1, entry.CompressedLength) > 1_000)
+            throw new InvalidDataException($"The {description} has an unsafe compression ratio.");
+        var memory = new MemoryStream(entry.Length > 0 ? checked((int)entry.Length) : 0);
+        using var stream = entry.Open();
+        stream.CopyTo(memory);
+        memory.Position = 0;
+        return memory;
+    }
+
+    private bool IsPreparedPreviewHost(string? requestUri)
+    {
+        if (!Uri.TryCreate(requestUri, UriKind.Absolute, out var uri)) return false;
+        lock (_previewCertificateHostsLock) return _previewCertificateHosts.Contains(uri.Host);
+    }
+
+    private bool ApprovePreviewCertificate(string host, string fingerprint, string details)
+    {
+        host = host.Trim('[', ']');
+        lock (_previewCertificateHostsLock)
+        {
+            if (!_previewCertificateHosts.Contains(host)) return false;
+            if (_approvedPreviewCertificates.TryGetValue(host, out var approvedFingerprint) &&
+                approvedFingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        bool AskUser() => MessageBox.Show(
+            $"The processor at {host} presented a certificate Windows does not trust.\n\n{details}\nSHA-256: {fingerprint}\n\nTrust this exact certificate for the current Composer session?",
+            "Trust processor certificate",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        var approved = Dispatcher.CheckAccess() ? AskUser() : Dispatcher.Invoke(AskUser);
+        if (approved)
+            lock (_previewCertificateHostsLock) _approvedPreviewCertificates[host] = fingerprint;
+        return approved;
+    }
+
+    private void PrepareWebXPanelPreview(string id, JsonElement payload)
+    {
+        var host = ValidateNetworkHost(payload.GetProperty("host").GetString());
+        lock (_previewCertificateHostsLock) _previewCertificateHosts.Add(host.Trim('[', ']'));
+        Respond(id, true, new { host }, null);
+    }
+
+    private bool IsDirectCipRelayCertificate(Uri requestUri, string fingerprint)
+    {
+        if (!IPAddress.TryParse(requestUri.Host, out var address) || !IPAddress.IsLoopback(address)) return false;
+        return _directCipRelay?.CertificateFingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    private async void StartDirectCipPreview(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = ValidateNetworkHost(payload.GetProperty("host").GetString());
+            var port = payload.TryGetProperty("port", out var portProperty) &&
+                       portProperty.TryGetInt32(out var requestedPort) && requestedPort is > 0 and <= 65535
+                ? requestedPort
+                : 41794;
+            await _directCipRelayGate.WaitAsync();
+            try
+            {
+                if (_directCipRelay is not null) await _directCipRelay.DisposeAsync();
+                _directCipRelay = DirectCipRelay.Start(host, port);
+                Respond(id, true, new
+                {
+                    relayHost = IPAddress.Loopback.ToString(),
+                    relayPort = _directCipRelay.Port,
+                    processorHost = host,
+                    processorPort = port,
+                }, null);
+            }
+            finally { _directCipRelayGate.Release(); }
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private async Task StopDirectCipRelayAsync()
+    {
+        await _directCipRelayGate.WaitAsync();
+        try
+        {
+            if (_directCipRelay is not null) await _directCipRelay.DisposeAsync();
+            _directCipRelay = null;
+        }
+        finally { _directCipRelayGate.Release(); }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -84,51 +199,61 @@ public partial class MainWindow : Window
                 webRoot,
                 CoreWebView2HostResourceAccessKind.Allow);
             EditorView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            EditorView.CoreWebView2.Settings.AreDevToolsEnabled = true;
-            // Live Preview (Web XPanel) connects directly to the
-            // user's own Crestron processor, which almost always presents a
-            // self-signed certificate. Without this, WebView2 silently fails
-            // the connection with no error surfaced to the page's JS at all
-            // (a WSS handshake to an untrusted cert just closes immediately)
-            // — matches the same trust decision already made for the native
-            // HttpClient token fetch (DangerousAcceptAnyServerCertificateValidator).
-            // This handler only covers the main editor window itself —
-            // ServerCertificateErrorDetected is per-CoreWebView2-instance, not
-            // environment-wide, so the popup opened for Live Preview needs
-            // its own copy of this same handler (see NewWindowRequested below).
-            EditorView.CoreWebView2.ServerCertificateErrorDetected += (_, args) =>
-                args.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
-            // window.open() (used for the standalone/Web XPanel preview
-            // popup) gets its own separate CoreWebView2 instance — the
-            // ServerCertificateErrorDetected handler above is per-instance,
-            // not environment-wide, so an unhandled NewWindowRequested would
-            // hand the page a default popup with none of this app's
-            // configuration (this exact gap was why the cert bypass above
-            // fixed nothing for the popup's own WebSocket connection).
-            // Host the popup in a real WPF window sharing the same
-            // environment and wire up the same handler on its CoreWebView2.
-            EditorView.CoreWebView2.NewWindowRequested += (_, args) =>
+            EditorView.CoreWebView2.Settings.AreDevToolsEnabled = Debugger.IsAttached;
+            EditorView.CoreWebView2.NavigationStarting += (_, args) =>
+            {
+                if (!IsComposerUri(args.Uri)) args.Cancel = true;
+            };
+            // window.open() gets a separate CoreWebView2 instance. Host it in
+            // a real WPF window and apply the preview-only certificate policy
+            // there; the main editor never bypasses certificate validation.
+            EditorView.CoreWebView2.NewWindowRequested += async (_, args) =>
             {
                 var deferral = args.GetDeferral();
-                var popupWindow = new Window { Title = "Crestron UI Composer — Live Preview", Width = 1366, Height = 850 };
-                var popupWebView = new Microsoft.Web.WebView2.Wpf.WebView2();
-                popupWindow.Content = popupWebView;
-                popupWindow.Closed += (_, _) => popupWebView.Dispose();
-                // WebView2 needs a real HWND to attach to before
-                // EnsureCoreWebView2Async can complete — show the window
-                // first, or that call (and therefore window.open() on the
-                // page, which blocks synchronously on this deferral) hangs.
-                popupWindow.Show();
-                popupWebView.EnsureCoreWebView2Async(EditorView.CoreWebView2.Environment).ContinueWith(_ =>
+                Window? popupWindow = null;
+                try
                 {
-                    // Already on the UI thread here (FromCurrentSynchronizationContext)
-                    // — an additional Dispatcher.Invoke would be a redundant
-                    // re-entrant dispatch onto the same thread and can hang.
+                    popupWindow = new Window { Title = "Crestron UI Composer — Live Preview", Width = 1366, Height = 850 };
+                    var popupWebView = new Microsoft.Web.WebView2.Wpf.WebView2();
+                    popupWindow.Content = popupWebView;
+                    popupWindow.Closed += (_, _) => popupWebView.Dispose();
+                    // WebView2 needs a real HWND before initialization can complete.
+                    popupWindow.Show();
+                    await popupWebView.EnsureCoreWebView2Async(EditorView.CoreWebView2.Environment);
                     popupWebView.CoreWebView2.ServerCertificateErrorDetected += (_, certArgs) =>
-                        certArgs.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
+                    {
+                        if (!Uri.TryCreate(certArgs.RequestUri, UriKind.Absolute, out var certificateUri))
+                        {
+                            certArgs.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
+                            return;
+                        }
+                        using var certificate = X509Certificate2.CreateFromPem(certArgs.ServerCertificate.ToPemEncoding());
+                        var fingerprint = certificate.GetCertHashString(HashAlgorithmName.SHA256);
+                        if (IsDirectCipRelayCertificate(certificateUri, fingerprint))
+                        {
+                            certArgs.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
+                            return;
+                        }
+                        if (!IsPreparedPreviewHost(certArgs.RequestUri))
+                        {
+                            certArgs.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
+                            return;
+                        }
+                        certArgs.Action = ApprovePreviewCertificate(certificateUri.Host, fingerprint, certArgs.ErrorStatus.ToString())
+                            ? CoreWebView2ServerCertificateErrorAction.AlwaysAllow
+                            : CoreWebView2ServerCertificateErrorAction.Cancel;
+                    };
                     args.NewWindow = popupWebView.CoreWebView2;
+                }
+                catch (Exception ex)
+                {
+                    popupWindow?.Close();
+                    MessageBox.Show($"The preview window could not be initialized.\n\n{ex.Message}", "Preview error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                finally
+                {
                     deferral.Complete();
-                }, TaskScheduler.FromCurrentSynchronizationContext());
+                }
             };
             EditorView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             EditorView.NavigationCompleted += (_, args) =>
@@ -139,6 +264,7 @@ public partial class MainWindow : Window
                 else
                 {
                     _editorReady = true;
+                    EditorView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "nativeBridgeReady", token = _webMessageToken }));
                     if (_initialProjectPath is not null)
                         EditorView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "openProjectFile", path = _initialProjectPath, contents = File.ReadAllText(_initialProjectPath) }));
                 }
@@ -260,8 +386,12 @@ public partial class MainWindow : Window
         var requestId = "";
         try
         {
+            if (!IsComposerUri(e.Source)) return;
             using var message = JsonDocument.Parse(e.WebMessageAsJson);
             var root = message.RootElement;
+            if (!root.TryGetProperty("bridgeToken", out var tokenProperty) ||
+                !string.Equals(tokenProperty.GetString(), _webMessageToken, StringComparison.Ordinal))
+                return;
             var id = root.GetProperty("id").GetString() ?? "";
             requestId = id;
             var command = root.GetProperty("command").GetString() ?? "";
@@ -354,6 +484,15 @@ public partial class MainWindow : Window
                     break;
                 case "checkPanel":
                     CheckPanel(id, root.GetProperty("payload").GetString() ?? "");
+                    break;
+                case "checkProcessorConnection":
+                    CheckProcessorConnection(id, root.GetProperty("payload"));
+                    break;
+                case "startDirectCipPreview":
+                    StartDirectCipPreview(id, root.GetProperty("payload"));
+                    break;
+                case "prepareWebXPanelPreview":
+                    PrepareWebXPanelPreview(id, root.GetProperty("payload"));
                     break;
                 case "getWebXPanelToken":
                     GetWebXPanelToken(id, root.GetProperty("payload"));
@@ -710,8 +849,12 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         using var archive = ZipFile.OpenRead(dialog.FileName);
+        if (archive.Entries.Count > MaxArchiveEntries)
+            throw new InvalidDataException($"This package contains too many entries (maximum {MaxArchiveEntries:N0}).");
         var projectEntry = archive.GetEntry("project.cuiproj")
             ?? throw new InvalidDataException("This package does not contain project.cuiproj.");
+        if (projectEntry.Length > MaxProjectPackageEntryBytes)
+            throw new InvalidDataException($"The project exceeds the supported size limit of {MaxProjectPackageEntryBytes / 1024 / 1024} MB.");
         using var reader = new StreamReader(projectEntry.Open());
         var contents = reader.ReadToEnd();
         using var validation = JsonDocument.Parse(contents);
@@ -844,47 +987,51 @@ public partial class MainWindow : Window
         Respond(id, true, folder, null);
     }
 
-    private void CheckForUpdates(string id)
+    private async void CheckForUpdates(string id)
     {
-        const string releasesApi = "https://api.github.com/repos/jobu109/crestron-ui-composer/releases/latest";
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("CrestronUiComposer-Updater/1.0");
-        using var response = client.GetAsync(releasesApi).GetAwaiter().GetResult();
-        var current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        try
         {
-            Respond(id, true, new { currentVersion = DisplayVersion(current), latestVersion = "", updateAvailable = false, releaseNotes = "", releaseUrl = "", downloadUrl = "" }, null);
-            return;
+            const string releasesApi = "https://api.github.com/repos/jobu109/crestron-ui-composer/releases/latest";
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("CrestronUiComposer-Updater/1.0");
+            using var response = await client.GetAsync(releasesApi);
+            var current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Respond(id, true, new { currentVersion = DisplayVersion(current), latestVersion = "", updateAvailable = false, releaseNotes = "", releaseUrl = "", downloadUrl = "" }, null);
+                return;
+            }
+            response.EnsureSuccessStatusCode();
+            using var release = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = release.RootElement;
+            var tag = root.TryGetProperty("tag_name", out var tagValue) ? tagValue.GetString() ?? "" : "";
+            var latest = ParseReleaseVersion(tag);
+            var releaseUrl = root.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() ?? "" : "";
+            var notes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "";
+            var downloadUrl = "";
+            if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                var preferred = assets.EnumerateArray()
+                    .Select(asset => new
+                    {
+                        name = asset.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+                        url = asset.TryGetProperty("browser_download_url", out var url) ? url.GetString() ?? "" : ""
+                    })
+                    .OrderBy(asset => asset.name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) ? 0 : asset.name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? 1 : asset.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? 2 : 3)
+                    .FirstOrDefault(asset => !string.IsNullOrWhiteSpace(asset.url));
+                downloadUrl = preferred?.url ?? "";
+            }
+            Respond(id, true, new
+            {
+                currentVersion = DisplayVersion(current),
+                latestVersion = latest is null ? tag : DisplayVersion(latest),
+                updateAvailable = latest is not null && latest > current,
+                releaseNotes = notes,
+                releaseUrl,
+                downloadUrl
+            }, null);
         }
-        response.EnsureSuccessStatusCode();
-        using var release = JsonDocument.Parse(response.Content.ReadAsStringAsync().GetAwaiter().GetResult());
-        var root = release.RootElement;
-        var tag = root.TryGetProperty("tag_name", out var tagValue) ? tagValue.GetString() ?? "" : "";
-        var latest = ParseReleaseVersion(tag);
-        var releaseUrl = root.TryGetProperty("html_url", out var htmlUrl) ? htmlUrl.GetString() ?? "" : "";
-        var notes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "";
-        var downloadUrl = "";
-        if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-        {
-            var preferred = assets.EnumerateArray()
-                .Select(asset => new
-                {
-                    name = asset.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
-                    url = asset.TryGetProperty("browser_download_url", out var url) ? url.GetString() ?? "" : ""
-                })
-                .OrderBy(asset => asset.name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) ? 0 : asset.name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? 1 : asset.name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? 2 : 3)
-                .FirstOrDefault(asset => !string.IsNullOrWhiteSpace(asset.url));
-            downloadUrl = preferred?.url ?? "";
-        }
-        Respond(id, true, new
-        {
-            currentVersion = DisplayVersion(current),
-            latestVersion = latest is null ? tag : DisplayVersion(latest),
-            updateAvailable = latest is not null && latest > current,
-            releaseNotes = notes,
-            releaseUrl,
-            downloadUrl
-        }, null);
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
     }
 
     private static Version? ParseReleaseVersion(string value)
@@ -1100,54 +1247,60 @@ public partial class MainWindow : Window
         if (cli is null) throw new FileNotFoundException("Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before building a panel package.");
         var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
         if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
+        var destinationPath = saveDialog.FileName;
 
-        var workRoot = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", Guid.NewGuid().ToString("N"));
-        var source = Path.Combine(workRoot, "project");
-        var output = Path.Combine(workRoot, "output");
-        Directory.CreateDirectory(source);
-        Directory.CreateDirectory(output);
-        try
+        RunBackgroundCommand(id, () =>
         {
-            File.WriteAllText(Path.Combine(source, "index.html"), html);
-            File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
-            WriteConstructProjectConfig(source);
-            File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
-            var runtimeLicense = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js.LICENSE.txt");
-            if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
-            CopyWebXPanelRuntime(source);
-
-            string archiveContractPath;
-            if (!string.IsNullOrWhiteSpace(generatedContractMapping))
+            var workRoot = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", Guid.NewGuid().ToString("N"));
+            var source = Path.Combine(workRoot, "project");
+            var output = Path.Combine(workRoot, "output");
+            Directory.CreateDirectory(source);
+            Directory.CreateDirectory(output);
+            try
             {
-                archiveContractPath = Path.Combine(workRoot, projectName + ".cse2j");
-                File.WriteAllText(archiveContractPath, generatedContractMapping);
-                ValidateContractMapping(archiveContractPath);
-            }
-            else
-            {
-                archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
-            }
-            var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\" -P \"samplesource=Shell\"";
-            arguments += "\"";
-            var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
-            var stdOut = process.StandardOutput.ReadToEnd();
-            var stdErr = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            if (process.ExitCode != 0) throw new InvalidOperationException("Crestron ch5-cli failed:\n" + stdErr + "\n" + stdOut);
+                File.WriteAllText(Path.Combine(source, "index.html"), html);
+                File.WriteAllText(Path.Combine(source, "composer-target.json"), deviceJson);
+                WriteConstructProjectConfig(source);
+                File.Copy(runtime, Path.Combine(source, "cr-com-lib.js"), true);
+                var runtimeLicense = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js.LICENSE.txt");
+                if (File.Exists(runtimeLicense)) File.Copy(runtimeLicense, Path.Combine(source, "cr-com-lib.js.LICENSE.txt"), true);
+                CopyWebXPanelRuntime(source);
 
-            var archive = Path.Combine(output, projectName + ".ch5z");
-            ValidateCh5Archive(archive);
-            File.Copy(archive, saveDialog.FileName, true);
-            ValidateCh5Archive(saveDialog.FileName);
-            var file = new FileInfo(saveDialog.FileName);
-            var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(saveDialog.FileName)));
-            Respond(id, true, new { path = saveDialog.FileName, projectName, usedContract = contractPath is not null || generatedContractMapping is not null, size = file.Length, sha256 }, null);
-        }
-        finally
-        {
-            try { Directory.Delete(workRoot, true); } catch { }
-        }
+                string archiveContractPath;
+                if (!string.IsNullOrWhiteSpace(generatedContractMapping))
+                {
+                    archiveContractPath = Path.Combine(workRoot, projectName + ".cse2j");
+                    File.WriteAllText(archiveContractPath, generatedContractMapping);
+                    ValidateContractMapping(archiveContractPath);
+                }
+                else
+                {
+                    archiveContractPath = contractPath ?? CreateEmptyContractMapping(workRoot, projectName);
+                }
+                var arguments = $"/d /s /c \"\"{cli}\" archive -p \"{projectName}\" -d \"{source}\" -o \"{output}\" -c \"{archiveContractPath}\" -P \"samplesource=Shell\"";
+                arguments += "\"";
+                var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
+                var stdOutTask = process.StandardOutput.ReadToEndAsync();
+                var stdErrTask = process.StandardError.ReadToEndAsync();
+                process.WaitForExit();
+                var stdOut = stdOutTask.GetAwaiter().GetResult();
+                var stdErr = stdErrTask.GetAwaiter().GetResult();
+                if (process.ExitCode != 0) throw new InvalidOperationException("Crestron ch5-cli failed:\n" + stdErr + "\n" + stdOut);
+
+                var archive = Path.Combine(output, projectName + ".ch5z");
+                ValidateCh5Archive(archive);
+                File.Copy(archive, destinationPath, true);
+                ValidateCh5Archive(destinationPath);
+                var file = new FileInfo(destinationPath);
+                var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destinationPath)));
+                return new { path = destinationPath, projectName, usedContract = contractPath is not null || generatedContractMapping is not null, size = file.Length, sha256 };
+            }
+            finally
+            {
+                try { Directory.Delete(workRoot, true); } catch { }
+            }
+        });
     }
 
     private void BuildCh5Packages(string id, JsonElement payload)
@@ -1177,26 +1330,34 @@ public partial class MainWindow : Window
         var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
         if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
 
-        var paths = new List<string>();
-        var artifacts = new List<object>();
-        foreach (var package in packages)
+        var packageRequests = packages.Select(package => new
         {
-            var requestedName = package.GetProperty("projectName").GetString() ?? "CrestronUi";
-            var projectName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_').ToArray());
-            if (string.IsNullOrWhiteSpace(projectName)) throw new InvalidOperationException("A package name must contain letters or numbers.");
-            var html = package.GetProperty("html").GetString() ?? "";
-            var deviceJson = package.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
-            var destination = Path.Combine(folderDialog.FolderName, projectName + ".ch5z");
-            CreateCh5Archive(cli, runtime, html, projectName, deviceJson, contractPath, generatedContractMapping, destination);
-            paths.Add(destination);
-            artifacts.Add(new
+            RequestedName = package.GetProperty("projectName").GetString() ?? "CrestronUi",
+            Html = package.GetProperty("html").GetString() ?? "",
+            DeviceJson = package.TryGetProperty("device", out var device) ? device.GetRawText() : "{}"
+        }).ToArray();
+        var destinationFolder = folderDialog.FolderName;
+        RunBackgroundCommand(id, () =>
+        {
+            var paths = new List<string>();
+            var artifacts = new List<object>();
+            foreach (var package in packageRequests)
             {
-                path = destination,
-                size = new FileInfo(destination).Length,
-                sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destination)))
-            });
-        }
-        Respond(id, true, new { folder = folderDialog.FolderName, paths, artifacts }, null);
+                var requestedName = package.RequestedName;
+                var projectName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_').ToArray());
+                if (string.IsNullOrWhiteSpace(projectName)) throw new InvalidOperationException("A package name must contain letters or numbers.");
+                var destination = Path.Combine(destinationFolder, projectName + ".ch5z");
+                CreateCh5Archive(cli, runtime, package.Html, projectName, package.DeviceJson, contractPath, generatedContractMapping, destination);
+                paths.Add(destination);
+                artifacts.Add(new
+                {
+                    path = destination,
+                    size = new FileInfo(destination).Length,
+                    sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destination)))
+                });
+            }
+            return new { folder = destinationFolder, paths, artifacts };
+        });
     }
 
     private static void CreateCh5Archive(string cli, string runtime, string html, string projectName, string deviceJson, string? contractPath, string? generatedContractMapping, string destination)
@@ -1230,9 +1391,11 @@ public partial class MainWindow : Window
             arguments += "\"";
             var start = new ProcessStartInfo("cmd.exe", arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The Crestron archive utility could not be started.");
-            var stdOut = process.StandardOutput.ReadToEnd();
-            var stdErr = process.StandardError.ReadToEnd();
+            var stdOutTask = process.StandardOutput.ReadToEndAsync();
+            var stdErrTask = process.StandardError.ReadToEndAsync();
             process.WaitForExit();
+            var stdOut = stdOutTask.GetAwaiter().GetResult();
+            var stdErr = stdErrTask.GetAwaiter().GetResult();
             if (process.ExitCode != 0) throw new InvalidOperationException("Crestron ch5-cli failed:\n" + stdErr + "\n" + stdOut);
             var archive = Path.Combine(output, projectName + ".ch5z");
             ValidateCh5Archive(archive);
@@ -1252,21 +1415,24 @@ public partial class MainWindow : Window
         var html = payload.GetProperty("html").GetString() ?? "";
         if (string.IsNullOrWhiteSpace(html)) throw new InvalidDataException("The widget catalog export was empty.");
         var deviceJson = payload.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
-        var folder = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", "SelfTest", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(folder);
-        var destination = Path.Combine(folder, "ComposerSelfTest.ch5z");
-        var timer = Stopwatch.StartNew();
-        try
+        RunBackgroundCommand(id, () =>
         {
-            CreateCh5Archive(cli, runtime, html, "ComposerSelfTest", deviceJson, null, null, destination);
-            ValidateCh5Archive(destination);
-            timer.Stop();
-            Respond(id, true, new { size = new FileInfo(destination).Length, elapsedMilliseconds = timer.ElapsedMilliseconds }, null);
-        }
-        finally
-        {
-            try { Directory.Delete(folder, true); } catch { }
-        }
+            var folder = Path.Combine(Path.GetTempPath(), "CrestronUiComposer", "SelfTest", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var destination = Path.Combine(folder, "ComposerSelfTest.ch5z");
+            var timer = Stopwatch.StartNew();
+            try
+            {
+                CreateCh5Archive(cli, runtime, html, "ComposerSelfTest", deviceJson, null, null, destination);
+                ValidateCh5Archive(destination);
+                timer.Stop();
+                return new { size = new FileInfo(destination).Length, elapsedMilliseconds = timer.ElapsedMilliseconds };
+            }
+            finally
+            {
+                try { Directory.Delete(folder, true); } catch { }
+            }
+        });
     }
 
     private static string? FindCh5Cli()
@@ -1391,9 +1557,7 @@ public partial class MainWindow : Window
         var payloadEntries = 0;
         if (ch5Entry is not null)
         {
-            using var payloadMemory = new MemoryStream();
-            using (var stream = ch5Entry.Open()) stream.CopyTo(payloadMemory);
-            payloadMemory.Position = 0;
+            using var payloadMemory = ReadArchiveEntryWithLimit(ch5Entry, MaxCh5PayloadBytes, "embedded CH5 payload");
             using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
             payloadEntries = payload.Entries.Count;
             hasIndex = payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase));
@@ -1469,6 +1633,105 @@ public partial class MainWindow : Window
             using var ping = new Ping();
             var reply = await ping.SendPingAsync(host.Trim(), 3000);
             Respond(id, true, new { reachable = reply.Status == IPStatus.Success, status = reply.Status.ToString(), roundtripMs = reply.Status == IPStatus.Success ? reply.RoundtripTime : -1 }, null);
+        }
+        catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private async void CheckProcessorConnection(string id, JsonElement payload)
+    {
+        try
+        {
+            var host = ValidateNetworkHost(payload.GetProperty("host").GetString());
+            var port = payload.TryGetProperty("port", out var portProperty) &&
+                       portProperty.TryGetInt32(out var requestedPort) && requestedPort is > 0 and <= 65535
+                ? requestedPort
+                : 49200;
+            var useTls = !payload.TryGetProperty("useTls", out var tlsProperty) || tlsProperty.ValueKind != JsonValueKind.False;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var tcp = new TcpClient();
+            var timer = Stopwatch.StartNew();
+            try
+            {
+                await tcp.ConnectAsync(host, port, timeout.Token);
+            }
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException)
+            {
+                Respond(id, true, new
+                {
+                    host,
+                    port,
+                    tcpOpen = false,
+                    tlsReady = false,
+                    elapsedMs = timer.ElapsedMilliseconds,
+                    status = ex is OperationCanceledException ? "Connection timed out" : ex.Message
+                }, null);
+                return;
+            }
+
+            if (!useTls)
+            {
+                timer.Stop();
+                Respond(id, true, new
+                {
+                    host,
+                    port,
+                    tcpOpen = true,
+                    tlsReady = false,
+                    elapsedMs = timer.ElapsedMilliseconds,
+                    status = "Native CIP port is accepting TCP connections"
+                }, null);
+                return;
+            }
+
+            X509Certificate2? observedCertificate = null;
+            var certificateErrors = SslPolicyErrors.None;
+            using var tls = new SslStream(tcp.GetStream(), false, (_, certificate, _, errors) =>
+            {
+                certificateErrors = errors;
+                if (certificate is not null) observedCertificate = new X509Certificate2(certificate);
+                // This is a read-only diagnostic handshake. Trust is reported to
+                // the UI; it is not persisted or used to authorize credentials.
+                return true;
+            });
+            try
+            {
+                await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+                {
+                    TargetHost = host.Trim('[', ']'),
+                    EnabledSslProtocols = System.Security.Authentication.SslProtocols.None,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                }, timeout.Token);
+                timer.Stop();
+                Respond(id, true, new
+                {
+                    host,
+                    port,
+                    tcpOpen = true,
+                    tlsReady = true,
+                    elapsedMs = timer.ElapsedMilliseconds,
+                    certificateTrusted = certificateErrors == SslPolicyErrors.None,
+                    certificateErrors = certificateErrors.ToString(),
+                    certificateSubject = observedCertificate?.Subject ?? "",
+                    certificateThumbprint = observedCertificate?.GetCertHashString(HashAlgorithmName.SHA256) ?? "",
+                    status = certificateErrors == SslPolicyErrors.None ? "TLS ready" : "TLS ready; certificate requires trust"
+                }, null);
+            }
+            catch (Exception ex) when (ex is System.Security.Authentication.AuthenticationException or IOException or OperationCanceledException)
+            {
+                Respond(id, true, new
+                {
+                    host,
+                    port,
+                    tcpOpen = true,
+                    tlsReady = false,
+                    elapsedMs = timer.ElapsedMilliseconds,
+                    status = ex is OperationCanceledException ? "TLS handshake timed out" : ex.Message
+                }, null);
+            }
+            finally
+            {
+                observedCertificate?.Dispose();
+            }
         }
         catch (Exception ex) { Respond(id, false, null, ex.Message); }
     }
@@ -1657,7 +1920,9 @@ exit $deploymentExitCode
     {
         var path = DeploymentCredentialsPath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(credentials));
+        var temporaryPath = path + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(credentials));
+        File.Move(temporaryPath, path, true);
     }
 
     // DPAPI ties the ciphertext to this Windows user account; entropy is an
@@ -1871,9 +2136,11 @@ exit $deploymentExitCode
             start.RedirectStandardError = true;
             using var process = Process.Start(start);
             if (process is null) return null;
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(4000)) { try { process.Kill(true); } catch { } return null; }
+            var output = outputTask.GetAwaiter().GetResult();
+            var error = errorTask.GetAwaiter().GetResult();
             var version = string.IsNullOrWhiteSpace(output) ? error : output;
             return process.ExitCode == 0 ? version.Trim() : null;
         }
@@ -1905,6 +2172,8 @@ exit $deploymentExitCode
     {
         if (!File.Exists(path) || new FileInfo(path).Length == 0) throw new InvalidDataException("Crestron did not produce a CH5 archive.");
         using var zip = ZipFile.OpenRead(path);
+        if (zip.Entries.Count > MaxArchiveEntries)
+            throw new InvalidDataException($"The CH5 archive contains too many entries (maximum {MaxArchiveEntries:N0}).");
         var ch5Entry = zip.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".ch5", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The generated archive does not contain a .ch5 payload.");
         var archiveName = Path.GetFileNameWithoutExtension(path);
         var payloadName = Path.GetFileNameWithoutExtension(ch5Entry.FullName);
@@ -1912,10 +2181,10 @@ exit $deploymentExitCode
             throw new InvalidDataException(
                 $"The CH5Z file name ('{archiveName}') does not match its embedded project name ('{payloadName}'). Rebuild the package instead of renaming it.");
         if (!zip.Entries.Any(entry => entry.FullName.EndsWith("manifest.json", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The generated archive does not contain the required manifest.");
-        using var payloadMemory = new MemoryStream();
-        using (var payloadStream = ch5Entry.Open()) payloadStream.CopyTo(payloadMemory);
-        payloadMemory.Position = 0;
+        using var payloadMemory = ReadArchiveEntryWithLimit(ch5Entry, MaxCh5PayloadBytes, "embedded CH5 payload");
         using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
+        if (payload.Entries.Count > MaxArchiveEntries)
+            throw new InvalidDataException($"The embedded CH5 payload contains too many entries (maximum {MaxArchiveEntries:N0}).");
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("index.html", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing index.html.");
         if (!payload.Entries.Any(entry => entry.FullName.EndsWith("cr-com-lib.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing CrComLib.");
         if (!payload.Entries.Any(entry => entry.FullName.Equals("ch5-webxpanel.js", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("The CH5 payload is missing the WebXPanel runtime required by CH5 Desktop.");
@@ -1935,9 +2204,7 @@ exit $deploymentExitCode
         using var zip = ZipFile.OpenRead(path);
         var ch5Entry = zip.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".ch5", StringComparison.OrdinalIgnoreCase));
         if (ch5Entry is null) return null;
-        using var payloadMemory = new MemoryStream();
-        using (var payloadStream = ch5Entry.Open()) payloadStream.CopyTo(payloadMemory);
-        payloadMemory.Position = 0;
+        using var payloadMemory = ReadArchiveEntryWithLimit(ch5Entry, MaxCh5PayloadBytes, "embedded CH5 payload");
         using var payload = new ZipArchive(payloadMemory, ZipArchiveMode.Read);
         var target = payload.Entries.FirstOrDefault(entry => entry.FullName.EndsWith("composer-target.json", StringComparison.OrdinalIgnoreCase));
         if (target is null) return null;
@@ -1959,7 +2226,11 @@ exit $deploymentExitCode
             var baseUri = new Uri($"https://{host}/");
             using var handler = new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+                ServerCertificateCustomValidationCallback = (_, certificate, _, errors) =>
+                    errors == SslPolicyErrors.None || certificate is not null && ApprovePreviewCertificate(
+                        host,
+                        certificate.GetCertHashString(HashAlgorithmName.SHA256),
+                        $"TLS validation: {errors}\nCertificate: {certificate?.Subject ?? "Unknown"}"),
                 CookieContainer = new CookieContainer(),
                 AllowAutoRedirect = false,
             };
@@ -2038,6 +2309,19 @@ exit $deploymentExitCode
             Respond(id, true, new { token }, null);
         }
         catch (Exception ex) { Respond(id, false, null, ex.Message); }
+    }
+
+    private async void RunBackgroundCommand(string id, Func<object> operation)
+    {
+        try
+        {
+            var result = await Task.Run(operation);
+            Respond(id, true, result, null);
+        }
+        catch (Exception ex)
+        {
+            Respond(id, false, null, ex.GetBaseException().Message);
+        }
     }
 
     private void Respond(string id, bool ok, object? data, string? error)

@@ -599,7 +599,56 @@
         return resolved.visibilityEnabled && resolved.visibility ? { id: entry.id, pageId: page.id, signal: resolved.visibility } : null;
       }).filter(Boolean));
     const subpageVisibilityRuntime = `(function(){var configs=${JSON.stringify(subpageVisibilityConfigs)};var lib=null;try{lib=window.CrComLib||(window.parent&&window.parent.CrComLib)}catch(e){};if(!lib)return;var subscribe=window.__composerSubscribeFeedback||function(type,signal,callback){return lib.subscribeState(type==='digital'?'b':type==='analog'?'n':'s',String(signal),callback)};configs.forEach(function(config){subscribe('digital',String(config.signal),function(value){var visible=value===true||value===1||value==='1';document.querySelectorAll('[data-subpage="'+config.id+'"][data-subpage-page="'+config.pageId+'"]').forEach(function(element){element.style.visibility=visible?'visible':'hidden'})})})})();`;
-    const communicationBootstrap = `(async function startComposerCommunication(){try{var bundle=window.WebXPanel;if(!bundle||typeof bundle.getWebXPanel!=='function')throw new Error('WebXPanel runtime did not load');var inContainer=typeof bundle.runsInContainerApp==='function'&&bundle.runsInContainerApp();var api=bundle.getWebXPanel(!inContainer),panel=api.WebXPanel&&(api.WebXPanel.default||api.WebXPanel);window.__composerWebXPanel=api;window.__composerRunsInContainer=inContainer;window.__composerWebXPanelActive=!!api.isActive;window.__composerCommunicationMode=inContainer?'CH5 Desktop native container':(api.isActive?'Web XPanel':'touch panel');if(!inContainer&&api.isActive&&panel&&typeof panel.initialize==='function'){var params={},search=new URLSearchParams(window.location.search),saved={};search.forEach(function(value,key){params[String(key).toLowerCase()]=value});try{var response=await fetch('assets/data/project-config.json',{cache:'no-store'});if(response.ok){var projectConfig=await response.json();saved=projectConfig&&projectConfig.config&&projectConfig.config.controlSystem||{};}}catch(configError){console.warn('[Composer communication] Project configuration could not be read:',configError);}var configuration={ipId:params.ipid||saved.ipId||'0x03'},host=params.host||saved.host||'';if(host)configuration.host=host;if(params.port||saved.port)configuration.port=Number(params.port||saved.port);if(params.roomid||saved.roomId)configuration.roomId=params.roomid||saved.roomId;if(params.tokensource||saved.tokenSource)configuration.tokenSource=params.tokensource||saved.tokenSource;if(params.tokenurl||saved.tokenUrl)configuration.tokenUrl=params.tokenurl||saved.tokenUrl;if(params.authtoken||saved.authToken)configuration.authToken=params.authtoken||saved.authToken;window.__composerWebXPanelConfiguration=configuration;panel.initialize(configuration);}if(panel&&api.WebXPanelEvents&&typeof panel.addEventListener==='function'){Object.keys(api.WebXPanelEvents).forEach(function(key){var eventName=api.WebXPanelEvents[key];panel.addEventListener(eventName,function(event){var detail=event&&event.detail||null;window.__composerWebXPanelLastEvent={name:key,detail:detail,time:new Date().toISOString()};console.log('[WebXPanel]',key,detail||'');if(key==='NOT_AUTHORIZED'&&detail&&detail.redirectTo){window.__composerAuthenticationRedirect=detail.redirectTo;setTimeout(function(){window.location.replace(detail.redirectTo)},3000);}});});}window.__composerCommunicationReady=true;console.log('[Composer communication]',window.__composerCommunicationMode,window.__composerWebXPanelConfiguration||'');}catch(error){window.__composerCommunicationReady=false;window.__composerWebXPanelError=String(error&&error.message||error);console.error('CH5 communication initialization failed:',error);}})();`;
+    const communicationBootstrap = `(async function startComposerCommunication(){
+try{
+var bundle=window.WebXPanel;
+if(!bundle||typeof bundle.getWebXPanel!=='function')throw new Error('WebXPanel runtime did not load');
+var inContainer=typeof bundle.runsInContainerApp==='function'&&bundle.runsInContainerApp();
+var api=bundle.getWebXPanel(!inContainer),panel=api.WebXPanel&&(api.WebXPanel.default||api.WebXPanel),configuration=null;
+window.__composerWebXPanel=api;
+window.__composerRunsInContainer=inContainer;
+window.__composerWebXPanelActive=!!api.isActive;
+window.__composerCommunicationMode=inContainer?'CH5 Desktop native container':(api.isActive?'Web XPanel':'touch panel');
+if(!inContainer&&api.isActive&&panel&&typeof panel.initialize==='function'){
+var params={},search=new URLSearchParams(window.location.search),saved={};
+search.forEach(function(value,key){params[String(key).toLowerCase()]=value});
+try{
+var response=await fetch('assets/data/project-config.json',{cache:'no-store'});
+if(response.ok){var projectConfig=await response.json();saved=projectConfig&&projectConfig.config&&projectConfig.config.controlSystem||{};}
+}catch(configError){console.warn('[Composer communication] Project configuration could not be read:',configError);}
+configuration={ipId:params.ipid||saved.ipId||'0x03'};
+var host=params.host||saved.host||'';
+if(host)configuration.host=host;
+if(params.port||saved.port)configuration.port=Number(params.port||saved.port);
+if(params.roomid||saved.roomId)configuration.roomId=params.roomid||saved.roomId;
+if(params.tokensource||saved.tokenSource)configuration.tokenSource=params.tokensource||saved.tokenSource;
+if(params.tokenurl||saved.tokenUrl)configuration.tokenUrl=params.tokenurl||saved.tokenUrl;
+if(params.authtoken||saved.authToken)configuration.authToken=params.authtoken||saved.authToken;
+window.__composerWebXPanelConfiguration=configuration;
+}
+if(panel&&api.WebXPanelEvents&&typeof panel.addEventListener==='function'){
+Object.keys(api.WebXPanelEvents).forEach(function(key){
+var eventName=api.WebXPanelEvents[key];
+panel.addEventListener(eventName,function(event){
+var detail=event&&event.detail||null;
+window.__composerWebXPanelLastEvent={name:key,detail:detail,time:new Date().toISOString()};
+console.log('[WebXPanel]',key,detail||'');
+if(key==='NOT_AUTHORIZED'&&detail&&detail.redirectTo){
+window.__composerAuthenticationRedirect=detail.redirectTo;
+setTimeout(function(){window.location.replace(detail.redirectTo)},3000);
+}
+});
+});
+}
+if(configuration)panel.initialize(configuration);
+window.__composerCommunicationReady=true;
+console.log('[Composer communication]',window.__composerCommunicationMode,window.__composerWebXPanelConfiguration||'');
+}catch(error){
+window.__composerCommunicationReady=false;
+window.__composerWebXPanelError=String(error&&error.message||error);
+console.error('CH5 communication initialization failed:',error);
+}
+})();`;
     return `<!doctype html>\n<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;touch-action:none}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent!important;-webkit-touch-callout:none;scrollbar-width:thin;scrollbar-color:rgba(112,112,112,.76) rgba(42,42,42,.38)}*::-webkit-scrollbar{width:7px;height:7px}*::-webkit-scrollbar-track{border-radius:999px;background:rgba(42,42,42,.38)}*::-webkit-scrollbar-thumb{min-width:36px;min-height:36px;border:0;border-radius:999px;background:rgba(112,112,112,.76)}*::-webkit-scrollbar-thumb:hover{background:rgba(142,142,142,.88)}*::-webkit-scrollbar-button,*::-webkit-scrollbar-button:single-button,*::-webkit-scrollbar-button:horizontal:decrement,*::-webkit-scrollbar-button:horizontal:increment,*::-webkit-scrollbar-button:vertical:decrement,*::-webkit-scrollbar-button:vertical:increment,*::-webkit-scrollbar-button:start:decrement,*::-webkit-scrollbar-button:end:increment{display:none!important;width:0!important;height:0!important;min-width:0!important;min-height:0!important;border:0!important;background:transparent!important;-webkit-appearance:none!important}*::-webkit-scrollbar-corner{background:transparent}[data-component] :focus,.scoped-widget :focus{outline:none!important}.page{display:none;position:relative;width:${project.width}px;height:${project.height}px;overflow:hidden}.page.active{display:block}.scoped-preview{display:block;width:100%;height:100%;min-width:0;min-height:0}.widget-asset-overlay-selected{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-normal{display:none}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"]>.widget-asset-overlay-selected{display:block}.scoped-widget[data-has-selected-graphic="true"][data-asset-selected="true"][data-graphic-mode="background"]{background-image:var(--selected-graphic-url)!important}#ch5-diagnostics{position:fixed;top:30px;right:30px;z-index:999999;width:920px;max-height:620px;padding:18px;border:2px solid #24d5b8;border-radius:10px;background:rgba(0,0,0,.88);color:#fff;font:22px/1.35 Consolas,monospace;pointer-events:none}#ch5-diagnostics strong{display:block;color:#55f2d7;pointer-events:auto;touch-action:manipulation}#ch5-communication-status{margin:10px 0;padding:10px;border:1px solid #55f2d7;color:#fff;white-space:pre-wrap}#ch5-diagnostic-log{height:360px;margin:10px 0 0;overflow:auto;color:#d8fffa;white-space:pre-wrap}</style><style id="composer-component-styles">${componentCss}</style><script src="ch5-webxpanel.js"><\/script><script>${communicationBootstrap}<\/script><script src="cr-com-lib.js"><\/script></head><body>${pages}${diagnosticMarkup}<script>${safeController};${subpageVisibilityRuntime}<\/script></body></html>`;
   }
   global.ComposerExporter = { exportProject };

@@ -1533,7 +1533,7 @@ run("syncCustomWorkbenchPartsFromInventory carries state-only and event ownershi
       querySelector: (selector) => selector === "#surface" || selector === entry.selector ? node : null,
     };
   global.customWorkbenchDraft = { parts: [part] };
-  global.$ = (id) => id === "custom-component-preview" ? { contentDocument: frameDocument } : null;
+  global.$ = (id) => id === "custom-component-inspection" ? { contentDocument: frameDocument } : null;
   global.ensureCustomWorkbenchDraft = () => { throw new Error("draft already exists"); };
   let seeded = null;
   global.seedCustomWorkbenchParts = (inventory) => { seeded = inventory; };
@@ -1569,7 +1569,7 @@ run("refineCustomElementInventoryWithLivePreview upgrades a low-confidence guess
   const node = mockRefinableNode({ rect: { width: 40, height: 40 }, backgroundImage: 'url("hero.png")' }),
     entry = { selector: ".hero", role: "text", reason: "Detected a text or label element.", confidence: "low" };
   global.customAnalyzedElements = [entry];
-  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ ".hero": node }) } : null);
+  global.$ = (id) => (id === "custom-component-inspection" ? { contentDocument: mockRefinableFrameDocument({ ".hero": node }) } : null);
   global.renderCustomElementInventory = () => {};
   refineCustomElementInventoryWithLivePreview();
   assert.equal(entry.role, "backgroundAsset");
@@ -1580,7 +1580,7 @@ run("refineCustomElementInventoryWithLivePreview maps a boxless node to its pseu
   const node = mockRefinableNode({ rect: { width: 0, height: 0 }, beforeContent: '"\\2713"' }),
     entry = { selector: ".checkmark", role: "ignore", reason: "No safe interactive behavior was identified; preserve it unchanged.", confidence: "low" };
   global.customAnalyzedElements = [entry];
-  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ ".checkmark": node }) } : null);
+  global.$ = (id) => (id === "custom-component-inspection" ? { contentDocument: mockRefinableFrameDocument({ ".checkmark": node }) } : null);
   global.renderCustomElementInventory = () => {};
   refineCustomElementInventoryWithLivePreview();
   assert.equal(entry.pseudoHost, true);
@@ -1591,7 +1591,7 @@ run("refineCustomElementInventoryWithLivePreview flags a previously-confident pa
   const node = mockRefinableNode({ rect: { width: 0, height: 0 } }),
     entry = { selector: ".ghost-button", role: "button", reason: "Detected an interactive button surface.", confidence: "high" };
   global.customAnalyzedElements = [entry];
-  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ ".ghost-button": node }) } : null);
+  global.$ = (id) => (id === "custom-component-inspection" ? { contentDocument: mockRefinableFrameDocument({ ".ghost-button": node }) } : null);
   global.renderCustomElementInventory = () => {};
   refineCustomElementInventoryWithLivePreview();
   assert.equal(entry.confidence, "low");
@@ -1602,7 +1602,7 @@ run("refineCustomElementInventoryWithLivePreview leaves a visible, confident ent
   const node = mockRefinableNode({ rect: { width: 120, height: 40 } }),
     entry = { selector: "#toggle", role: "toggle", reason: "Detected a checkbox or radio control that switches between two states." };
   global.customAnalyzedElements = [entry];
-  global.$ = (id) => (id === "custom-component-preview" ? { contentDocument: mockRefinableFrameDocument({ "#toggle": node }) } : null);
+  global.$ = (id) => (id === "custom-component-inspection" ? { contentDocument: mockRefinableFrameDocument({ "#toggle": node }) } : null);
   let rerendered = false;
   global.renderCustomElementInventory = () => { rerendered = true; };
   refineCustomElementInventoryWithLivePreview();
@@ -1619,7 +1619,7 @@ run("refineWorkbenchPartsWithLivePreview upgrades a manually-added part with no 
     weakPart = { selector: ".hero-banner", role: "element" };
   global.customAnalyzedElements = [];
   global.customWorkbenchDraft = { parts: [weakPart] };
-  global.$ = (id) => (id === "custom-component-preview"
+  global.$ = (id) => (id === "custom-component-inspection"
     ? { contentDocument: mockRefinableFrameDocument({ ".hero-banner": bannerNode }) }
     : null);
   let workbenchRerendered = false;
@@ -1634,7 +1634,7 @@ run("refineWorkbenchPartsWithLivePreview never overwrites a part whose role is a
     strongPart = { selector: ".already-specific", role: "button" };
   global.customAnalyzedElements = [];
   global.customWorkbenchDraft = { parts: [strongPart] };
-  global.$ = (id) => (id === "custom-component-preview"
+  global.$ = (id) => (id === "custom-component-inspection"
     ? { contentDocument: mockRefinableFrameDocument({ ".already-specific": node }) }
     : null);
   global.renderCustomWorkbenchParts = () => { throw new Error("must not re-render when nothing eligible changed"); };

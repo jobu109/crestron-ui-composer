@@ -3,6 +3,8 @@
   const $ = (id) => document.getElementById(id),
     stage = $("stage"),
     list = $("component-list");
+  const customInspectionDocument = () =>
+    $("custom-component-inspection")?.contentDocument || null;
   const customWorkbenchRoleLabel = (value) =>
     (value || "element")
       .replace(/([A-Z])/g, " $1")
@@ -942,9 +944,14 @@
   const openComponentCategories = new Set();
   const native = window.chrome && window.chrome.webview,
     nativePending = new Map();
+  let nativeBridgeToken = "";
   if (native)
     native.addEventListener("message", (event) => {
       const m = event.data;
+      if (m && m.type === "nativeBridgeReady") {
+        nativeBridgeToken = String(m.token || "");
+        return;
+      }
       if (m && m.type === "openProjectFile") {
         loadProjectText(m.contents, true, m.path).then(() =>
           setStatus("Opened " + m.path),
@@ -969,9 +976,13 @@
         reject(new Error("unavailable"));
         return;
       }
+      if (!nativeBridgeToken) {
+        reject(new Error("The Windows bridge is not ready yet. Try again in a moment."));
+        return;
+      }
       const id = uid("request-");
       nativePending.set(id, { resolve, reject, onProgress });
-      native.postMessage({ id, command, payload });
+      native.postMessage({ id, command, payload, bridgeToken: nativeBridgeToken });
     });
   }
   const componentLibraryBrowserKey = "composer-global-component-library-v1";
@@ -1529,6 +1540,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           managedGlowFlagScript = managedGlow.enabled
             ? "<script>window.__composerManagedGlowExternal=true;<\/script>"
             : "",
+          managedGlowMeasureScript = managedGlow.enabled
+            ? `<script>(function(){var authored=new WeakMap(),current=null;function layers(value){var output=[],start=0,depth=0,text=String(value||'');for(var index=0;index<text.length;index++){var character=text[index];if(character==='(')depth++;else if(character===')')depth=Math.max(0,depth-1);else if(character===','&&depth===0){output.push(text.slice(start,index).trim());start=index+1}}output.push(text.slice(start).trim());return output.filter(function(layer){return layer&&layer!=='none'})}function measure(){var candidates=Array.from(document.body?document.body.querySelectorAll('*'):[]).filter(function(element){var style=getComputedStyle(element);return !['SCRIPT','STYLE','LINK','META'].includes(element.tagName)&&style.display!=='none'&&style.visibility!=='hidden'}),preferred=candidates.filter(function(element){return element.matches('button,[role="button"],[data-translated-button],label,.switch,.toggle,[class*="switch"],[class*="toggle"]')}),pool=preferred.some(function(element){var rect=element.getBoundingClientRect();return rect.width>0&&rect.height>0})?preferred:candidates,largest=null,area=0,depth=-1;pool.forEach(function(element){var rect=element.getBoundingClientRect(),nextArea=rect.width*rect.height,nextDepth=0;for(var ancestor=element.parentElement;ancestor;ancestor=ancestor.parentElement)nextDepth++;if(nextArea>0&&(nextArea>area||(nextArea===area&&nextDepth>depth))){largest=element;area=nextArea;depth=nextDepth}});if(!largest)return;if(current&&current!==largest&&authored.has(current)){var prior=authored.get(current);prior.value?current.style.setProperty('box-shadow',prior.value,prior.priority):current.style.removeProperty('box-shadow')}current=largest;if(!authored.has(largest))authored.set(largest,{value:largest.style.getPropertyValue('box-shadow'),priority:largest.style.getPropertyPriority('box-shadow')});var original=authored.get(largest);original.value?largest.style.setProperty('box-shadow',original.value,original.priority):largest.style.removeProperty('box-shadow');var rect=largest.getBoundingClientRect(),style=getComputedStyle(largest),shadows=layers(style.boxShadow),inset=shadows.filter(function(layer){return /\\binset\\b/i.test(layer)}),outer=shadows.filter(function(layer){return !/\\binset\\b/i.test(layer)});largest.style.setProperty('box-shadow',inset.length?inset.join(', '):'none','important');parent.postMessage({type:'composer-managed-glow-shape',shape:{left:rect.left,top:rect.top,width:rect.width,height:rect.height,radius:style.borderRadius||'0px',outerShadows:outer}},'*')}addEventListener('message',function(event){if(event.data&&event.data.type==='composer-measure-managed-glow')measure()});addEventListener('load',function(){measure();[50,200,600].forEach(function(delay){setTimeout(measure,delay)});if(window.ResizeObserver&&document.body)new ResizeObserver(measure).observe(document.body)})})();<\/script>`
+            : "",
           documentText = /<\/body>/i.test(resolved)
             ? resolved.replace(
                 /<\/body>/i,
@@ -1538,6 +1552,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
                   localTextScript +
                   bridge +
                   managedGlowFlagScript +
+                  managedGlowMeasureScript +
                   repeatRuntime +
                   adapterStyle +
                   adapterRuntime +
@@ -1554,6 +1569,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
               localTextScript +
               bridge +
               managedGlowFlagScript +
+              managedGlowMeasureScript +
               repeatRuntime +
               adapterStyle +
               adapterRuntime +
@@ -1566,99 +1582,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         // explicitly overridden is saved with exactly this string, so ??
         // alone (which only falls through on null/undefined) never
         // reaches managedGlow's resolved default.
-        const authoredGlowStyles = new Map(),
-          splitShadowLayers = (value) => {
-            const layers = [];
-            let start = 0,
-              depth = 0;
-            String(value || "").split("").forEach((character, index) => {
-              if (character === "(") depth++;
-              else if (character === ")") depth = Math.max(0, depth - 1);
-              else if (character === "," && depth === 0) {
-                layers.push(String(value).slice(start, index).trim());
-                start = index + 1;
-              }
-            });
-            layers.push(String(value || "").slice(start).trim());
-            return layers.filter((layer) => layer && layer !== "none");
-          },
-          isUnsetGlowValue = (value) =>
+        let managedGlowShape = null;
+        const isUnsetGlowValue = (value) =>
             value === undefined || value === null || value === "__preserve__",
           resolveGlowValue = (key, fallbackDefault) =>
             isUnsetGlowValue(properties[key]) ? fallbackDefault : properties[key],
           measureGlowShape = () => {
-            try {
-              const doc = frame.contentDocument;
-              if (!doc?.body) return null;
-              const candidates = [...doc.body.querySelectorAll("*")].filter(
-                (element) =>
-                  !["SCRIPT", "STYLE", "LINK", "META"].includes(element.tagName) &&
-                  getComputedStyle(element).display !== "none" &&
-                  getComputedStyle(element).visibility !== "hidden",
-              ),
-                preferred = candidates.filter((element) =>
-                  element.matches(
-                    'button,[role="button"],[data-translated-button],label,.switch,.toggle,[class*="switch"],[class*="toggle"]',
-                  ),
-                ),
-                measuredCandidates = preferred.some((element) => {
-                  const rect = element.getBoundingClientRect();
-                  return rect.width > 0 && rect.height > 0;
-                })
-                  ? preferred
-                  : candidates;
-              let largest = null,
-                largestArea = 0,
-                largestDepth = -1;
-              measuredCandidates.forEach((element) => {
-                const rect = element.getBoundingClientRect(),
-                  area = rect.width * rect.height;
-                if (area <= 0) return;
-                let depth = 0;
-                for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement)
-                  depth++;
-                // On an area tie (e.g. a layout wrapper that exactly hugs its
-                // only child), prefer the deeper/more specific element - it's
-                // far more likely to be the actual painted shape than a
-                // generic container, which typically has no border-radius.
-                if (area > largestArea || (area === largestArea && depth > largestDepth)) {
-                  largestArea = area;
-                  largestDepth = depth;
-                  largest = element;
-                }
-              });
-              if (!largest) return null;
-              if (!authoredGlowStyles.has(largest))
-                authoredGlowStyles.set(largest, {
-                  value: largest.style.getPropertyValue("box-shadow"),
-                  priority: largest.style.getPropertyPriority("box-shadow"),
-                });
-              const authored = authoredGlowStyles.get(largest);
-              if (authored.value)
-                largest.style.setProperty("box-shadow", authored.value, authored.priority);
-              else largest.style.removeProperty("box-shadow");
-              const rect = largest.getBoundingClientRect(),
-                style = getComputedStyle(largest),
-                shadowLayers = splitShadowLayers(style.boxShadow),
-                insetShadows = shadowLayers.filter((layer) => /\binset\b/i.test(layer)),
-                outerShadows = shadowLayers.filter((layer) => !/\binset\b/i.test(layer)),
-                radius = style.borderRadius || "0px";
-              largest.style.setProperty(
-                "box-shadow",
-                insetShadows.length ? insetShadows.join(", ") : "none",
-                "important",
-              );
-              return {
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-                height: rect.height,
-                radius,
-                outerShadows,
-              };
-            } catch (error) {
-              return null;
-            }
+            frame.contentWindow?.postMessage({ type: "composer-measure-managed-glow" }, "*");
+            return managedGlowShape;
           },
           applyManagedGlow = (isSelected) => {
             if (!managedGlow.enabled) return;
@@ -1695,7 +1626,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             host.dataset.composerGlowOverflow = "true";
           };
         let managedGlowSelected = false,
-          glowResizeObserver = null,
           glowRefreshTimers = [],
           glowAnimationFrame = 0,
           glowTrackUntil = 0;
@@ -1729,7 +1659,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             ),
           );
         }
-        frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        frame.setAttribute("sandbox", "allow-scripts");
         frame.setAttribute("scrolling", "no");
         frame.style.overflow = "hidden";
         frame.addEventListener("load", () => {
@@ -1737,11 +1667,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           if (managedGlow.enabled) {
             applyManagedGlow(managedGlowSelected);
             const refresh = () => applyManagedGlow(managedGlowSelected);
-            if (typeof ResizeObserver === "function" && frame.contentDocument?.body) {
-              glowResizeObserver?.disconnect();
-              glowResizeObserver = new ResizeObserver(refresh);
-              glowResizeObserver.observe(frame.contentDocument.body);
-            }
             glowRefreshTimers = [50, 200, 600].map((delay) => setTimeout(refresh, delay));
           }
         });
@@ -1754,6 +1679,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
         host.appendChild(frame);
         function receive(event) {
+          if (
+            event.source === frame.contentWindow &&
+            event.data?.type === "composer-managed-glow-shape"
+          ) {
+            managedGlowShape = event.data.shape || null;
+            applyManagedGlow(managedGlowSelected);
+            return;
+          }
           if (
             event.source === frame.contentWindow &&
             event.data?.type === "composer-custom-error"
@@ -1890,7 +1823,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           }
         }
         return () => {
-          glowResizeObserver?.disconnect();
           glowRefreshTimers.forEach(clearTimeout);
           if (glowAnimationFrame) cancelAnimationFrame(glowAnimationFrame);
           glowProxy.remove();
@@ -2106,9 +2038,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         frame = document.createElement("iframe"),
         holder = document.createElement("div"),
         messages = [],
+        exportedInspection = null,
         receive = (event) => {
-          if (event.data?.type === "composer-export-readiness" && event.data.token === token)
+          if (event.source !== frame.contentWindow || event.data?.token !== token) return;
+          if (event.data?.type === "composer-export-readiness")
             messages.push(String(event.data.message || "Unknown exported-runtime error"));
+          else if (event.data?.type === "composer-export-inspection")
+            exportedInspection = event.data;
         };
       exportProject.width = 640;
       exportProject.height = 360;
@@ -2158,7 +2094,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         ),
         structuredClone(entry),
       ];
-      const errorBridge = `<script>window.addEventListener('error',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:event.message},'*')});window.addEventListener('unhandledrejection',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:String(event.reason&&event.reason.message||event.reason)},'*')});<\/script>`,
+      const errorBridge = `<script>window.addEventListener('error',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:event.message},'*')});window.addEventListener('unhandledrejection',function(event){parent.postMessage({type:'composer-export-readiness',token:${JSON.stringify(token)},message:String(event.reason&&event.reason.message||event.reason)},'*')});window.addEventListener('load',function(){setTimeout(function(){var root=document.querySelector(${JSON.stringify(`[data-instance="${instanceId}"]`)}),componentError=root&&root.querySelector('.custom-component-error'),componentFrame=root&&root.querySelector('iframe');parent.postMessage({type:'composer-export-inspection',token:${JSON.stringify(token)},hasRoot:!!root,hasComponentFrame:!!componentFrame,componentError:componentError&&String(componentError.textContent||'')},'*')},250)});<\/script>`,
         exportedHtml = window.ComposerExporter
           .exportProject(exportProject)
           .replace(/<head>/i, `<head>${errorBridge}`);
@@ -2173,7 +2109,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         messages.push("The exported CH5 payload is missing required runtime, component, or instance structure.");
       holder.style.cssText =
         "position:fixed;left:-10000px;top:920px;width:640px;height:360px;overflow:hidden;pointer-events:none";
-      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      frame.setAttribute("sandbox", "allow-scripts");
       frame.style.cssText = "width:100%;height:100%;border:0";
       holder.appendChild(frame);
       document.body.appendChild(holder);
@@ -2190,17 +2126,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           { once: true },
         );
       });
-      const exportedRoot = frame.contentDocument?.querySelector(
-          `[data-instance="${instanceId}"]`,
-        ),
-        componentError = exportedRoot?.querySelector(".custom-component-error"),
-        componentFrame = exportedRoot?.querySelector("iframe");
-      if (!exportedRoot)
+      if (!exportedInspection?.hasRoot)
         messages.push("The exported HTML did not contain the component instance.");
-      if (!componentFrame)
+      if (!exportedInspection?.hasComponentFrame)
         messages.push("The exported component did not create its runtime frame.");
-      if (componentError)
-        messages.push(String(componentError.textContent || "Exported component runtime error"));
+      if (exportedInspection?.componentError)
+        messages.push(String(exportedInspection.componentError || "Exported component runtime error"));
       removeEventListener("message", receive);
       holder.remove();
       exportedRuntime = { passed: !messages.length, errors: [...new Set(messages)] };
@@ -3256,7 +3187,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     }
     el.innerHTML = item.componentId
       ? '<div class="scoped-preview"></div><i class="handle"></i>'
-      : '<iframe sandbox="allow-scripts allow-same-origin"></iframe><i class="handle"></i>';
+      : '<iframe sandbox="allow-scripts"></iframe><i class="handle"></i>';
     el.querySelector(".handle")?.addEventListener("pointerdown", startResize);
     el.style.cssText = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z};display:${item.hidden || item.systemManaged ? "none" : "block"}`;
     el.style.pointerEvents = item.actionDisabled || item.systemManaged ? "none" : "";
@@ -14131,8 +14062,9 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
   }
   function measureSnippetNaturalSize(html) {
     return new Promise((resolve) => {
-      const frame = document.createElement("iframe");
-      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      const frame = document.createElement("iframe"),
+        measurementToken = uid("natural-size-");
+      frame.setAttribute("sandbox", "allow-scripts");
       frame.setAttribute("aria-hidden", "true");
       frame.style.cssText =
         "position:fixed;left:-9999px;top:-9999px;width:900px;height:600px;border:0;visibility:hidden;pointer-events:none;";
@@ -14140,45 +14072,26 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       const finish = (result) => {
         if (finished) return;
         finished = true;
+        removeEventListener("message", receiveMeasurement);
         frame.remove();
         resolve(result);
       };
+      const receiveMeasurement = (event) => {
+        if (
+          event.source !== frame.contentWindow ||
+          event.data?.type !== "composer-natural-size" ||
+          event.data?.token !== measurementToken
+        ) return;
+        clearTimeout(failTimer);
+        finish(event.data.width > 1 && event.data.height > 1
+          ? { width: Math.round(event.data.width), height: Math.round(event.data.height) }
+          : null);
+      };
+      addEventListener("message", receiveMeasurement);
       const failTimer = setTimeout(() => finish(null), 1200);
-      frame.addEventListener(
-        "load",
-        () => {
-          requestAnimationFrame(() => {
-            try {
-              const documentValue = frame.contentDocument,
-                viewportWidth = frame.clientWidth || 900,
-                viewportHeight = frame.clientHeight || 600,
-                allRects = documentValue
-                  ? [...documentValue.body.querySelectorAll("*")]
-                      .map((element) => element.getBoundingClientRect())
-                      .filter((rect) => rect.width > 1 && rect.height > 1)
-                  : [],
-                measured = filterNaturalContentRects(allRects, viewportWidth, viewportHeight);
-              if (!measured.length) return finish(null);
-              const bounds = {
-                  left: Math.min(...measured.map((rect) => rect.left)),
-                  top: Math.min(...measured.map((rect) => rect.top)),
-                  right: Math.max(...measured.map((rect) => rect.right)),
-                  bottom: Math.max(...measured.map((rect) => rect.bottom)),
-                },
-                width = bounds.right - bounds.left,
-                height = bounds.bottom - bounds.top;
-              if (width <= 1 || height <= 1) return finish(null);
-              clearTimeout(failTimer);
-              finish({ width: Math.round(width), height: Math.round(height) });
-            } catch (_) {
-              finish(null);
-            }
-          });
-        },
-        { once: true },
-      );
+      const measurementBridge = `<script>addEventListener('load',function(){requestAnimationFrame(function(){var viewportWidth=innerWidth||900,viewportHeight=innerHeight||600,rects=Array.from(document.body.querySelectorAll('*')).map(function(element){return element.getBoundingClientRect()}).filter(function(rect){return rect.width>1&&rect.height>1}),content=rects.filter(function(rect){return rect.width<viewportWidth*.95||rect.height<viewportHeight*.95}),measured=content.length?content:rects;if(!measured.length)return parent.postMessage({type:'composer-natural-size',token:${JSON.stringify(measurementToken)},width:0,height:0},'*');var left=Math.min.apply(null,measured.map(function(rect){return rect.left})),top=Math.min.apply(null,measured.map(function(rect){return rect.top})),right=Math.max.apply(null,measured.map(function(rect){return rect.right})),bottom=Math.max.apply(null,measured.map(function(rect){return rect.bottom}));parent.postMessage({type:'composer-natural-size',token:${JSON.stringify(measurementToken)},width:right-left,height:bottom-top},'*')})});<\/script>`;
       frame.srcdoc =
-        `<style>html,body{margin:0;width:max-content;height:max-content;display:inline-block}</style>${html}`;
+        `<style>html,body{margin:0;width:max-content;height:max-content;display:inline-block}</style>${html}${measurementBridge}`;
       document.body.appendChild(frame);
     });
   }
@@ -17403,7 +17316,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function customScopeTargets(includePseudo = true) {
     const targets = [], seen = new Set(), claimedPreviewNodes = new Set(),
-      previewDocument = $("custom-component-preview")?.contentDocument,
+      previewDocument = customInspectionDocument(),
       add = (label, selector, partId = "", advanced = false) => {
         const value = String(selector || "").trim();
         // Track and handle mappings can intentionally resolve to the same DOM
@@ -17816,7 +17729,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function applyCustomTemporaryPropertyValue(value, { directOnly = false, skipStateSwitch = false } = {}) {
     const definition = customScopedPropertyTypes.find((entry) => entry.value === $("custom-property-capability").value);
     if (!definition) return;
-    const frameDocument = $("custom-component-preview")?.contentDocument,
+    const frameDocument = customInspectionDocument(),
       selector = $("custom-property-target")?.value || "",
       editingId = $("custom-property-create")?.dataset.editingId || "",
       editingKey = $("custom-property-create")?.dataset.editingKey || "",
@@ -18167,7 +18080,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   function scopedPropertyCurrentValue(definition, selector) {
     let target;
-    try { target = $("custom-component-preview")?.contentDocument?.querySelector(selector); } catch (_) { return definition.defaultValue; }
+    try { target = customInspectionDocument()?.querySelector(selector); } catch (_) { return definition.defaultValue; }
     if (!target) return definition.defaultValue;
     const style = target.ownerDocument.defaultView.getComputedStyle(target),
       cssName = definition.value === "cssProperty" || definition.value === "cssVariable"
@@ -18230,7 +18143,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return `${group.stateScope === "standard" ? "" : `${customStateScopeLabel(group.stateScope)} — `}${property}`;
   }
   function customPreviewHasTarget(selector) {
-    const owner = stableCustomSelectorForAuthoredRule(selector), documentValue = $("custom-component-preview")?.contentDocument;
+    const owner = stableCustomSelectorForAuthoredRule(selector), documentValue = customInspectionDocument();
     if (!owner || !documentValue) return false;
     try { return !!documentValue.querySelector(owner); } catch (_) { return false; }
   }
@@ -18244,7 +18157,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return { valid: true };
   }
   function testCustomProposedPropertyMapping(mapping) {
-    const documentValue = $("custom-component-preview")?.contentDocument,
+    const documentValue = customInspectionDocument(),
       binding = customCanonicalBinding(mapping), selector = customCanonicalBindingSelector(mapping);
     if (!documentValue || !customPreviewHasTarget(selector)) return { valid: false, message: `The authored target ${selector} is not present in Live Preview.` };
     const result = window.ComposerComponentWorkbench.applyEntryBinding(documentValue, mapping, mapping.defaultValue, { styleId: `composer-proposed-property-${mapping.key}` });
@@ -19440,7 +19353,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       // reloads the iframe via srcdoc (asynchronous), and this can run
       // immediately after that call fires; see the matching note in
       // renderPartFirstPropertyTest.
-      previewDocument = () => $("custom-component-preview")?.contentDocument;
+      previewDocument = customInspectionDocument;
     if (!section || !host) return;
     // Only Crestron-input connections have a value to simulate; an output
     // connection (Press/Release/Held) is already testable through Step 4's
@@ -19917,7 +19830,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (!customPreviewHasTarget(config.selector)) return { valid: false, message: `The source target ${config.selector} is not present in Live Preview.` };
     try { new Function(javascript); } catch (error) { return { valid: false, message: `The generated connection adapter is invalid: ${error.message}` }; }
     if (config.direction !== "input") return { valid: true };
-    const documentValue = $("custom-component-preview")?.contentDocument,
+    const documentValue = customInspectionDocument(),
       entry = window.ComposerComponentWorkbench.withCanonicalBinding({
         key: config.key,
         type: config.type,
@@ -20403,7 +20316,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     renderCustomElementInventory(inventory);
     refineCustomElementInventoryWithLivePreview();
     refineWorkbenchPartsWithLivePreview();
-    const livePreviewDocument = $("custom-component-preview")?.contentDocument;
+    const livePreviewDocument = customInspectionDocument();
     if (livePreviewDocument?.body) observeCustomWorkbenchDynamicElements(livePreviewDocument);
     return inventory;
   }
@@ -20468,7 +20381,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   // and idempotent (re-running just re-derives the same upgrades).
   function refineCustomElementInventoryWithLivePreview() {
     if (!Array.isArray(customAnalyzedElements) || !customAnalyzedElements.length) return;
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = $("custom-component-inspection")?.contentDocument;
     if (!frameDocument?.defaultView) return;
     let changed = false;
     customAnalyzedElements.forEach((entry) => {
@@ -20508,7 +20421,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   // programmer already corrected by hand, is never overwritten.
   function refineWorkbenchPartsWithLivePreview() {
     if (!customWorkbenchDraft?.parts?.length) return;
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = $("custom-component-inspection")?.contentDocument;
     if (!frameDocument?.defaultView) return;
     const weakRoles = new Set(["text", "ignore", "element"]);
     let changed = false;
@@ -21224,7 +21137,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     });
   }
   function dedupeCustomMappingSuggestions(mappings = []) {
-    const frameDocument = $("custom-component-preview")?.contentDocument,
+    const frameDocument = customInspectionDocument(),
       nodeIds = new WeakMap();
     let nodeIndex = 0;
     const resolvedTargetKey = (target = {}) => {
@@ -21447,7 +21360,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function seedCustomWorkbenchParts(inventory = customAnalyzedElements, force = false) {
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
     const existing = new Set(customWorkbenchDraft.parts.map((part) => part.selector)),
-      frameDocument = $("custom-component-preview")?.contentDocument,
+      frameDocument = customInspectionDocument(),
       // De-dupe by the live node a selector actually resolves to, not just
       // the selector string — analyzeCustomElements (detached-document
       // parse), a prior Rescan, and the translation pipeline's own part
@@ -21503,7 +21416,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   // aliases such as #toggle and [data-translated-button="0"] stay one part.
   function syncCustomWorkbenchPartsFromInventory(inventory = customAnalyzedElements) {
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
-    const frameDocument = $("custom-component-preview")?.contentDocument,
+    const frameDocument = $("custom-component-inspection")?.contentDocument,
       weakRoles = new Set(["text", "ignore", "element", "container"]);
     (inventory || []).forEach((entry) => {
       if (!entry?.selector || entry.role === "ignore") return;
@@ -21532,7 +21445,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   function customPreviewSelectorCount(selector) {
     if (!selector?.trim()) return { count: 0, error: "Selector required" };
     try {
-      const documentValue = $("custom-component-preview")?.contentDocument;
+      const documentValue = customInspectionDocument();
       if (!documentValue) return { count: 0, error: "Preview unavailable" };
       return { count: documentValue.querySelectorAll(selector).length, error: "" };
     } catch (error) {
@@ -21624,7 +21537,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
       null;
   }
   function highlightCustomWorkbenchPart(part) {
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = customInspectionDocument();
     if (!frameDocument) return { matched: 0, visible: 0 };
     frameDocument.querySelectorAll(".composer-workbench-highlight").forEach((node) =>
       node.classList.remove("composer-workbench-highlight"),
@@ -21664,7 +21577,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   // visually distinct dashed teal outline so it never gets confused with an
   // explicit highlight in progress.
   function highlightCustomWorkbenchPartTransient(part, on) {
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = customInspectionDocument();
     if (!frameDocument) return;
     if (!on) {
       frameDocument.querySelectorAll(".composer-workbench-hover").forEach((node) =>
@@ -21845,7 +21758,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   // one part per matched node, each with its own specific selector so it
   // can be mapped individually going forward.
   function splitCustomWorkbenchPart(part) {
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = customInspectionDocument();
     if (!frameDocument) return;
     let matchedNodes;
     try { matchedNodes = [...frameDocument.querySelectorAll(part.selector)]; } catch (_) { return; }
@@ -22111,7 +22024,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     if (!host || !summary) return;
     if (!customWorkbenchDraft) ensureCustomWorkbenchDraft();
     host.innerHTML = "";
-    const frameDocument = $("custom-component-preview")?.contentDocument,
+    const frameDocument = customInspectionDocument(),
       activeParts = customWorkbenchDraft.parts.filter((part) => !part.ignored),
       ignoredParts = customWorkbenchDraft.parts.filter((part) => part.ignored),
       tree = buildCustomWorkbenchPartTree(activeParts, frameDocument);
@@ -22236,14 +22149,12 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
   }
   // Reverse direction of highlightCustomWorkbenchPartTransient: hovering
   // inside the live preview highlights and scrolls to the matching
-  // Component Map row. Uses allow-same-origin direct DOM access from the
-  // parent (the same access highlightCustomWorkbenchPart already relies
-  // on) rather than injecting a postMessage round trip into the preview
-  // srcdoc, so it needs no changes to the generated preview script itself.
+  // Component Map row. The DOM work happens in a script-disabled inspection
+  // mirror; the interactive preview remains an opaque sandbox.
   // Guarded per-document since refreshCustomPreview() rebuilds a fresh
   // srcdoc (and therefore a fresh document) on every call.
   function wireCustomWorkbenchHoverSync() {
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = customInspectionDocument();
     if (!frameDocument?.body || frameDocument.body.dataset.workbenchHoverWired === "1") return;
     frameDocument.body.dataset.workbenchHoverWired = "1";
     let lastPartId = null;
@@ -22532,7 +22443,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     };
   }
   function customComputedAppearance(selector) {
-    const frame = $("custom-component-preview"),
+    const frame = $("custom-component-inspection"),
       documentValue = frame.contentDocument,
       windowValue = frame.contentWindow,
       element = (() => {
@@ -22598,7 +22509,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     };
   }
   function customDetectedStateStyles(selector) {
-    const frame = $("custom-component-preview"),
+    const frame = $("custom-component-inspection"),
       documentValue = frame.contentDocument,
       windowValue = frame.contentWindow,
       target = (() => {
@@ -22750,7 +22661,7 @@ window.addEventListener('unload',function(){timerHandles.forEach(window.clearTim
     return "";
   }
   function measureCustomPreviewDefaultSize() {
-    const frame = $("custom-component-preview"),
+    const frame = $("custom-component-inspection"),
       documentValue = frame.contentDocument,
       windowValue = frame.contentWindow,
       viewportWidth = Math.max(1, documentValue?.documentElement.clientWidth || frame.clientWidth || 480),
@@ -23647,7 +23558,7 @@ rules.forEach(function(rule){if(rule.enabled===false)return;if(rule.source==='pr
     if (status) status.textContent = `Showing ${customWorkbenchActiveState.replace(/[-_]+/g, " ")} appearance`;
   }
   function refreshCustomWorkbenchForActiveState() {
-    const frameDocument = $("custom-component-preview")?.contentDocument;
+    const frameDocument = customInspectionDocument();
     if (!frameDocument?.body || !customWorkbenchDraft) return;
     const known = new Set((customAnalyzedElements || []).map((entry) => entry.selector));
     frameDocument.body.querySelectorAll("*").forEach((element) => {
@@ -24610,7 +24521,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     if (mapping?.direction === "input")
       window.ComposerComponentWorkbench.applyEntryBinding(
-        $("custom-component-preview")?.contentDocument,
+        customInspectionDocument(),
         mapping,
         value,
         { styleId: `custom-signal-preview-${mapping.id || mapping.key}`, important: true },
@@ -24861,6 +24772,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     );
     previewBridge += `<script>(function(){function fire(target,name){var event;try{event=new PointerEvent(name,{bubbles:true,cancelable:true,pointerId:1,pointerType:'touch',isPrimary:true})}catch(error){event=new Event(name,{bubbles:true,cancelable:true})}target.dispatchEvent(event)}window.addEventListener('message',function(event){var data=event.data;if(!data||data.type!=='composer-pointer-simulate')return;var target;try{target=document.querySelector(data.selector)}catch(error){}if(!target)return;if(data.lifecycle==='press')fire(target,'pointerdown');else if(data.lifecycle==='release')fire(target,'pointerup');else if(data.lifecycle==='press-release'){fire(target,'pointerdown');fire(target,'pointerup')}else if(data.lifecycle==='cancel')fire(target,'pointercancel');else if(data.lifecycle==='hold'){fire(target,'pointerdown');setTimeout(function(){fire(target,'pointerup')},Math.max(50,Number(data.duration)||1000))}})})();<\/script>`;
     const previewFrame = $("custom-component-preview"),
+      inspectionFrame = $("custom-component-inspection"),
       originalFrame = $("custom-component-original-preview"),
       previewPanel = previewFrame.closest(".custom-source-panel"),
       // Disabled alongside the placed-widget escape in registerCustomComponent -
@@ -24924,17 +24836,18 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         customPreviewSourceRevision = sourceRevision;
         setCustomSourceRefreshStatus("valid", "Source preview is current");
       }
+      requestAnimationFrame(() => applyCustomWorkbenchActiveState());
+      requestAnimationFrame(() => collectCustomSignals().filter((signal) => signal.direction === "input" && customSimulatorSignalValues.has(signal.key)).forEach((signal) => sendCustomSimulatorInput(signal, customSimulatorSignalValues.get(signal.key), false)));
+    };
+    inspectionFrame.onload = () => {
       // A live-preview refresh may refine inventory while browsing, but an
       // open property editor must not be reconstructed underneath the user.
       if ($("custom-property-creator")?.hidden) renderCustomWorkbenchParts();
       wireCustomWorkbenchHoverSync();
       refineCustomElementInventoryWithLivePreview();
       refineWorkbenchPartsWithLivePreview();
-      healComponentRootPart(previewFrame.contentDocument);
-      observeCustomWorkbenchDynamicElements(previewFrame.contentDocument);
-      // Preview rebuilds are frequent while editing. Reapply the programmer's
-      // chosen state after the authored and generated runtimes have mounted.
-      requestAnimationFrame(() => applyCustomWorkbenchActiveState());
+      healComponentRootPart(customInspectionDocument());
+      observeCustomWorkbenchDynamicElements(customInspectionDocument());
       requestAnimationFrame(() => {
         if (previewEditGeneration === customPropertyEditGeneration) {
           restoreCustomPropertyEditSession(previewEditSession);
@@ -24951,7 +24864,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         if (previewEditGeneration === customPropertyEditGeneration)
           restoreCustomPropertyEditSession(previewEditSession);
       }, 120);
-      requestAnimationFrame(() => collectCustomSignals().filter((signal) => signal.direction === "input" && customSimulatorSignalValues.has(signal.key)).forEach((signal) => sendCustomSimulatorInput(signal, customSimulatorSignalValues.get(signal.key), false)));
     };
     customWorkbenchPreviewDocument = safeDoc(
       "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;box-sizing:border-box}body{padding:10px}body>*{box-sizing:border-box}</style>" +
@@ -24959,6 +24871,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         source,
       "",
     );
+    inspectionFrame.style.width = previewFrame.style.width || "640px";
+    inspectionFrame.style.height = previewFrame.style.height || "400px";
+    inspectionFrame.srcdoc = customWorkbenchPreviewDocument;
     previewFrame.srcdoc = customWorkbenchPreviewDocument;
     refreshCustomWorkbenchStateComparison();
     refreshCustomGeneratedCode();
@@ -25790,7 +25705,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     // that call fires (see setCustomWizardStep/setPartFirstPropertyIncluded)
     // — capturing contentDocument once at render time can grab the
     // about-to-be-replaced document and silently style a detached iframe.
-    const previewDocument = () => $("custom-component-preview")?.contentDocument;
+    const previewDocument = customInspectionDocument;
     if (!mapping || !previewDocument() || !["color", "color-alpha", "number", "text"].includes(descriptor.controlType))
       return null;
     const wrap = document.createElement("span"), control = document.createElement("input"), reset = document.createElement("button"),
@@ -26139,6 +26054,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const previewFrame = $("custom-component-preview");
       previewFrame.onload = null;
       previewFrame.srcdoc = "";
+      const inspectionFrame = $("custom-component-inspection");
+      inspectionFrame.onload = null;
+      inspectionFrame.srcdoc = "";
     }
     customWizardStep = 0;
     customCapabilityPage = "properties";
@@ -29259,27 +29177,47 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     previewWindow.document.close();
     return true;
   }
-  function livePreviewHtml(host, ipid, port, authToken = "") {
+  function livePreviewHtml(host, ipid, port, authToken = "", directRelay = null) {
     const params = {
-      host,
+      host: directRelay?.relayHost || host,
       ipid: `0x${ipid}`,
-      port: port || "49200",
-      tokenurl: `https://${host}/cws/websocket/getWebSocketToken`,
+      port: directRelay?.relayPort || port || "49200",
+      tokenurl: directRelay ? "" : `https://${host}/cws/websocket/getWebSocketToken`,
     };
-    if (authToken) params.authtoken = authToken;
+    if (directRelay) params.authtoken = "composer-direct-cip";
+    else if (authToken) params.authtoken = authToken;
+    const directWorkerShim = directRelay
+      ? `<script>(function(){var NativeWorker=window.Worker,relayUrl=${JSON.stringify(`wss://${directRelay.relayHost}:${directRelay.relayPort}`)};function ComposerWorker(){var worker=new NativeWorker(...arguments),send=worker.postMessage.bind(worker);worker.postMessage=function(message,transfer){if(message&&message.type==='INITIALIZE_WS')message=Object.assign({},message,{payload:Object.assign({},message.payload,{url:relayUrl,authToken:''})});else if(message&&message.type==='SET_JWT')message=Object.assign({},message,{payload:{value:''}});return transfer===undefined?send(message):send(message,transfer)};return worker}ComposerWorker.prototype=NativeWorker.prototype;Object.setPrototypeOf(ComposerWorker,NativeWorker);window.Worker=ComposerWorker})();<\/script>`
+      : "";
     const connectionBadge = `<style id="composer-live-status-style">#composer-live-status{position:fixed;top:12px;right:12px;z-index:2147483647;display:flex;align-items:center;gap:8px;max-width:min(620px,calc(100vw - 24px));padding:8px 12px;border:1px solid #b58a35;border-radius:999px;background:rgba(12,20,22,.94);color:#fff;font:600 13px/1.2 "Segoe UI",sans-serif;box-shadow:0 5px 18px rgba(0,0,0,.45);pointer-events:none}#composer-live-status-dot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#e5ab42;box-shadow:0 0 8px #e5ab42}#composer-live-status[data-state="connected"]{border-color:#21c997}#composer-live-status[data-state="connected"] #composer-live-status-dot{background:#21d79d;box-shadow:0 0 8px #21d79d}#composer-live-status[data-state="disconnected"],#composer-live-status[data-state="error"]{border-color:#d65d67}#composer-live-status[data-state="disconnected"] #composer-live-status-dot,#composer-live-status[data-state="error"] #composer-live-status-dot{background:#ee6672;box-shadow:0 0 8px #ee6672}#composer-live-status-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b9cecb;font-weight:400}</style><div id="composer-live-status" data-state="connecting"><span id="composer-live-status-dot"></span><span id="composer-live-status-label">Connecting…</span><span id="composer-live-status-detail">${host.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character])} · IP ID ${ipid}</span></div><script>(function(){var badge=document.getElementById('composer-live-status'),label=document.getElementById('composer-live-status-label'),timer=setTimeout(function(){setStatus('disconnected','Not connected')},12000);function reason(detail){if(!detail)return'';if(typeof detail==='string')return detail;return detail.reason||detail.message||detail.status||''}function setStatus(state,text){badge.dataset.state=state;label.textContent=text;if(state==='connected'||state==='error')clearTimeout(timer)}function handle(name,detail){var why=reason(detail);if(name==='CONNECT_CIP'||name==='CCS_ONLINE')setStatus('connected','Connected');else if(name==='DISCONNECT_CIP'||name==='DISCONNECT_WS'||name==='CCS_OFFLINE')setStatus('disconnected','Disconnected'+(why?' · '+why:''));else if(name==='ERROR_WS'||name==='WEB_WORKER_FAILED'||name==='AUTHENTICATION_FAILED'||name==='INVALID_CREDENTIALS'||name==='NOT_AUTHORIZED')setStatus('error',(name==='NOT_AUTHORIZED'?'Authorization required':'Connection error')+(why?' · '+why:''))}function attach(){var api=window.__composerWebXPanel;if(!api||!api.WebXPanelEvents)return false;var panel=api.WebXPanel&&(api.WebXPanel.default||api.WebXPanel);if(!panel||typeof panel.addEventListener!=='function')return false;Object.keys(api.WebXPanelEvents).forEach(function(name){panel.addEventListener(api.WebXPanelEvents[name],function(event){handle(name,event&&event.detail)})});if(window.__composerWebXPanelLastEvent)handle(window.__composerWebXPanelLastEvent.name,window.__composerWebXPanelLastEvent.detail);return true}var attempts=0,poll=setInterval(function(){if(window.__composerWebXPanelError){clearInterval(poll);setStatus('error',window.__composerWebXPanelError);return}if(attach()||++attempts>100)clearInterval(poll)},50)})();<\/script>`;
-    return exportHtml()
+    const exported = exportHtml(),
+      bootstrapMarker = "var params={},search=new URLSearchParams(window.location.search)";
+    if (!exported.includes(bootstrapMarker))
+      throw new Error("The exported Web XPanel bootstrap could not be configured.");
+    return exported
       .replace(
-        "var params={},search=new URLSearchParams(window.location.search)",
+        bootstrapMarker,
         `var params=${JSON.stringify(params)},search=new URLSearchParams()`,
       )
-      .replace("</body>", `${connectionBadge}</body>`);
+      .replace('<script src="ch5-webxpanel.js">', `${directWorkerShim}<script src="ch5-webxpanel.js">`)
+      .replace(
+        "</body>",
+        `${connectionBadge.replace("function handle(name,detail){var why=reason(detail);", "function handle(name,detail){clearTimeout(timer);var why=reason(detail);")}</body>`,
+      );
   }
   function selectedPreviewMode() {
     return document.querySelector('input[name="preview-mode"]:checked')?.value || "standalone";
   }
+  let previousPreviewMode = selectedPreviewMode();
   function updatePreviewLaunchDialog() {
     const mode = selectedPreviewMode(), live = mode !== "standalone";
+    const portInput = $("preview-port");
+    if (previousPreviewMode !== mode) {
+      if (previousPreviewMode !== "standalone") portInput.dataset[`${previousPreviewMode}Port`] = portInput.value;
+      portInput.value = mode === "standalone" ? "" : portInput.dataset[`${mode}Port`] || "";
+      previousPreviewMode = mode;
+    }
+    portInput.placeholder = mode === "directcip" ? "41794" : "49200";
     $("preview-live-settings").hidden = !live;
     $("preview-webxpanel-credentials").hidden = mode !== "webxpanel";
     $("preview-launch-error").hidden = true;
@@ -29289,23 +29227,32 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     input.onchange = updatePreviewLaunchDialog;
   });
   $("preview-test-connection").onclick = async () => {
-    const host = $("preview-processor-host").value.trim(),
+    const mode = selectedPreviewMode(),
+      direct = mode === "directcip",
+      host = $("preview-processor-host").value.trim(),
+      port = Number($("preview-port").value) || (direct ? 41794 : 49200),
       button = $("preview-test-connection"),
       status = $("preview-connection-status");
     status.className = "hint";
-    if (!host || /[\s/?#]/.test(host)) {
-      status.textContent = "Enter a valid host or IP first.";
+    if (!host || /[\s/?#]/.test(host) || port < 1 || port > 65535) {
+      status.textContent = !host || /[\s/?#]/.test(host)
+        ? "Enter a valid host or IP first."
+        : "Port must be between 1 and 65535.";
       status.classList.add("is-error");
       return;
     }
     button.disabled = true;
-    status.textContent = `Checking ${host}…`;
+    status.textContent = `Checking ${host}:${port}…`;
     try {
-      const result = await nativeRequest("checkPanel", host);
-      status.textContent = result.reachable
-        ? `Reachable · ${result.roundtripMs} ms`
-        : `No response · ${result.status}`;
-      status.classList.add(result.reachable ? "is-success" : "is-error");
+      const result = await nativeRequest("checkProcessorConnection", { host, port, useTls: !direct });
+      status.textContent = !result.tcpOpen
+        ? `Port ${port} unavailable · ${result.status}`
+        : direct
+          ? `Native CIP service ready · ${result.elapsedMs} ms`
+          : result.tlsReady
+          ? `Web XPanel service ready · ${result.elapsedMs} ms${result.certificateTrusted ? "" : " · certificate approval required"}`
+          : `Port ${port} open · TLS unavailable · ${result.status}`;
+      status.classList.add(result.tcpOpen && result.tlsReady ? "is-success" : "is-error");
     } catch (error) {
       status.textContent = `Test failed · ${error.message}`;
       status.classList.add("is-error");
@@ -29339,7 +29286,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       error.hidden = false;
       return;
     }
-    localStorage.setItem("crestron-ui-composer-preview-connection", JSON.stringify({ host, ipid, port }));
+    const direct = mode === "directcip";
+    $("preview-port").dataset[`${mode}Port`] = port;
+    localStorage.setItem("crestron-ui-composer-preview-connection", JSON.stringify({
+      host,
+      ipid,
+      ports: {
+        directcip: $("preview-port").dataset.directcipPort || "",
+        webxpanel: $("preview-port").dataset.webxpanelPort || "",
+      },
+    }));
     const launchButton = $("preview-launch");
     launchButton.disabled = true;
     launchButton.textContent = "Connecting…";
@@ -29347,17 +29303,22 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       let authToken = "";
       const username = $("preview-username").value,
         password = $("preview-password").value;
-      if (username || password) {
+      let directRelay = null;
+      if (direct) {
+        if (!native) throw new Error("Direct CIP preview is available in the Windows app.");
+        directRelay = await nativeRequest("startDirectCipPreview", { host, port: Number(port) || 41794 });
+      } else if (native) await nativeRequest("prepareWebXPanelPreview", { host, port: Number(port) || 49200 });
+      if (!direct && (username || password)) {
         if (!native) throw new Error("Authenticated Web XPanel preview is available in the Windows app.");
         const result = await nativeRequest("getWebXPanelToken", { host, username, password });
         authToken = result.token;
       }
-      if (openPreviewWindow(livePreviewHtml(host, ipid, port, authToken))) {
+      if (openPreviewWindow(livePreviewHtml(host, ipid, port, authToken, directRelay))) {
         $("preview-password").value = "";
       } else return;
       $("preview-launch-dialog").close();
     } catch (launchError) {
-      error.textContent = `Could not launch Web XPanel preview: ${launchError.message}`;
+      error.textContent = `Could not launch ${direct ? "Direct CIP" : "Web XPanel"} preview: ${launchError.message}`;
       error.hidden = false;
     } finally {
       launchButton.disabled = false;
@@ -29369,7 +29330,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (savedPreviewConnection) {
       $("preview-processor-host").value = savedPreviewConnection.host || "";
       $("preview-ipid").value = savedPreviewConnection.ipid || "03";
-      $("preview-port").value = savedPreviewConnection.port || "";
+      $("preview-port").dataset.directcipPort = savedPreviewConnection.ports?.directcip || "";
+      $("preview-port").dataset.webxpanelPort = savedPreviewConnection.ports?.webxpanel || savedPreviewConnection.port || "";
     }
   } catch (_) {}
   $("open-project").onchange = async (e) =>
