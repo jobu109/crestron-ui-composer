@@ -324,11 +324,17 @@
             signals: nestedSignals,
             icons: context.icons,
             interactions: context.interactions,
+            decorateButtonLabel: context.decorateButtonLabel,
+            decorateIconPlacement: context.decorateIconPlacement,
             resolveComponent: context.resolveComponent,
             navigate: context.navigate,
             options: { properties: defaults, definitionData: definition.data || {} }
           });
           if (typeof cleanup === "function") cleanups.push(cleanup);
+          if (typeof context.decorateButtonLabel === "function")
+            cleanups.push(context.decorateButtonLabel(widget, definition, defaults, nestedSignals));
+          if (typeof context.decorateIconPlacement === "function")
+            cleanups.push(context.decorateIconPlacement(widget, definition, defaults));
           if ((p.includedInteractionScope || "item") === "item") wireSharedInteraction(widget, index);
         }
         if (p.includedInteractionScope === "list") wireSharedInteraction(list, 0);

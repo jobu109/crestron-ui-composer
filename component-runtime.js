@@ -681,6 +681,106 @@
     holder.appendChild(style);
     return () => { cleanups.forEach((cleanup) => cleanup()); buttons.forEach((button) => button.remove()); style.remove(); uniformScrollbarCleanup(); };
   }
+  function wireButtonLabel(root, definition, properties, signals) {
+    const capability = definition?.buttonLabelCapability;
+    if (!capability) return function () {};
+    const enabled = !(
+        properties?.showLabel === false ||
+        properties?.showLabel === 0 ||
+        properties?.showLabel === "0" ||
+        String(properties?.showLabel).toLowerCase() === "false"
+      ),
+      cleanups = [];
+    let remoteText = "";
+    function labelTargets() {
+      let targets = capability.selector
+        ? [...root.querySelectorAll(capability.selector)]
+        : [];
+      if (!targets.length && !capability.synthetic) {
+        const selector =
+          '[data-composer-label],.standard-button-label,.hold-label,.countdown-label,.safety-label,.nm-label,.ng-label,.sss-system,.btn-txt,.label,.text,.name';
+        targets = [...root.querySelectorAll(selector)].filter(
+          (element) => !element.closest(".composer-button-label"),
+        );
+      }
+      if (!targets.length) {
+        let label = root.querySelector(":scope > .composer-button-label");
+        if (!label) {
+          label = document.createElement("span");
+          label.className = "composer-button-label";
+          label.dataset.composerLabel = "true";
+          root.appendChild(label);
+        }
+        targets = [label];
+      }
+      return targets;
+    }
+    function apply() {
+      const targets = labelTargets(),
+        localText = properties?.[capability.localKey || "labelText"] ?? definition.name ?? "Label",
+        text = remoteText || String(localText),
+        size = Math.max(6, Number(properties?.labelFontSize) || 18),
+        padding = Math.max(0, Number(properties?.labelPadding) || 6),
+        horizontal = properties?.labelHorizontalAlignment || "center",
+        vertical = properties?.labelVerticalAlignment || "center";
+      targets.forEach((target) => {
+        target.style.display = enabled ? "" : "none";
+        target.style.color = properties?.labelColor || "#ffffff";
+        target.style.fontSize = `${size}px`;
+        target.style.fontWeight = String(properties?.labelFontWeight || "700");
+        target.style.textAlign = horizontal;
+        target.style.whiteSpace = properties?.wrapText ? "normal" : "nowrap";
+        if (target.classList.contains("composer-button-label")) {
+          if (target.textContent !== text) target.textContent = text;
+          target.style.position = "absolute";
+          target.style.zIndex = "75";
+          target.style.left = `${padding}px`;
+          target.style.right = `${padding}px`;
+          target.style.pointerEvents = "none";
+          target.style.lineHeight = "1.15";
+          target.style.overflow = "hidden";
+          target.style.textOverflow = "ellipsis";
+          target.style.top = vertical === "top" ? `${padding}px` : vertical === "bottom" ? "auto" : "50%";
+          target.style.bottom = vertical === "bottom" ? `${padding}px` : "auto";
+          target.style.transform = vertical === "center" ? "translateY(-50%)" : "none";
+        } else if (remoteText && target.textContent !== text) target.textContent = text;
+      });
+    }
+    if (enabled && capability.signalKey && signals?.subscribe)
+      signals.subscribe(capability.signalKey, (value) => {
+        remoteText = String(value ?? "");
+        apply();
+      });
+    apply();
+    const observer = new MutationObserver(() => apply());
+    observer.observe(root, { childList: true, subtree: true });
+    cleanups.push(() => observer.disconnect());
+    return () => cleanups.splice(0).forEach((cleanup) => cleanup());
+  }
+  function wireIconPlacement(root, definition, properties) {
+    if (!definition?.iconPlacementCapability) return function () {};
+    const right = properties?.iconPlacement === "right";
+    function apply() {
+      const icons = [...root.querySelectorAll('svg,[class*="icon"]')];
+      icons.forEach((icon) => {
+        const iconChild = icon.parentElement && icon.parentElement !== root ? icon : null,
+          parent = iconChild?.parentElement;
+        if (!parent) return;
+        const label = [...parent.children].find(
+          (child) =>
+            child !== iconChild &&
+            child.matches?.('[data-composer-label],[class*="label"],[class*="text"],[class*="name"]'),
+        );
+        if (!label) return;
+        iconChild.style.order = right ? "2" : "0";
+        label.style.order = "1";
+      });
+    }
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }
   function register(definition) {
     if (!definition || !definition.id)
       throw new Error("A component definition requires an id");
@@ -723,6 +823,48 @@
         pressOutputs.length === 1 &&
         !holdExcludedComponents.has(definition.id) &&
         !definition.signals.some((signal) => /held|completed/i.test(signal.key));
+    const dedicatedLabelProperty = definition.properties.find(
+        (property) =>
+          !property.signalSetting &&
+          /(?:text|label|name|title)/i.test(property.key || "") &&
+          !/(?:color|size|align|weight|padding|wrap|selected)/i.test(property.key || ""),
+      ),
+      iconProperty = definition.properties.find(
+        (property) => property.iconPicker && !/^selected/i.test(property.key || ""),
+      );
+    if (buttonCategory) {
+      definition.buttonLabelCapability = {
+        synthetic: !dedicatedLabelProperty,
+        localKey: dedicatedLabelProperty?.key || "labelText",
+        signalKey: "",
+      };
+      const labelProperties = [
+        { key: "showLabel", name: "Show label", type: "checkbox", defaultValue: !!dedicatedLabelProperty, group: "Optional Label" },
+        { key: "labelFontSize", name: "Label size (px)", type: "number", min: 6, max: 240, defaultValue: Number(definition.properties.find((property) => property.key === "textSize")?.defaultValue) || 18, group: "Optional Label" },
+        { key: "labelColor", name: "Label color", type: "color", defaultValue: definition.properties.find((property) => property.key === "textColor")?.defaultValue || "#ffffff", group: "Optional Label" },
+        { key: "labelFontWeight", name: "Label weight", type: "select", options: [{ value: "400", label: "Regular" }, { value: "600", label: "Semi-bold" }, { value: "700", label: "Bold" }, { value: "800", label: "Extra bold" }], defaultValue: "700", group: "Optional Label" },
+        { key: "labelHorizontalAlignment", name: "Label horizontal alignment", type: "select", options: [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }], defaultValue: "center", group: "Optional Label" },
+        { key: "labelVerticalAlignment", name: "Label vertical placement", type: "select", options: [{ value: "top", label: "Top" }, { value: "center", label: "Center" }, { value: "bottom", label: "Bottom" }], defaultValue: "center", group: "Optional Label" },
+        { key: "labelPadding", name: "Label edge padding (px)", type: "number", min: 0, max: 100, defaultValue: 6, group: "Optional Label" },
+      ];
+      if (!dedicatedLabelProperty)
+        labelProperties.splice(1, 0, { key: "labelText", name: "Default label", type: "text", defaultValue: definition.name || "Button", group: "Optional Label" });
+      labelProperties.forEach((property) => {
+        if (!definition.properties.some((entry) => entry.key === property.key))
+          definition.properties.push(property);
+      });
+      if (iconProperty) {
+        definition.iconPlacementCapability = true;
+        if (!definition.properties.some((property) => property.key === "iconPlacement"))
+          definition.properties.push({
+            key: "iconPlacement",
+            name: "Icon placement beside text",
+            type: "select",
+            options: [{ value: "left", label: "Left of text" }, { value: "right", label: "Right of text" }],
+            defaultValue: "left",
+          });
+      }
+    }
     if (standardHoldCapable) {
       definition.standardHoldCapability = {
         pressKey: pressOutputs[0].key,
@@ -766,6 +908,26 @@
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join("");
+    if (buttonCategory) {
+      let labelSignal = definition.signals.find(
+        (signal) =>
+          signal.type === "serial" &&
+          signal.direction === "input" &&
+          /label|name|text|title/i.test(`${signal.key || ""} ${signal.name || ""}`),
+      );
+      if (!labelSignal) {
+        labelSignal = {
+          key: "label",
+          name: "Label",
+          type: "serial",
+          direction: "input",
+          defaultValue: `${namespace}.Label`,
+        };
+        definition.signals.push(labelSignal);
+      }
+      labelSignal.optionalProperty = "showLabel";
+      definition.buttonLabelCapability.signalKey = labelSignal.key;
+    }
     if (!definition.properties.some((property) => property.key === "visibilityEnabled"))
       definition.properties.push({
         key: "visibilityEnabled",
@@ -1226,6 +1388,21 @@
       },
     );
     definitions.set(definition.id, definition);
+    const widgetList = definitions.get("widget-list"),
+      widgetType = widgetList?.properties?.find((property) => property.key === "widgetType");
+    if (widgetType) {
+      widgetType.options = [...definitions.values()]
+        .filter(
+          (entry) =>
+            entry.id !== "widget-list" &&
+            entry.id !== "toast-queue" &&
+            entry.category !== "Multi-Devices",
+        )
+        .sort((a, b) =>
+          String(a.name || a.id).localeCompare(String(b.name || b.id)),
+        )
+        .map((entry) => ({ value: entry.id, label: entry.name || entry.id }));
+    }
   }
   function get(id) {
     return definitions.get(id);
@@ -1533,10 +1710,14 @@
         signals,
         icons: global.ComposerIcons || { get: () => null, svg: () => "", options: () => [] },
         interactions: { bindPrimaryPointer },
+        decorateButtonLabel: wireButtonLabel,
+        decorateIconPlacement: wireIconPlacement,
         resolveComponent: get,
         navigate: options.navigate || function () {},
         options,
       });
+      cleanups.push(wireButtonLabel(root, definition, options.properties || {}, signals));
+      cleanups.push(wireIconPlacement(root, definition, options.properties || {}));
       if (options.properties?.itemVisibilityEnabled) {
         (definition.rangeBindings || []).filter((range) => range.visibilitySelector).forEach((range) => {
           const base = String(options.properties[range.baseKey] || "").trim(),
@@ -1656,6 +1837,8 @@
     bindPrimaryPointer,
     wireUniformScrollbars,
     wireScrollReturn,
+    wireButtonLabel,
+    wireIconPlacement,
     resolveAddress: contractAddress,
     typeCode,
   };

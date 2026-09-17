@@ -641,7 +641,7 @@ run("mouse and touch hold controls share one captured pointer lifecycle", () => 
   assert.ok(runtime.includes('element.addEventListener("pointercancel", pointerCancel)'));
   assert.ok(runtime.includes('element.addEventListener("contextmenu", preventNative)'));
   assert.ok(exporter.includes('global.ComposerRuntime.bindPrimaryPointer.toString() + "function show(id){"'));
-  assert.ok(exporter.includes("interactions:{bindPrimaryPointer:bindPrimaryPointer},navigate:show"));
+  assert.ok(exporter.includes("interactions:{bindPrimaryPointer:bindPrimaryPointer},decorateButtonLabel:wireButtonLabel,decorateIconPlacement:wireIconPlacement,navigate:show"));
   assert.ok(runtime.includes('element.addEventListener("touchstart", touchStart, { passive: false })'));
   assert.ok(runtime.includes('event.pointerType === "touch"'));
   controls.forEach((source) => {
@@ -2698,6 +2698,25 @@ run("desktop archive handling and child processes have resource safeguards", () 
   assert.ok(desktop.includes("ReadArchiveEntryWithLimit"));
   assert.ok(desktop.includes("StandardOutput.ReadToEndAsync"));
   assert.ok(desktop.includes("StandardError.ReadToEndAsync"));
+});
+
+run("Composer catalog enhancements remain wired through editor and desktop packaging", () => {
+  const html = read("editor.html"), editor = read("editor.js"), css = read("editor.css"),
+    runtime = read("component-runtime.js"), standardButton = read("standard-button.component.js"),
+    desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), project = read("CrestronUiComposer/CrestronUiComposer.csproj");
+  assert.ok(html.includes('id="collapse-component-categories"'));
+  assert.ok(editor.includes('list.querySelectorAll(".component-category")'));
+  assert.ok(css.includes(".collapse-component-categories"));
+  assert.ok(html.includes('id="system-open-ch5-docs"'));
+  assert.ok(desktop.includes('"ch5docs" => new ProcessStartInfo'));
+  assert.ok(html.includes('src="date-time.component.js"'));
+  assert.ok(project.includes('..\\date-time.component.js'));
+  assert.ok(runtime.includes('key: "iconPlacement"'));
+  assert.ok(runtime.includes('key: "labelFontSize"'));
+  assert.ok(runtime.includes('entry.category !== "Multi-Devices"'));
+  assert.ok(standardButton.includes('key:"backgroundColor"'));
+  assert.ok(standardButton.includes('key:"backgroundOpacity"'));
+  assert.ok(editor.includes("keep scrolling to load more"));
 });
 
 if (process.exitCode) process.exit(process.exitCode);

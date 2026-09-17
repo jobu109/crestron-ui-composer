@@ -6067,8 +6067,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
     if (builtIn) return builtIn.label;
     const definition = window.ComposerIcons?.get(value);
-    if (definition)
-      return `${definition[3]} — Font Awesome ${definition[4]}`;
+    if (definition) return `${definition[3]} — ${definition[4]}`;
     return String(value || "Choose icon");
   }
   function ensureIconPickerDialog() {
@@ -6080,23 +6079,33 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     dialog.innerHTML = `
       <div class="dialog-title"><strong>Choose icon</strong><button type="button" data-icon-picker-close aria-label="Close">×</button></div>
       <div class="icon-picker-toolbar">
-        <input type="search" data-icon-picker-search placeholder="Search 1,500+ Font Awesome Free icons" autocomplete="off">
-        <select data-icon-picker-style aria-label="Icon style"><option value="">All styles</option><option value="Solid">Solid</option><option value="Regular">Regular</option><option value="Built-in">Built-in</option></select>
+        <input type="search" data-icon-picker-search placeholder="Search 11,000+ icons" autocomplete="off">
+        <select data-icon-picker-style aria-label="Icon library"><option value="">All libraries</option><option value="Material Design Icons">Material Design Icons</option><option value="Bootstrap Icons">Bootstrap Icons</option><option value="Font Awesome Solid">Font Awesome Solid</option><option value="Font Awesome Regular">Font Awesome Regular</option><option value="Built-in">Built-in</option></select>
       </div>
       <div class="icon-picker-results" data-icon-picker-results></div>
       <p class="hint" data-icon-picker-count></p>`;
     document.body.appendChild(dialog);
     dialog.querySelector("[data-icon-picker-close]").onclick = () => dialog.close();
-    dialog.querySelector("[data-icon-picker-search]").oninput = () =>
+    const resetResults = () => {
+      if (iconPickerSelection) {
+        iconPickerSelection.filterKey = "";
+        iconPickerSelection.rendered = 0;
+      }
       renderIconPickerChoices(dialog);
-    dialog.querySelector("[data-icon-picker-style]").onchange = () =>
-      renderIconPickerChoices(dialog);
+    };
+    dialog.querySelector("[data-icon-picker-search]").oninput = resetResults;
+    dialog.querySelector("[data-icon-picker-style]").onchange = resetResults;
+    dialog.querySelector("[data-icon-picker-results]").onscroll = (event) => {
+      const host = event.currentTarget;
+      if (host.scrollTop + host.clientHeight >= host.scrollHeight - 180)
+        renderIconPickerChoices(dialog, true);
+    };
     dialog.addEventListener("close", () => {
       iconPickerSelection = null;
     });
     return dialog;
   }
-  function renderIconPickerChoices(dialog) {
+  function renderIconPickerChoices(dialog, append = false) {
     const search = dialog
         .querySelector("[data-icon-picker-search]")
         .value.trim()
@@ -6108,8 +6117,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           (!style || choice.style === style) &&
           (!search || choice.search.includes(search)),
       ),
-      visible = matches.slice(0, 240);
-    host.innerHTML = "";
+      filterKey = `${style}\u0000${search}`;
+    if (!append || iconPickerSelection?.filterKey !== filterKey) {
+      host.innerHTML = "";
+      iconPickerSelection.filterKey = filterKey;
+      iconPickerSelection.rendered = 0;
+    }
+    const start = iconPickerSelection?.rendered || 0,
+      visible = matches.slice(start, start + 240);
     visible.forEach((choice) => {
       const button = document.createElement("button"),
         preview = document.createElement("span"),
@@ -6135,10 +6150,12 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
       host.appendChild(button);
     });
+    if (iconPickerSelection)
+      iconPickerSelection.rendered = start + visible.length;
     dialog.querySelector("[data-icon-picker-count]").textContent =
       `${matches.length.toLocaleString()} matching icon${matches.length === 1 ? "" : "s"}` +
-      (matches.length > visible.length
-        ? ` — showing the first ${visible.length}; refine your search.`
+      (matches.length > (iconPickerSelection?.rendered || 0)
+        ? ` — showing ${(iconPickerSelection?.rendered || 0).toLocaleString()}; keep scrolling to load more.`
         : "");
   }
   function openIconPicker(property, value, choose) {
@@ -6159,6 +6176,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         seen.add(choice.value);
         return true;
       }),
+      filterKey: "",
+      rendered: 0,
     };
     dialog.querySelector("[data-icon-picker-search]").value = "";
     dialog.querySelector("[data-icon-picker-style]").value = "";
@@ -15179,6 +15198,13 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     }, 0);
   };
   $("component-search").oninput = renderComponentLibrary;
+  $("collapse-component-categories").onclick = () => {
+    openComponentCategories.clear();
+    list.querySelectorAll(".component-category").forEach((group) => {
+      group.open = false;
+    });
+    setStatus("Collapsed all component categories");
+  };
   $("palette-preferences").onclick = (event) => {
     event.currentTarget.closest("details")?.removeAttribute("open");
     openPalettePreferences();
@@ -29329,6 +29355,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     )
       return;
     await nativeRequest("installPrerequisite", "ch5cli");
+  };
+  $("system-open-ch5-docs").onclick = () => {
+    if (native) return nativeRequest("installPrerequisite", "ch5docs");
+    window.open(
+      "https://sdkcon78221.crestron.com/sdk/Crestron_HTML5UI/Content/Topics/UI-CH5-Archives.htm",
+      "_blank",
+      "noopener",
+    );
   };
   $("system-open-settings").onclick = () => nativeRequest("openSettingsFolder");
   const appMenus = [...document.querySelectorAll(".app-menu")];

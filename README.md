@@ -34,7 +34,7 @@ Use **TSW-1070 Test** to replace the current design with a repeatable two-page h
 
 Use **Build .ch5z** in the desktop toolbar to generate a deployable Crestron HTML5 archive. The builder includes the official UMD `cr-com-lib.js`, invokes Crestron's `ch5-cli archive`, and validates the outer manifest plus the internal `.ch5`, `index.html`, and CrComLib payload. If any contract bindings are present, the builder requests the corresponding Contract Editor `.cse2j` mapping.
 
-The current development build locates `ch5-cli.cmd` from the global NPM installation. Install it with `npm install -g @crestron/ch5-utilities-cli` on a development workstation. A future installer will bundle or bootstrap this prerequisite.
+The current development build locates `ch5-cli.cmd` from the global NPM installation. System Diagnostics includes an **Install Crestron CLI** action that installs the official utilities with NPM, plus a **Crestron CLI guide** link to Crestron's archive documentation. For a manual install, run `npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli` on the workstation.
 
 ## Browser development mode
 

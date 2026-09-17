@@ -92,6 +92,7 @@
     {"file":"password.html","componentId":"password-entry","runtime":"scoped","name":"Password Entry","category":"Text & Input","width":420,"height":300},
     {"file":"alarmClock.html","componentId":"alarm-clock","runtime":"scoped","name":"Alarm Clock","category":"Lists & Selectors","width":420,"height":300},
     {"file":"clockAnalog.html","componentId":"analog-clock","runtime":"scoped","name":"Analog Clock","category":"Status & Information","width":280,"height":280},
+    {"file":"dateTime.html","componentId":"date-time","runtime":"scoped","name":"Date / Time","category":"Status & Information","width":380,"height":170},
     {"file":"displays.html","componentId":"display-control","runtime":"scoped","name":"Display Control","category":"Multi-Devices","width":480,"height":360},
     {"file":"widgetList.html","componentId":"widget-list","runtime":"scoped","name":"Widget List","category":"Multi-Devices","width":760,"height":260},
     {"file":"videoSwitcher.html","componentId":"video-switcher","runtime":"scoped","name":"Video Switcher","category":"Multi-Devices","width":900,"height":520},

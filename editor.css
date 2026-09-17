@@ -172,6 +172,19 @@ input {
 .sidebar {
   border-right: 1px solid #324347;
 }
+.collapse-component-categories {
+  float: right;
+  width: auto;
+  margin: 0 0 6px 8px;
+  padding: 4px 7px;
+  border: 1px solid #46605f;
+  border-radius: 5px;
+  background: #253436;
+  color: #d5e6e3;
+  font-size: 11px;
+  cursor: pointer;
+}
+.collapse-component-categories:hover { border-color: #14d4b4; }
 .inspector {
   border-left: 1px solid #324347;
 }

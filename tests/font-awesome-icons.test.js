@@ -14,22 +14,29 @@ require(path.join(root, "favorites.component.js"));
 require(path.join(root, "exporter.js"));
 
 assert.equal(ComposerIcons.version, "7.3.1");
-assert.equal(ComposerIcons.options().length, 1591);
+assert.ok(ComposerIcons.options().length > 10000);
+assert.equal(ComposerIcons.versions.mdi, "7.4.47");
+assert.equal(ComposerIcons.versions.bootstrap, "1.13.1");
 assert.ok(ComposerIcons.get("fa-solid:house"));
 assert.ok(ComposerIcons.get("fa-regular:star"));
+assert.ok(ComposerIcons.get("mdi:television"));
+assert.ok(ComposerIcons.get("bi:volume-up"));
 assert.match(
   ComposerIcons.svg("fa-solid:house", { className: "test-icon" }),
   /^<svg class="test-icon" viewBox="0 0 \d+ \d+"[^>]*><path /,
 );
+assert.match(ComposerIcons.svg("mdi:television"), /<path /);
+assert.match(ComposerIcons.svg("bi:volume-up"), /<path d=/);
 assert.match(
   ComposerIcons.svg("legacy", {
     legacy: { legacy: '<circle cx="12" cy="12" r="4"/>' },
   }),
   /<circle cx="12"/,
 );
-assert.deepEqual(Object.keys(ComposerIcons.pick(["fa-solid:house", "missing"])), [
-  "fa-solid:house",
-]);
+assert.deepEqual(
+  Object.keys(ComposerIcons.pick(["fa-solid:house", "mdi:television", "bi:volume-up", "missing"])),
+  ["fa-solid:house", "mdi:television", "bi:volume-up"],
+);
 
 ComposerRuntime.register({
   id: "font-awesome-test",
@@ -57,6 +64,8 @@ assert.match(read("editor.js"), /createIconPickerControl/);
 assert.match(read("editor.css"), /icon-picker-results/);
 assert.match(read("CrestronUiComposer/CrestronUiComposer.csproj"), /font-awesome-free-icons\.js/);
 assert.match(read("CrestronUiComposer/CrestronUiComposer.csproj"), /FONT-AWESOME-FREE-LICENSE\.txt/);
+assert.match(read("CrestronUiComposer/CrestronUiComposer.csproj"), /MATERIAL-DESIGN-ICONS-LICENSE\.txt/);
+assert.match(read("CrestronUiComposer/CrestronUiComposer.csproj"), /BOOTSTRAP-ICONS-LICENSE\.txt/);
 
 const exporter = read("exporter.js");
 assert.match(exporter, /ComposerIcons\?\.pick/);
@@ -83,8 +92,9 @@ const exported = ComposerExporter.exportProject({
         ...Object.fromEntries(
           favorites.properties.map((entry) => [entry.key, entry.defaultValue]),
         ),
-        itemCount: 1,
+        itemCount: 2,
         item0Icon: "fa-solid:house",
+        item1Icon: "mdi:television",
       },
       signalBindings: {},
     },
@@ -92,8 +102,9 @@ const exported = ComposerExporter.exportProject({
   assets: [],
 });
 assert.match(exported, /"fa-solid:house"/);
+assert.match(exported, /"mdi:television"/);
 assert.doesNotMatch(exported, /"fa-solid:car"/);
-assert.match(exported, /Font Awesome Free 7\.3\.1 by Fonticons/);
+assert.match(exported, /Material Design Icons Apache 2\.0/);
 const runtimeStart = exported.lastIndexOf("<script>") + 8;
 const runtimeEnd = exported.lastIndexOf("</script>");
 new Function(exported.slice(runtimeStart, runtimeEnd));

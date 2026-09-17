@@ -52,8 +52,8 @@
         label = root.querySelector(".text-block-label"),
         properties = context.options.properties || {},
         defaultText = String(properties.text || "Text"),
-        selectedText = String(properties.selectedText || ""),
-        selected = false;
+        selectedText = String(properties.selectedText || "");
+      let selected = false;
       const tagPattern = /<cip([sda])>([\s\S]*?)<\/cip\1>/gi,
         tokens = [], values = [];
       let templateText = defaultText;

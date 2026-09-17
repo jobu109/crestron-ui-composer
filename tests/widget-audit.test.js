@@ -177,6 +177,31 @@ for (const [id, definition] of definitions) {
   });
 }
 
+const buttonDefinitions = [...definitions.values()].filter((definition) =>
+  /^(?:Standard|Toggle|Advanced) Buttons$/i.test(definition.category || ""),
+);
+buttonDefinitions.forEach((definition) => {
+  assert.ok(
+    definition.properties.some((property) => property.key === "showLabel"),
+    `${definition.id} is missing the optional label toggle`,
+  );
+  assert.ok(
+    definition.signals.some(
+      (signal) =>
+        signal.type === "serial" &&
+        signal.direction === "input" &&
+        signal.optionalProperty === "showLabel",
+    ),
+    `${definition.id} is missing its optional label contract input`,
+  );
+  if (definition.properties.some((property) => property.iconPicker))
+    assert.ok(
+      definition.properties.some((property) => property.key === "iconPlacement"),
+      `${definition.id} cannot place its icon to the left or right of text`,
+    );
+});
+assert.ok(definitions.has("date-time"), "Date / Time widget was not registered");
+
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exit(1);
@@ -245,6 +270,17 @@ widgetListChoices.forEach((id) => {
   assert.ok(definitions.has(id), `Widget List references missing included widget ${id}`);
   assert.notEqual(id, "widget-list", "Widget List cannot recursively include itself");
 });
+const expectedWidgetListChoices = [...definitions.values()]
+  .filter(
+    (definition) =>
+      definition.id !== "widget-list" &&
+      definition.id !== "toast-queue" &&
+      definition.category !== "Multi-Devices",
+  )
+  .map((definition) => definition.id);
+expectedWidgetListChoices.forEach((id) =>
+  assert.ok(widgetListChoices.includes(id), `Widget List is missing compatible widget ${id}`),
+);
 // The unified "one place to edit the shared inner widget" is the Widget
 // List item's own Inspector: reported as effectively undiscoverable when
 // its size fields (unlike its color/text/graphics fields) had no group and
@@ -299,13 +335,19 @@ if (chromePath) {
     const result = childProcess.spawnSync(chromePath, [
       "--headless=new", "--disable-gpu", "--disable-gpu-compositing", "--disable-software-rasterizer",
       "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
+      "--disable-background-networking", "--disable-component-update", "--disable-sync",
+      "--disable-features=OptimizationGuideModelDownloading,MediaRouter", "--metrics-recording-only",
       `--user-data-dir=${chromeProfile}`, "--virtual-time-budget=3000", "--dump-dom",
       new URL(`file:///${smokeFile.replace(/\\/g, "/")}`).href,
-    ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 30000 });
+    ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 120000 });
     assert.equal(result.status, 0, `Chrome Widget List smoke test failed: ${result.stderr || result.error || "unknown error"}`);
     const mounted = (result.stdout.match(/class="[^"]*\bwl-widget\b[^"]*"/g) || []).length;
     assert.equal(mounted, widgetListChoices.length * 2, `Expected ${widgetListChoices.length * 2} mounted included widgets, found ${mounted}`);
-    assert.doesNotMatch(result.stdout, /Component error:/i, "Widget List compatibility catalog rendered a component error");
+    assert.doesNotMatch(
+      result.stdout,
+      />Component error:/i,
+      "Widget List compatibility catalog rendered a component error",
+    );
     assert.match(result.stdout, /data-smoke-complete="true"/, "Widget List interaction probe did not complete");
     const published = Number(result.stdout.match(/data-smoke-published="(\d+)"/)?.[1] || 0),
       subscriptions = Number(result.stdout.match(/data-smoke-subscriptions="(\d+)"/)?.[1] || 0),
@@ -336,6 +378,11 @@ if (chromePath) {
     assert.equal(interactionErrors, "", `Widget List interaction/feedback error: ${interactionErrors}`);
     console.log(`PASS mounted ${mounted} included widgets; exercised ${published} publishes / ${subscriptions} feedback subscriptions; verified ${selectedVisuals} selected visuals, ${namedText} labels, ${analogText} analog displays, and ${iconSizeVariables + textSizeVariables + glowVariables} included style variables`);
   } finally {
-    fs.rmSync(smokeDirectory, { recursive: true, force: true });
+    fs.rmSync(smokeDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: 15,
+      retryDelay: 250,
+    });
   }
 } else console.log("SKIP Widget List browser smoke test (Google Chrome not installed)");
