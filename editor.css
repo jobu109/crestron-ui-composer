@@ -391,7 +391,9 @@ h2 {
   background: #10191b;
 }
 .subpage-instance-surface {
-  outline: 1px solid transparent;
+  outline: 2px dashed #f1bd37;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 1px #111;
   cursor: move;
 }
 .subpage-instance-surface.selected {

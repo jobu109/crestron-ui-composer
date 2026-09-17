@@ -1459,7 +1459,7 @@ run("project health overlap detection skips system-managed and hidden items", ()
 });
 
 run("linked subpages persist, render, export, and travel in design libraries", () => {
-  const editor = read("editor.js"), markup = read("editor.html"), exporter = read("exporter.js");
+  const editor = read("editor.js"), markup = read("editor.html"), exporter = read("exporter.js"), styles = read("editor.css");
   assert.ok(markup.includes('id="create-subpage"'));
   assert.ok(markup.includes('id="new-blank-subpage"'));
   assert.ok(markup.includes('id="subpage-list"'));
@@ -1497,6 +1497,7 @@ run("linked subpages persist, render, export, and travel in design libraries", (
   assert.ok(editor.includes("itemIdMap"));
   assert.ok(editor.includes("targetPage.subpageMasterId"));
   assert.ok(editor.includes("subpage-instance-surface"));
+  assert.match(styles, /\.subpage-instance-surface\s*\{[^}]*outline:\s*2px dashed #f1bd37/);
   assert.ok(exporter.includes("project.subpages || []"));
   assert.ok(exporter.includes("resolved.visibilityEnabled"));
   assert.ok(exporter.includes("subpageClipStyle"));
