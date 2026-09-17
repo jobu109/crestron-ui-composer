@@ -322,6 +322,7 @@
           });
           const cleanup = definition.mount(widget, {
             signals: nestedSignals,
+            icons: context.icons,
             interactions: context.interactions,
             resolveComponent: context.resolveComponent,
             navigate: context.navigate,

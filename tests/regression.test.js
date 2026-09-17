@@ -680,7 +680,9 @@ run("Glass Block remains visible and styled on older touch-panel Chromium", () =
 
 run("circular D-Pad center icon does not depend on panel fonts", () => {
   const neo = read("neumorphic-kit-components.js");
-  assert.ok(neo.includes('centerIconMarkup = `<svg viewBox="0 0 24 24"'));
+  assert.ok(neo.includes("centerIconMarkup = context.icons.svg"));
+  assert.ok(neo.includes('className: "nd-center-icon"'));
+  assert.ok(neo.includes("legacy: centerIcons"));
   assert.ok(neo.includes('root.querySelector(".nd-center").innerHTML = centerIconMarkup'));
   assert.ok(neo.includes('power: \'<path d="M12 3v9"'));
 });
@@ -1102,6 +1104,10 @@ run("subpages use visual placement choices and direct instance sizing", () => {
   assert.ok(editor.includes("instance.deviceOverrides[targetKey]"));
   assert.ok(editor.includes("masterSubpage ? subpageResolved(masterSubpage, state.activePage)"));
   assert.ok(editor.includes("pasteOriginX + (Number(item.x) || 0) - sourceBounds.left"));
+  assert.ok(editor.includes(": (canvasBounds.width - entry.w) / 2"));
+  assert.ok(editor.includes(": (canvasBounds.height - entry.h) / 2"));
+  assert.ok(editor.includes(": canvasBounds.width - entry.w"));
+  assert.ok(editor.includes(": canvasBounds.height - entry.h"));
   assert.ok(editor.includes("inside subpage"));
   assert.ok(editor.includes('stage.classList.toggle("subpage-master-canvas"'));
   assert.ok(editor.includes("masterBounds?.width || state.width"));
@@ -1682,7 +1688,7 @@ run("Video Switcher supports touch drag routing and per-item assets", () => {
   assert.ok(!component.includes('[data-source-display!="card"]'));
   assert.ok(component.includes('const sourceIconPattern = ['));
   assert.ok(component.includes('const iconPaths = {'));
-  assert.ok(component.includes('<svg viewBox="0 0 24 24"'));
+  assert.ok(component.includes("context.icons.svg(name, { legacy: iconPaths })"));
   assert.ok(component.includes('.vs-icon[hidden]'));
   assert.ok(component.includes('.vs-empty[hidden]'));
   assert.ok(component.includes('key: "sourceLayout"'));

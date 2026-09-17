@@ -6048,6 +6048,148 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const { r, g, b } = hexToRgb(hex);
     return `rgba(${r}, ${g}, ${b}, ${Math.round(Math.max(0, Math.min(1, alpha)) * 100) / 100})`;
   }
+  let iconPickerSelection = null;
+  function iconPropertyChoices(property) {
+    return (property.options || []).map((option) => {
+      const value =
+          option && typeof option === "object" ? option.value : option,
+        label =
+          option && typeof option === "object" ? option.label : option;
+      return {
+        value: value ?? "",
+        label: String(label ?? value ?? "Choose icon"),
+      };
+    });
+  }
+  function iconChoiceLabel(property, value) {
+    const builtIn = iconPropertyChoices(property).find(
+      (option) => String(option.value) === String(value),
+    );
+    if (builtIn) return builtIn.label;
+    const definition = window.ComposerIcons?.get(value);
+    if (definition)
+      return `${definition[3]} — Font Awesome ${definition[4]}`;
+    return String(value || "Choose icon");
+  }
+  function ensureIconPickerDialog() {
+    let dialog = $("font-awesome-icon-picker");
+    if (dialog) return dialog;
+    dialog = document.createElement("dialog");
+    dialog.id = "font-awesome-icon-picker";
+    dialog.className = "font-awesome-icon-picker";
+    dialog.innerHTML = `
+      <div class="dialog-title"><strong>Choose icon</strong><button type="button" data-icon-picker-close aria-label="Close">×</button></div>
+      <div class="icon-picker-toolbar">
+        <input type="search" data-icon-picker-search placeholder="Search 1,500+ Font Awesome Free icons" autocomplete="off">
+        <select data-icon-picker-style aria-label="Icon style"><option value="">All styles</option><option value="Solid">Solid</option><option value="Regular">Regular</option><option value="Built-in">Built-in</option></select>
+      </div>
+      <div class="icon-picker-results" data-icon-picker-results></div>
+      <p class="hint" data-icon-picker-count></p>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("[data-icon-picker-close]").onclick = () => dialog.close();
+    dialog.querySelector("[data-icon-picker-search]").oninput = () =>
+      renderIconPickerChoices(dialog);
+    dialog.querySelector("[data-icon-picker-style]").onchange = () =>
+      renderIconPickerChoices(dialog);
+    dialog.addEventListener("close", () => {
+      iconPickerSelection = null;
+    });
+    return dialog;
+  }
+  function renderIconPickerChoices(dialog) {
+    const search = dialog
+        .querySelector("[data-icon-picker-search]")
+        .value.trim()
+        .toLowerCase(),
+      style = dialog.querySelector("[data-icon-picker-style]").value,
+      host = dialog.querySelector("[data-icon-picker-results]"),
+      matches = (iconPickerSelection?.choices || []).filter(
+        (choice) =>
+          (!style || choice.style === style) &&
+          (!search || choice.search.includes(search)),
+      ),
+      visible = matches.slice(0, 240);
+    host.innerHTML = "";
+    visible.forEach((choice) => {
+      const button = document.createElement("button"),
+        preview = document.createElement("span"),
+        name = document.createElement("span");
+      button.type = "button";
+      button.className = "icon-picker-choice";
+      button.classList.toggle(
+        "selected",
+        String(choice.value) === String(iconPickerSelection?.value),
+      );
+      preview.className = "icon-picker-choice-preview";
+      preview.innerHTML = window.ComposerIcons?.get(choice.value)
+        ? window.ComposerIcons.svg(choice.value)
+        : `<span>${escapeHtml(choice.label.slice(0, 2))}</span>`;
+      name.textContent = choice.label;
+      button.title = choice.label;
+      button.append(preview, name);
+      button.onclick = () => {
+        const select = iconPickerSelection;
+        if (!select) return;
+        select.choose(choice.value);
+        dialog.close();
+      };
+      host.appendChild(button);
+    });
+    dialog.querySelector("[data-icon-picker-count]").textContent =
+      `${matches.length.toLocaleString()} matching icon${matches.length === 1 ? "" : "s"}` +
+      (matches.length > visible.length
+        ? ` — showing the first ${visible.length}; refine your search.`
+        : "");
+  }
+  function openIconPicker(property, value, choose) {
+    const dialog = ensureIconPickerDialog(),
+      builtIns = iconPropertyChoices(property).map((option) => ({
+        value: option.value,
+        label: option.label,
+        style: "Built-in",
+        search: `${option.label} ${option.value} built-in`.toLowerCase(),
+      })),
+      choices = [...builtIns, ...(window.ComposerIcons?.options() || [])],
+      seen = new Set();
+    iconPickerSelection = {
+      value,
+      choose,
+      choices: choices.filter((choice) => {
+        if (seen.has(choice.value)) return false;
+        seen.add(choice.value);
+        return true;
+      }),
+    };
+    dialog.querySelector("[data-icon-picker-search]").value = "";
+    dialog.querySelector("[data-icon-picker-style]").value = "";
+    renderIconPickerChoices(dialog);
+    dialog.showModal();
+    dialog.querySelector("[data-icon-picker-search]").focus();
+  }
+  function createIconPickerControl(property, value, choose, prefix = "") {
+    const button = document.createElement("button"),
+      preview = document.createElement("span"),
+      caption = document.createElement("span");
+    button.type = "button";
+    button.className = "component-icon-picker";
+    function refresh(nextValue) {
+      value = nextValue;
+      preview.innerHTML = window.ComposerIcons?.get(value)
+        ? window.ComposerIcons.svg(value)
+        : `<span>${escapeHtml(iconChoiceLabel(property, value).slice(0, 2))}</span>`;
+      caption.textContent = `${prefix}${iconChoiceLabel(property, value)}`;
+    }
+    preview.className = "component-icon-picker-preview";
+    caption.className = "component-icon-picker-caption";
+    button.append(preview, caption);
+    button.onclick = () =>
+      openIconPicker(property, value, (nextValue) => {
+        refresh(nextValue);
+        choose(nextValue);
+      });
+    refresh(value);
+    return button;
+  }
   function renderProperties(item) {
     const section = $("component-properties-section"),
       host = $("component-properties"),
@@ -6300,6 +6442,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           ).split("|");
         list.className = "property-text-list";
         for (let i = 0; i < count; i++) {
+          if (property.iconPicker) {
+            const control = createIconPickerControl(
+              property,
+              values[i] ?? property.defaultItemValue ?? "",
+              (value) => {
+                values[i] = value;
+                item.properties = item.properties || {};
+                item.properties[property.key] = values.join("|");
+                renderItem(item);
+                scheduleHistory();
+              },
+              `${property.itemName || "Item"} ${i + 1}: `,
+            );
+            list.appendChild(control);
+            continue;
+          }
           const select = document.createElement("select");
           (property.options || []).forEach((option) => {
             const element = document.createElement("option");
@@ -6318,10 +6476,24 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         }
         wireReusableOverride(
           label,
-          [...list.querySelectorAll("select")],
+          [...list.querySelectorAll("select,.component-icon-picker")],
           property,
         );
         label.appendChild(list);
+        propertyHost.appendChild(label);
+        return;
+      }
+      if (property.type === "select" && property.iconPicker) {
+        const value =
+            item.properties?.[property.key] ?? property.defaultValue ?? "",
+          control = createIconPickerControl(property, value, (nextValue) => {
+            item.properties = item.properties || {};
+            item.properties[property.key] = nextValue;
+            renderItem(item);
+            scheduleHistory();
+          });
+        wireReusableOverride(label, [control], property);
+        label.appendChild(control);
         propertyHost.appendChild(label);
         return;
       }
@@ -15363,7 +15535,13 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
   };
   function alignSelected(mode) {
     const items = selectedItems(),
-      item = current();
+      item = current(),
+      masterSubpage = state.subpages.find(
+        (entry) => entry.sourcePageId === state.activePage,
+      ),
+      canvasBounds = masterSubpage
+        ? subpageResolved(masterSubpage, state.activePage)
+        : { width: state.width, height: state.height };
     if (!item || !mode) return;
     const bounds = {
       left: Math.min(...items.map((entry) => entry.x)),
@@ -15377,19 +15555,23 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         entry.x =
           items.length > 1
             ? (bounds.left + bounds.right - entry.w) / 2
-            : (state.width - entry.w) / 2;
+            : (canvasBounds.width - entry.w) / 2;
       if (mode === "right")
         entry.x =
-          items.length > 1 ? bounds.right - entry.w : state.width - entry.w;
+          items.length > 1
+            ? bounds.right - entry.w
+            : canvasBounds.width - entry.w;
       if (mode === "top") entry.y = items.length > 1 ? bounds.top : 0;
       if (mode === "middle")
         entry.y =
           items.length > 1
             ? (bounds.top + bounds.bottom - entry.h) / 2
-            : (state.height - entry.h) / 2;
+            : (canvasBounds.height - entry.h) / 2;
       if (mode === "bottom")
         entry.y =
-          items.length > 1 ? bounds.bottom - entry.h : state.height - entry.h;
+          items.length > 1
+            ? bounds.bottom - entry.h
+            : canvasBounds.height - entry.h;
       entry.x = snap(entry.x);
       entry.y = snap(entry.y);
     });

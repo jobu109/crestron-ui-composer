@@ -149,7 +149,9 @@
           img.src = assetData; img.alt = "";
           circle.appendChild(img);
         } else {
-          circle.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[p[`item${index}Icon`]] || ""}</svg>`;
+          circle.innerHTML = context.icons.svg(p[`item${index}Icon`], {
+            legacy: icons,
+          });
         }
 
         const label = document.createElement("span");

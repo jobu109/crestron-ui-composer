@@ -49,7 +49,7 @@
       ],
       template: `<div class="neo-button-wrap"><button class="neo-button" type="button">${iconMarkup(defaultIcon)}<span class="neo-button-label"></span></button></div>`, styles: buttonStyles,
       mount(root, context) {
-        function iconMarkup(icon) { const paths = { play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' }; return `<svg class="neo-button-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`; }
+        function iconMarkup(icon) { const paths = { play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' }; return context.icons.svg(icon, { className: "neo-button-icon", legacy: paths }); }
         const button = root.querySelector(".neo-button"), label = root.querySelector(".neo-button-label"), p = context.options.properties || {}, defaultIcon = context.options.definitionData.defaultIcon || "none", fallback = String(p.text ?? "Button"), selectedText = p.selectedText || fallback, standardIcon = p.icon || defaultIcon, selectedIcon = p.selectedIcon || standardIcon; let remoteLabel = "", isSelected = false;
         function renderState(){button.querySelector(".neo-button-icon").outerHTML=iconMarkup(isSelected?selectedIcon:standardIcon);label.textContent=remoteLabel||(isSelected?selectedText:fallback)}
         renderState(); if (p.showLabel === false || String(p.showLabel).toLowerCase() === "false") label.style.display = "none";
@@ -108,7 +108,7 @@
         const paths = {
           play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
         };
-        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+        return context.icons.svg(icon, { className: "neo-dial-icon", legacy: paths });
       }
       const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
       const standardText = String(p.text ?? "Dial"), selectedText = p.selectedText || standardText;
@@ -184,7 +184,7 @@
         const paths = {
           play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
         };
-        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+        return context.icons.svg(icon, { className: "neo-dial-icon", legacy: paths });
       }
       const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
       const standardText = String(p.text ?? "Dial"), selectedText = p.selectedText || standardText;
@@ -262,7 +262,7 @@
         const paths = {
           play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
         };
-        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+        return context.icons.svg(icon, { className: "neo-dial-icon", legacy: paths });
       }
       const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
       const standardText = String(p.text ?? "Go"), selectedText = p.selectedText || standardText;
@@ -341,7 +341,7 @@
         const paths = {
           play: '<path d="M7 4l12 8-12 8z"/>', stop: '<rect x="6" y="6" width="12" height="12"/>', check: '<path d="M4 12l6 6L20 6"/>', power: '<path d="M12 3v9"/><path d="M7.1 5.8a8 8 0 1 0 9.8 0"/>', pause: '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>'
         };
-        return `<svg class="neo-dial-icon" viewBox="0 0 24 24" aria-hidden="true">${paths[icon] || ""}</svg>`;
+        return context.icons.svg(icon, { className: "neo-dial-icon", legacy: paths });
       }
       const button = root.querySelector(".neo-dial-button"), glow = root.querySelector(".neo-dial-glow"), label = root.querySelector(".neo-dial-label"), p = context.options.properties || {};
       const standardText = String(p.text ?? "Go"), selectedText = p.selectedText || standardText;

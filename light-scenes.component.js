@@ -92,7 +92,7 @@
         };
         if (key === "blank") return '<span class="ls-icon ' + className + '"></span>';
         if (key === "scene-grid") return '<span class="ls-icon ' + className + '"><span class="ls-dots">' + "<i></i>".repeat(9) + "</span></span>";
-        return '<span class="ls-icon ' + className + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + (paths[key] || paths.bulb) + "</svg></span>";
+        return '<span class="ls-icon ' + className + '">' + context.icons.svg(key, { legacy: paths, fallback: "bulb" }) + "</span>";
       }
       function build(nextCount) {
         count = Math.max(1, Math.min(20, Number(nextCount) || Number(p.defaultCount) || 5));

@@ -381,6 +381,23 @@
           stylesOverride: item.componentStyles || "",
         })),
     );
+    const usedFontAwesomeIconValues = [
+        ...new Set(
+          scopedItems.flatMap((item) =>
+            Object.values(item.properties || {}).flatMap((value) =>
+              typeof value === "string"
+                ? value
+                    .split("|")
+                    .filter((entry) =>
+                      /^fa-(?:solid|regular):[a-z0-9-]+$/i.test(entry),
+                    )
+                : [],
+            ),
+          ),
+        ),
+      ],
+      fontAwesomeDefinitions =
+        global.ComposerIcons?.pick(usedFontAwesomeIconValues) || {};
     const interactionItems = outputPages.flatMap((page) =>
       project.items
         .filter((item) => itemVisibleOnPage(item, page.id))
@@ -477,7 +494,7 @@
       animatedController = layeredController
         .replace(
           "signals:signals,navigate:show,options:",
-          "signals:signals,interactions:{bindPrimaryPointer:bindPrimaryPointer},resolveComponent:function(id){return definitions[id]},navigate:show,options:",
+          "signals:signals,icons:window.ComposerIcons,interactions:{bindPrimaryPointer:bindPrimaryPointer},resolveComponent:function(id){return definitions[id]},navigate:show,options:",
         )
         .replace(
           "root.dataset.component=item.componentId;",
@@ -581,7 +598,7 @@
       restoredController = contractController
         .replaceAll(
           "signals:signals,navigate:show",
-          "signals:signals,interactions:{bindPrimaryPointer:bindPrimaryPointer},navigate:show",
+          "signals:signals,icons:window.ComposerIcons,interactions:{bindPrimaryPointer:bindPrimaryPointer},navigate:show",
         )
         .replace(
           "function appearance(root,p){",
@@ -592,7 +609,11 @@
           "if(prefix&&structured.indexOf('.')>=0)",
           "var legacyCollection=structured.match(/^[A-Za-z_][A-Za-z0-9_]*_([A-Za-z][A-Za-z0-9_]*)(\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/);if(prefix&&legacyCollection){structured=prefix+'.'+legacyCollection[1]+legacyCollection[2]+'.'+legacyCollection[3];prefix=''}if(prefix&&structured.indexOf('.')>=0)",
         ),
-      safeController = restoredController.replace(/<\/script/gi, "<\\/script");
+      fontAwesomeRuntime = `/* Font Awesome Free ${global.ComposerIcons?.version || "7"} by Fonticons, Inc. - CC BY 4.0 - https://fontawesome.com/license/free */(function(){var definitions=${JSON.stringify(fontAwesomeDefinitions)};function escapeAttribute(value){return String(value||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}function get(value){return definitions[String(value||'').replace(/^fas:/,'fa-solid:').replace(/^far:/,'fa-regular:')]||null}function svg(value,options){options=options||{};var record=get(value),className=options.className?' class="'+escapeAttribute(options.className)+'"':'',label=options.label?' aria-label="'+escapeAttribute(options.label)+'" role="img"':' aria-hidden="true"',body,viewBox;if(record){viewBox='0 0 '+record[0]+' '+record[1];body=(Array.isArray(record[2])?record[2]:[record[2]]).filter(Boolean).map(function(path,index){return'<path fill="currentColor" stroke="none"'+(index?' opacity=".4"':'')+' d="'+escapeAttribute(path)+'"></path>'}).join('')}else{viewBox=options.viewBox||'0 0 24 24';body=options.legacy&&options.legacy[value]||options.legacy&&options.legacy[options.fallback]||options.body||''}return'<svg'+className+' viewBox="'+viewBox+'"'+label+' focusable="false">'+body+'</svg>'}window.ComposerIcons={get:get,svg:svg};})();`,
+      safeController = (fontAwesomeRuntime + restoredController).replace(
+        /<\/script/gi,
+        "<\\/script",
+      );
     const subpageVisibilityConfigs = (project.subpages || []).flatMap((entry) =>
       outputPages.filter((page) => page.id !== entry.sourcePageId && !(entry.excludedPages || []).includes(page.id) && (!entry.includedPages?.length || entry.includedPages.includes(page.id))).map((page) => {
         const resolved = resolveSubpage(entry, page.id);

@@ -685,6 +685,14 @@
     if (!definition || !definition.id)
       throw new Error("A component definition requires an id");
     definition.properties = definition.properties || [];
+    definition.properties.forEach((property) => {
+      if (
+        (property.type === "select" || property.type === "select-list") &&
+        /icon/i.test(`${property.key || ""} ${property.name || ""}`) &&
+        !/(?:size|color|position|display)/i.test(property.key || "")
+      )
+        property.iconPicker = true;
+    });
     definition.optionalContent = { ...(optionalContent[definition.id] || {}), ...(definition.optionalContent || {}) };
     definition.signals = definition.signals || [];
     const holdExcludedComponents = new Set([
@@ -1523,6 +1531,7 @@
     try {
       dispose = definition.mount(root, {
         signals,
+        icons: global.ComposerIcons || { get: () => null, svg: () => "", options: () => [] },
         interactions: { bindPrimaryPointer },
         resolveComponent: get,
         navigate: options.navigate || function () {},

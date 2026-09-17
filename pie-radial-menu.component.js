@@ -145,11 +145,12 @@
           icon.alt = "";
           icon.src = assetData;
         } else {
-          icon = document.createElementNS(SVG_NS, "svg");
-          icon.setAttribute("class", "prm-icon");
-          icon.setAttribute("viewBox", "0 0 24 24");
-          icon.setAttribute("aria-hidden", "true");
-          icon.innerHTML = ICONS[p[`item${index}Icon`]] || "";
+          const iconHost = document.createElement("span");
+          iconHost.innerHTML = context.icons.svg(p[`item${index}Icon`], {
+            className: "prm-icon",
+            legacy: ICONS,
+          });
+          icon = iconHost.firstElementChild;
         }
 
         const label = document.createElement("span");

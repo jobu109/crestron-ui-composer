@@ -231,9 +231,16 @@
             button.firstElementChild.textContent =
               isCenter && !value ? p.centerText || "Home" : value;
           } else if (isCenter) {
-            button.innerHTML = '<span class="dpad-button-text"></span>';
-            button.firstElementChild.textContent =
-              centerIcons[p.centerIcon || "home"] || "⌂";
+            button.innerHTML = context.icons.svg(p.centerIcon || "home", {
+              className: "dpad-button-icon",
+              legacy: Object.fromEntries(
+                Object.entries(centerIcons).map(([key, value]) => [
+                  key,
+                  `<text x="12" y="17" text-anchor="middle" font-size="15" fill="currentColor">${value}</text>`,
+                ]),
+              ),
+              fallback: "home",
+            });
           } else button.innerHTML = originalMarkup.get(button);
         }
         renderContent(

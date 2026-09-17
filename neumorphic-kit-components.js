@@ -768,8 +768,11 @@
           button.type = "button";
           button.className = "nr-button";
           icon.className = "nr-icon";
-          icon.textContent = glyphs[iconNames[index]] || "";
-          icon.style.display = icon.textContent ? "" : "none";
+          const iconKey = iconNames[index] || "";
+          if (context.icons.get(iconKey))
+            icon.innerHTML = context.icons.svg(iconKey);
+          else icon.textContent = glyphs[iconKey] || "";
+          icon.style.display = icon.innerHTML || icon.textContent ? "" : "none";
           label.className = "nr-label";
           label.textContent = localLabel;
           button.append(icon, label);
@@ -850,7 +853,7 @@
   );
   const dpadStyles =
     commonStyles +
-    '[data-component^="neumorphic-dpad"]{display:block;width:100%;height:100%;padding:12px}[data-component^="neumorphic-dpad"] .nd{position:relative;width:100%;height:100%}[data-component^="neumorphic-dpad"] .nd.square{display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);gap:10px}[data-component^="neumorphic-dpad"] .nd-button{border:0;border-radius:22%;background:var(--surface);box-shadow:4px 4px 9px var(--shadow),-4px -4px 9px var(--highlight);color:var(--txt);font-size:var(--icon-size-px);cursor:pointer}[data-component^="neumorphic-dpad"] .nd-button.pressed,[data-component^="neumorphic-dpad"] .nd-button.active{color:var(--accent);text-shadow:0 0 var(--glow) var(--accent);box-shadow:inset 4px 4px 9px var(--shadow),inset -3px -3px 7px var(--highlight),0 0 var(--glow) var(--accent)}[data-component="neumorphic-dpad-circular"] .nd.circular{display:grid;place-items:center;aspect-ratio:1;max-width:100%;max-height:100%;margin:auto}[data-component="neumorphic-dpad-circular"] .nd-ring{display:block;width:100%;height:100%;overflow:visible}[data-component="neumorphic-dpad-circular"] .nd-sector{cursor:pointer}[data-component="neumorphic-dpad-circular"] .nd-sector path{fill:var(--surface);stroke:rgba(255,255,255,.06);stroke-width:1;filter:drop-shadow(4px 4px 6px var(--shadow)) drop-shadow(-3px -3px 5px var(--highlight));transition:fill .15s,filter .15s}[data-component="neumorphic-dpad-circular"] .nd-sector text{fill:var(--txt);font-family:"Segoe UI",sans-serif;font-size:var(--icon-size-px);font-weight:700;text-anchor:middle;dominant-baseline:middle;pointer-events:none}[data-component="neumorphic-dpad-circular"] .nd-sector.pressed path,[data-component="neumorphic-dpad-circular"] .nd-sector.active path{fill:color-mix(in srgb,var(--surface) 78%,var(--accent));filter:drop-shadow(0 0 var(--glow) var(--accent))}[data-component="neumorphic-dpad-circular"] .nd-sector.pressed text,[data-component="neumorphic-dpad-circular"] .nd-sector.active text{fill:var(--accent);filter:drop-shadow(0 0 4px var(--accent))}[data-component="neumorphic-dpad-circular"] .nd-center{position:absolute;left:50%;top:50%;width:31%;height:31%;transform:translate(-50%,-50%);border-radius:50%;font-size:var(--icon-size-px);z-index:2}';
+    '[data-component^="neumorphic-dpad"]{display:block;width:100%;height:100%;padding:12px}[data-component^="neumorphic-dpad"] .nd{position:relative;width:100%;height:100%}[data-component^="neumorphic-dpad"] .nd.square{display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);gap:10px}[data-component^="neumorphic-dpad"] .nd-button{border:0;border-radius:22%;background:var(--surface);box-shadow:4px 4px 9px var(--shadow),-4px -4px 9px var(--highlight);color:var(--txt);font-size:var(--icon-size-px);cursor:pointer}[data-component^="neumorphic-dpad"] .nd-center-icon{display:block;width:52%;height:52%;margin:auto;pointer-events:none}[data-component^="neumorphic-dpad"] .nd-button.pressed,[data-component^="neumorphic-dpad"] .nd-button.active{color:var(--accent);text-shadow:0 0 var(--glow) var(--accent);box-shadow:inset 4px 4px 9px var(--shadow),inset -3px -3px 7px var(--highlight),0 0 var(--glow) var(--accent)}[data-component="neumorphic-dpad-circular"] .nd.circular{display:grid;place-items:center;aspect-ratio:1;max-width:100%;max-height:100%;margin:auto}[data-component="neumorphic-dpad-circular"] .nd-ring{display:block;width:100%;height:100%;overflow:visible}[data-component="neumorphic-dpad-circular"] .nd-sector{cursor:pointer}[data-component="neumorphic-dpad-circular"] .nd-sector path{fill:var(--surface);stroke:rgba(255,255,255,.06);stroke-width:1;filter:drop-shadow(4px 4px 6px var(--shadow)) drop-shadow(-3px -3px 5px var(--highlight));transition:fill .15s,filter .15s}[data-component="neumorphic-dpad-circular"] .nd-sector text{fill:var(--txt);font-family:"Segoe UI",sans-serif;font-size:var(--icon-size-px);font-weight:700;text-anchor:middle;dominant-baseline:middle;pointer-events:none}[data-component="neumorphic-dpad-circular"] .nd-sector.pressed path,[data-component="neumorphic-dpad-circular"] .nd-sector.active path{fill:color-mix(in srgb,var(--surface) 78%,var(--accent));filter:drop-shadow(0 0 var(--glow) var(--accent))}[data-component="neumorphic-dpad-circular"] .nd-sector.pressed text,[data-component="neumorphic-dpad-circular"] .nd-sector.active text{fill:var(--accent);filter:drop-shadow(0 0 4px var(--accent))}[data-component="neumorphic-dpad-circular"] .nd-center{position:absolute;left:50%;top:50%;width:31%;height:31%;transform:translate(-50%,-50%);border-radius:50%;font-size:var(--icon-size-px);z-index:2}';
   function dpadDefinition(id, name, circular) {
     const ns = name.replace(/[^A-Za-z0-9_]/g, ""),
       circularMarkup =
@@ -1046,7 +1049,11 @@
           },
           display =
             p.centerDisplay === "power" ? "icon" : p.centerDisplay || "icon",
-          centerIconMarkup = `<svg viewBox="0 0 24 24" aria-hidden="true" style="display:block;width:52%;height:52%;margin:auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none">${centerIcons[p.centerIcon || "power"] || centerIcons.power}</svg>`,
+          centerIconMarkup = context.icons.svg(p.centerIcon || "power", {
+            className: "nd-center-icon",
+            legacy: centerIcons,
+            fallback: "power",
+          }),
           centerContent =
             display === "blank"
               ? ""
@@ -1324,8 +1331,14 @@
               String(value).toLowerCase() === "true";
       onLabel.textContent = p.onText ?? "Dark";
       offLabel.textContent = p.offText ?? "Light";
-      offIconSpan.innerHTML = `<svg viewBox="0 0 24 24">${icons[p.offIcon] || icons.sun}</svg>`;
-      onIconSpan.innerHTML = `<svg viewBox="0 0 24 24">${icons[p.onIcon] || icons.moon}</svg>`;
+      offIconSpan.innerHTML = context.icons.svg(p.offIcon || "sun", {
+        legacy: icons,
+        fallback: "sun",
+      });
+      onIconSpan.innerHTML = context.icons.svg(p.onIcon || "moon", {
+        legacy: icons,
+        fallback: "moon",
+      });
       const down = (event) => {
           button.classList.add("pressed");
           context.signals.publish("press", true);
@@ -1577,7 +1590,7 @@
         const iconKey = iconNames[index] || "home",
           selectedIconKey = selectedIconNames[index] || iconKey,
           defaultLabel = labelTexts[index] || "";
-        button.innerHTML = `<span class="ngn-icon-glyph ngn-icon-regular"><svg viewBox="0 0 24 24">${icons[iconKey] || icons.home}</svg></span><span class="ngn-icon-glyph ngn-icon-selected"><svg viewBox="0 0 24 24">${icons[selectedIconKey] || icons.home}</svg></span><span class="ngn-label"></span>`;
+        button.innerHTML = `<span class="ngn-icon-glyph ngn-icon-regular">${context.icons.svg(iconKey, { legacy: icons, fallback: "home" })}</span><span class="ngn-icon-glyph ngn-icon-selected">${context.icons.svg(selectedIconKey, { legacy: icons, fallback: "home" })}</span><span class="ngn-label"></span>`;
         track.appendChild(button);
         const label = button.querySelector(".ngn-label");
         label.textContent = defaultLabel;
@@ -1842,7 +1855,7 @@
         const iconKey = iconNames[index] || "home",
           selectedIconKey = selectedIconNames[index] || iconKey,
           defaultLabel = labelTexts[index] || "";
-        button.innerHTML = `<span class="ngn-icon-glyph ngn-icon-regular"><svg viewBox="0 0 24 24">${icons[iconKey] || icons.home}</svg></span><span class="ngn-icon-glyph ngn-icon-selected"><svg viewBox="0 0 24 24">${icons[selectedIconKey] || icons.home}</svg></span><span class="ngn-label"></span>`;
+        button.innerHTML = `<span class="ngn-icon-glyph ngn-icon-regular">${context.icons.svg(iconKey, { legacy: icons, fallback: "home" })}</span><span class="ngn-icon-glyph ngn-icon-selected">${context.icons.svg(selectedIconKey, { legacy: icons, fallback: "home" })}</span><span class="ngn-label"></span>`;
         track.appendChild(button);
         const label = button.querySelector(".ngn-label");
         label.textContent = defaultLabel;
@@ -2130,7 +2143,7 @@
           const iconKey = iconNames[index] || "home",
             selectedIconKey = selectedIconNames[index] || iconKey,
             defaultLabel = labelTexts[index] || "";
-          button.innerHTML = `<span class="nnb-icon-glyph nnb-icon-regular"><svg viewBox="0 0 24 24">${icons[iconKey] || icons.home}</svg></span><span class="nnb-icon-glyph nnb-icon-selected"><svg viewBox="0 0 24 24">${icons[selectedIconKey] || icons.home}</svg></span><span class="nnb-label"></span>`;
+          button.innerHTML = `<span class="nnb-icon-glyph nnb-icon-regular">${context.icons.svg(iconKey, { legacy: icons, fallback: "home" })}</span><span class="nnb-icon-glyph nnb-icon-selected">${context.icons.svg(selectedIconKey, { legacy: icons, fallback: "home" })}</span><span class="nnb-label"></span>`;
           track.appendChild(button);
           const label = button.querySelector(".nnb-label");
           label.textContent = defaultLabel;

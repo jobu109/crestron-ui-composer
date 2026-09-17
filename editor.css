@@ -3840,6 +3840,83 @@ textarea {
   width: 100%;
   box-sizing: border-box;
 }
+.component-icon-picker {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border: 1px solid #46605f;
+  border-radius: 5px;
+  background: #1b292c;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.component-icon-picker:hover { border-color: #14d4b4; }
+.component-icon-picker-preview,
+.icon-picker-choice-preview {
+  display: grid;
+  place-items: center;
+  color: #d5fffa;
+}
+.component-icon-picker-preview svg { width: 22px; height: 22px; }
+.component-icon-picker-preview > span { font-size: 11px; font-weight: 800; }
+.component-icon-picker-caption {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.font-awesome-icon-picker {
+  width: min(920px, 92vw);
+  height: min(720px, 88vh);
+  min-width: 480px;
+  min-height: 360px;
+  padding: 12px;
+}
+.icon-picker-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 8px;
+  margin: 10px 0;
+}
+.icon-picker-toolbar input,
+.icon-picker-toolbar select { width: 100%; }
+.icon-picker-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  align-content: start;
+  gap: 7px;
+  height: calc(100% - 112px);
+  overflow: auto;
+  padding: 3px;
+}
+.icon-picker-choice {
+  display: grid;
+  grid-template-rows: 42px auto;
+  place-items: center;
+  min-height: 78px;
+  padding: 7px;
+  border: 1px solid #3d5555;
+  border-radius: 7px;
+  background: #1b292c;
+  color: #dce8e7;
+  font-size: 11px;
+  cursor: pointer;
+}
+.icon-picker-choice:hover,
+.icon-picker-choice.selected { border-color: #14d4b4; background: #24413f; }
+.icon-picker-choice-preview svg { width: 30px; height: 30px; }
+.icon-picker-choice > span:last-child {
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .signal-binding .binding-controls:has(> input:only-child) {
   grid-template-columns: minmax(0, 1fr);
 }

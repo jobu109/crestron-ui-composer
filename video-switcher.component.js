@@ -703,10 +703,9 @@
         `${Number(p.glowStrength) || 12}px`,
       );
       function icon(name) {
-        const paths = iconPaths[name];
-        return paths
-          ? `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`
-          : "";
+        return name === "none"
+          ? ""
+          : context.icons.svg(name, { legacy: iconPaths });
       }
       function updateTv(index) {
         const target = tvHost.children[index];
