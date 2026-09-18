@@ -400,7 +400,7 @@ public partial class MainWindow : Window
             switch (command)
             {
                 case "saveProject":
-                    SaveText(id, root.GetProperty("payload").GetString() ?? "", "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json", "crestron-ui-project.cuiproj", "projects");
+                    SaveProject(id, root.GetProperty("payload"));
                     break;
                 case "exportHtml":
                     SaveText(id, root.GetProperty("payload").GetString() ?? "", "HTML Interface (*.html)|*.html", "index.html", "exports");
@@ -566,6 +566,37 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
         File.WriteAllText(dialog.FileName, contents);
         Respond(id, true, dialog.FileName, null);
+    }
+
+    private void SaveProject(string id, JsonElement payload)
+    {
+        var legacyPayload = payload.ValueKind == JsonValueKind.String;
+        var contents = legacyPayload ? payload.GetString() ?? "" : payload.GetProperty("contents").GetString() ?? "";
+        var requestedName = legacyPayload || !payload.TryGetProperty("name", out var nameValue)
+            ? "crestron-ui-project"
+            : nameValue.GetString() ?? "crestron-ui-project";
+        var fileName = SafeFileName(requestedName, "crestron-ui-project");
+        var dialog = new SaveFileDialog
+        {
+            Filter = "Crestron UI Composer Project (*.cuiproj)|*.cuiproj|JSON Project (*.json)|*.json",
+            FileName = fileName + ".cuiproj",
+            AddExtension = true,
+            InitialDirectory = LoadStorageSettings()["projects"]
+        };
+        if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
+        File.WriteAllText(dialog.FileName, contents);
+
+        string? chdPath = null;
+        if (!legacyPayload && payload.TryGetProperty("chdContents", out var chdValue) && chdValue.ValueKind == JsonValueKind.String)
+        {
+            var chdContents = chdValue.GetString();
+            if (!string.IsNullOrWhiteSpace(chdContents))
+            {
+                chdPath = Path.ChangeExtension(dialog.FileName, ".chd");
+                File.WriteAllText(chdPath, chdContents);
+            }
+        }
+        Respond(id, true, new { path = dialog.FileName, chdPath }, null);
     }
 
     private void SaveContractEditorProject(string id, JsonElement payload, bool openAfterSave)
@@ -1309,6 +1340,11 @@ public partial class MainWindow : Window
         var packages = payload.GetProperty("packages").EnumerateArray().ToArray();
         if (packages.Length == 0) throw new InvalidOperationException("Select at least one panel package.");
         var usesContracts = payload.TryGetProperty("usesContracts", out var contractFlag) && contractFlag.GetBoolean();
+        var chdContents = payload.TryGetProperty("chdContents", out var chdValue) && chdValue.ValueKind == JsonValueKind.String
+            ? chdValue.GetString()
+            : null;
+        if (usesContracts && string.IsNullOrWhiteSpace(chdContents))
+            throw new InvalidDataException("The generated SIMPL interface is empty. Assign at least one contract binding before building selected panels.");
         string? contractPath = null;
         string? generatedContractMapping = null;
         if (usesContracts)
@@ -1338,6 +1374,10 @@ public partial class MainWindow : Window
             DeviceJson = package.TryGetProperty("device", out var device) ? device.GetRawText() : "{}"
         }).ToArray();
         var destinationFolder = folderDialog.FolderName;
+        var requestedChdName = payload.TryGetProperty("chdName", out var chdNameValue)
+            ? chdNameValue.GetString() ?? "CrestronUiContract"
+            : "CrestronUiContract";
+        var chdFileName = SafeFileName(requestedChdName, "CrestronUiContract") + ".chd";
         RunBackgroundCommand(id, () =>
         {
             var paths = new List<string>();
@@ -1357,7 +1397,13 @@ public partial class MainWindow : Window
                     sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destination)))
                 });
             }
-            return new { folder = destinationFolder, paths, artifacts };
+            string? chdPath = null;
+            if (!string.IsNullOrWhiteSpace(chdContents))
+            {
+                chdPath = Path.Combine(destinationFolder, chdFileName);
+                File.WriteAllText(chdPath, chdContents);
+            }
+            return new { folder = destinationFolder, paths, artifacts, chdPath };
         });
     }
 

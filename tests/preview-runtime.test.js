@@ -325,6 +325,37 @@ const detectTranslatedOptionalContent = extractFunction(
   editorSource,
   "detectTranslatedOptionalContent",
 );
+const simplIdentifier = extractFunction(editorSource, "simplIdentifier"),
+  isNumItemsContractAttribute = extractFunction(
+    editorSource,
+    "isNumItemsContractAttribute",
+  ),
+  standardContractAttribute = extractFunction(
+    editorSource,
+    "standardContractAttribute",
+  );
+global.simplIdentifier = simplIdentifier;
+global.isNumItemsContractAttribute = isNumItemsContractAttribute;
+
+run("number-of-items analog inputs use the NumItems contract attribute", () => {
+  assert.equal(
+    standardContractAttribute(
+      "analog",
+      "input",
+      "Feedback",
+      "itemCount Number of sub-items",
+    ),
+    "NumItems",
+  );
+  assert.equal(
+    standardContractAttribute("analog", "input", "ItemCount", ""),
+    "NumItems",
+  );
+  assert.equal(
+    standardContractAttribute("analog", "input", "Volume", "Level feedback"),
+    "VolumeFeedback",
+  );
+});
 // normalizeFullBleedRootWrapper only calls bodyElement.querySelector(...)
 // and reads .parentElement — a minimal mock covers that without needing a
 // real DOM. matches: selectors that should resolve as body's own direct

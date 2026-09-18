@@ -101,10 +101,17 @@
       },
     );
   }
-  function standardContractAttribute(type, direction, value) {
+  function isNumItemsContractAttribute(type, direction, value, semantic) {
+    if (type !== "analog" || direction !== "input") return false;
+    const compact = `${value || ""}${semantic || ""}`.replace(/[^A-Za-z0-9]/g, "");
+    return /(?:NumItems?|Number(?:Of)?(?:Sub)?Items?|(?:Sub)?Items?Count|ItemCount|SetCount)/i.test(compact);
+  }
+  function standardContractAttribute(type, direction, value, semantic) {
     const normalized = String(value || "").replace(/[^A-Za-z0-9_]/g, "_");
     if (/^(?:Visibility|Disabled)$/i.test(normalized))
       return /^Visibility$/i.test(normalized) ? "Visibility" : "Disabled";
+    if (isNumItemsContractAttribute(type, direction, value, semantic))
+      return "NumItems";
     const suffix = type === "digital" ? (direction === "output" ? "Press" : "Selected") : type === "analog" ? (direction === "output" ? "ValueSet" : "Feedback") : direction === "output" ? "Text" : "Label",
       pattern = type === "digital" ? /(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i : type === "analog" ? direction === "output" ? /(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i : /(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i : /(?:_?(?:IndirectText|Label|Name|Text))$/i;
     let prefix = String(value || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").replace(pattern, "").replace(/_+$/g, "");
@@ -115,7 +122,7 @@
       ? `${prefix}${separatedSerialAttribute ? "." : ""}${suffix}`
       : suffix;
   }
-  function contractAddress(value, type, direction, prefix) {
+  function contractAddress(value, type, direction, prefix, semantic) {
     const address = String(value || "").replace(
       /^(.*)\.(\d+)\.(.+)$/,
       function (_, prefix, index, attribute) {
@@ -156,16 +163,16 @@
     const separator = structured.lastIndexOf(".");
     return separator < 0 || !type || !direction
       ? structured
-      : `${structured.slice(0, separator)}.${standardContractAttribute(type, direction, structured.slice(separator + 1))}`;
+      : `${structured.slice(0, separator)}.${standardContractAttribute(type, direction, structured.slice(separator + 1), semantic)}`;
   }
-  function standardContractPattern(value, type, direction) {
+  function standardContractPattern(value, type, direction, semantic) {
     const pattern = contractPattern(value),
       array = pattern.match(/^(.*\[\{index\}\])\.(.+)$/),
       parts = pattern.split(".");
     if (array)
-      return `${array[1]}.${standardContractAttribute(type, direction, array[2].replace(/\./g, "_"))}`;
+      return `${array[1]}.${standardContractAttribute(type, direction, array[2].replace(/\./g, "_"), semantic)}`;
     return parts.length > 1
-      ? `${parts[0]}.${standardContractAttribute(type, direction, parts.slice(1).join("_"))}`
+      ? `${parts[0]}.${standardContractAttribute(type, direction, parts.slice(1).join("_"), semantic)}`
       : pattern;
   }
   function library() {
@@ -1405,6 +1412,7 @@
           signal.defaultValue,
           signal.type,
           signal.direction,
+          `${signal.key || ""} ${signal.name || ""}`,
         );
     });
     [...(definition.addressBindings || []), ...(definition.rangeBindings || [])].forEach(
@@ -1417,6 +1425,7 @@
             property.defaultValue,
             binding.type,
             binding.direction,
+            `${binding.key || binding.baseKey || ""} ${binding.name || ""}`,
           );
       },
     );
@@ -1617,6 +1626,7 @@
             spec?.type,
             "output",
             contractPrefix,
+            `${spec?.key || ""} ${spec?.name || ""}`,
           );
         if (!spec || !signal) return;
         if (lib) lib.publishEvent(typeCode(spec.type), signal, value);
@@ -1664,6 +1674,7 @@
             spec?.type,
             "input",
             contractPrefix,
+            `${spec?.key || ""} ${spec?.name || ""}`,
           ),
           handler =
             spec?.type === "digital" && spec?.direction === "input" && /selected$/i.test(key)

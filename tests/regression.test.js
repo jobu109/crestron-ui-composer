@@ -2704,7 +2704,7 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   const html = read("editor.html"), editor = read("editor.js"), css = read("editor.css"),
     runtime = read("component-runtime.js"), standardButton = read("standard-button.component.js"),
     desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), project = read("CrestronUiComposer/CrestronUiComposer.csproj"),
-    installer = read("build-installer.ps1");
+    installer = read("build-installer.ps1"), exporter = read("exporter.js");
   assert.ok(html.includes('id="collapse-component-categories"'));
   assert.ok(editor.includes('list.querySelectorAll(".component-category")'));
   assert.ok(css.includes(".collapse-component-categories"));
@@ -2747,6 +2747,13 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(standardButton.includes('key:"selectedBackgroundOpacity"'));
   assert.ok(standardButton.includes("background-color:'+selectedBackground+'"));
   assert.ok(editor.includes("keep scrolling to load more"));
+  assert.ok(editor.includes('chdContents = buildChdMapping(contractResult)'));
+  assert.ok(editor.includes('chdName: state.contract.name'));
+  assert.ok(editor.includes('function isNumItemsContractAttribute('));
+  assert.ok(desktop.includes('Path.ChangeExtension(dialog.FileName, ".chd")'));
+  assert.ok(desktop.includes('return new { folder = destinationFolder, paths, artifacts, chdPath }'));
+  assert.ok(runtime.includes('return "NumItems"'));
+  assert.ok(exporter.includes('binding.value = numItemsContractValue(binding.value)'));
 });
 
 if (process.exitCode) process.exit(process.exitCode);

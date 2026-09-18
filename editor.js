@@ -2672,6 +2672,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       },
       data || {},
     );
+    normalizeNumItemsContractBindings(item);
     const requestedName = item.name;
     item.name = uniqueComponentInstanceName(item, requestedName, item.id);
     if (item.name !== requestedName) rebaseItemContractNames(item);
@@ -6957,17 +6958,22 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         const separator = text.search(/[.[]/);
         return separator < 0 ? `${root}.${text}` : root + text.slice(separator);
       },
-      direct = (value, type, direction) => {
+      direct = (value, type, direction, semantic = "") => {
         const leaf =
           String(value || "")
             .split(".")
             .pop() || "Signal";
-        return `${root}.${standardContractAttribute(type, direction, leaf)}`;
+        return `${root}.${standardContractAttribute(type, direction, leaf, semantic)}`;
       };
     Object.entries(item.signalBindings || {}).forEach(([key, binding]) => {
       const signal = definition?.signals?.find((entry) => entry.key === key);
       if (binding.mode === "contract" && signal)
-        binding.value = direct(binding.value, signal.type, signal.direction);
+        binding.value = direct(
+          binding.value,
+          signal.type,
+          signal.direction,
+          `${signal.key} ${signal.name}`,
+        );
     });
     (definition?.addressBindings || []).forEach((entry) => {
       if (typeof item.properties?.[entry.key] === "string")
@@ -6975,12 +6981,53 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           item.properties[entry.key],
           entry.type,
           entry.direction,
+          `${entry.key} ${entry.name}`,
         );
     });
     resolvedRangeBindings(definition, item).forEach((entry) => {
       if (typeof item.properties?.[entry.baseKey] === "string")
         item.properties[entry.baseKey] = rebase(item.properties[entry.baseKey]);
     });
+  }
+  function numItemsContractValue(value) {
+    const text = String(value || "");
+    if (!text || /^\d+$/.test(text)) return text;
+    const separator = text.lastIndexOf(".");
+    return separator >= 0 ? `${text.slice(0, separator + 1)}NumItems` : "NumItems";
+  }
+  function normalizeNumItemsContractBindings(item) {
+    if (!item?.componentId) return item;
+    const definition = window.ComposerRuntime.get(item.componentId),
+      overall = item.properties?.bindingMode || "contract";
+    (definition?.signals || []).forEach((signal) => {
+      const binding = item.signalBindings?.[signal.key];
+      if (
+        binding &&
+        (binding.mode || overall) === "contract" &&
+        isNumItemsContractAttribute(
+          signal.type,
+          signal.direction,
+          binding.value,
+          `${signal.key} ${signal.name}`,
+        )
+      )
+        binding.value = numItemsContractValue(binding.value);
+    });
+    if (overall === "contract")
+      (definition?.addressBindings || []).forEach((binding) => {
+        const value = item.properties?.[binding.key];
+        if (
+          typeof value === "string" &&
+          isNumItemsContractAttribute(
+            binding.type,
+            binding.direction,
+            value,
+            `${binding.key} ${binding.name}`,
+          )
+        )
+          item.properties[binding.key] = numItemsContractValue(value);
+      });
+    return item;
   }
   function contractWidgetPrefix(item) {
     return `${item?.contractNamespace ? simplIdentifier(item.contractNamespace) : contractPageInstance(item?.master ? "" : item?.pageId)}.${contractWidgetInstance(item)}`;
@@ -7076,6 +7123,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             page,
             widget: item.name,
             name: signal.name,
+            key: signal.key,
             type: signal.type,
             direction: signal.direction,
             mode: overall,
@@ -7098,6 +7146,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             page,
             widget: item.name,
             name: address.name,
+            key: address.key,
             type: address.type,
             direction: address.direction,
             mode: overall,
@@ -7117,6 +7166,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             page,
             widget: item.name,
             name: range.name,
+            key: range.baseKey,
             type: range.type,
             direction: range.direction,
             mode: overall,
@@ -7432,7 +7482,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return expandedContractSignals().map((row) => {
       const shape = contractSignalShape(row);
       return {
-        path: `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`,
+        path: `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`,
         type: row.type,
         direction: row.direction,
       };
@@ -8022,6 +8072,15 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function standardContractLeaf(row) {
     if (/visibility/i.test(row.name || "")) return "Visibility";
+    if (
+      isNumItemsContractAttribute(
+        row.type,
+        row.direction,
+        row.value,
+        `${row.key || ""} ${row.name || ""}`,
+      )
+    )
+      return "NumItems";
     return row.type === "digital"
       ? row.direction === "output"
         ? "Press"
@@ -8048,7 +8107,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function canonicalContractAddress(row, value) {
     const shape = contractSignalShape({ ...row, value });
-    return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`;
+    return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`;
   }
   function buildContractNamingPlan() {
     const rows = collectProjectSignals(),
@@ -8169,7 +8228,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       generatedAddress = (row) => {
         if (row.mode !== "contract" || !String(row.value || "").trim()) return "—";
         const shape = contractSignalShape(row);
-        return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`;
+        return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`;
       };
     rows.forEach((row) => {
       if (row.value) {
@@ -8248,8 +8307,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       .map(simplIdentifier)
       .join(".");
   }
-  function standardContractAttribute(type, direction, value) {
+  function isNumItemsContractAttribute(type, direction, value, semantic = "") {
+    if (type !== "analog" || direction !== "input") return false;
+    const compact = `${value || ""}${semantic || ""}`.replace(/[^A-Za-z0-9]/g, "");
+    return /(?:NumItems?|Number(?:Of)?(?:Sub)?Items?|(?:Sub)?Items?Count|ItemCount|SetCount)/i.test(
+      compact,
+    );
+  }
+  function standardContractAttribute(type, direction, value, semantic = "") {
     if (/^Visibility$/i.test(simplIdentifier(value))) return "Visibility";
+    if (isNumItemsContractAttribute(type, direction, value, semantic))
+      return "NumItems";
     const suffix =
         type === "digital"
           ? direction === "output"
@@ -8433,6 +8501,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           row.type,
           row.direction,
           shape.attributePath,
+          `${row.key || ""} ${row.name || ""}`,
         ),
         key = instanceName,
         component = components.get(key) || {
@@ -11158,7 +11227,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     expandedSignals.forEach((row) => {
       const shape = row.mode === "contract" ? contractSignalShape(row) : null,
         canonicalValue = shape
-          ? `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath)}`
+          ? `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`
           : row.value,
         signalKey = key(row.type, row.direction, canonicalValue),
         owner = `${row.page} · “${row.widget}” ${row.name}`;
@@ -15595,6 +15664,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           allocatedItems,
         );
         if (item.name !== requestedName) rebaseItemContractNames(item);
+        normalizeNumItemsContractBindings(item);
         allocatedItems.push(item);
         return item;
       });
@@ -28567,6 +28637,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     $("panel-height").value = p.height;
     state.items.forEach((i) => {
       i.pageId = i.pageId || state.pages[0].id;
+      normalizeNumItemsContractBindings(i);
       const known = i.componentId
         ? state.components.some((c) => c.componentId === i.componentId)
         : state.components.some((c) => c.html === i.source);
@@ -28600,10 +28671,24 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const text = JSON.stringify(value, null, 2);
     if (native) {
       try {
-        const path = await nativeRequest("saveProject", text);
+        const contractResult = contractBuildData(),
+          chdContents =
+            !contractResult.errors.length && contractResult.rows.length
+              ? buildChdMapping(contractResult)
+              : "",
+          saved = await nativeRequest("saveProject", {
+            contents: text,
+            name: state.contract.name,
+            chdContents,
+          }),
+          path = typeof saved === "string" ? saved : saved.path;
         await createProjectBackup("manual-save");
         markProjectSaved();
-        setStatus("Saved to " + path);
+        setStatus(
+          saved?.chdPath
+            ? `Saved to ${path} and updated ${saved.chdPath}`
+            : "Saved to " + path,
+        );
       } catch (error) {
         if (error.message !== "cancelled") setStatus(error.message);
       }
@@ -28958,7 +29043,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
             ([key, value]) => /bindingmode$/i.test(key) && value === "contract",
           ),
       );
-    let contractMapping = null;
+    let contractMapping = null,
+      chdContents = null;
     if (usesContracts) {
       const contractResult = contractBuildData();
       if (contractResult.errors.length) {
@@ -28967,7 +29053,14 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         );
         return;
       }
+      if (!contractResult.rows.length) {
+        alert(
+          "Multi-panel build cannot continue:\n\nAssign at least one contract binding so the required .chd can be built.",
+        );
+        return;
+      }
       contractMapping = JSON.stringify(buildCse2jMapping(contractResult));
+      chdContents = buildChdMapping(contractResult);
     }
     $("contract-status").textContent =
       `Building ${packages.length} panel packages…`;
@@ -28977,6 +29070,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         packages,
         usesContracts,
         contractMapping,
+        chdContents,
+        chdName: state.contract.name,
       });
       packages.forEach((entry, index) =>
         recordBuildArtifact(
@@ -29008,8 +29103,10 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         updateActiveDeploymentProfile({ packagePath: result.paths[0] });
       }
       $("contract-status").textContent =
-        `Built ${result.paths.length} packages in ${result.folder}`;
-      setStatus(`Built ${result.paths.length} panel packages`);
+        `Built ${result.paths.length} packages${result.chdPath ? ` and ${result.chdPath}` : ""} in ${result.folder}`;
+      setStatus(
+        `Built ${result.paths.length} panel packages${result.chdPath ? " and the SIMPL .chd" : ""}`,
+      );
     } catch (error) {
       if (error.message !== "cancelled") {
         setStatus("Multi-panel build failed");

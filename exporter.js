@@ -361,8 +361,38 @@
       (definition?.properties || []).forEach((property) => {
         if (property.type === "asset") properties[`${property.key}Data`] = assetUrl(properties[property.key]);
       });
+      if (item.properties?.bindingMode === "contract")
+        (definition?.addressBindings || []).forEach((binding) => {
+          if (isNumItemsBinding(binding, properties[binding.key]))
+            properties[binding.key] = numItemsContractValue(properties[binding.key]);
+        });
       return properties;
     };
+    const isNumItemsBinding = (binding, value) => {
+        if (binding?.type !== "analog" || binding?.direction !== "input") return false;
+        const compact = `${value || ""}${binding.key || binding.baseKey || ""}${binding.name || ""}`.replace(/[^A-Za-z0-9]/g, "");
+        return /(?:NumItems?|Number(?:Of)?(?:Sub)?Items?|(?:Sub)?Items?Count|ItemCount|SetCount)/i.test(compact);
+      },
+      numItemsContractValue = (value) => {
+        const text = String(value || ""), separator = text.lastIndexOf(".");
+        return separator >= 0 ? `${text.slice(0, separator + 1)}NumItems` : "NumItems";
+      },
+      exportedBindings = (item) => {
+        const definition = item.componentId ? global.ComposerRuntime.get(item.componentId) : null,
+          bindings = Object.fromEntries(
+            Object.entries(item.signalBindings || {}).map(([key, binding]) => [key, { ...binding }]),
+          );
+        (definition?.signals || []).forEach((signal) => {
+          const binding = bindings[signal.key];
+          if (
+            binding &&
+            (binding.mode || item.properties?.bindingMode) === "contract" &&
+            isNumItemsBinding(signal, binding.value)
+          )
+            binding.value = numItemsContractValue(binding.value);
+        });
+        return bindings;
+      };
     const scopedItems = outputPages.flatMap((page) =>
       project.items
         .filter(
@@ -371,7 +401,7 @@
         .map((item) => ({
           instance: item.master ? `${item.id}--${page.id}` : item.id,
           componentId: item.componentId,
-          bindings: item.signalBindings || {},
+          bindings: exportedBindings(item),
           properties: exportedProperties(item),
           contractPrefix: contractPrefix(project, item),
           targetPage: item.targetPage || "",
@@ -577,7 +607,7 @@
     const contractController = animatedController
         .replace(
           "function appearance(root,p){",
-          "function standardAttribute(type,direction,value){var normalized=String(value||'').replace(/[^A-Za-z0-9_]/g,'_');if(/^(?:Visibility|Disabled)$/i.test(normalized))return /^Visibility$/i.test(normalized)?'Visibility':'Disabled';var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Label'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=normalized.replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,''),separated=type==='serial'&&/_(?:Name|Label|Text|IndirectText)$/i.test(normalized);if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix?prefix+(separated?'.':'')+suffix:suffix}function contractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\.(\\d+)\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;if(prefix&&structured.indexOf('.')>=0)structured=prefix+'.'+(structured.indexOf('[')>=0?structured.slice(structured.indexOf('.')+1):address.split('.').pop());var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
+          "function standardAttribute(type,direction,value){var normalized=String(value||'').replace(/[^A-Za-z0-9_]/g,'_');if(/^(?:Visibility|Disabled)$/i.test(normalized))return /^Visibility$/i.test(normalized)?'Visibility':'Disabled';if(type==='analog'&&direction==='input'&&/(?:NumItems?|Number(?:Of)?(?:Sub)?Items?|(?:Sub)?Items?Count|ItemCount|SetCount)/i.test(normalized))return 'NumItems';var suffix=type==='digital'?(direction==='output'?'Press':'Selected'):type==='analog'?(direction==='output'?'ValueSet':'Feedback'):(direction==='output'?'Text':'Label'),pattern=type==='digital'?/(?:_?(?:Press|Selected|Feedback|Value|Button|Btn))$/i:type==='analog'?(direction==='output'?/(?:_?(?:ValueSet|LevelSet|PositionSet|Set|Value))$/i:/(?:_?(?:Feedback|LevelValue|PositionValue|Value|Level))$/i):/(?:_?(?:IndirectText|Label|Name|Text))$/i,prefix=normalized.replace(/_+/g,'_').replace(/^_+|_+$/g,'').replace(pattern,'').replace(/_+$/g,''),separated=type==='serial'&&/_(?:Name|Label|Text|IndirectText)$/i.test(normalized);if(/^(?:Level|Value|Position|Selected|Indirect|Signal)$/i.test(prefix))prefix='';return prefix?prefix+(separated?'.':'')+suffix:suffix}function contractAddress(value,type,direction,prefix){var address=String(value||'').replace(/^(.*)\\.(\\d+)\\.(.+)$/,function(_,prefix,index,attribute){return prefix+'['+Math.max(0,Number(index)-1)+'].'+attribute.replace(/\\./g,'_')}),array=address.match(/^([A-Za-z_][A-Za-z0-9_.]*\\[\\d+\\])\\.([A-Za-z0-9_.]+)$/),structured=array?array[1]+'.'+array[2].replace(/\\./g,'_'):'',parts=address.split('.');if(!structured)structured=parts.length>2?parts[0]+'.'+parts.slice(1).join('_'):address;if(prefix&&structured.indexOf('.')>=0)structured=prefix+'.'+(structured.indexOf('[')>=0?structured.slice(structured.indexOf('.')+1):address.split('.').pop());var separator=structured.lastIndexOf('.');return separator<0||!type||!direction?structured:structured.slice(0,separator)+'.'+standardAttribute(type,direction,structured.slice(separator+1))}function appearance(root,p){",
         )
         .replace(
           "function publishAddress(type,signal,value){",
