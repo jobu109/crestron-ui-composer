@@ -20,12 +20,21 @@
         "'": "&#39;",
       })[character],
     );
+  function pageNavigationBinding(name) {
+    const pageName =
+      String(name || "Page")
+        .trim()
+        .replace(/[^A-Za-z0-9_]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "") || "Page";
+    return `Nav.${/^[A-Za-z_]/.test(pageName) ? pageName : `_${pageName}`}`;
+  }
   const firstPage = {
     id: "page-home",
     name: "Home",
     background: "#182126",
-    bindingMode: "none",
-    binding: "",
+    bindingMode: "contract",
+    binding: pageNavigationBinding("Home"),
     transition: "none",
     transitionDuration: 350,
   };
@@ -35,7 +44,7 @@
     targetDevice: "tsw-1070",
     diagnostics: false,
     components: [],
-    pages: [firstPage],
+    pages: [{ ...firstPage }],
     activePage: firstPage.id,
     items: [],
     assets: [],
@@ -4056,8 +4065,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         backgroundAssetFit: template.backgroundAssetFit || "cover",
         backgroundAssetX: template.backgroundAssetX ?? 50,
         backgroundAssetY: template.backgroundAssetY ?? 50,
-        bindingMode: "none",
-        binding: "",
+        bindingMode: "contract",
+        binding: pageNavigationBinding(template.name),
       },
       groups = new Map(),
       instances = new Map();
@@ -4989,12 +4998,13 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       host.innerHTML = '<p class="hint">No saved themes.</p>';
   }
   function addPage() {
+    const name = "Page " + (state.pages.length + 1);
     const p = {
       id: uid("page-"),
-      name: "Page " + (state.pages.length + 1),
+      name,
       background: currentPage().background,
-      bindingMode: "none",
-      binding: "",
+      bindingMode: "contract",
+      binding: pageNavigationBinding(name),
     };
     state.pages.push(p);
     state.activePage = p.id;
@@ -6924,14 +6934,6 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       name = simplIdentifier(page?.name || "Page");
     return name || "Main";
   }
-  function contractPageSelectionInstance(pageId) {
-    const page = state.pages.find((entry) => entry.id === pageId),
-      configured = String(page?.binding || page?.name || "Page")
-        .trim()
-        .replace(/\.Selected$/i, ""),
-      name = simplIdentifier(configured);
-    return name || "Main";
-  }
   function contractWidgetInstance(item) {
     const base = simplIdentifier(item?.name || "Widget"),
       siblings = state.items.filter(
@@ -7482,7 +7484,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     return expandedContractSignals().map((row) => {
       const shape = contractSignalShape(row);
       return {
-        path: `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`,
+        path: `${shape.instancePath}.${contractAttributeName(row, shape)}`,
         type: row.type,
         direction: row.direction,
       };
@@ -8097,8 +8099,14 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     const item = row.itemId
       ? state.items.find((entry) => entry.id === row.itemId)
       : null;
-    if (!item)
-      return contractPageInstance(row.pageId || state.activePage);
+    if (!item) {
+      const page = row.pageId
+        ? state.pages.find((entry) => entry.id === row.pageId)
+        : null;
+      return page
+        ? pageNavigationBinding(page.name)
+        : contractPageInstance(row.pageId || state.activePage);
+    }
     const root = contractWidgetInstance(item),
       leaf = standardContractLeaf(row);
     return row.range
@@ -8107,7 +8115,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   }
   function canonicalContractAddress(row, value) {
     const shape = contractSignalShape({ ...row, value });
-    return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`;
+    return `${shape.instancePath}.${contractAttributeName(row, shape)}`;
   }
   function buildContractNamingPlan() {
     const rows = collectProjectSignals(),
@@ -8228,7 +8236,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       generatedAddress = (row) => {
         if (row.mode !== "contract" || !String(row.value || "").trim()) return "—";
         const shape = contractSignalShape(row);
-        return `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`;
+        return `${shape.instancePath}.${contractAttributeName(row, shape)}`;
       };
     rows.forEach((row) => {
       if (row.value) {
@@ -8344,6 +8352,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     if (generic.test(prefix)) prefix = "";
     return `${prefix}${suffix}`;
   }
+  function contractAttributeName(row, shape) {
+    return shape.preserveAttribute
+      ? simplIdentifier(shape.attributePath)
+      : standardContractAttribute(
+          row.type,
+          row.direction,
+          shape.attributePath,
+          `${row.key || ""} ${row.name || ""}`,
+        );
+  }
   function contractRangeCount(row) {
     if (!row.range || !row.itemId) return 1;
     const item = state.items.find((entry) => entry.id === row.itemId),
@@ -8457,7 +8475,16 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       };
     }
     if (row.pageId) {
-      const pagePath = contractPageSelectionInstance(row.pageId);
+      if (parts.length > 1)
+        return {
+          instancePath: parts.slice(0, -1).join("."),
+          parentPath: parts.slice(0, -2).join("."),
+          nestedInstanceName: parts.length > 2 ? parts[parts.length - 2] : "",
+          attributePath: parts[parts.length - 1],
+          preserveAttribute: true,
+          instances: 1,
+        };
+      const pagePath = simplIdentifier(parts[0] || "Main") || "Main";
       return {
         instancePath: pagePath,
         parentPath: "",
@@ -8497,12 +8524,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       }
       const instancePath = shape.instancePath,
         instanceName = contractInstancePath(instancePath),
-        attributeName = standardContractAttribute(
-          row.type,
-          row.direction,
-          shape.attributePath,
-          `${row.key || ""} ${row.name || ""}`,
-        ),
+        attributeName = contractAttributeName(row, shape),
         key = instanceName,
         component = components.get(key) || {
           instanceName,
@@ -11227,7 +11249,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     expandedSignals.forEach((row) => {
       const shape = row.mode === "contract" ? contractSignalShape(row) : null,
         canonicalValue = shape
-          ? `${shape.instancePath}.${standardContractAttribute(row.type, row.direction, shape.attributePath, `${row.key || ""} ${row.name || ""}`)}`
+          ? `${shape.instancePath}.${contractAttributeName(row, shape)}`
           : row.value,
         signalKey = key(row.type, row.direction, canonicalValue),
         owner = `${row.page} · “${row.widget}” ${row.name}`;
@@ -12555,7 +12577,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     label.hidden = mode === "none";
     input.type = mode === "join" ? "number" : "text";
     input.placeholder =
-      mode === "join" ? "Digital join number" : "Example: Navigation.Home";
+      mode === "join" ? "Digital join number" : "Example: Nav.Home";
   }
   stage.onpointerdown = (e) => {
     if (e.target !== stage || e.button !== 0) return;
@@ -28505,7 +28527,16 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     sync();
   });
   $("page-name").oninput = (e) => {
-    currentPage().name = e.target.value;
+    const page = currentPage(),
+      previousDefault = pageNavigationBinding(page.name);
+    page.name = e.target.value;
+    if (
+      page.bindingMode === "contract" &&
+      (!page.binding || page.binding === previousDefault)
+    ) {
+      page.binding = pageNavigationBinding(page.name);
+      $("page-binding").value = page.binding;
+    }
     renderPages();
   };
   $("page-background").oninput = (e) => {
@@ -28542,7 +28573,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     setStatus(`Cleared the background image from “${page.name}”`);
   };
   $("page-binding-mode").onchange = (e) => {
-    currentPage().bindingMode = e.target.value;
+    const page = currentPage();
+    page.bindingMode = e.target.value;
+    if (page.bindingMode === "contract" && !page.binding) {
+      page.binding = pageNavigationBinding(page.name);
+      $("page-binding").value = page.binding;
+    }
     syncPageBinding();
   };
   $("page-binding").oninput = (e) =>

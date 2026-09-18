@@ -31,8 +31,8 @@
           id: "page-home",
           name: "Home",
           background: project.background || "#182126",
-          bindingMode: "none",
-          binding: "",
+          bindingMode: "contract",
+          binding: "Nav.Home",
           transition: "none",
           transitionDuration: 350,
         }];

@@ -117,6 +117,13 @@
       .replace(/^_+|_+$/g, "");
     return /^[A-Za-z_]/.test(clean) ? clean : `_${clean}`;
   }
+  function pageContractSignal(page) {
+    const configured = String(page.binding || page.name || "Main").trim(),
+      parts = configured.split(".").filter(Boolean).map(contractIdentifier);
+    return parts.length > 1
+      ? parts.join(".")
+      : `${parts[0] || "Main"}.Selected`;
+  }
   function contractPrefix(project, item) {
     const page = project.pages.find((entry) => entry.id === (item.contractSourcePageId || item.pageId)),
       pageName = item.contractNamespace ? contractIdentifier(item.contractNamespace) : item.master
@@ -339,7 +346,7 @@
         mode: page.bindingMode,
         signal:
           page.bindingMode === "contract"
-            ? `${contractIdentifier(String(page.binding || page.name || "Main").replace(/\.Selected$/i, "")) || "Main"}.Selected`
+            ? pageContractSignal(page)
             : page.binding,
         transition: page.transition || "none",
         transitionDuration: Number(page.transitionDuration) || 350,

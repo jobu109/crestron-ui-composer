@@ -79,6 +79,25 @@ run("current projects survive a save/load round trip", () => {
   assert.deepEqual(roundTrip.project, current);
 });
 
+run("new pages default to page-named Nav contract joins", () => {
+  const migrated = ComposerProjectMigrations.migrate({
+    version: ComposerProjectMigrations.CURRENT_VERSION,
+    width: 1280,
+    height: 800,
+    items: [],
+  }).project;
+  assert.equal(migrated.pages[0].bindingMode, "contract");
+  assert.equal(migrated.pages[0].binding, "Nav.Home");
+
+  const editor = read("editor.js");
+  assert.ok(editor.includes('binding: pageNavigationBinding("Home")'));
+  assert.ok(editor.includes("binding: pageNavigationBinding(name)"));
+  assert.ok(editor.includes("binding: pageNavigationBinding(template.name)"));
+  assert.ok(editor.includes("page.binding === previousDefault"));
+  assert.ok(editor.includes("preserveAttribute: true"));
+  assert.ok(editor.includes("contractAttributeName(row, shape)"));
+});
+
 run("responsive anchors and panel overrides migrate safely", () => {
   const migrated = ComposerProjectMigrations.migrate({
     version: 4,
@@ -2664,6 +2683,27 @@ run("custom components persist in the application-wide Composer library", () => 
   assert.ok(editor.includes("function exportCustomComponentEntry(entry)"));
   assert.ok(editor.includes("Installed component library"));
   assert.ok(editor.includes("Installed “${entry.name}” permanently in Composer"));
+});
+
+run("exported page navigation preserves Nav.PageName contract paths", () => {
+  const html = ComposerExporter.exportProject({
+    width: 1280,
+    height: 800,
+    pages: [
+      {
+        id: "home",
+        name: "Home",
+        background: "#000",
+        bindingMode: "contract",
+        binding: "Nav.Home",
+      },
+    ],
+    items: [],
+    subpages: [],
+    assets: [],
+  });
+  assert.ok(html.includes('"signal":"Nav.Home"'));
+  assert.ok(!html.includes("Nav_Home.Selected"));
 });
 
 run("desktop bridge and live processor preview enforce trust boundaries", () => {
