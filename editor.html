@@ -1323,6 +1323,24 @@
         <div class="dialog-actions"><button value="default">Close</button></div>
       </form>
     </dialog>
+    <dialog id="ch5-cli-required-dialog" class="ch5-cli-required-dialog">
+      <form method="dialog">
+        <h2>Crestron CLI required</h2>
+        <p id="ch5-cli-required-message" class="hint">
+          Crestron's CH5 command-line tools are required to build a panel
+          package.
+        </p>
+        <p id="ch5-cli-required-status" class="deployment-status">
+          Install the official tools, then run the build again.
+        </p>
+        <div class="dialog-actions">
+          <button id="ch5-cli-install-now" type="button" class="primary">
+            Install Crestron CLI
+          </button>
+          <button value="default">Close</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="system-dialog" class="system-dialog">
       <form method="dialog">
         <h2>System Diagnostics</h2>

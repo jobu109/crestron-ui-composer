@@ -692,7 +692,7 @@
       ),
       cleanups = [];
     let remoteText = "";
-    function labelTargets() {
+    function authoredLabelTargets() {
       let targets = capability.selector
         ? [...root.querySelectorAll(capability.selector)]
         : [];
@@ -703,26 +703,43 @@
           (element) => !element.closest(".composer-button-label"),
         );
       }
-      if (!targets.length) {
-        let label = root.querySelector(":scope > .composer-button-label");
-        if (!label) {
-          label = document.createElement("span");
-          label.className = "composer-button-label";
-          label.dataset.composerLabel = "true";
-          root.appendChild(label);
-        }
-        targets = [label];
-      }
       return targets;
     }
+    function overlayLabel() {
+      let label = root.querySelector(":scope > .composer-button-label");
+      if (!label) {
+        label = document.createElement("span");
+        label.className = "composer-button-label";
+        label.dataset.composerLabel = "true";
+        root.appendChild(label);
+      }
+      return label;
+    }
     function apply() {
-      const targets = labelTargets(),
+      const placement = properties?.labelPlacement || "inside",
+        external = placement === "above" || placement === "below",
+        authoredTargets = authoredLabelTargets(),
+        targets = external || !authoredTargets.length
+          ? [overlayLabel()]
+          : authoredTargets,
         localText = properties?.[capability.localKey || "labelText"] ?? definition.name ?? "Label",
-        text = remoteText || String(localText),
+        text = remoteText || (external && authoredTargets[0]?.textContent
+          ? authoredTargets[0].textContent
+          : String(localText)),
         size = Math.max(6, Number(properties?.labelFontSize) || 18),
         padding = Math.max(0, Number(properties?.labelPadding) || 6),
+        gap = Math.max(0, Number(properties?.labelGap) || 0),
+        width = Math.max(100, Math.min(400, Number(properties?.labelExternalWidth) || 140)),
         horizontal = properties?.labelHorizontalAlignment || "center",
         vertical = properties?.labelVerticalAlignment || "center";
+      root.style.overflow = "visible";
+      root.style.position = "relative";
+      const holder = root.closest(".widget,.scoped-widget,.wl-widget,.wl-item");
+      if (holder) holder.style.overflow = "visible";
+      authoredTargets.forEach((target) => {
+        target.style.visibility = external && enabled ? "hidden" : "";
+        target.style.display = enabled ? "" : "none";
+      });
       targets.forEach((target) => {
         target.style.display = enabled ? "" : "none";
         target.style.color = properties?.labelColor || "#ffffff";
@@ -734,15 +751,27 @@
           if (target.textContent !== text) target.textContent = text;
           target.style.position = "absolute";
           target.style.zIndex = "75";
-          target.style.left = `${padding}px`;
-          target.style.right = `${padding}px`;
           target.style.pointerEvents = "none";
           target.style.lineHeight = "1.15";
           target.style.overflow = "hidden";
           target.style.textOverflow = "ellipsis";
-          target.style.top = vertical === "top" ? `${padding}px` : vertical === "bottom" ? "auto" : "50%";
-          target.style.bottom = vertical === "bottom" ? `${padding}px` : "auto";
-          target.style.transform = vertical === "center" ? "translateY(-50%)" : "none";
+          if (external) {
+            target.style.left = "50%";
+            target.style.right = "auto";
+            target.style.width = `${width}%`;
+            target.style.top = placement === "above" ? `${-gap}px` : `calc(100% + ${gap}px)`;
+            target.style.bottom = "auto";
+            target.style.transform = placement === "above"
+              ? "translate(-50%,-100%)"
+              : "translateX(-50%)";
+          } else {
+            target.style.left = `${padding}px`;
+            target.style.right = `${padding}px`;
+            target.style.width = "auto";
+            target.style.top = vertical === "top" ? `${padding}px` : vertical === "bottom" ? "auto" : "50%";
+            target.style.bottom = vertical === "bottom" ? `${padding}px` : "auto";
+            target.style.transform = vertical === "center" ? "translateY(-50%)" : "none";
+          }
         } else if (remoteText && target.textContent !== text) target.textContent = text;
       });
     }
@@ -844,7 +873,10 @@
         { key: "labelColor", name: "Label color", type: "color", defaultValue: definition.properties.find((property) => property.key === "textColor")?.defaultValue || "#ffffff", group: "Optional Label" },
         { key: "labelFontWeight", name: "Label weight", type: "select", options: [{ value: "400", label: "Regular" }, { value: "600", label: "Semi-bold" }, { value: "700", label: "Bold" }, { value: "800", label: "Extra bold" }], defaultValue: "700", group: "Optional Label" },
         { key: "labelHorizontalAlignment", name: "Label horizontal alignment", type: "select", options: [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }], defaultValue: "center", group: "Optional Label" },
+        { key: "labelPlacement", name: "Label placement", type: "select", options: [{ value: "above", label: "Above component" }, { value: "inside", label: "Inside component" }, { value: "below", label: "Below component" }], defaultValue: "inside", group: "Optional Label" },
         { key: "labelVerticalAlignment", name: "Label vertical placement", type: "select", options: [{ value: "top", label: "Top" }, { value: "center", label: "Center" }, { value: "bottom", label: "Bottom" }], defaultValue: "center", group: "Optional Label" },
+        { key: "labelGap", name: "Outside label gap (px)", type: "number", min: 0, max: 200, defaultValue: 8, group: "Optional Label" },
+        { key: "labelExternalWidth", name: "Outside label width (%)", type: "number", min: 100, max: 400, defaultValue: 140, group: "Optional Label" },
         { key: "labelPadding", name: "Label edge padding (px)", type: "number", min: 0, max: 100, defaultValue: 6, group: "Optional Label" },
       ];
       if (!dedicatedLabelProperty)
@@ -1214,6 +1246,7 @@
         selectedLabelColor: "labelColor",
         selectedCardColor: "cardColor",
         selectedBackgroundColor: "backgroundColor",
+        selectedBackgroundOpacity: "backgroundOpacity",
       },
       hasSelectedState = definition.signals.some(
         (signal) =>

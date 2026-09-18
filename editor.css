@@ -4849,6 +4849,18 @@ textarea {
   width: min(760px, 92vw);
   height: min(720px, 90vh);
 }
+.ch5-cli-required-dialog {
+  width: min(590px, 92vw);
+  height: fit-content;
+  min-height: 0;
+  resize: none;
+}
+.ch5-cli-required-dialog form {
+  gap: 12px;
+}
+#ch5-cli-required-message {
+  white-space: pre-line;
+}
 .system-diagnostic-list {
   display: grid;
   gap: 7px;

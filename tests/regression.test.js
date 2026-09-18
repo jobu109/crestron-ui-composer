@@ -2708,14 +2708,26 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(editor.includes('list.querySelectorAll(".component-category")'));
   assert.ok(css.includes(".collapse-component-categories"));
   assert.ok(html.includes('id="system-open-ch5-docs"'));
+  assert.ok(html.includes('id="ch5-cli-required-dialog"'));
+  assert.ok(html.includes('id="ch5-cli-install-now"'));
   assert.ok(desktop.includes('"ch5docs" => new ProcessStartInfo'));
+  assert.ok(editor.includes("function showCh5CliRequiredDialog(error)"));
+  assert.ok(editor.includes('if (!showCh5CliRequiredDialog(error)) alert(error.message)'));
+  assert.ok(editor.includes('nativeRequest("installPrerequisite", "ch5cli")'));
   assert.ok(html.includes('src="date-time.component.js"'));
   assert.ok(project.includes('..\\date-time.component.js'));
   assert.ok(runtime.includes('key: "iconPlacement"'));
   assert.ok(runtime.includes('key: "labelFontSize"'));
+  assert.ok(runtime.includes('value: "above", label: "Above component"'));
+  assert.ok(runtime.includes('value: "below", label: "Below component"'));
+  assert.ok(runtime.includes('key: "labelExternalWidth"'));
+  assert.ok(runtime.includes('target.style.transform = placement === "above"'));
   assert.ok(runtime.includes('entry.category !== "Multi-Devices"'));
   assert.ok(standardButton.includes('key:"backgroundColor"'));
   assert.ok(standardButton.includes('key:"backgroundOpacity"'));
+  assert.ok(standardButton.includes('key:"selectedBackgroundColor"'));
+  assert.ok(standardButton.includes('key:"selectedBackgroundOpacity"'));
+  assert.ok(standardButton.includes("background-color:'+selectedBackground+'"));
   assert.ok(editor.includes("keep scrolling to load more"));
 });
 

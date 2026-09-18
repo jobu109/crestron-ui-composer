@@ -194,6 +194,22 @@ buttonDefinitions.forEach((definition) => {
     ),
     `${definition.id} is missing its optional label contract input`,
   );
+  const placement = definition.properties.find(
+    (property) => property.key === "labelPlacement",
+  );
+  assert.deepEqual(
+    (placement?.options || []).map((option) => option.value),
+    ["above", "inside", "below"],
+    `${definition.id} cannot place its label outside the component bounds`,
+  );
+  assert.ok(
+    definition.properties.some((property) => property.key === "labelGap"),
+    `${definition.id} is missing outside-label spacing`,
+  );
+  assert.ok(
+    definition.properties.some((property) => property.key === "labelExternalWidth"),
+    `${definition.id} is missing outside-label width control`,
+  );
   if (definition.properties.some((property) => property.iconPicker))
     assert.ok(
       definition.properties.some((property) => property.key === "iconPlacement"),
@@ -201,6 +217,15 @@ buttonDefinitions.forEach((definition) => {
     );
 });
 assert.ok(definitions.has("date-time"), "Date / Time widget was not registered");
+const standardButton = definitions.get("standard-button"),
+  standardBackground = standardButton.properties.find((property) => property.key === "backgroundColor"),
+  selectedBackground = standardButton.properties.find((property) => property.key === "selectedBackgroundColor"),
+  standardBackgroundOpacity = standardButton.properties.find((property) => property.key === "backgroundOpacity"),
+  selectedBackgroundOpacity = standardButton.properties.find((property) => property.key === "selectedBackgroundOpacity");
+assert.equal(standardBackground?.name, "Standard state — Background color");
+assert.equal(selectedBackground?.name, "Selected state — background color");
+assert.equal(standardBackgroundOpacity?.name, "Standard state — Background opacity (%)");
+assert.equal(selectedBackgroundOpacity?.name, "Selected state — background opacity (%)");
 
 if (errors.length) {
   console.error(errors.join("\n"));
@@ -297,6 +322,9 @@ const widgetListDefaults = Object.fromEntries((widgetListDefinition.properties |
       properties[`includedWidget__${property.key}`] = property.key === "iconSize" ? 61
         : property.key === "textSize" ? 23
         : property.key === "glowStrength" ? 7
+        : property.key === "labelPlacement" ? "below"
+        : property.key === "labelGap" ? 12
+        : property.key === "labelExternalWidth" ? 160
         : property.defaultValue;
     });
     return {

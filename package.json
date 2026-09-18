@@ -1,7 +1,7 @@
 {
   "name": "crestron-ui-composer",
   "private": true,
-  "version": "1.12.0",
+  "version": "1.12.1",
   "scripts": {
     "generate:icons": "node tools/generate-font-awesome-icons.js",
     "pretest": "node tests/component-workbench-ux-baseline.test.js",

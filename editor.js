@@ -28938,7 +28938,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     } catch (error) {
       if (error.message !== "cancelled") {
         setStatus("Multi-panel build failed");
-        alert(error.message);
+        if (!showCh5CliRequiredDialog(error)) alert(error.message);
       }
     }
   };
@@ -29019,7 +29019,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     } catch (error) {
       if (error.message !== "cancelled") {
         setStatus("Build failed");
-        alert(error.message);
+        if (!showCh5CliRequiredDialog(error)) alert(error.message);
       }
     }
   };
@@ -29347,15 +29347,37 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     nativeRequest("installPrerequisite", "webview2");
   $("system-install-node").onclick = () =>
     nativeRequest("installPrerequisite", "node");
-  $("system-install-ch5").onclick = async () => {
+  function showCh5CliRequiredDialog(error) {
+    const message = String(error?.message || error || "");
+    if (!/ch5-cli[^\n]*not found|Crestron(?:'s)? CLI[^\n]*not found/i.test(message))
+      return false;
+    $("ch5-cli-required-message").textContent =
+      `${message}\n\nCrestron's official CH5 utilities can be installed now with NPM.`;
+    $("ch5-cli-required-status").textContent =
+      "After the terminal finishes installing the tools, close this dialog and run the build again.";
+    const dialog = $("ch5-cli-required-dialog");
+    if (!dialog.open) dialog.showModal();
+    return true;
+  }
+  async function installCh5Cli(confirmFirst = false) {
     if (
+      confirmFirst &&
       !confirm(
         "Open a terminal and install Crestron's official CH5 utilities globally with NPM?",
       )
     )
       return;
-    await nativeRequest("installPrerequisite", "ch5cli");
-  };
+    const status = $("ch5-cli-required-status");
+    try {
+      await nativeRequest("installPrerequisite", "ch5cli");
+      status.textContent =
+        "Installer terminal opened. Let it finish, then close this dialog and run the build again.";
+    } catch (error) {
+      status.textContent = `The installer could not be opened: ${error.message || error}`;
+    }
+  }
+  $("ch5-cli-install-now").onclick = () => installCh5Cli(false);
+  $("system-install-ch5").onclick = () => installCh5Cli(true);
   $("system-open-ch5-docs").onclick = () => {
     if (native) return nativeRequest("installPrerequisite", "ch5docs");
     window.open(
