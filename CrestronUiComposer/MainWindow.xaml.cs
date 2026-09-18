@@ -47,6 +47,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        RefreshProcessPathFromWindows();
         InitializeComponent();
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -1437,6 +1438,7 @@ public partial class MainWindow : Window
 
     private static string? FindCh5Cli()
     {
+        RefreshProcessPathFromWindows();
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var globalCli = Path.Combine(appData, "npm", "ch5-cli.cmd");
         if (File.Exists(globalCli)) return globalCli;
@@ -2112,6 +2114,7 @@ exit $deploymentExitCode
 
     private static string? FindNodeExecutable()
     {
+        RefreshProcessPathFromWindows();
         var candidates = new List<string> {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "nodejs", "node.exe")
@@ -2119,6 +2122,29 @@ exit $deploymentExitCode
         var path = Environment.GetEnvironmentVariable("PATH") ?? "";
         candidates.AddRange(path.Split(Path.PathSeparator).Where(folder => !string.IsNullOrWhiteSpace(folder)).Select(folder => Path.Combine(folder.Trim('"'), "node.exe")));
         return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static void RefreshProcessPathFromWindows()
+    {
+        var entries = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddEntries(string? value)
+        {
+            foreach (var rawEntry in (value ?? "").Split(Path.PathSeparator))
+            {
+                var entry = Environment.ExpandEnvironmentVariables(rawEntry.Trim().Trim('"'));
+                if (!string.IsNullOrWhiteSpace(entry) && seen.Add(entry)) entries.Add(entry);
+            }
+        }
+
+        try { AddEntries(Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine)); } catch { }
+        try { AddEntries(Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)); } catch { }
+        AddEntries(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs"));
+        AddEntries(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "nodejs"));
+        AddEntries(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "nodejs"));
+        AddEntries(Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process));
+        if (entries.Count > 0)
+            Environment.SetEnvironmentVariable("PATH", string.Join(Path.PathSeparator, entries), EnvironmentVariableTarget.Process);
     }
 
     private static string? RunVersion(string fileName, string arguments)
@@ -2216,6 +2242,10 @@ if (-not $npm) {
     }
 }
 
+$nodeFolder = Split-Path -Parent $npm
+if (($env:Path -split ';') -notcontains $nodeFolder) {
+    $env:Path = $nodeFolder + ';' + $env:Path
+}
 Write-Host "Using npm: $npm" -ForegroundColor DarkGray
 Write-Host 'Installing Crestron CH5 command-line tools...' -ForegroundColor Green
 & $npm install --global $packages
@@ -2228,6 +2258,9 @@ if (Test-Path -LiteralPath $ch5Cli) {
     Write-Host ''
     Write-Host 'Crestron CH5 CLI installed successfully.' -ForegroundColor Green
     & $ch5Cli --version
+    if ($LASTEXITCODE -ne 0) {
+        throw "The CLI installed, but its Node.js runtime check failed with exit code $LASTEXITCODE."
+    }
 } else {
     Write-Host ''
     Write-Host 'NPM completed successfully. Restart Composer before building if the CLI is not detected immediately.' -ForegroundColor Yellow

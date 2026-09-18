@@ -2719,6 +2719,9 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(desktop.includes('function Find-NpmCommand'));
   assert.ok(desktop.includes('OpenJS.NodeJS.LTS'));
   assert.ok(desktop.includes('& $npm install --global $packages'));
+  assert.ok(desktop.includes('RefreshProcessPathFromWindows();'));
+  assert.ok(desktop.includes('EnvironmentVariableTarget.Machine'));
+  assert.ok(desktop.includes("$env:Path = $nodeFolder + ';' + $env:Path"));
   assert.ok(editor.includes("function showCh5CliRequiredDialog(error)"));
   assert.ok(editor.includes("async function copyCh5CliInstallCommand()"));
   assert.ok(editor.includes("function uniqueComponentInstanceName("));
