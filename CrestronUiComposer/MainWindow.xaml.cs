@@ -2153,7 +2153,12 @@ exit $deploymentExitCode
         {
             "webview2" => new ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true },
             "node" => new ProcessStartInfo("https://nodejs.org/en/download") { UseShellExecute = true },
-            "ch5cli" => new ProcessStartInfo("cmd.exe", "/k npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli") { UseShellExecute = true, WindowStyle = ProcessWindowStyle.Normal },
+            "ch5cli" => new ProcessStartInfo("cmd.exe")
+            {
+                Arguments = "/d /k \"npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli\"",
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Normal
+            },
             "ch5docs" => new ProcessStartInfo("https://sdkcon78221.crestron.com/sdk/Crestron_HTML5UI/Content/Topics/UI-CH5-Archives.htm") { UseShellExecute = true },
             _ => throw new InvalidOperationException("Unknown prerequisite.")
         };

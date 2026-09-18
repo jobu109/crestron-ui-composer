@@ -4861,6 +4861,28 @@ textarea {
 #ch5-cli-required-message {
   white-space: pre-line;
 }
+.ch5-cli-command-label {
+  color: #b9d9d4;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ch5-cli-command-row {
+  display: flex;
+  gap: 8px;
+}
+.ch5-cli-command-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 9px;
+  border: 1px solid #46605f;
+  border-radius: 5px;
+  background: #0d1416;
+  color: #dff8f3;
+  font-family: Consolas, monospace;
+}
+.ch5-cli-command-row button {
+  flex: 0 0 auto;
+}
 .system-diagnostic-list {
   display: grid;
   gap: 7px;

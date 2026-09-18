@@ -2703,15 +2703,26 @@ run("desktop archive handling and child processes have resource safeguards", () 
 run("Composer catalog enhancements remain wired through editor and desktop packaging", () => {
   const html = read("editor.html"), editor = read("editor.js"), css = read("editor.css"),
     runtime = read("component-runtime.js"), standardButton = read("standard-button.component.js"),
-    desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), project = read("CrestronUiComposer/CrestronUiComposer.csproj");
+    desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), project = read("CrestronUiComposer/CrestronUiComposer.csproj"),
+    installer = read("build-installer.ps1");
   assert.ok(html.includes('id="collapse-component-categories"'));
   assert.ok(editor.includes('list.querySelectorAll(".component-category")'));
   assert.ok(css.includes(".collapse-component-categories"));
   assert.ok(html.includes('id="system-open-ch5-docs"'));
   assert.ok(html.includes('id="ch5-cli-required-dialog"'));
   assert.ok(html.includes('id="ch5-cli-install-now"'));
+  assert.ok(html.includes('id="ch5-cli-install-command"'));
+  assert.ok(html.includes('id="ch5-cli-copy-command"'));
+  assert.ok(html.includes('npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli'));
   assert.ok(desktop.includes('"ch5docs" => new ProcessStartInfo'));
+  assert.ok(desktop.includes('Arguments = "/d /k \\"npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli\\""'));
   assert.ok(editor.includes("function showCh5CliRequiredDialog(error)"));
+  assert.ok(editor.includes("async function copyCh5CliInstallCommand()"));
+  assert.ok(editor.includes("function uniqueComponentInstanceName("));
+  assert.ok(editor.includes("candidate.pageId === item.pageId"));
+  assert.ok(editor.includes("candidate.name = `${root}_${index}`"));
+  assert.ok(editor.includes("allocatedItems = []"));
+  assert.ok(installer.includes("Get-Command tar.exe"));
   assert.ok(editor.includes('if (!showCh5CliRequiredDialog(error)) alert(error.message)'));
   assert.ok(editor.includes('nativeRequest("installPrerequisite", "ch5cli")'));
   assert.ok(html.includes('src="date-time.component.js"'));

@@ -27,5 +27,13 @@ New-Item -ItemType Directory -Force -Path $installerOutput | Out-Null
   -intermediatefolder (Join-Path $root "installer\obj") `
   -out (Join-Path $installerOutput "CrestronUiComposer-$version-win-x64.msi")
 
-Compress-Archive -Path (Join-Path $publish "*") -DestinationPath (Join-Path $installerOutput "CrestronUiComposer-$version-portable.zip") -Force
+$portableZip = Join-Path $installerOutput "CrestronUiComposer-$version-portable.zip"
+if (Test-Path -LiteralPath $portableZip) { Remove-Item -LiteralPath $portableZip -Force }
+$tar = Get-Command tar.exe -ErrorAction SilentlyContinue
+if ($tar) {
+  & $tar.Source -a -c -f $portableZip -C $publish .
+  if ($LASTEXITCODE -ne 0) { throw "Portable ZIP creation failed with exit code $LASTEXITCODE." }
+} else {
+  Compress-Archive -Path (Join-Path $publish "*") -DestinationPath $portableZip -Force
+}
 Write-Host "Installer and portable package created in $installerOutput"

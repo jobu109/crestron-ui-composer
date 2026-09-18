@@ -2563,6 +2563,62 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       setStatus("Custom panel profile — CH5 compatibility unverified");
     }
   }
+  function sameComponentInstanceType(candidate, item) {
+    if (!candidate || !item) return false;
+    if (item.componentId) return candidate.componentId === item.componentId;
+    return !candidate.componentId && candidate.source === item.source;
+  }
+  function uniqueComponentInstanceName(
+    item,
+    requestedName,
+    excludeId = "",
+    additionalItems = [],
+  ) {
+    const desired = String(requestedName ?? "");
+    if (!desired.trim()) return desired;
+    const candidates = [...state.items, ...additionalItems].filter(
+        (candidate) =>
+          candidate.id !== excludeId &&
+          candidate.pageId === item.pageId &&
+          sameComponentInstanceType(candidate, item),
+      ),
+      root = desired.replace(/_\d+$/, ""),
+      familyPattern = new RegExp(
+        `^${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:_(\\d+))?$`,
+        "i",
+      ),
+      family = candidates.filter((candidate) =>
+        familyPattern.test(String(candidate.name || "")),
+      ),
+      exactConflict = candidates.some(
+        (candidate) =>
+          String(candidate.name || "").toLowerCase() === desired.toLowerCase(),
+      );
+    if (!exactConflict && (desired !== root || !family.length)) return desired;
+
+    const used = new Set(
+      family
+        .map((candidate) => String(candidate.name || "").match(familyPattern)?.[1])
+        .filter((value) => value != null)
+        .map(Number),
+    );
+    family
+      .filter(
+        (candidate) =>
+          String(candidate.name || "").toLowerCase() === root.toLowerCase(),
+      )
+      .forEach((candidate) => {
+        let index = 0;
+        while (used.has(index)) index += 1;
+        used.add(index);
+        candidate.name = `${root}_${index}`;
+        rebaseItemContractNames(candidate);
+        if (state.items.includes(candidate)) renderItem(candidate);
+      });
+    let index = 0;
+    while (used.has(index)) index += 1;
+    return `${root}_${index}`;
+  }
   function createItem(name, x, y, data) {
     const c = state.components.find((v) => v.name === name);
     if (!c) return;
@@ -2616,6 +2672,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       },
       data || {},
     );
+    const requestedName = item.name;
+    item.name = uniqueComponentInstanceName(item, requestedName, item.id);
+    if (item.name !== requestedName) rebaseItemContractNames(item);
     state.items.push(item);
     renderItem(item);
     select(item.id);
@@ -15337,7 +15396,12 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       ($("prop-" + k).oninput = (e) => {
         const i = current();
         if (!i) return;
-        i[k] = k === "name" ? e.target.value : Number(e.target.value);
+        i[k] =
+          k === "name"
+            ? uniqueComponentInstanceName(i, e.target.value, i.id)
+            : Number(e.target.value);
+        if (k === "name" && i.name !== e.target.value)
+          e.target.value = i.name;
         if (k === "name") rebaseItemContractNames(i);
         renderItem(i);
         if (k === "name") renderBindings(i);
@@ -15505,6 +15569,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           .filter((x) => x.pageId === state.activePage || x.master)
           .map((x) => Number(x.z) || 0),
       ),
+      allocatedItems = [],
       pasted = sourceItems.map((original, index) => {
         const item = structuredClone(original);
         item.id = uid("item-");
@@ -15522,6 +15587,15 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
           !state.pages.some((page) => page.id === item.targetPage)
         )
           item.targetPage = "";
+        const requestedName = item.name;
+        item.name = uniqueComponentInstanceName(
+          item,
+          requestedName,
+          item.id,
+          allocatedItems,
+        );
+        if (item.name !== requestedName) rebaseItemContractNames(item);
+        allocatedItems.push(item);
         return item;
       });
     state.items.push(...pasted);
@@ -15882,7 +15956,8 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     if (!item) return;
     const name = prompt("Layer name", item.name);
     if (name && name.trim()) {
-      item.name = name.trim();
+      item.name = uniqueComponentInstanceName(item, name.trim(), item.id);
+      rebaseItemContractNames(item);
       if ($("prop-name")) $("prop-name").value = item.name;
       renderLayers();
       commitHistory();
@@ -29376,7 +29451,24 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       status.textContent = `The installer could not be opened: ${error.message || error}`;
     }
   }
+  async function copyCh5CliInstallCommand() {
+    const input = $("ch5-cli-install-command"),
+      status = $("ch5-cli-required-status");
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      copied = true;
+    } catch {
+      input.focus();
+      input.select();
+      copied = document.execCommand("copy");
+    }
+    status.textContent = copied
+      ? "Install command copied. Paste it into the terminal and press Enter."
+      : "The command is selected. Press Ctrl+C, paste it into the terminal, and press Enter.";
+  }
   $("ch5-cli-install-now").onclick = () => installCh5Cli(false);
+  $("ch5-cli-copy-command").onclick = copyCh5CliInstallCommand;
   $("system-install-ch5").onclick = () => installCh5Cli(true);
   $("system-open-ch5-docs").onclick = () => {
     if (native) return nativeRequest("installPrerequisite", "ch5docs");
