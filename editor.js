@@ -29427,9 +29427,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (!/ch5-cli[^\n]*not found|Crestron(?:'s)? CLI[^\n]*not found/i.test(message))
       return false;
     $("ch5-cli-required-message").textContent =
-      `${message}\n\nCrestron's official CH5 utilities can be installed now with NPM.`;
+      `${message}\n\nCrestron's official CH5 utilities can be installed now. If Node.js/npm is missing, the installer will install Node.js LTS first.`;
     $("ch5-cli-required-status").textContent =
-      "After the terminal finishes installing the tools, close this dialog and run the build again.";
+      "Let the installer terminal finish. Then close this dialog and run the build again.";
     const dialog = $("ch5-cli-required-dialog");
     if (!dialog.open) dialog.showModal();
     return true;
@@ -29446,7 +29446,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     try {
       await nativeRequest("installPrerequisite", "ch5cli");
       status.textContent =
-        "Installer terminal opened. Let it finish, then close this dialog and run the build again.";
+        "Installer terminal opened. It will locate npm or install Node.js LTS first, then install the Crestron CLI. Let it finish before building again.";
     } catch (error) {
       status.textContent = `The installer could not be opened: ${error.message || error}`;
     }

@@ -2153,17 +2153,104 @@ exit $deploymentExitCode
         {
             "webview2" => new ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true },
             "node" => new ProcessStartInfo("https://nodejs.org/en/download") { UseShellExecute = true },
-            "ch5cli" => new ProcessStartInfo("cmd.exe")
-            {
-                Arguments = "/d /k \"npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli\"",
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Normal
-            },
+            "ch5cli" => CreateCh5CliInstallerStartInfo(),
             "ch5docs" => new ProcessStartInfo("https://sdkcon78221.crestron.com/sdk/Crestron_HTML5UI/Content/Topics/UI-CH5-Archives.htm") { UseShellExecute = true },
             _ => throw new InvalidOperationException("Unknown prerequisite.")
         };
         Process.Start(start);
         Respond(id, true, new { started = true, prerequisite }, null);
+    }
+
+    private static ProcessStartInfo CreateCh5CliInstallerStartInfo()
+    {
+        var installerFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Crestron UI Composer");
+        Directory.CreateDirectory(installerFolder);
+        var installerPath = Path.Combine(installerFolder, "Install-CrestronCh5Cli.ps1");
+        File.WriteAllText(installerPath, """
+$ErrorActionPreference = 'Stop'
+$packages = @('@crestron/ch5-utilities-cli', '@crestron/ch5-shell-utilities-cli')
+
+function Find-NpmCommand {
+    $command = Get-Command npm.cmd -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) { return $command.Source }
+
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'nodejs\npm.cmd'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\nodejs\npm.cmd')
+    )
+    $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+    if ($programFilesX86) { $candidates += (Join-Path $programFilesX86 'nodejs\npm.cmd') }
+    return $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+}
+
+Write-Host 'Crestron CH5 CLI installer' -ForegroundColor Cyan
+Write-Host '===========================' -ForegroundColor Cyan
+Write-Host ''
+
+$npm = Find-NpmCommand
+if (-not $npm) {
+    Write-Host 'Node.js/npm was not found. Installing Node.js LTS first...' -ForegroundColor Yellow
+    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $winget) {
+        Write-Host ''
+        Write-Host 'Windows Package Manager (winget) is not available.' -ForegroundColor Red
+        Write-Host 'The official Node.js download page will open. Install the LTS release, then click Install Crestron CLI again.' -ForegroundColor Yellow
+        Start-Process 'https://nodejs.org/en/download'
+        Write-Host ''
+        [void](Read-Host 'Press Enter to close this window')
+        exit 1
+    }
+
+    & $winget.Source install --id OpenJS.NodeJS.LTS --exact --source winget --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "Node.js LTS installation failed with exit code $LASTEXITCODE."
+    }
+
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+        [Environment]::GetEnvironmentVariable('Path', 'User')
+    $npm = Find-NpmCommand
+    if (-not $npm) {
+        throw 'Node.js finished installing, but npm.cmd could not be found. Restart Composer and try again.'
+    }
+}
+
+Write-Host "Using npm: $npm" -ForegroundColor DarkGray
+Write-Host 'Installing Crestron CH5 command-line tools...' -ForegroundColor Green
+& $npm install --global $packages
+if ($LASTEXITCODE -ne 0) {
+    throw "Crestron CH5 CLI installation failed with exit code $LASTEXITCODE."
+}
+
+$ch5Cli = Join-Path $env:APPDATA 'npm\ch5-cli.cmd'
+if (Test-Path -LiteralPath $ch5Cli) {
+    Write-Host ''
+    Write-Host 'Crestron CH5 CLI installed successfully.' -ForegroundColor Green
+    & $ch5Cli --version
+} else {
+    Write-Host ''
+    Write-Host 'NPM completed successfully. Restart Composer before building if the CLI is not detected immediately.' -ForegroundColor Yellow
+}
+
+Write-Host ''
+[void](Read-Host 'Press Enter to close this window')
+""", new UTF8Encoding(false));
+
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = true,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Normal,
+            WorkingDirectory = installerFolder
+        };
+        start.ArgumentList.Add("-NoLogo");
+        start.ArgumentList.Add("-NoProfile");
+        start.ArgumentList.Add("-ExecutionPolicy");
+        start.ArgumentList.Add("Bypass");
+        start.ArgumentList.Add("-File");
+        start.ArgumentList.Add(installerPath);
+        return start;
     }
 
     private void OpenSettingsFolder(string id)

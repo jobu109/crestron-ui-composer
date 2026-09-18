@@ -2713,9 +2713,12 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(html.includes('id="ch5-cli-install-now"'));
   assert.ok(html.includes('id="ch5-cli-install-command"'));
   assert.ok(html.includes('id="ch5-cli-copy-command"'));
-  assert.ok(html.includes('npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli'));
+  assert.ok(html.includes('%ProgramFiles%\\nodejs\\npm.cmd'));
   assert.ok(desktop.includes('"ch5docs" => new ProcessStartInfo'));
-  assert.ok(desktop.includes('Arguments = "/d /k \\"npm install -g @crestron/ch5-utilities-cli @crestron/ch5-shell-utilities-cli\\""'));
+  assert.ok(desktop.includes('"ch5cli" => CreateCh5CliInstallerStartInfo()'));
+  assert.ok(desktop.includes('function Find-NpmCommand'));
+  assert.ok(desktop.includes('OpenJS.NodeJS.LTS'));
+  assert.ok(desktop.includes('& $npm install --global $packages'));
   assert.ok(editor.includes("function showCh5CliRequiredDialog(error)"));
   assert.ok(editor.includes("async function copyCh5CliInstallCommand()"));
   assert.ok(editor.includes("function uniqueComponentInstanceName("));
@@ -2723,6 +2726,7 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(editor.includes("candidate.name = `${root}_${index}`"));
   assert.ok(editor.includes("allocatedItems = []"));
   assert.ok(installer.includes("Get-Command tar.exe"));
+  assert.ok(installer.includes('$project.Project.PropertyGroup.Version'));
   assert.ok(editor.includes('if (!showCh5CliRequiredDialog(error)) alert(error.message)'));
   assert.ok(editor.includes('nativeRequest("installPrerequisite", "ch5cli")'));
   assert.ok(html.includes('src="date-time.component.js"'));

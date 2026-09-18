@@ -1,6 +1,14 @@
-param([string]$Version = "1.0.0")
+param([string]$Version = "")
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+$projectFile = Join-Path $root "CrestronUiComposer\CrestronUiComposer.csproj"
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  [xml]$project = Get-Content -LiteralPath $projectFile -Raw
+  $Version = [string]$project.Project.PropertyGroup.Version
+  if ([string]::IsNullOrWhiteSpace($Version)) {
+    throw "The application version could not be read from $projectFile."
+  }
+}
 $version = $Version
 $publish = Join-Path $root "dist\win-x64"
 $installerOutput = Join-Path $root "dist\installer"
