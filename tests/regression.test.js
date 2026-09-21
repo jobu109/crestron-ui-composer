@@ -510,6 +510,49 @@ run("widget styles cannot enlarge sidebar action buttons", () => {
   assert.ok(css.includes("min-height: 36px !important"));
 });
 
+run("library sections can move to a resizable four-edge second bar", () => {
+  const html = read("editor.html"),
+    css = read("editor.css"),
+    editor = read("editor.js");
+  assert.ok(html.includes('id="secondary-sidebar"'));
+  assert.ok(html.includes('id="secondary-sidebar-dock"'));
+  ["left", "right", "top", "bottom"].forEach((position) => {
+    assert.ok(html.includes(`<option value="${position}">`));
+  });
+  ["right", "top", "bottom"].forEach((position) =>
+    assert.ok(css.includes(`[data-secondary-dock="${position}"]`)),
+  );
+  assert.ok(editor.includes('["left", "right", "top", "bottom"]'));
+  assert.ok(css.includes("--secondary-sidebar-width: 260px"));
+  assert.ok(css.includes("--secondary-sidebar-height: 240px"));
+  assert.ok(editor.includes('return new Set(["library-components"])'));
+  assert.ok(editor.includes("secondarySectionsStorageKey"));
+  assert.ok(editor.includes("wireSecondaryPaneResizer()"));
+  assert.ok(editor.includes("initializeSecondarySidebar();"));
+  assert.ok(html.includes('id="collapse-primary-bar"'));
+  assert.ok(html.includes('id="collapse-secondary-bar"'));
+  assert.ok(html.includes('id="collapse-inspector-bar"'));
+  assert.ok(editor.includes("collapseAllSectionsInBar"));
+  assert.ok(editor.includes("addSectionCollapseControl(details, title, true)"));
+  assert.ok(editor.includes('collapseAllSectionsInBar(inspector, "Inspector")'));
+  assert.ok(css.includes(".section-collapse-all"));
+  assert.ok(css.includes(".bar-collapse-all"));
+  assert.ok(css.includes(".inspector-collapsible"));
+});
+
+run("optional label controls use their own top-level Inspector section", () => {
+  const html = read("editor.html"), editor = read("editor.js");
+  assert.ok(html.includes('id="optional-label-section"'));
+  assert.ok(html.includes('<h2>Optional Label</h2>'));
+  assert.ok(html.includes('id="optional-label-properties"'));
+  assert.ok(editor.includes('"optional-label-section",'));
+  assert.ok(editor.includes('property.group === "Optional Label"'));
+  assert.ok(editor.includes("propertyHost = optionalLabelHost"));
+  assert.ok(editor.includes(
+    "optionalLabelSection.hidden = !optionalLabelProperties.length",
+  ));
+});
+
 run("desktop close prompts to save dirty projects", () => {
   const desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), editor = read("editor.js");
   assert.ok(desktop.includes("Closing += OnClosing"));
@@ -2745,9 +2788,9 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
     runtime = read("component-runtime.js"), standardButton = read("standard-button.component.js"),
     desktop = read("CrestronUiComposer/MainWindow.xaml.cs"), project = read("CrestronUiComposer/CrestronUiComposer.csproj"),
     installer = read("build-installer.ps1"), exporter = read("exporter.js");
-  assert.ok(html.includes('id="collapse-component-categories"'));
-  assert.ok(editor.includes('list.querySelectorAll(".component-category")'));
-  assert.ok(css.includes(".collapse-component-categories"));
+  assert.ok(html.includes('id="collapse-primary-bar"'));
+  assert.ok(editor.includes("openComponentCategories.clear()"));
+  assert.ok(css.includes(".section-collapse-all"));
   assert.ok(html.includes('id="system-open-ch5-docs"'));
   assert.ok(html.includes('id="ch5-cli-required-dialog"'));
   assert.ok(html.includes('id="ch5-cli-install-now"'));

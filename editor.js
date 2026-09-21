@@ -226,6 +226,224 @@
       addEventListener("pointerup", up);
     };
   }
+  const secondaryDockStorageKey = "crestron-ui-composer-secondary-dock";
+  const secondarySectionsStorageKey =
+    "crestron-ui-composer-secondary-sections";
+  const secondaryDockPositions = new Set(["left", "right", "top", "bottom"]);
+  function storedSecondarySectionIds() {
+    const saved = localStorage.getItem(secondarySectionsStorageKey);
+    if (saved === null) return new Set(["library-components"]);
+    try {
+      const values = JSON.parse(saved);
+      return new Set(Array.isArray(values) ? values.map(String) : []);
+    } catch (_) {
+      return new Set(["library-components"]);
+    }
+  }
+  function collapsePanelSection(section, collapseSectionWhenEmpty = true) {
+    const nested = [
+      ...section.querySelectorAll(
+        ":scope > .side-panel-section-body details[open]",
+      ),
+    ];
+    if (section.dataset.librarySection === "library-components")
+      openComponentCategories.clear();
+    nested.forEach((details) => {
+      details.open = false;
+    });
+    if (!nested.length && collapseSectionWhenEmpty) section.open = false;
+  }
+  function addSectionCollapseControl(section, title, inspector = false) {
+    if (!section || section.querySelector(":scope > .section-collapse-all"))
+      return;
+    const collapseButton = document.createElement("button");
+    collapseButton.type = "button";
+    collapseButton.className = "section-collapse-all";
+    collapseButton.textContent = "Collapse all";
+    collapseButton.title = `Collapse everything in ${title}`;
+    collapseButton.setAttribute("aria-label", collapseButton.title);
+    collapseButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      collapsePanelSection(section);
+      setStatus(`Collapsed ${title}`);
+    });
+    if (inspector) section.classList.add("inspector-collapsible");
+    section.insertBefore(
+      collapseButton,
+      section.querySelector(":scope > summary")?.nextSibling || null,
+    );
+  }
+  function collapseAllSectionsInBar(container, label) {
+    const sections = [
+      ...container.querySelectorAll(".side-panel-section"),
+    ];
+    sections.forEach((section) => {
+      collapsePanelSection(section, false);
+      section.open = false;
+    });
+    setStatus(`Collapsed all sections in the ${label.toLowerCase()}`);
+  }
+  function wireSecondaryPaneResizer() {
+    const handle = $("secondary-sidebar-resizer"),
+      workspace = document.querySelector(".workspace"),
+      defaults = { width: 260, height: 240 };
+    ["width", "height"].forEach((dimension) => {
+      const property = `secondary-sidebar-${dimension}`,
+        saved = Number(
+          localStorage.getItem(`crestron-ui-composer-${property}`),
+        ),
+        minimum = dimension === "width" ? 160 : 120;
+      if (Number.isFinite(saved) && saved >= minimum)
+        workspace.style.setProperty(`--${property}`, `${saved}px`);
+    });
+    handle.ondblclick = () => {
+      const dimension = ["top", "bottom"].includes(
+          workspace.dataset.secondaryDock,
+        )
+          ? "height"
+          : "width",
+        property = `secondary-sidebar-${dimension}`;
+      workspace.style.setProperty(`--${property}`, `${defaults[dimension]}px`);
+      localStorage.removeItem(`crestron-ui-composer-${property}`);
+    };
+    handle.onpointerdown = (event) => {
+      event.preventDefault();
+      handle.classList.add("dragging");
+      const dock = workspace.dataset.secondaryDock || "left",
+        verticalDock = dock === "top" || dock === "bottom",
+        dimension = verticalDock ? "height" : "width",
+        property = `secondary-sidebar-${dimension}`,
+        start = verticalDock ? event.clientY : event.clientX,
+        direction = dock === "right" || dock === "bottom" ? -1 : 1,
+        current = parseFloat(
+          getComputedStyle(workspace).getPropertyValue(`--${property}`),
+        );
+      function move(moveEvent) {
+        const pointer = verticalDock ? moveEvent.clientY : moveEvent.clientX,
+          delta = (pointer - start) * direction,
+          minimum = verticalDock ? 120 : 160,
+          maximum = verticalDock
+            ? Math.max(220, Math.min(560, window.innerHeight * 0.62))
+            : Math.max(260, Math.min(640, window.innerWidth * 0.42)),
+          size = Math.max(minimum, Math.min(maximum, current + delta));
+        workspace.style.setProperty(`--${property}`, `${size}px`);
+      }
+      function up() {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+        handle.classList.remove("dragging");
+        const size = parseFloat(
+          getComputedStyle(workspace).getPropertyValue(`--${property}`),
+        );
+        localStorage.setItem(`crestron-ui-composer-${property}`, size);
+      }
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    };
+  }
+  function initializeSecondarySidebar() {
+    const workspace = document.querySelector(".workspace"),
+      primary = $("primary-sidebar-sections"),
+      secondary = $("secondary-sidebar-sections"),
+      empty = $("secondary-sidebar-empty"),
+      choices = $("secondary-section-choices"),
+      dockSelect = $("secondary-sidebar-dock"),
+      dockMenu = choices.closest("details"),
+      sections = [...primary.querySelectorAll(":scope > .side-panel-section")],
+      secondaryIds = storedSecondarySectionIds();
+    function saveSections() {
+      localStorage.setItem(
+        secondarySectionsStorageKey,
+        JSON.stringify(
+          sections
+            .map((section) => section.dataset.librarySection)
+            .filter((id) => secondaryIds.has(id)),
+        ),
+      );
+    }
+    function updateSectionLocations() {
+      sections.forEach((section) => {
+        const id = section.dataset.librarySection,
+          inSecondary = secondaryIds.has(id),
+          target = inSecondary ? secondary : primary;
+        target.appendChild(section);
+        const checkbox = choices.querySelector(
+            `input[data-library-section="${CSS.escape(id)}"]`,
+          ),
+          button = section.querySelector(":scope > .section-dock-toggle");
+        if (checkbox) checkbox.checked = inSecondary;
+        if (button) {
+          button.textContent = "⇄";
+          button.title = inSecondary
+            ? "Move section to the primary bar"
+            : "Move section to the second bar";
+          button.setAttribute("aria-label", button.title);
+        }
+      });
+      empty.hidden = secondary.childElementCount > 0;
+    }
+    sections.forEach((section) => {
+      const id = section.dataset.librarySection,
+        title = section.dataset.libraryTitle || id,
+        summary = section.querySelector(":scope > summary"),
+        titleElement = document.createElement("span"),
+        moveButton = document.createElement("button"),
+        choice = document.createElement("label"),
+        checkbox = document.createElement("input");
+      titleElement.className = "side-panel-section-title";
+      titleElement.textContent = title;
+      moveButton.type = "button";
+      moveButton.className = "section-dock-toggle";
+      section.classList.add("library-dockable");
+      moveButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (secondaryIds.has(id)) secondaryIds.delete(id);
+        else secondaryIds.add(id);
+        updateSectionLocations();
+        saveSections();
+      });
+      summary.replaceChildren(titleElement);
+      section.insertBefore(moveButton, summary.nextSibling);
+      addSectionCollapseControl(section, title);
+      checkbox.type = "checkbox";
+      checkbox.dataset.librarySection = id;
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) secondaryIds.add(id);
+        else secondaryIds.delete(id);
+        updateSectionLocations();
+        saveSections();
+      });
+      choice.append(checkbox, document.createTextNode(title));
+      choices.appendChild(choice);
+    });
+    const savedDock = localStorage.getItem(secondaryDockStorageKey),
+      initialDock = secondaryDockPositions.has(savedDock) ? savedDock : "left";
+    function applyDock(dock) {
+      const position = secondaryDockPositions.has(dock) ? dock : "left",
+        verticalSeparator = position === "left" || position === "right";
+      workspace.dataset.secondaryDock = position;
+      dockSelect.value = position;
+      $("secondary-sidebar-resizer").setAttribute(
+        "aria-orientation",
+        verticalSeparator ? "vertical" : "horizontal",
+      );
+      localStorage.setItem(secondaryDockStorageKey, position);
+      requestAnimationFrame(centerSubpageMasterCanvas);
+    }
+    dockSelect.onchange = () => {
+      applyDock(dockSelect.value);
+      dockMenu.open = false;
+    };
+    applyDock(initialDock);
+    updateSectionLocations();
+    $("collapse-primary-bar").onclick = () =>
+      collapseAllSectionsInBar(primary, "Primary bar");
+    $("collapse-secondary-bar").onclick = () =>
+      collapseAllSectionsInBar(secondary, "Second bar");
+    wireSecondaryPaneResizer();
+  }
   function collapsiblePanelSection(
     title,
     nodes,
@@ -255,7 +473,7 @@
     return details;
   }
   function initializeCollapsibleSidePanels() {
-    const sidebar = document.querySelector(".sidebar"),
+    const sidebar = $("primary-sidebar-sections"),
       headings = [...sidebar.querySelectorAll(":scope > h2")];
     headings.forEach((heading, index) => {
       const stop = headings[index + 1],
@@ -274,12 +492,16 @@
           key,
           index < 2 || title === "Page",
         );
+        if (details) {
+          details.dataset.librarySection = key;
+          details.dataset.libraryTitle = title;
+        }
         if (details && title === "Page") details.id = "page-library-section";
       }
       heading.remove();
     });
 
-    const inspector = document.querySelector(".inspector"),
+    const inspector = $("inspector-sections"),
       form = $("properties"),
       firstSection = form.querySelector(":scope > section"),
       basicNodes = [];
@@ -288,8 +510,15 @@
       basicNodes.push(node);
       node = next;
     }
-    if (basicNodes.length)
-      collapsiblePanelSection("Widget", basicNodes, "inspector-widget", true);
+    if (basicNodes.length) {
+      const details = collapsiblePanelSection(
+        "Widget",
+        basicNodes,
+        "inspector-widget",
+        true,
+      );
+      addSectionCollapseControl(details, "Widget", true);
+    }
     [...form.querySelectorAll(":scope > section")].forEach((section) => {
       const headerRow = section.querySelector(":scope > .section-header-row"),
         heading = section.querySelector(":scope > h2, :scope > .section-header-row > h2"),
@@ -319,6 +548,7 @@
               summary.appendChild(child);
             });
         }
+        addSectionCollapseControl(details, title, true);
       }
       heading?.remove();
       headerRow?.remove();
@@ -335,6 +565,7 @@
     const sectionOrder = [
       "inspector-widget",
       "component-properties-section",
+      "optional-label-section",
       "asset-inspector-section",
       "inspector-interaction-animation",
       "inspector-signal-bindings",
@@ -354,11 +585,17 @@
         pageNodes.push(node);
         node = next;
       }
-      collapsiblePanelSection("Page", pageNodes, "inspector-page", true);
+      const details = collapsiblePanelSection(
+        "Page",
+        pageNodes,
+        "inspector-page",
+        true,
+      );
+      addSectionCollapseControl(details, "Page", true);
       pageHeading.remove();
     }
-    const inspectorHeading = inspector.querySelector(":scope > h2");
-    if (inspectorHeading) inspectorHeading.classList.add("side-panel-title");
+    $("collapse-inspector-bar").onclick = () =>
+      collapseAllSectionsInBar(inspector, "Inspector");
   }
   function normalizeHexColor(value) {
     const text = String(value || "").trim();
@@ -6282,6 +6519,8 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function renderProperties(item) {
     const section = $("component-properties-section"),
       host = $("component-properties"),
+      optionalLabelSection = $("optional-label-section"),
+      optionalLabelHost = $("optional-label-properties"),
       definition =
         item.componentId && window.ComposerRuntime.get(item.componentId),
       declaredProperties = (definition && definition.properties) || [],
@@ -6312,9 +6551,17 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             actual >= Number(property.visibleWhen.gte)
           );
         },
+      ),
+      optionalLabelProperties = properties.filter(
+        (property) => property.group === "Optional Label",
+      ),
+      componentProperties = properties.filter(
+        (property) => property.group !== "Optional Label",
       );
-    section.hidden = !properties.length;
+    section.hidden = !componentProperties.length;
+    optionalLabelSection.hidden = !optionalLabelProperties.length;
     host.innerHTML = "";
+    optionalLabelHost.innerHTML = "";
     const reusableDefinition = item.reusableId
         ? state.reusables.find((entry) => entry.id === item.reusableId)
         : null,
@@ -6398,7 +6645,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         )
           return;
       }
-      if (property.group && property.group !== propertyGroup) {
+      if (property.group === "Optional Label") {
+        propertyHost = optionalLabelHost;
+        propertyGroup = property.group;
+      } else if (property.group && property.group !== propertyGroup) {
         const details = document.createElement("details"),
           heading = document.createElement("summary"),
           body = document.createElement("div"),
@@ -15348,13 +15598,6 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     }, 0);
   };
   $("component-search").oninput = renderComponentLibrary;
-  $("collapse-component-categories").onclick = () => {
-    openComponentCategories.clear();
-    list.querySelectorAll(".component-category").forEach((group) => {
-      group.open = false;
-    });
-    setStatus("Collapsed all component categories");
-  };
   $("palette-preferences").onclick = (event) => {
     event.currentTarget.closest("details")?.removeAttribute("open");
     openPalettePreferences();
@@ -30074,6 +30317,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     button.onclick = () => openFeatureHelp("timeline-action");
   });
   initializeCollapsibleSidePanels();
+  initializeSecondarySidebar();
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
   $("zoom-out").onclick = () => setPanelZoom(panelZoom - 0.1);
