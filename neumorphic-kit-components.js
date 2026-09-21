@@ -2093,7 +2093,7 @@
       template: '<div class="nnb-track"></div>',
       styles:
         commonStyles +
-        `[data-component="${id}"] *{box-sizing:border-box}[data-component="${id}"]{display:block;width:100%;height:100%;padding:10px}[data-component="${id}"] .nnb-track{position:relative;display:flex;${vertical ? "flex-direction:column;" : ""}align-items:center;justify-content:space-around;width:100%;height:100%;padding:${vertical ? ".5em 0" : "0 .5em"};border-radius:999px;background:var(--surface-color);box-shadow:inset calc(var(--shadow-distance-px) * .6) calc(var(--shadow-distance-px) * .6) calc(var(--shadow-distance-px) * 1.2) var(--shadow-dark-color),inset calc(var(--shadow-distance-px) * -.6) calc(var(--shadow-distance-px) * -.6) calc(var(--shadow-distance-px) * 1.2) var(--shadow-light-color)}[data-component="${id}"] .nnb-icon{position:relative;flex:0 0 auto;display:grid;place-items:center;${vertical ? "width" : "height"}:var(--icon-size-percent);aspect-ratio:1;border:0;border-radius:50%;background:var(--surface-color);color:var(--icon-color);cursor:pointer;box-shadow:var(--shadow-distance-px) var(--shadow-distance-px) calc(var(--shadow-distance-px) * 2) var(--shadow-dark-color),calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * -1) calc(var(--shadow-distance-px) * 2) var(--shadow-light-color);transition:box-shadow .18s,color .18s,transform .08s}[data-component="${id}"] .nnb-icon-glyph{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .25s}[data-component="${id}"] .nnb-icon-glyph svg{width:48%;height:48%;display:block;stroke:currentColor;fill:none;stroke-width:2}[data-component="${id}"] .nnb-icon-selected{opacity:0}[data-component="${id}"] .nnb-icon.has-asset .nnb-icon-glyph{display:none}[data-component="${id}"] .nnb-icon.active .nnb-icon-regular{opacity:0}[data-component="${id}"] .nnb-icon.active .nnb-icon-selected{opacity:1}[data-component="${id}"] .nnb-icon.pressed,[data-component="${id}"] .nnb-icon.active{box-shadow:inset calc(var(--shadow-distance-px) * .75) calc(var(--shadow-distance-px) * .75) calc(var(--shadow-distance-px) * 1.5) var(--shadow-dark-color),inset calc(var(--shadow-distance-px) * -.75) calc(var(--shadow-distance-px) * -.75) calc(var(--shadow-distance-px) * 1.5) var(--shadow-light-color),0 0 var(--glow-strength-px) color-mix(in srgb,var(--glow-color) 75%,transparent);color:var(--selected-color)}[data-component="${id}"] .nnb-icon.pressed{transform:scale(.94)}[data-component="${id}"] .nnb-label{position:absolute;top:calc(100% + .35em);left:50%;transform:translateX(-50%);white-space:nowrap;font-weight:700;font-size:var(--label-size-px);color:var(--text-color);pointer-events:none;transition:color .3s}[data-component="${id}"] .nnb-icon.active .nnb-label{color:var(--selected-color)}`,
+        `[data-component="${id}"] *{box-sizing:border-box}[data-component="${id}"]{display:block;width:100%;height:100%;padding:10px}[data-component="${id}"] .nnb-track{position:relative;display:flex;${vertical ? "flex-direction:column;" : ""}align-items:center;justify-content:space-around;width:100%;height:100%;padding:${vertical ? ".5em 0" : "0 .5em"};border-radius:999px;background:var(--surface-color);box-shadow:var(--nnb-track-shadow,inset 4px 4px 8px var(--shadow-dark-color),inset -4px -4px 8px var(--shadow-light-color))}[data-component="${id}"] .nnb-icon{position:relative;flex:0 0 auto;display:grid;place-items:center;${vertical ? "width" : "height"}:var(--icon-size-percent);aspect-ratio:1;border:1px solid var(--shadow-light-color);border-radius:50%;background:var(--surface-color);color:var(--icon-color);cursor:pointer;box-shadow:var(--nnb-raised-shadow,6px 6px 12px var(--shadow-dark-color),-6px -6px 12px var(--shadow-light-color));transition:box-shadow .18s,color .18s,transform .08s}[data-component="${id}"] .nnb-icon-glyph{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .25s}[data-component="${id}"] .nnb-icon-glyph svg{width:48%;height:48%;display:block;stroke:currentColor;fill:none;stroke-width:2}[data-component="${id}"] .nnb-icon-selected{opacity:0}[data-component="${id}"] .nnb-icon.has-asset .nnb-icon-glyph{display:none}[data-component="${id}"] .nnb-icon.active .nnb-icon-regular{opacity:0}[data-component="${id}"] .nnb-icon.active .nnb-icon-selected{opacity:1}[data-component="${id}"] .nnb-icon.pressed,[data-component="${id}"] .nnb-icon.active{box-shadow:var(--nnb-pressed-shadow,inset 5px 5px 9px var(--shadow-dark-color),inset -5px -5px 9px var(--shadow-light-color),0 0 6px var(--glow-color));color:var(--selected-color)}[data-component="${id}"] .nnb-icon.pressed{transform:scale(.94)}[data-component="${id}"] .nnb-label{position:absolute;top:calc(100% + .35em);left:50%;transform:translateX(-50%);white-space:nowrap;font-weight:700;font-size:var(--label-size-px);color:var(--text-color);pointer-events:none;transition:color .3s}[data-component="${id}"] .nnb-icon.active .nnb-label{color:var(--selected-color)}`,
       mount(root, context) {
         const icons = {
             home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 22V12h6v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -2136,6 +2136,30 @@
           labelTexts = String(p.buttonLabels ?? "").split("|"),
           count = Math.max(2, Math.min(8, Number(p.buttonCount) || 4)),
           isVertical = /-vertical$/.test(root.dataset.component || "");
+        const shadowDistance = Math.max(
+            1,
+            Math.min(20, Number(p.shadowDistance) || 6),
+          ),
+          glowStrength = Math.max(
+            0,
+            Math.min(40, Number(p.glowStrength) || 6),
+          ),
+          trackOffset = Math.max(1, Math.round(shadowDistance * 0.6)),
+          trackBlur = Math.max(2, Math.round(shadowDistance * 1.2)),
+          pressedOffset = Math.max(1, Math.round(shadowDistance * 0.75)),
+          pressedBlur = Math.max(2, Math.round(shadowDistance * 1.5));
+        root.style.setProperty(
+          "--nnb-track-shadow",
+          `inset ${trackOffset}px ${trackOffset}px ${trackBlur}px var(--shadow-dark-color), inset -${trackOffset}px -${trackOffset}px ${trackBlur}px var(--shadow-light-color)`,
+        );
+        root.style.setProperty(
+          "--nnb-raised-shadow",
+          `${shadowDistance}px ${shadowDistance}px ${shadowDistance * 2}px var(--shadow-dark-color), -${shadowDistance}px -${shadowDistance}px ${shadowDistance * 2}px var(--shadow-light-color)`,
+        );
+        root.style.setProperty(
+          "--nnb-pressed-shadow",
+          `inset ${pressedOffset}px ${pressedOffset}px ${pressedBlur}px var(--shadow-dark-color), inset -${pressedOffset}px -${pressedOffset}px ${pressedBlur}px var(--shadow-light-color), 0 0 ${glowStrength}px var(--glow-color)`,
+        );
         for (let index = 0; index < count; index++) {
           const button = document.createElement("button");
           button.type = "button";
@@ -2193,11 +2217,17 @@
           );
         }
         const sizeButtons = () => {
-            const crossSize = isVertical
+            const measuredCrossSize = isVertical
                 ? track.clientWidth
                 : track.clientHeight,
+              crossSize =
+                measuredCrossSize > 4
+                  ? measuredCrossSize
+                  : isVertical
+                    ? 90
+                    : 100,
               size = Math.max(
-                1,
+                24,
                 Math.round(crossSize * (Number(p.iconSize) || 62) / 100),
               );
             track.querySelectorAll(".nnb-icon").forEach((button) => {
@@ -2210,9 +2240,13 @@
               ? new ResizeObserver(sizeButtons)
               : null;
         sizeButtons();
+        const firstRetry = window.setTimeout(sizeButtons, 0),
+          secondRetry = window.setTimeout(sizeButtons, 250);
         if (observer) observer.observe(track);
         else window.addEventListener("resize", sizeButtons);
         return () => {
+          window.clearTimeout(firstRetry);
+          window.clearTimeout(secondRetry);
           if (observer) observer.disconnect();
           else window.removeEventListener("resize", sizeButtons);
         };

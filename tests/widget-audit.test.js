@@ -212,6 +212,66 @@ assert.match(
   "Neumorphic Icon Nav must provide a panel-compatible button size fallback",
 );
 
+function mountHiddenNeumorphicNav(componentId, expectedSize) {
+  const previousDocument = global.document,
+    buttons = [],
+    rootStyles = new Map(),
+    track = {
+      clientWidth: 0,
+      clientHeight: 0,
+      appendChild(button) {
+        buttons.push(button);
+      },
+      querySelectorAll() {
+        return buttons;
+      },
+    },
+    rootElement = {
+      dataset: { component: componentId },
+      style: {
+        setProperty(key, value) {
+          rootStyles.set(key, value);
+        },
+      },
+      querySelector(selector) {
+        return selector === ".nnb-track" ? track : null;
+      },
+    };
+  global.document = {
+    createElement() {
+      const label = { style: {}, textContent: "" };
+      return {
+        style: {},
+        classList: { add() {}, toggle() {} },
+        addEventListener() {},
+        setAttribute() {},
+        querySelector(selector) {
+          return selector === ".nnb-label" ? label : null;
+        },
+      };
+    },
+  };
+  let dispose;
+  try {
+    dispose = definitions.get(componentId).mount(rootElement, {
+      icons: { svg: () => "<svg></svg>" },
+      options: { properties: { buttonCount: 4, iconSize: 62 } },
+      signals: { publishAddress() {}, subscribeAddress() {} },
+    });
+    assert.equal(buttons.length, 4, `${componentId} did not mount its four buttons`);
+    buttons.forEach((button) => {
+      assert.equal(button.style.width, `${expectedSize}px`);
+      assert.equal(button.style.height, `${expectedSize}px`);
+    });
+    assert.ok(rootStyles.get("--nnb-raised-shadow"), `${componentId} did not install its legacy-safe raised shadow`);
+  } finally {
+    if (typeof dispose === "function") dispose();
+    global.document = previousDocument;
+  }
+}
+mountHiddenNeumorphicNav("neumorphic-icon-nav", 62);
+mountHiddenNeumorphicNav("neumorphic-icon-nav-vertical", 56);
+
 const buttonDefinitions = [...definitions.values()].filter((definition) =>
   /^(?:Standard|Toggle|Advanced) Buttons$/i.test(definition.category || ""),
 );
