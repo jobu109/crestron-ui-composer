@@ -9231,7 +9231,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           Hint: node.name,
           H: node.folderId,
           ParentChdFolder: node.parentFolderId,
-          MaxChildren: node.children.length + 1,
+          // SIMPL expects MaxChildren to match the populated Order/Child pairs
+          // exactly. A namespace-only folder has no CHD entry of its own, so
+          // counting an unconditional extra slot rotates its final indexed child
+          // ahead of [0] when the file is imported.
+          MaxChildren: items.length,
         };
         items.forEach((item, index) => {
           folder[`Order${index + 1}`] = item.type;

@@ -1482,6 +1482,70 @@ run("Signal Manager previews the exact SIMPL contract hierarchy", () => {
   assert.match(editor, /attribute\.notes/);
 });
 
+run("CHD folders keep indexed component entries in numeric order", () => {
+  const editor = read("editor.js"),
+    serializerStart = editor.indexOf("  function chdIniQuoted("),
+    serializerEnd = editor.indexOf("  function syncContractMetadata(", serializerStart),
+    buildChdMapping = new Function(
+      `${editor.slice(serializerStart, serializerEnd)}; return buildChdMapping;`,
+    )(),
+    contents = buildChdMapping({
+      contract: {
+        id: "contract-test",
+        name: "Indexed order test",
+        version: "1.0.0.0",
+        schemaVersion: 1,
+        specifications: [
+          {
+            id: "spec-root",
+            componentId: "component-root",
+            instanceName: "Component",
+            numberOfInstances: 1,
+          },
+        ],
+        components: [
+          {
+            id: "component-root",
+            commands: [],
+            feedbacks: [],
+            specifications: [
+              {
+                id: "spec-entry",
+                componentId: "component-entry",
+                instanceName: "Entry",
+                numberOfInstances: 3,
+              },
+            ],
+          },
+          {
+            id: "component-entry",
+            commands: [
+              { id: "command-press", name: "Press", dataType: 1, notes: "" },
+            ],
+            feedbacks: [],
+            specifications: [],
+          },
+        ],
+      },
+    }),
+    rootFolder = contents.match(
+      /ObjTp=Folder\r?\nName=Component\r?\n[\s\S]*?\r?\n\]/,
+    )?.[0];
+  assert.ok(rootFolder, "The indexed component parent folder must be emitted");
+  assert.match(rootFolder, /MaxChildren=3(?:\r?\n)/);
+  assert.match(
+    rootFolder,
+    /Order1=CHD\r?\nChild1=2\r?\nOrder2=CHD\r?\nChild2=3\r?\nOrder3=CHD\r?\nChild3=4/,
+  );
+  assert.ok(
+    contents.indexOf("Name=Component.Entry[0]") <
+      contents.indexOf("Name=Component.Entry[1]") &&
+      contents.indexOf("Name=Component.Entry[1]") <
+        contents.indexOf("Name=Component.Entry[2]"),
+    "Indexed symbols must be serialized as [0], [1], [2]",
+  );
+});
+
 run("Signal Manager compares CCE and CSE2J contract mappings", () => {
   const editor = read("editor.js"),
     markup = read("editor.html");
