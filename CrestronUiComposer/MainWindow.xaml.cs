@@ -568,6 +568,14 @@ public partial class MainWindow : Window
         Respond(id, true, dialog.FileName, null);
     }
 
+    private static bool WriteTextIfChanged(string path, string contents)
+    {
+        if (File.Exists(path) && string.Equals(File.ReadAllText(path), contents, StringComparison.Ordinal))
+            return false;
+        File.WriteAllText(path, contents);
+        return true;
+    }
+
     private void SaveProject(string id, JsonElement payload)
     {
         var legacyPayload = payload.ValueKind == JsonValueKind.String;
@@ -587,16 +595,17 @@ public partial class MainWindow : Window
         File.WriteAllText(dialog.FileName, contents);
 
         string? chdPath = null;
+        var chdChanged = false;
         if (!legacyPayload && payload.TryGetProperty("chdContents", out var chdValue) && chdValue.ValueKind == JsonValueKind.String)
         {
             var chdContents = chdValue.GetString();
             if (!string.IsNullOrWhiteSpace(chdContents))
             {
                 chdPath = Path.ChangeExtension(dialog.FileName, ".chd");
-                File.WriteAllText(chdPath, chdContents);
+                chdChanged = WriteTextIfChanged(chdPath, chdContents);
             }
         }
-        Respond(id, true, new { path = dialog.FileName, chdPath }, null);
+        Respond(id, true, new { path = dialog.FileName, chdPath, chdChanged }, null);
     }
 
     private void SaveContractEditorProject(string id, JsonElement payload, bool openAfterSave)
@@ -653,8 +662,8 @@ public partial class MainWindow : Window
             InitialDirectory = LoadStorageSettings()["exports"]
         };
         if (dialog.ShowDialog(this) != true) { Respond(id, false, null, "cancelled"); return; }
-        File.WriteAllText(dialog.FileName, contents);
-        Respond(id, true, new { path = dialog.FileName }, null);
+        var changed = WriteTextIfChanged(dialog.FileName, contents);
+        Respond(id, true, new { path = dialog.FileName, changed }, null);
     }
 
     private static void ValidateContractEditorProject(string contents)
@@ -1398,12 +1407,13 @@ public partial class MainWindow : Window
                 });
             }
             string? chdPath = null;
+            var chdChanged = false;
             if (!string.IsNullOrWhiteSpace(chdContents))
             {
                 chdPath = Path.Combine(destinationFolder, chdFileName);
-                File.WriteAllText(chdPath, chdContents);
+                chdChanged = WriteTextIfChanged(chdPath, chdContents);
             }
-            return new { folder = destinationFolder, paths, artifacts, chdPath };
+            return new { folder = destinationFolder, paths, artifacts, chdPath, chdChanged };
         });
     }
 

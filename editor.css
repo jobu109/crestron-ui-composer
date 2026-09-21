@@ -425,6 +425,18 @@ input {
 }
 .inspector-sidebar-toolbar h2 {
   margin: 0 auto 0 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-sidebar-toolbar .bar-collapse-all {
+  max-width: 78px;
+  padding: 4px 6px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .inspector-sections {
   flex: 1 1 auto;
@@ -3063,7 +3075,7 @@ h2 {
   padding-right: 112px;
 }
 .side-panel-section.inspector-collapsible > summary {
-  padding-right: 84px;
+  padding-right: 34px;
 }
 .section-dock-toggle,
 .section-collapse-all {
@@ -3093,6 +3105,16 @@ h2 {
 }
 .inspector-collapsible > .section-collapse-all {
   right: 2px;
+  width: 24px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 22px;
+}
+.inspector-collapsible > .section-collapse-all::before {
+  color: currentColor;
+  content: "−";
+  font-size: 15px;
 }
 .section-dock-toggle:hover,
 .section-dock-toggle:focus-visible,

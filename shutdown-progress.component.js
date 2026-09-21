@@ -6,7 +6,7 @@
       { key: "progress", name: "Progress", type: "analog", direction: "input", defaultValue: "Shutdown.Progress" },
       { key: "note", name: "Status note", type: "serial", direction: "input", defaultValue: "Shutdown.Note" },
       { key: "title", name: "Title", type: "serial", direction: "input", defaultValue: "Shutdown.Title" },
-      { key: "visible", name: "Visible feedback", type: "digital", direction: "input", defaultValue: "Shutdown.Visible" }
+      { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: "Shutdown.Visibility" }
     ],
     properties: [
       { key: "bindingMode", name: "Crestron binding mode", type: "select", options: [{ value: "contract", label: "Contract names" }, { value: "join", label: "Join numbers" }], defaultValue: "contract", affectsBindings: true },
@@ -36,7 +36,7 @@
       const p = context.options.properties || {}, host = root.querySelector(".sp-root"), title = root.querySelector(".sp-title"), note = root.querySelector(".sp-note"), value = root.querySelector(".sp-value"), fill = root.querySelector(".sp-fill");
       root.querySelector(".sp-complete").textContent = p.completeText || "Complete"; title.textContent = p.localTitle || "System Shutdown in Progress"; note.textContent = p.localNote || "Estimated 0 Seconds Remaining...";
       function setProgress(input) { const raw = Number(input) || 0, percent = Math.max(0, Math.min(100, Math.round(p.analogScale === "crestron" ? raw / 65535 * 100 : raw))); value.textContent = `${percent}%`; fill.style.width = `${percent}%`; }
-      setProgress(p.defaultProgress); context.signals.subscribe("progress", setProgress); context.signals.subscribe("note", input => { note.textContent = input || p.localNote || "Estimated 0 Seconds Remaining..."; }); context.signals.subscribe("title", input => { title.textContent = input || p.localTitle || "System Shutdown in Progress"; }); context.signals.subscribe("visible", input => host.classList.toggle("hidden", !(input === true || input === 1 || input === "1")));
+      setProgress(p.defaultProgress); context.signals.subscribe("progress", setProgress); context.signals.subscribe("note", input => { note.textContent = input || p.localNote || "Estimated 0 Seconds Remaining..."; }); context.signals.subscribe("title", input => { title.textContent = input || p.localTitle || "System Shutdown in Progress"; });
     }
   });
 })(window);

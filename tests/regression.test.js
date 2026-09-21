@@ -734,8 +734,8 @@ run("empty processor feedback preserves configured widget labels and timing", ()
 
 run("Glass Block remains visible and styled on older touch-panel Chromium", () => {
   const glass = read("glass-block.component.js");
-  assert.ok(glass.includes('key: "useVisibleFeedback"'));
-  assert.ok(glass.includes("if (p.useVisibleFeedback === true"));
+  assert.ok(glass.includes('key: "visibility"'));
+  assert.ok(!glass.includes('signals.subscribe("visible"'));
   assert.ok(glass.includes("background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(52,68,68,.72)"));
   assert.ok(glass.includes("-webkit-backdrop-filter"));
 });
@@ -1396,6 +1396,23 @@ run("deployment dialog exposes recent verified build artifacts", () => {
   assert.ok(editor.includes("STALE"));
 });
 
+run("new CH5 builds are selected for the next panel deployment", () => {
+  const editor = read("editor.js");
+  assert.ok(editor.includes('let pendingDeploymentPackagePath = ""'));
+  assert.ok(editor.includes("function selectDeploymentPackage(path)"));
+  assert.ok(editor.includes("function queueBuiltPackageForDeployment(path)"));
+  assert.ok(
+    (editor.match(/queueBuiltPackageForDeployment\(/g) || []).length >= 3,
+    "Both single- and multi-panel builds must queue their output",
+  );
+  assert.ok(editor.includes("builtByDevice.get(activeDeviceId)"));
+  assert.match(
+    editor,
+    /const builtPackagePath = pendingDeploymentPackagePath;\s+renderDeploymentProfiles\(\);\s+if \(builtPackagePath\)/,
+  );
+  assert.ok(editor.includes("`New build selected: ${builtPackagePath}`"));
+});
+
 run("deployment includes a structural CH5Z package inspector", () => {
   const editor = read("editor.js"),
     markup = read("editor.html"),
@@ -1544,6 +1561,59 @@ run("CHD folders keep indexed component entries in numeric order", () => {
         contents.indexOf("Name=Component.Entry[2]"),
     "Indexed symbols must be serialized as [0], [1], [2]",
   );
+});
+
+run("CHD output preserves programmed SIMPL extender identities", () => {
+  const editor = read("editor.js"),
+    serializerStart = editor.indexOf("  function chdIniQuoted("),
+    serializerEnd = editor.indexOf("  function syncContractMetadata(", serializerStart),
+    buildChdMapping = new Function(
+      `${editor.slice(serializerStart, serializerEnd)}; return buildChdMapping;`,
+    )(),
+    leaf = (id, name) => ({
+      id,
+      commands: [{ id: `${id}-press`, name: "Press", dataType: 1, notes: "" }],
+      feedbacks: [],
+      specifications: [],
+    }),
+    makeContract = (children) => ({
+      contract: {
+        id: "stable-contract",
+        name: "Stable contract",
+        version: "1.0.0.0",
+        schemaVersion: 1,
+        specifications: [{ id: "spec-root", componentId: "root", instanceName: "Root", numberOfInstances: 1 }],
+        components: [
+          {
+            id: "root",
+            commands: [],
+            feedbacks: [],
+            specifications: children.map((name) => ({
+              id: `spec-${name.toLowerCase()}`,
+              componentId: name.toLowerCase(),
+              instanceName: name,
+              numberOfInstances: 1,
+            })),
+          },
+          ...children.map((name) => leaf(name.toLowerCase(), name)),
+        ],
+      },
+    }),
+    original = buildChdMapping(makeContract(["A", "B"])),
+    expanded = buildChdMapping(makeContract(["X", "A", "B"])),
+    symbolIdentity = (contents, name) => {
+      const block = [...contents.matchAll(/\[\r\n[\s\S]*?\r\n\]/g)]
+        .map((match) => match[0])
+        .find((entry) => entry.includes("ObjTp=Symbol") && entry.includes(`Name=${name}\r\n`));
+      return block?.match(/SmplCName=([^\r\n]+)/)?.[1];
+    };
+  assert.equal(original, buildChdMapping(makeContract(["A", "B"])));
+  assert.equal(symbolIdentity(original, "Root.B"), symbolIdentity(expanded, "Root.B"));
+  assert.ok(!editor.includes("DateTimeUTC: new Date().toISOString()"));
+  assert.ok(editor.includes('DateTimeUTC: "2000-01-01 00:00:00.000"'));
+  const desktop = read("CrestronUiComposer/MainWindow.xaml.cs");
+  assert.ok(desktop.includes("bool WriteTextIfChanged("));
+  assert.ok(desktop.includes("chdChanged = WriteTextIfChanged(chdPath, chdContents)"));
 });
 
 run("Signal Manager compares CCE and CSE2J contract mappings", () => {
@@ -2756,14 +2826,16 @@ run("visibility and disabled are optional Composer capabilities, not translated"
   const editor = read("editor.js"), html = read("editor.html"), runtime = read("component-runtime.js"), exporter = read("exporter.js");
   assert.ok(runtime.includes('key: "visibilityEnabled"'));
   assert.ok(runtime.includes('key: "disabledEnabled"'));
-  assert.ok(runtime.includes('optionalProperty: "visibilityEnabled"'));
+  assert.ok(runtime.includes('visibilitySignal.optionalProperty = "visibilityEnabled"'));
   assert.ok(runtime.includes('disabledSignal.optionalProperty = "disabledEnabled"'));
-  assert.ok(runtime.includes('if (options.properties?.disabledEnabled)'));
+  assert.ok(runtime.includes('if (optionEnabled(options.properties?.disabledEnabled))'));
   assert.ok(editor.includes('(signal) => signal.key !== "visibility" && signal.key !== "disabled"'));
   assert.ok(editor.includes('property.key !== "disabledEnabled"'));
   assert.ok(!editor.includes('name: "Component Visibility"'));
   assert.ok(!editor.includes('name: "Component Disabled"'));
   assert.ok(exporter.includes("item.properties.disabledEnabled"));
+  assert.ok(exporter.includes("spec.optionalProperty&&!enabled(item.properties[spec.optionalProperty])"));
+  assert.ok(runtime.includes("!optionEnabled(options.properties?.[spec.optionalProperty])"));
   assert.ok(!html.includes('value="digitalVisibility"'));
   assert.ok(!html.includes("Add Selected &amp; Disabled signals"));
   assert.ok(!editor.includes('defaultValue: "CustomButton.Visibility"'));
@@ -2790,6 +2862,18 @@ run("custom components persist in the application-wide Composer library", () => 
   assert.ok(editor.includes("function exportCustomComponentEntry(entry)"));
   assert.ok(editor.includes("Installed component library"));
   assert.ok(editor.includes("Installed “${entry.name}” permanently in Composer"));
+});
+
+run("right inspector collapse controls remain compact", () => {
+  const styles = read("editor.css");
+  assert.match(
+    styles,
+    /\.side-panel-section\.inspector-collapsible > summary \{\s*padding-right: 34px;/,
+  );
+  assert.match(
+    styles,
+    /\.inspector-collapsible > \.section-collapse-all \{[^}]*width: 24px;/s,
+  );
 });
 
 run("exported page navigation preserves Nav.PageName contract paths", () => {
@@ -2898,7 +2982,7 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(editor.includes('chdName: state.contract.name'));
   assert.ok(editor.includes('function isNumItemsContractAttribute('));
   assert.ok(desktop.includes('Path.ChangeExtension(dialog.FileName, ".chd")'));
-  assert.ok(desktop.includes('return new { folder = destinationFolder, paths, artifacts, chdPath }'));
+  assert.ok(desktop.includes('return new { folder = destinationFolder, paths, artifacts, chdPath, chdChanged }'));
   assert.ok(runtime.includes('return "NumItems"'));
   assert.ok(exporter.includes('binding.value = numItemsContractValue(binding.value)'));
 });

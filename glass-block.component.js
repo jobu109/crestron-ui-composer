@@ -7,11 +7,10 @@
     defaultSize: { width: 220, height: 140 },
     signals: [
       { key: "text", name: "Text", type: "serial", direction: "input", defaultValue: "GlassBlock.Text" },
-      { key: "visible", name: "Visible feedback", type: "digital", direction: "input", defaultValue: "GlassBlock.Visible" }
+      { key: "visibility", name: "Visibility", type: "digital", direction: "input", defaultValue: "GlassBlock.Visibility" }
     ],
     properties: [
       { key: "bindingMode", name: "Crestron binding mode", type: "select", options: [{ value: "contract", label: "Contract names" }, { value: "join", label: "Join numbers" }], defaultValue: "contract", affectsBindings: true },
-      { key: "useVisibleFeedback", name: "Enable Visible feedback", type: "checkbox", defaultValue: false },
       { key: "localText", name: "Local text", type: "text", defaultValue: "" },
       { key: "glassColor", name: "Glass tint", type: "color", defaultValue: "#344444" },
       { key: "accentColor", name: "Accent tint", type: "color", defaultValue: "#04aa8e" },
@@ -33,8 +32,6 @@
       root.style.setProperty("--text-weight", p.textWeight || "700");
       text.textContent = p.localText || "";
       context.signals.subscribe("text", value => { text.textContent = value == null || value === "" ? (p.localText || "") : String(value); });
-      if (p.useVisibleFeedback === true || p.useVisibleFeedback === 1 || p.useVisibleFeedback === "1" || String(p.useVisibleFeedback).toLowerCase() === "true")
-        context.signals.subscribe("visible", value => host.classList.toggle("hidden", !(value === true || value === 1 || value === "1")));
     }
   });
 })(window);

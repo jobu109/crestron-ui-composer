@@ -647,6 +647,23 @@
     (items || []).forEach((item) => {
       item.locked = item.locked === true || item.locked === "true";
       item.hidden = item.hidden === true || item.hidden === "true";
+      if (
+        [
+          "weather-card",
+          "shutdown-progress",
+          "please-wait-spinner",
+          "glass-block",
+        ].includes(item.componentId)
+      ) {
+        item.properties ||= {};
+        item.signalBindings ||= {};
+        if (item.signalBindings.visible && !item.signalBindings.visibility)
+          item.signalBindings.visibility = item.signalBindings.visible;
+        delete item.signalBindings.visible;
+        if (item.properties.useVisibleFeedback && item.properties.visibilityEnabled == null)
+          item.properties.visibilityEnabled = true;
+        delete item.properties.useVisibleFeedback;
+      }
     });
     return items || [];
   }
@@ -9092,7 +9109,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
             : specification.instanceName,
           path = [parentPath, instanceName].filter(Boolean).join("."),
           id = controlId++,
-          uniqueId = `${specification.id}${id}`,
+          // SIMPL uses SmplCName to match an updated GUI extender to the
+          // already-programmed symbol. A traversal/control number here made
+          // every later symbol look new when an earlier component was added
+          // or removed. The full contract path is the durable identity.
+          uniqueId = `${specification.id}.${path}`,
           node = {
             controlId: id,
             uniqueId,
@@ -9266,7 +9287,10 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     };
     const header = {
       ObjTp: "Hd", Schema: 1, ProjectFile: contract.name, ContractID: contract.id,
-      CEProjectVer: contract.version || "1.0.0.0", DateTimeUTC: new Date().toISOString(),
+      // Keep visual-only builds byte-for-byte identical. SIMPL detects a CHD
+      // change by comparing the definition file; a generation timestamp made
+      // an unchanged contract appear updated after every panel build.
+      CEProjectVer: contract.version || "1.0.0.0", DateTimeUTC: "2000-01-01 00:00:00.000",
     };
     const description = String(contract.description || "");
     if (description) {
@@ -9393,7 +9417,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           contents,
           name: state.contract.name,
         });
-        $("contract-status").textContent = `Built ${saved.path}`;
+        $("contract-status").textContent = saved.changed === false
+          ? `Contract unchanged; kept the existing ${saved.path}`
+          : `Built ${saved.path}. In SIMPL Windows, use Sync GUI Extenders to preserve existing signal assignments.`;
       } else
         download(
           `${state.contract.name || "CrestronUiContract"}.chd`,
@@ -9670,6 +9696,19 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       ),
     });
     renderDeploymentProfiles(selected.id);
+  }
+  let pendingDeploymentPackagePath = "";
+  function selectDeploymentPackage(path) {
+    const packagePath = String(path || "").trim();
+    if (!packagePath) return "";
+    saveDeploymentSettings({ packagePath });
+    updateActiveDeploymentProfile({ packagePath });
+    $("deploy-package").value = packagePath;
+    return packagePath;
+  }
+  function queueBuiltPackageForDeployment(path) {
+    pendingDeploymentPackagePath = selectDeploymentPackage(path);
+    return pendingDeploymentPackagePath;
   }
   async function redeployDeploymentBackup(entry) {
     if (!native || !entry?.backupPath || entry.success !== true) return;
@@ -28969,7 +29008,9 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         markProjectSaved();
         setStatus(
           saved?.chdPath
-            ? `Saved to ${path} and updated ${saved.chdPath}`
+            ? saved.chdChanged === false
+              ? `Saved to ${path}; contract unchanged, kept ${saved.chdPath}`
+              : `Saved to ${path} and updated ${saved.chdPath}`
             : "Saved to " + path,
         );
       } catch (error) {
@@ -29381,14 +29422,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
           ),
         });
       if (result.paths?.length) {
-        $("deploy-package").value = result.paths[0];
-        saveDeploymentSettings({ packagePath: result.paths[0] });
-        updateActiveDeploymentProfile({ packagePath: result.paths[0] });
+        const activeDeviceId = activeDeploymentProfile()?.deviceId,
+          nextPackagePath =
+            builtByDevice.get(activeDeviceId) ||
+            builtByDevice.get(state.targetDevice) ||
+            result.paths[0];
+        queueBuiltPackageForDeployment(nextPackagePath);
       }
       $("contract-status").textContent =
-        `Built ${result.paths.length} packages${result.chdPath ? ` and ${result.chdPath}` : ""} in ${result.folder}`;
+        `Built ${result.paths.length} packages${result.chdPath ? result.chdChanged === false ? `; contract unchanged, kept ${result.chdPath}` : ` and ${result.chdPath}; use Sync GUI Extenders in SIMPL Windows` : ""} in ${result.folder}`;
       setStatus(
-        `Built ${result.paths.length} panel packages${result.chdPath ? " and the SIMPL .chd" : ""}`,
+        `Built ${result.paths.length} panel packages${result.chdPath ? result.chdChanged === false ? "; SIMPL contract unchanged" : " and the SIMPL .chd" : ""}`,
       );
     } catch (error) {
       if (error.message !== "cancelled") {
@@ -29465,9 +29509,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
         device,
       });
       recordBuildArtifact(result, device);
-      $("deploy-package").value = result.path;
-      saveDeploymentSettings({ packagePath: result.path });
-      updateActiveDeploymentProfile({ packagePath: result.path });
+      queueBuiltPackageForDeployment(result.path);
       $("contract-status").textContent =
         "Built " + result.path + " for " + device.name;
       setStatus("Built " + result.path + " for " + device.name);
@@ -29484,10 +29526,17 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       return;
     }
     if (!approveExport()) return;
+    const builtPackagePath = pendingDeploymentPackagePath;
     renderDeploymentProfiles();
+    if (builtPackagePath) {
+      pendingDeploymentPackagePath = "";
+      selectDeploymentPackage(builtPackagePath);
+    }
     renderBuildArtifacts();
     $("deploy-status").textContent =
-      "Project Health preflight passed. Check the panel, then deploy.";
+      builtPackagePath
+        ? `New build selected: ${builtPackagePath}`
+        : "Project Health preflight passed. Check the panel, then deploy.";
     renderDeploymentHistory();
     $("deployment-dialog").showModal();
   };

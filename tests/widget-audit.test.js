@@ -177,6 +177,41 @@ for (const [id, definition] of definitions) {
   });
 }
 
+for (const [id, definition] of definitions) {
+  const visibility = definition.signals.find(
+      (signal) => signal.key === "visibility",
+    ),
+    disabled = definition.signals.find((signal) => signal.key === "disabled");
+  assert.equal(
+    visibility?.optionalProperty,
+    "visibilityEnabled",
+    `${id} visibility feedback must be optional`,
+  );
+  assert.equal(
+    disabled?.optionalProperty,
+    "disabledEnabled",
+    `${id} disabled feedback must be optional`,
+  );
+}
+
+for (const id of [
+  "video-input",
+  "weather-card",
+  "shutdown-progress",
+  "please-wait-spinner",
+])
+  assert.doesNotMatch(
+    String(definitions.get(id).mount),
+    /signals\.subscribe\(["'](?:visible|visibility|enable)["']/,
+    `${id} bypasses the shared optional visibility/disabled controls`,
+  );
+
+assert.match(
+  String(definitions.get("neumorphic-icon-nav").mount),
+  /button\.style\.width = `\$\{size\}px`/,
+  "Neumorphic Icon Nav must provide a panel-compatible button size fallback",
+);
+
 const buttonDefinitions = [...definitions.values()].filter((definition) =>
   /^(?:Standard|Toggle|Advanced) Buttons$/i.test(definition.category || ""),
 );

@@ -111,13 +111,6 @@
         defaultValue: "Video.Visibility",
       },
       {
-        key: "enable",
-        name: "Enable",
-        type: "digital",
-        direction: "input",
-        defaultValue: "Video.Enable",
-      },
-      {
         key: "play",
         name: "Play",
         type: "digital",
@@ -294,16 +287,6 @@
           ),
         ),
       );
-      context.signals.subscribe("visibility", (value) => {
-        const show = bool(value);
-        shell.style.visibility = show ? "visible" : "hidden";
-        set("show", show);
-      });
-      context.signals.subscribe("enable", (value) => {
-        const enabled = bool(value);
-        shell.classList.toggle("disabled", !enabled);
-        set("disabled", !enabled);
-      });
       context.signals.subscribe("play", (value) => set("play", bool(value)));
       context.signals.subscribe("url", setUrl);
       context.signals.subscribe("sourceType", (value) =>

@@ -2134,7 +2134,8 @@
           ).split("|"),
           assetIds = String(p.buttonAssets ?? "").split("|"),
           labelTexts = String(p.buttonLabels ?? "").split("|"),
-          count = Math.max(2, Math.min(8, Number(p.buttonCount) || 4));
+          count = Math.max(2, Math.min(8, Number(p.buttonCount) || 4)),
+          isVertical = /-vertical$/.test(root.dataset.component || "");
         for (let index = 0; index < count; index++) {
           const button = document.createElement("button");
           button.type = "button";
@@ -2191,6 +2192,30 @@
             },
           );
         }
+        const sizeButtons = () => {
+            const crossSize = isVertical
+                ? track.clientWidth
+                : track.clientHeight,
+              size = Math.max(
+                1,
+                Math.round(crossSize * (Number(p.iconSize) || 62) / 100),
+              );
+            track.querySelectorAll(".nnb-icon").forEach((button) => {
+              button.style.width = `${size}px`;
+              button.style.height = `${size}px`;
+            });
+          },
+          observer =
+            typeof ResizeObserver === "function"
+              ? new ResizeObserver(sizeButtons)
+              : null;
+        sizeButtons();
+        if (observer) observer.observe(track);
+        else window.addEventListener("resize", sizeButtons);
+        return () => {
+          if (observer) observer.disconnect();
+          else window.removeEventListener("resize", sizeButtons);
+        };
       },
     };
   }

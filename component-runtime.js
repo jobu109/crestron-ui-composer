@@ -983,15 +983,23 @@
       visibilityProperty.name = "Enable visibility signal";
       visibilityProperty.type = "checkbox";
     }
-    if (!definition.signals.some((signal) => signal.key === "visibility"))
-      definition.signals.push({
+    let visibilitySignal = definition.signals.find(
+      (signal) => signal.key === "visibility",
+    );
+    if (!visibilitySignal) {
+      visibilitySignal = {
         key: "visibility",
         name: "Visibility",
         type: "digital",
         direction: "input",
         defaultValue: `${namespace}.Visibility`,
-        optionalProperty: "visibilityEnabled",
-      });
+      };
+      definition.signals.push(visibilitySignal);
+    }
+    visibilitySignal.name = "Visibility";
+    visibilitySignal.type = "digital";
+    visibilitySignal.direction = "input";
+    visibilitySignal.optionalProperty = "visibilityEnabled";
     if (!definition.properties.some((property) => property.key === "disabledEnabled"))
       definition.properties.push({
         key: "disabledEnabled",
@@ -1530,7 +1538,12 @@
     };
   }
   function mount(root, id, options = {}) {
-    const definition = get(id);
+    const definition = get(id),
+      optionEnabled = (value) =>
+        value === true ||
+        value === 1 ||
+        value === "1" ||
+        String(value).toLowerCase() === "true";
     if (!definition) throw new Error("Unknown component: " + id);
     options.properties = { ...(options.properties || {}) };
     if (id === "countdown-auto-fire") {
@@ -1628,7 +1641,13 @@
             contractPrefix,
             `${spec?.key || ""} ${spec?.name || ""}`,
           );
-        if (!spec || !signal) return;
+        if (
+          !spec ||
+          !signal ||
+          (spec.optionalProperty &&
+            !optionEnabled(options.properties?.[spec.optionalProperty]))
+        )
+          return;
         if (lib) lib.publishEvent(typeCode(spec.type), signal, value);
         else simulator.publish(typeCode(spec.type), signal, value);
       },
@@ -1683,7 +1702,13 @@
                   callback(value);
                 }
               : callback;
-        if (!spec || !signal) return;
+        if (
+          !spec ||
+          !signal ||
+          (spec.optionalProperty &&
+            !optionEnabled(options.properties?.[spec.optionalProperty]))
+        )
+          return;
         if (lib) {
           cleanups.push(
             subscribeFeedback(lib, spec.type, signal, handler),
@@ -1728,14 +1753,14 @@
         standardHold.active = false;
         standardHold.completed = false;
       });
-    if (options.properties?.visibilityEnabled) {
+    if (optionEnabled(options.properties?.visibilityEnabled)) {
       root.style.visibility = "visible";
       signals.subscribe("visibility", (value) => {
         root.style.visibility =
           value === true || value === 1 || value === "1" ? "visible" : "hidden";
       });
     }
-    if (options.properties?.disabledEnabled) {
+    if (optionEnabled(options.properties?.disabledEnabled)) {
       root.classList.remove("composer-disabled");
       root.removeAttribute("aria-disabled");
       signals.subscribe("disabled", (value) => {
