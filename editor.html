@@ -1154,16 +1154,12 @@
         </div>
         <fieldset class="preview-mode-options" aria-label="Preview mode">
           <label class="preview-mode-card">
-            <input type="radio" name="preview-mode" value="standalone" checked />
+            <input type="radio" name="preview-mode" value="standalone" />
             <span><strong>Standalone</strong><small>Existing local preview<br />No processor connection</small></span>
           </label>
           <label class="preview-mode-card">
-            <input type="radio" name="preview-mode" value="directcip" />
-            <span><strong>Direct CIP</strong><small>TCP 41794 · IP + IP ID<br />Native desktop relay</small></span>
-          </label>
-          <label class="preview-mode-card">
-            <input type="radio" name="preview-mode" value="webxpanel" />
-            <span><strong>Web XPanel</strong><small>Secure WebSocket<br />Processor authentication</small></span>
+            <input type="radio" name="preview-mode" value="virtualpanel" checked />
+            <span><strong>Virtual Panel</strong><small>Secure live connection<br />Crestron sign-in and certificates</small></span>
           </label>
         </fieldset>
         <section id="preview-live-settings" class="preview-live-settings" hidden>
@@ -1177,6 +1173,7 @@
             <label>Password<input id="preview-password" type="password" autocomplete="current-password" /></label>
             <small>Credentials are used only to request this preview session’s Web XPanel token and are not saved.</small>
           </div>
+          <p id="preview-virtual-panel-note" class="hint" hidden>Composer will build a temporary .ch5z and open it in Crestron Virtual Panel. Virtual Panel handles secure CIP, certificate trust, and the username/password prompt.</p>
           <div class="preview-connection-test">
             <button id="preview-test-connection" type="button">Test connection</button>
             <span id="preview-connection-status" class="hint" role="status"></span>
@@ -2574,12 +2571,12 @@
           <section id="manual-preview">
             <h3>7. Preview, simulation, timelines, and actions</h3>
             <ul>
-              <li><strong>Preview:</strong> runs the exported interface locally for visual and interaction checks.</li>
+              <li><strong>Emulate:</strong> runs the exported interface locally, or builds a temporary CH5Z and opens it in Crestron Virtual Panel for a secure live processor connection. Virtual Panel handles certificates and prompts for processor credentials when required.</li>
               <li><strong>Simulate:</strong> drives digital, analog, and serial feedback without SIMPL and captures widget output events.</li>
               <li><strong>Timeline Editor:</strong> controls visual animation such as fade, slide, scale, glow, press state, and shake.</li>
               <li><strong>Action Editor:</strong> performs navigation, visibility, selection, properties, animation, or signal publishing in response to events.</li>
             </ul>
-            <p>CH5 Desktop and a physical panel remain required for final processor-communication testing.</p>
+            <p>A physical panel remains required for final hardware validation.</p>
           </section>
 
           <section id="manual-assets">

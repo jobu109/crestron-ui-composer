@@ -492,6 +492,9 @@ public partial class MainWindow : Window
                 case "startDirectCipPreview":
                     StartDirectCipPreview(id, root.GetProperty("payload"));
                     break;
+                case "launchVirtualPanelPreview":
+                    LaunchVirtualPanelPreview(id, root.GetProperty("payload"));
+                    break;
                 case "prepareWebXPanelPreview":
                     PrepareWebXPanelPreview(id, root.GetProperty("payload"));
                     break;
@@ -1490,6 +1493,69 @@ public partial class MainWindow : Window
                 try { Directory.Delete(folder, true); } catch { }
             }
         });
+    }
+
+    private void LaunchVirtualPanelPreview(string id, JsonElement payload)
+    {
+        var virtualPanel = FindVirtualPanel() ?? throw new FileNotFoundException(
+            "Crestron Virtual Panel is not installed. Install it, then try Emulate again.");
+        var cli = FindCh5Cli() ?? throw new FileNotFoundException(
+            "Crestron's ch5-cli was not found. Install @crestron/ch5-utilities-cli before launching Virtual Panel preview.");
+        var runtime = Path.Combine(AppContext.BaseDirectory, "Packaging", "cr-com-lib.js");
+        if (!File.Exists(runtime)) throw new FileNotFoundException("The packaged CrComLib runtime is missing.", runtime);
+
+        var host = ValidateNetworkHost(payload.GetProperty("host").GetString());
+        var ipId = payload.GetProperty("ipid").GetString()?.Trim() ?? "";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(ipId, "^0x[0-9A-Fa-f]{2,4}$") ||
+            !int.TryParse(ipId[2..], System.Globalization.NumberStyles.HexNumber, null, out var ipIdValue) ||
+            ipIdValue is < 3 or > 0xfe)
+            throw new InvalidDataException("IP ID must be hexadecimal from 0x03 through 0xFE.");
+
+        var html = payload.GetProperty("html").GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(html)) throw new InvalidDataException("The preview export was empty.");
+        var requestedName = payload.GetProperty("projectName").GetString() ?? "CrestronUiPreview";
+        var projectName = new string(requestedName.Where(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_').ToArray());
+        if (string.IsNullOrWhiteSpace(projectName)) projectName = "CrestronUiPreview";
+        var deviceJson = payload.TryGetProperty("device", out var device) ? device.GetRawText() : "{}";
+        var usesContracts = payload.TryGetProperty("usesContracts", out var contractFlag) && contractFlag.GetBoolean();
+        var contractMapping = payload.TryGetProperty("contractMapping", out var mapping) && mapping.ValueKind == JsonValueKind.String
+            ? mapping.GetString()
+            : null;
+        if (usesContracts && string.IsNullOrWhiteSpace(contractMapping))
+            throw new InvalidDataException("The generated contract mapping is empty.");
+
+        RunBackgroundCommand(id, () =>
+        {
+            var previewFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CrestronUiComposer",
+                "VirtualPanelPreview");
+            Directory.CreateDirectory(previewFolder);
+            var destination = Path.Combine(previewFolder, projectName + ".ch5z");
+            CreateCh5Archive(cli, runtime, html, projectName, deviceJson, null, contractMapping, destination);
+            ValidateCh5Archive(destination);
+
+            var start = new ProcessStartInfo(virtualPanel) { UseShellExecute = true };
+            start.ArgumentList.Add("--project");
+            start.ArgumentList.Add(destination);
+            start.ArgumentList.Add("--host");
+            start.ArgumentList.Add(host);
+            start.ArgumentList.Add("--ipid");
+            start.ArgumentList.Add(ipId.ToUpperInvariant());
+            _ = Process.Start(start) ?? throw new InvalidOperationException("Crestron Virtual Panel could not be started.");
+            return new { path = destination, host, ipid = ipId.ToUpperInvariant(), application = virtualPanel };
+        });
+    }
+
+    private static string? FindVirtualPanel()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "CrestronVirtualPanel", "CrestronVirtualPanel.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "CrestronVirtualPanel", "CrestronVirtualPanel.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "CrestronVirtualPanel", "CrestronVirtualPanel.exe"),
+        };
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static string? FindCh5Cli()

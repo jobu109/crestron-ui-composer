@@ -29965,11 +29965,12 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       );
   }
   function selectedPreviewMode() {
-    return document.querySelector('input[name="preview-mode"]:checked')?.value || "standalone";
+    return document.querySelector('input[name="preview-mode"]:checked')?.value || "virtualpanel";
   }
   let previousPreviewMode = selectedPreviewMode();
   function updatePreviewLaunchDialog() {
-    const mode = selectedPreviewMode(), live = mode !== "standalone";
+    const mode = selectedPreviewMode(), live = mode !== "standalone",
+      virtualPanel = mode === "virtualpanel";
     const portInput = $("preview-port");
     if (previousPreviewMode !== mode) {
       if (previousPreviewMode !== "standalone") portInput.dataset[`${previousPreviewMode}Port`] = portInput.value;
@@ -29977,8 +29978,11 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       previousPreviewMode = mode;
     }
     portInput.placeholder = mode === "directcip" ? "41794" : "49200";
+    portInput.closest("label").hidden = virtualPanel;
     $("preview-live-settings").hidden = !live;
     $("preview-webxpanel-credentials").hidden = mode !== "webxpanel";
+    $("preview-virtual-panel-note").hidden = !virtualPanel;
+    $("preview-test-connection").closest(".preview-connection-test").hidden = virtualPanel;
     $("preview-launch-error").hidden = true;
     $("preview-launch").textContent = live ? "Connect & preview" : "Launch preview";
   }
@@ -30063,7 +30067,39 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       const username = $("preview-username").value,
         password = $("preview-password").value;
       let directRelay = null;
-      if (direct) {
+      if (mode === "virtualpanel") {
+        if (!native) throw new Error("Crestron Virtual Panel preview is available in the Windows app.");
+        if (!approveExport()) return;
+        const device = { ...selectedDevice(), width: state.width, height: state.height },
+          usesContracts =
+            state.pages.some((page) => page.bindingMode === "contract") ||
+            state.items.some((item) =>
+              item.componentId
+                ? Object.entries(item.properties || {}).some(
+                    ([key, value]) => /bindingmode$/i.test(key) && value === "contract",
+                  ) || Object.values(item.signalBindings || {}).some((binding) => binding.mode === "contract")
+                : findBindings(item.source).some((binding) => !/^[0-9]+$/.test(binding.value)),
+            );
+        let contractMapping = null;
+        if (usesContracts) {
+          const contractResult = contractBuildData();
+          if (contractResult.errors.length)
+            throw new Error(`Preview cannot be built:\n\n${contractResult.errors.join("\n")}`);
+          contractMapping = JSON.stringify(buildCse2jMapping(contractResult));
+        }
+        await nativeRequest("launchVirtualPanelPreview", {
+          html: exportHtml(),
+          projectName: state.contract.name.trim() || "CrestronUiPreview",
+          usesContracts,
+          contractMapping,
+          device,
+          host,
+          ipid: `0x${ipid}`,
+        });
+        $("preview-launch-dialog").close();
+        setStatus("Opened secure preview in Crestron Virtual Panel");
+        return;
+      } else if (direct) {
         if (!native) throw new Error("Direct CIP preview is available in the Windows app.");
         directRelay = await nativeRequest("startDirectCipPreview", { host, port: Number(port) || 41794 });
       } else if (native) await nativeRequest("prepareWebXPanelPreview", { host, port: Number(port) || 49200 });
@@ -30077,7 +30113,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
       } else return;
       $("preview-launch-dialog").close();
     } catch (launchError) {
-      error.textContent = `Could not launch ${direct ? "Direct CIP" : "Web XPanel"} preview: ${launchError.message}`;
+      const previewName = mode === "virtualpanel" ? "Crestron Virtual Panel" : direct ? "Direct CIP" : "Web XPanel";
+      error.textContent = `Could not launch ${previewName} preview: ${launchError.message}`;
       error.hidden = false;
     } finally {
       launchButton.disabled = false;

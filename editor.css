@@ -4119,7 +4119,7 @@ textarea {
 .preview-launch-title p { margin: 0; }
 .preview-mode-options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 0;
   margin: 0;

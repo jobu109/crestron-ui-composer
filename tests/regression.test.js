@@ -2911,7 +2911,12 @@ run("desktop bridge and live processor preview enforce trust boundaries", () => 
   assert.ok(editor.includes('nativeRequest("prepareWebXPanelPreview"'));
   assert.ok(editor.includes('nativeRequest("checkProcessorConnection"'));
   assert.ok(editor.includes('nativeRequest("startDirectCipPreview"'));
-  assert.ok(html.includes('value="directcip"'));
+  assert.ok(editor.includes('nativeRequest("launchVirtualPanelPreview"'));
+  assert.ok(html.includes('value="virtualpanel" checked'));
+  assert.ok(desktop.includes('case "launchVirtualPanelPreview"'));
+  assert.ok(desktop.includes('start.ArgumentList.Add("--project")'));
+  assert.ok(desktop.includes('start.ArgumentList.Add("--host")'));
+  assert.ok(desktop.includes('start.ArgumentList.Add("--ipid")'));
   assert.ok(relay.includes("new TcpListener(IPAddress.Loopback, 0)"));
   assert.ok(relay.includes('origin.Equals("https://composer.local"'));
   assert.ok(relay.includes("payloadLength + 3"));
