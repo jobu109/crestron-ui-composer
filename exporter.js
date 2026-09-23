@@ -132,9 +132,9 @@
       base = contractIdentifier(item.name || "Widget"),
       peers = project.items.filter(
         (entry) =>
-          entry.componentId === item.componentId &&
           entry.pageId === item.pageId &&
-          !!entry.master === !!item.master,
+          !!entry.master === !!item.master &&
+          contractIdentifier(entry.name || "Widget") === base,
       ),
       number = peers.indexOf(item) + 1;
     return `${pageName}.${base}${number > 1 ? number : ""}`;

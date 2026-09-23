@@ -455,6 +455,42 @@ run("exported action runtime is valid JavaScript", () => {
   new Function(html.slice(start, end));
 });
 
+run("uniquely named standalone peers keep their contract instance names", () => {
+  const item = (id, name, x) => ({
+      id,
+      pageId: "home",
+      name,
+      componentId: "regression-button",
+      x,
+      y: 0,
+      w: 100,
+      h: 50,
+      z: 1,
+      properties: { bindingMode: "contract" },
+      signalBindings: {},
+    }),
+    html = ComposerExporter.exportProject({
+      width: 1280,
+      height: 800,
+      pages: [
+        { id: "home", name: "Home", background: "#000", bindingMode: "none" },
+      ],
+      items: [
+        item("standard-button-1", "StandardButton1", 0),
+        item("standard-button-2", "StandardButton2", 120),
+      ],
+      subpages: [],
+      assets: [],
+    });
+
+  assert.ok(html.includes('"contractPrefix":"Home.StandardButton1"'));
+  assert.ok(html.includes('"contractPrefix":"Home.StandardButton2"'));
+  assert.ok(
+    !html.includes('"contractPrefix":"Home.StandardButton22"'),
+    "A component type's ordinal must not be appended to an already unique instance name",
+  );
+});
+
 run("real Crestron feedback survives widget remounts until changed", () => {
   ComposerRuntime.feedbackState.clear();
   let firstHandler,
