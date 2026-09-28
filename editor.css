@@ -161,8 +161,8 @@ input {
   --inspector-width: 230px;
   display: grid;
   grid-template-columns:
-    var(--sidebar-width) 6px var(--secondary-sidebar-width) 6px minmax(0, 1fr) 6px
-    var(--inspector-width);
+    var(--primary-track, var(--sidebar-width)) var(--primary-handle, 6px) var(--secondary-track, var(--secondary-sidebar-width)) var(--secondary-handle, 6px) minmax(0, 1fr) var(--inspector-handle, 6px)
+    var(--inspector-track, var(--inspector-width));
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas:
     "primary primary-resizer secondary secondary-resizer stage inspector-resizer inspector";
@@ -170,16 +170,16 @@ input {
 }
 .workspace[data-secondary-dock="right"] {
   grid-template-columns:
-    var(--sidebar-width) 6px minmax(0, 1fr) 6px var(--secondary-sidebar-width) 6px
-    var(--inspector-width);
+    var(--primary-track, var(--sidebar-width)) var(--primary-handle, 6px) minmax(0, 1fr) var(--secondary-handle, 6px) var(--secondary-track, var(--secondary-sidebar-width)) var(--inspector-handle, 6px)
+    var(--inspector-track, var(--inspector-width));
   grid-template-areas:
     "primary primary-resizer stage secondary-resizer secondary inspector-resizer inspector";
 }
 .workspace[data-secondary-dock="top"],
 .workspace[data-secondary-dock="bottom"] {
   grid-template-columns:
-    var(--sidebar-width) 6px minmax(0, 1fr) 6px var(--inspector-width);
-  grid-template-rows: var(--secondary-sidebar-height) 6px minmax(0, 1fr);
+    var(--primary-track, var(--sidebar-width)) var(--primary-handle, 6px) minmax(0, 1fr) var(--inspector-handle, 6px) var(--inspector-track, var(--inspector-width));
+  grid-template-rows: var(--secondary-row, var(--secondary-sidebar-height)) var(--secondary-handle, 6px) minmax(0, 1fr);
 }
 .workspace[data-secondary-dock="top"] {
   grid-template-areas:
@@ -188,7 +188,7 @@ input {
     "primary primary-resizer stage inspector-resizer inspector";
 }
 .workspace[data-secondary-dock="bottom"] {
-  grid-template-rows: minmax(0, 1fr) 6px var(--secondary-sidebar-height);
+  grid-template-rows: minmax(0, 1fr) var(--secondary-handle, 6px) var(--secondary-row, var(--secondary-sidebar-height));
   grid-template-areas:
     "primary primary-resizer stage inspector-resizer inspector"
     "primary primary-resizer secondary-resizer inspector-resizer inspector"
@@ -4905,7 +4905,7 @@ textarea {
 }
 
 .build-project-dialog {
-  width: min(820px, 92vw);
+  width: min(1040px, 94vw);
 }
 
 .build-project-grid {
@@ -5274,3 +5274,47 @@ textarea {
   background: #253436;
   color: #fff;
 }
+
+/* Keep checkbox controls beside the text they toggle. */
+.inspector label:has(> input[type="checkbox"]),
+.page-sidebar-settings label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.inspector label > input[type="checkbox"],
+.page-sidebar-settings label > input[type="checkbox"] {
+  display: inline-block;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  padding: 0;
+  order: -1;
+  accent-color: #04aa8e;
+}
+.inspector-selection-type {
+  margin: 8px 0 12px;
+  color: #bcece4;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.workspace[data-primary-collapsed="true"] { --primary-track: 0px; --primary-handle: 0px; }
+.workspace[data-secondary-collapsed="true"] { --secondary-track: 0px; --secondary-row: 0px; --secondary-handle: 0px; }
+.workspace[data-inspector-collapsed="true"] { --inspector-track: 0px; --inspector-handle: 0px; }
+.workspace[data-primary-collapsed="true"] > .sidebar,
+.workspace[data-primary-collapsed="true"] > #sidebar-resizer,
+.workspace[data-secondary-collapsed="true"] > .secondary-sidebar,
+.workspace[data-secondary-collapsed="true"] > #secondary-sidebar-resizer,
+.workspace[data-inspector-collapsed="true"] > .inspector,
+.workspace[data-inspector-collapsed="true"] > #inspector-resizer { display: none; }
+.workspace-bar-toggles { display: flex; flex-wrap: wrap; gap: 4px; padding-right: 6px; border-right: 1px solid #46605f; }
+.workspace-bar-toggles button[aria-expanded="true"] { background: #087e6c; }
+.workspace-bar-toggles button[aria-expanded="false"] { background: #101719; color: #a9bbbb; }
+.stage-tools { flex-wrap: wrap; max-width: calc(100% + 48px); box-sizing: border-box; }
+.build-project-actions { flex-shrink: 0; }
+.build-project-actions button { white-space: nowrap; }

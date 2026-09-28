@@ -240,6 +240,29 @@
       return new Set(["library-components"]);
     }
   }
+  function initializeWorkspaceBarToggles() {
+    const workspace = document.querySelector(".workspace"),
+      storageKey = "composer.workspace.collapsedBars";
+    let collapsed = {};
+    try { collapsed = JSON.parse(localStorage.getItem(storageKey) || "{}") || {}; } catch (_) {}
+    for (const [bar, name] of [["primary", "Primary"], ["secondary", "Secondary"], ["inspector", "Inspector"]]) {
+      const button = $(`toggle-${bar}-bar`);
+      const apply = () => {
+        const hidden = collapsed[bar] === true;
+        workspace.dataset[bar + "Collapsed"] = String(hidden);
+        button.setAttribute("aria-expanded", String(!hidden));
+        button.title = `${hidden ? "Show" : "Hide"} ${name} bar`;
+        button.setAttribute("aria-label", button.title);
+      };
+      apply();
+      button.onclick = () => {
+        collapsed[bar] = collapsed[bar] !== true;
+        apply();
+        try { localStorage.setItem(storageKey, JSON.stringify(collapsed)); } catch (_) {}
+        requestAnimationFrame(centerSubpageMasterCanvas);
+      };
+    }
+  }
   function collapsePanelSection(section, collapseSectionWhenEmpty = true) {
     const nested = [
       ...section.querySelectorAll(
@@ -5294,6 +5317,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
   function renderPageInspector() {
     const p = currentPage();
     $("page-name").value = p.name;
+    $("page-selection-type").textContent = `Page: ${p.name}`;
     $("page-background").value = p.background;
     const assetSelect = $("page-background-asset");
     assetSelect.innerHTML = '<option value="">None</option>';
@@ -5373,6 +5397,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       $("prop-position-row").hidden = !!item.systemManaged;
       $("prop-size-row").hidden = !!item.systemManaged;
       $("prop-z-wrap").hidden = !!item.systemManaged;
+      $("prop-selection-type").textContent = item.componentId
+        ? window.ComposerRuntime.get(item.componentId)?.name || item.componentId
+        : item.assetId ? "Media asset" : "HTML component";
       $("prop-name").value = item.name;
       $("prop-x").value = item.x;
       $("prop-y").value = item.y;
@@ -8590,6 +8617,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     );
   }
   function standardContractAttribute(type, direction, value, semantic = "") {
+    if (type === "serial" && direction === "input" && /^Selected_?Label$/i.test(simplIdentifier(value))) return "SelectedLabel";
     if (/^Visibility$/i.test(simplIdentifier(value))) return "Visibility";
     if (isNumItemsContractAttribute(type, direction, value, semantic))
       return "NumItems";
@@ -10392,6 +10420,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
       if (
         signal.optionalProperty &&
         signal.key !== definition.buttonLabelCapability?.signalKey &&
+        signal.key !== definition.buttonLabelCapability?.selectedLabelSignalKey &&
         !item.properties?.[signal.optionalProperty]
       )
         return;
@@ -28817,6 +28846,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     const page = currentPage(),
       previousDefault = pageNavigationBinding(page.name);
     page.name = e.target.value;
+    $("page-selection-type").textContent = `Page: ${page.name}`;
     if (
       page.bindingMode === "contract" &&
       (!page.binding || page.binding === previousDefault)
@@ -30409,6 +30439,7 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   });
   initializeCollapsibleSidePanels();
   initializeSecondarySidebar();
+  initializeWorkspaceBarToggles();
   wirePaneResizer("sidebar-resizer", "sidebar-width", 1, 220);
   wirePaneResizer("inspector-resizer", "inspector-width", -1, 230);
   $("zoom-out").onclick = () => setPanelZoom(panelZoom - 0.1);

@@ -109,6 +109,7 @@
   }
   function standardContractAttribute(type, direction, value, semantic) {
     const normalized = String(value || "").replace(/[^A-Za-z0-9_]/g, "_");
+    if (type === "serial" && direction === "input" && /^Selected_?Label$/i.test(normalized)) return "SelectedLabel";
     if (/^(?:Visibility|Disabled)$/i.test(normalized))
       return /^Visibility$/i.test(normalized) ? "Visibility" : "Disabled";
     if (isNumItemsContractAttribute(type, direction, value, semantic))
@@ -699,7 +700,7 @@
         String(properties?.showLabel).toLowerCase() === "false"
       ),
       cleanups = [];
-    let remoteText = "";
+    let remoteText = "", remoteSelectedText = "", selected = false;
     function authoredLabelTargets() {
       let targets = capability.selector
         ? [...root.querySelectorAll(capability.selector)]
@@ -731,7 +732,8 @@
           ? [overlayLabel()]
           : authoredTargets,
         localText = properties?.[capability.localKey || "labelText"] ?? definition.name ?? "Label",
-        text = remoteText || (external && authoredTargets[0]?.textContent
+        stateText = selected ? remoteSelectedText || properties?.[capability.selectedLocalKey] || String(localText) : remoteText,
+        text = stateText || (external && authoredTargets[0]?.textContent
           ? authoredTargets[0].textContent
           : String(localText)),
         size = Math.max(6, Number(properties?.labelFontSize) || 18),
@@ -750,7 +752,13 @@
       });
       targets.forEach((target) => {
         target.style.display = enabled ? "" : "none";
-        target.style.color = properties?.labelColor || "#ffffff";
+        const hasStateTextColors = definition.properties?.some(property => property.key === "textColor") &&
+          definition.properties?.some(property => property.key === "selectedTextColor");
+        if (hasStateTextColors) {
+          // Native labels retain their component's state CSS, including pressed states.
+          if (target.classList.contains("composer-button-label"))
+            target.style.color = (authoredTargets[0] ? getComputedStyle(authoredTargets[0]).color : (selected ? properties?.selectedTextColor : properties?.textColor)) || properties?.textColor || "#ffffff";
+        } else target.style.color = properties?.labelColor || "#ffffff";
         target.style.fontSize = `${size}px`;
         target.style.fontWeight = String(properties?.labelFontWeight || "700");
         target.style.textAlign = horizontal;
@@ -780,7 +788,7 @@
             target.style.bottom = vertical === "bottom" ? `${padding}px` : "auto";
             target.style.transform = vertical === "center" ? "translateY(-50%)" : "none";
           }
-        } else if (remoteText && target.textContent !== text) target.textContent = text;
+        } else if ((stateText || remoteText || remoteSelectedText) && target.textContent !== text) target.textContent = text;
       });
     }
     if (enabled && capability.signalKey && signals?.subscribe)
@@ -788,9 +796,19 @@
         remoteText = String(value ?? "");
         apply();
       });
+    if (enabled && capability.selectedLabelSignalKey && signals?.subscribe)
+      signals.subscribe(capability.selectedLabelSignalKey, value => {
+        remoteSelectedText = String(value ?? "");
+        apply();
+      });
+    if (enabled && capability.selectedStateSignalKey && signals?.subscribe)
+      signals.subscribe(capability.selectedStateSignalKey, value => {
+        selected = value === true || value === 1 || value === "1";
+        apply();
+      });
     apply();
     const observer = new MutationObserver(() => apply());
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     cleanups.push(() => observer.disconnect());
     return () => cleanups.splice(0).forEach((cleanup) => cleanup());
   }
@@ -965,8 +983,19 @@
         };
         definition.signals.push(labelSignal);
       }
+      labelSignal.name = "Standard Label";
       labelSignal.optionalProperty = "showLabel";
       definition.buttonLabelCapability.signalKey = labelSignal.key;
+      let selectedLabelSignal = definition.signals.find(signal => signal.key === "selectedLabel" && signal.type === "serial" && signal.direction === "input");
+      if (!selectedLabelSignal) {
+        selectedLabelSignal = { key: "selectedLabel", name: "Selected Label", type: "serial", direction: "input", defaultValue: `${namespace}.SelectedLabel` };
+        definition.signals.push(selectedLabelSignal);
+      }
+      selectedLabelSignal.name = "Selected Label";
+      selectedLabelSignal.optionalProperty = "showLabel";
+      definition.buttonLabelCapability.selectedLabelSignalKey = selectedLabelSignal.key;
+      definition.buttonLabelCapability.selectedStateSignalKey = definition.signals.find(signal => signal.type === "digital" && signal.direction === "input" && /^(selected|active|feedback)$/i.test(signal.key))?.key || "";
+      definition.buttonLabelCapability.selectedLocalKey = definition.properties.find(property => /^(selectedText|selectedLabel|selectedName|selectedTitle)$/.test(property.key))?.key || "";
     }
     if (!definition.properties.some((property) => property.key === "visibilityEnabled"))
       definition.properties.push({

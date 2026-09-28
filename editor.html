@@ -269,7 +269,7 @@
       >
     </header>
     <main class="workspace">
-      <aside class="sidebar">
+      <aside id="primary-sidebar" class="sidebar">
         <div class="primary-sidebar-toolbar">
           <strong>Primary bar</strong>
           <button id="collapse-primary-bar" class="bar-collapse-all" type="button">
@@ -504,7 +504,12 @@
         title="Drag to resize · Double-click to reset"
       ></div>
       <section class="stage-wrap">
-        <div class="stage-tools" aria-label="Panel zoom controls">
+        <div class="stage-tools" aria-label="Workspace controls">
+          <div class="workspace-bar-toggles" role="group" aria-label="Workspace bars">
+            <button id="toggle-primary-bar" type="button" aria-controls="primary-sidebar" aria-expanded="true">Primary</button>
+            <button id="toggle-secondary-bar" type="button" aria-controls="secondary-sidebar" aria-expanded="true">Secondary</button>
+            <button id="toggle-inspector-bar" type="button" aria-controls="inspector-sidebar" aria-expanded="true">Inspector</button>
+          </div>
           <button id="zoom-out" type="button" title="Zoom out">−</button>
           <button id="zoom-level" type="button" title="Reset zoom to 100%">
             100%
@@ -535,7 +540,7 @@
         aria-label="Resize inspector sidebar"
         title="Drag to resize · Double-click to reset"
       ></div>
-      <aside class="inspector">
+      <aside id="inspector-sidebar" class="inspector">
         <div class="inspector-sidebar-toolbar">
           <h2>Inspector</h2>
           <button id="collapse-inspector-bar" class="bar-collapse-all" type="button">
@@ -552,6 +557,7 @@
             the "Enabled on this page" checkbox at the bottom of the
             sidebar to control where it's shown.
           </div>
+          <p id="prop-selection-type" class="inspector-selection-type" aria-live="polite"></p>
           <label>Name<input id="prop-name" /></label>
           <div id="prop-position-row" class="grid2">
             <label>X<input id="prop-x" type="number" /></label
@@ -841,6 +847,7 @@
           </section>
         </form>
         <h2>Page</h2>
+        <p id="page-selection-type" class="inspector-selection-type" aria-live="polite"></p>
         <label>Name<input id="page-name" /></label>
         <label
           >Background<input id="page-background" type="color" value="#182126"

@@ -17,6 +17,8 @@ const items = [
   { id: "first", componentId: "standard-button", properties: props("standard-button", {text:"First", backgroundColor:"#ff0000", backgroundOpacity:25, selectedSameAsStandard:false, selectedBackgroundColor:"#00ff00", selectedBackgroundOpacity:50}) },
   { id: "second", componentId: "standard-button", properties: props("standard-button", {text:"Second", backgroundColor:"#0000ff", backgroundOpacity:75, selectedSameAsStandard:false, selectedBackgroundColor:"#ffffff", selectedBackgroundOpacity:100}) }
 ].map((item, i) => ({...item, pageId:"page", x:i*240, y:0, w:220, h:100, z:i+1, signalBindings:{}}));
+items[0].properties = {...items[0].properties,showLabel:true,textColor:'#ff0000',selectedTextColor:'#00ff00',labelColor:'#0000ff',selectedText:'Local selected'};
+items[0].signalBindings = {label:{mode:'join',value:'201'},selectedLabel:{mode:'join',value:'202'},selected:{mode:'join',value:'203'}};
 const project = {version:4,width:900,height:500,pages:[{id:"page",name:"Page",bindingMode:"none"}],items,assets:[]};
 const probe = function () {
   try {
@@ -24,6 +26,27 @@ const probe = function () {
     const equal = (actual, expected) => { if (actual !== expected) throw Error(actual + " != " + expected); };
     equal(getComputedStyle(buttons[0]).backgroundColor, "rgba(255, 0, 0, 0.25)");
     equal(getComputedStyle(buttons[1]).backgroundColor, "rgba(0, 0, 255, 0.75)");
+    const label = buttons[0].parentElement.querySelector('.composer-button-label') || buttons[0].querySelector('.standard-button-label');
+    equal(getComputedStyle(label).color, 'rgb(255, 0, 0)');
+    const feedback = (address, value) => {
+      const suffix = {'201':'.Label','202':'.SelectedLabel','203':'.Selected'}[address];
+      const subscriptions = window.__labelSubscriptions.filter(entry => entry.address === address || entry.address.endsWith(suffix));
+      if (!subscriptions.length) throw Error('Missing subscription: '+address);
+      subscriptions.forEach(entry => entry.callback(value));
+    };
+    feedback('201', 'Remote standard');
+    feedback('202', 'Remote selected');
+    equal(label.textContent, 'Remote standard');
+    feedback('203', true);
+    equal(label.textContent, 'Remote selected');
+    equal(getComputedStyle(label).color, 'rgb(0, 255, 0)');
+    feedback('201', 'New standard');
+    equal(label.textContent, 'Remote selected');
+    feedback('202', '');
+    equal(label.textContent, 'Local selected');
+    feedback('203', false);
+    equal(label.textContent, 'New standard');
+    equal(getComputedStyle(label).color, 'rgb(255, 0, 0)');
     buttons.forEach(button => button.classList.add('active'));
     equal(getComputedStyle(buttons[0]).backgroundColor, "rgba(0, 255, 0, 0.5)");
     equal(getComputedStyle(buttons[1]).backgroundColor, "rgb(255, 255, 255)");
@@ -46,8 +69,15 @@ const probe = function () {
   } catch(error) { document.body.dataset.isolation = error.message; }
 };
 const scripts = ['component-runtime.js','standard-button.component.js','widget-list.component.js'].map(name => '<script>'+read(name)+'</script>').join('');
-const setup = '<script>const items='+JSON.stringify(items)+';items.forEach(item=>{const root=document.createElement("div");document.body.append(root);ComposerRuntime.mount(root,item.componentId,{properties:item.properties})});</script>';
+const setup = '<script>const items='+JSON.stringify(items)+';items.forEach(item=>{const root=document.createElement("div");document.body.append(root);ComposerRuntime.mount(root,item.componentId,{properties:item.properties,bindings:item.signalBindings})});</script>';
+const signalMock = '<script>window.__labelSubscriptions=[];window.CrComLib={publishEvent(){},subscribeState(type,address,callback){window.__labelSubscriptions.push({type,address,callback});return callback},unsubscribeState(){}};</script>';
 const pages = ['<!doctype html><html><body>'+scripts+setup+'</body></html>', ComposerExporter.exportProject(project)];
+// Repeat in contract mode to catch address normalization merging the two labels.
+const contractProject = JSON.parse(JSON.stringify(project));
+contractProject.items[0].properties.bindingMode = 'contract';
+contractProject.items[0].properties.labelPlacement = 'below';
+contractProject.items[0].signalBindings = {label:{mode:'contract',value:'First.Label'},selectedLabel:{mode:'contract',value:'First.SelectedLabel'},selected:{mode:'contract',value:'First.Selected'}};
+pages.push(ComposerExporter.exportProject(contractProject));
 const chrome = [
   process.env.CHROME_PATH,
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -59,7 +89,7 @@ for (const [index, html] of pages.entries()) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'composer-isolation-'));
   try {
     const file = path.join(directory,'index.html');
-    fs.writeFileSync(file,html.replace('</body>','<script>('+probe.toString()+')();</script></body>'));
+    fs.writeFileSync(file,html.replace('<body>', '<body>'+signalMock).replace('</head>', signalMock+'</head>').replace('</body>','<script>('+probe.toString()+')();</script></body>'));
     const result = childProcess.spawnSync(chrome,['--headless=new','--disable-gpu','--no-sandbox','--user-data-dir='+path.join(directory,'profile'),'--virtual-time-budget=1000','--dump-dom','file:///'+file.replace(/\\/g,'/')],{encoding:'utf8',timeout:20000});
     assert.equal(result.stdout?.match(/data-isolation="([^"]*)"/)?.[1], 'passed', 'Instance isolation in '+(index ? 'export' : 'editor runtime')+': '+result.stderr);
   } finally { fs.rmSync(directory,{recursive:true,force:true}); }

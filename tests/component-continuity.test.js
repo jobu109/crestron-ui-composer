@@ -385,3 +385,18 @@ for (const id of dpadIds) {
 }
 
 console.log(`PASS continuity profiles across ${definitions.size} components`);
+
+for (const definition of definitions.values()) {
+  if (!definition.buttonLabelCapability) continue;
+  const capability = definition.buttonLabelCapability;
+  for (const [key, name] of [[capability.signalKey, "Standard Label"], [capability.selectedLabelSignalKey, "Selected Label"]]) {
+    const signal = definition.signals.find(signal => signal.key === key);
+    assert.ok(signal, definition.id + " lacks " + name);
+    assert.equal(signal.name, name);
+    assert.equal(signal.type, "serial");
+    assert.equal(signal.direction, "input");
+    assert.equal(signal.optionalProperty, "showLabel");
+  }
+  assert.notEqual(capability.signalKey, capability.selectedLabelSignalKey);
+}
+console.log("PASS separate standard and selected serial label inputs");
