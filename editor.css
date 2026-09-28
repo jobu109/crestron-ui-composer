@@ -240,7 +240,7 @@ input {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 10px 14px 14px;
+  padding: 0 14px 14px;
   overflow: auto;
 }
 .bar-collapse-all {
@@ -356,7 +356,7 @@ input {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 10px;
+  padding: 0 10px 10px;
   overflow: auto;
 }
 .secondary-sidebar-empty {
@@ -392,7 +392,7 @@ input {
   display: flex;
   align-items: stretch;
   gap: 10px;
-  padding: 10px;
+  padding: 0 10px 10px;
   overflow: auto;
 }
 .workspace[data-secondary-dock="top"] .secondary-sidebar-sections > .side-panel-section,
@@ -442,7 +442,7 @@ input {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 10px 14px 14px;
+  padding: 0 14px 14px;
   overflow: auto;
 }
 #inspector-resizer {

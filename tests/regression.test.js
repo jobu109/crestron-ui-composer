@@ -574,6 +574,21 @@ run("library sections can move to a resizable four-edge second bar", () => {
   assert.ok(css.includes(".section-collapse-all"));
   assert.ok(css.includes(".bar-collapse-all"));
   assert.ok(css.includes(".inspector-collapsible"));
+  assert.match(
+    css,
+    /\.primary-sidebar-sections\s*\{[^}]*padding:\s*0 14px 14px;/s,
+    "the primary bar must meet its toolbar without exposing a background strip",
+  );
+  assert.match(
+    css,
+    /\.secondary-sidebar-sections\s*\{[^}]*padding:\s*0 10px 10px;/s,
+    "the second bar must meet its toolbar without exposing a background strip",
+  );
+  assert.match(
+    css,
+    /\.inspector-sections\s*\{[^}]*padding:\s*0 14px 14px;/s,
+    "the Inspector must meet its toolbar without exposing a background strip",
+  );
 });
 
 run("optional label controls use their own top-level Inspector section", () => {
