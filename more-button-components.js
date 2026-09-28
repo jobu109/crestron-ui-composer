@@ -193,6 +193,7 @@
   );
   runtime.register({
     id: "wave-button",
+    retired: true, // Keep existing projects compatible without offering new instances.
     name: "Wave Button",
     category: "Standard Buttons",
     defaultSize: { width: 220, height: 100 },

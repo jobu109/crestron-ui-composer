@@ -48,10 +48,9 @@ componentScripts.forEach((file) =>
 const manifest = JSON.parse(read("components.manifest.json")),
   manifestIds = new Set(manifest.components.map((entry) => entry.componentId)),
   definitions = ComposerRuntime.definitions,
-  // Registered components that are intentionally not palette-listed: they're only ever
-  // auto-created as a hidden system item (see ensureToastQueueItem() in editor.js), never
-  // dragged onto a page by hand.
-  internalOnlyComponents = new Set(["toast-queue"]);
+  // Toast Queue is system-managed; retired Wave Button supports existing projects.
+  // Neither is offered for new placement in the palette.
+  internalOnlyComponents = new Set(["toast-queue", "wave-button"]);
 assert.equal(
   definitions.size,
   manifestIds.size + internalOnlyComponents.size,
@@ -393,6 +392,7 @@ widgetListChoices.forEach((id) => {
 const expectedWidgetListChoices = [...definitions.values()]
   .filter(
     (definition) =>
+      !definition.retired &&
       definition.id !== "widget-list" &&
       definition.id !== "toast-queue" &&
       definition.category !== "Multi-Devices",

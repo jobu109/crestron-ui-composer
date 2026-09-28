@@ -3,7 +3,7 @@
 
   const widgetOptions = [
     ["standard-button", "Standard Button"], ["blank-button", "Blank Button"],
-    ["wave-button", "Wave Button"], ["mute-button", "Mute Button"],
+    ["mute-button", "Mute Button"],
     ["volume-up-button", "Volume Up"], ["volume-down-button", "Volume Down"],
     ["power-button", "Power Button"], ["illuminated-power-button", "Illuminated Power Button"],
     ["rolling-toggle", "Standard Toggle"], ["hole-toggle", "Hole Toggle"],

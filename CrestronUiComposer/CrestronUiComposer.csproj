@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\CrestronUIEditor.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>1.13.11</Version>
-    <FileVersion>1.13.11.0</FileVersion>
-    <AssemblyVersion>1.13.11.0</AssemblyVersion>
+    <Version>1.13.12</Version>
+    <FileVersion>1.13.12.0</FileVersion>
+    <AssemblyVersion>1.13.12.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +31,7 @@
     <Content Include="..\editor.css" Link="Web\editor.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\editor.js" Link="Web\editor.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\exporter.js" Link="Web\exporter.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\flat-controls.component.js" Link="Web\flat-controls.component.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\component-runtime.js" Link="Web\component-runtime.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\component-workbench.js" Link="Web\component-workbench.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\project-migrations.js" Link="Web\project-migrations.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

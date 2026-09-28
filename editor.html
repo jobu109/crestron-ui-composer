@@ -227,7 +227,6 @@
           <div class="app-menu-popup">
             <button id="validate-project">Health check</button>
             <button id="panel-performance">Panel performance</button>
-            <button id="build-self-test">Export/build self-test</button>
             <button id="build-ch5">Build Project</button>
           </div>
         </details>
@@ -1001,9 +1000,9 @@
       <form method="dialog">
         <h2>Component HTML</h2>
         <p class="hint">
-          Edit signal joins, contract names, text, CSS, or behavior.
+          Edits apply to this instance and are saved with the project. Explicit HTML/CSS edits take precedence over Inspector defaults. Built-in component behavior remains shared.
         </p>
-        <textarea id="source-editor" spellcheck="false"></textarea>
+        <textarea id="source-editor" spellcheck="false" wrap="off"></textarea>
         <div class="dialog-actions">
           <button value="cancel">Cancel</button
           ><button id="apply-source" value="default" class="primary">
@@ -2865,6 +2864,7 @@
     <script src="font-awesome-free-icons.js"></script>
     <script src="component-runtime.js"></script>
     <script src="standard-button.component.js"></script>
+    <script src="flat-controls.component.js"></script>
     <script src="hold-button.component.js"></script>
     <script src="circular-hold-button.component.js"></script>
     <script src="countdown-auto-fire.component.js"></script>

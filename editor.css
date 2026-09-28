@@ -5318,3 +5318,6 @@ textarea {
 .stage-tools { flex-wrap: wrap; max-width: calc(100% + 48px); box-sizing: border-box; }
 .build-project-actions { flex-shrink: 0; }
 .build-project-actions button { white-space: nowrap; }
+
+#source-dialog { width: min(1000px, 94vw); }
+#source-editor { font: 13px/1.6 Consolas, "Courier New", monospace; tab-size: 2; white-space: pre; overflow: auto; }

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flat Controls</title>
+<style>
+  /* ===== Theme tokens (edit these to re-skin) ===== */
+  :root {
+    --flat-bg: #1e2128;
+    --flat-surface: #2b2f38;
+    --flat-surface-press: #353a45;
+    --flat-accent: #2f80ed;
+    --flat-accent-press: #2468c4;
+    --flat-text: #e9ecf1;
+    --flat-text-dim: #8b93a1;
+    --flat-radius: 8px;
+    --flat-font: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  body {
+    margin: 0; padding: 32px;
+    background: var(--flat-bg); color: var(--flat-text);
+    font-family: var(--flat-font);
+    display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start;
+  }
+  .demo { display: flex; flex-direction: column; gap: 12px; }
+  .demo h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--flat-text-dim); text-transform: uppercase; letter-spacing: .08em; }
+
+  /* ===== Standard button (momentary) ===== */
+  .flat-btn {
+    min-width: 140px; height: 56px; padding: 0 20px;
+    border: none; border-radius: var(--flat-radius);
+    background: var(--flat-surface); color: var(--flat-text);
+    font: 600 16px var(--flat-font);
+    cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+    transition: background .12s;
+  }
+  .flat-btn:active, .flat-btn.is-pressed { background: var(--flat-accent); }
+
+  /* ===== Toggle button (latching) ===== */
+  .flat-toggle[aria-pressed="true"] { background: var(--flat-accent); }
+  .flat-toggle[aria-pressed="true"]:active { background: var(--flat-accent-press); }
+  .flat-toggle[aria-pressed="false"]:active { background: var(--flat-surface-press); }
+
+  /* ===== Slider / level ===== */
+  .flat-slider {
+    --value: 50;
+    position: relative;
+    background: var(--flat-surface);
+    border-radius: var(--flat-radius);
+    overflow: hidden; touch-action: none; cursor: pointer; user-select: none;
+  }
+  .flat-slider .fill {
+    position: absolute; left: 0; bottom: 0;
+    background: var(--flat-accent);
+  }
+  .flat-slider .label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font: 600 16px var(--flat-font); color: var(--flat-text);
+    pointer-events: none;
+  }
+  .flat-slider.horizontal { width: 280px; height: 56px; }
+  .flat-slider.horizontal .fill { top: 0; width: calc(var(--value) * 1%); }
+  .flat-slider.vertical { width: 64px; height: 260px; }
+  .flat-slider.vertical .fill { right: 0; height: calc(var(--value) * 1%); }
+  .flat-slider.vertical .label { align-items: flex-start; padding-top: 10px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+  <div class="demo">
+    <h3>Standard</h3>
+    <button class="flat-btn" type="button">Button</button>
+  </div>
+
+  <div class="demo">
+    <h3>Toggle</h3>
+    <button class="flat-btn flat-toggle" type="button" aria-pressed="false">Toggle</button>
+  </div>
+
+  <div class="demo">
+    <h3>Slider – Horizontal</h3>
+    <div class="flat-slider horizontal" role="slider" tabindex="0"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+      <div class="fill"></div><div class="label">50%</div>
+    </div>
+  </div>
+
+  <div class="demo">
+    <h3>Slider – Vertical</h3>
+    <div class="flat-slider vertical" role="slider" tabindex="0"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="75">
+      <div class="fill"></div><div class="label">75%</div>
+    </div>
+  </div>
+
+<script>
+  // Standard: pressed state held while touching (works for touch + mouse)
+  document.querySelectorAll('.flat-btn:not(.flat-toggle)').forEach(btn => {
+    const on = () => btn.classList.add('is-pressed');
+    const off = () => btn.classList.remove('is-pressed');
+    btn.addEventListener('pointerdown', on);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => btn.addEventListener(e, off));
+  });
+
+  // Toggle: flip aria-pressed on click
+  document.querySelectorAll('.flat-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(next));
+      btn.dispatchEvent(new CustomEvent('flat-change', { detail: { value: next } }));
+    });
+  });
+
+  // Slider: drag anywhere on the track to set 0–100
+  document.querySelectorAll('.flat-slider').forEach(sl => {
+    const vertical = sl.classList.contains('vertical');
+    const label = sl.querySelector('.label');
+
+    const set = v => {
+      v = Math.round(Math.max(0, Math.min(100, v)));
+      sl.style.setProperty('--value', v);
+      sl.setAttribute('aria-valuenow', v);
+      label.textContent = v + '%';
+      sl.dispatchEvent(new CustomEvent('flat-change', { detail: { value: v } }));
+    };
+    const fromPointer = e => {
+      const r = sl.getBoundingClientRect();
+      set(vertical ? (r.bottom - e.clientY) / r.height * 100
+                   : (e.clientX - r.left) / r.width * 100);
+    };
+
+    sl.addEventListener('pointerdown', e => { sl.setPointerCapture(e.pointerId); fromPointer(e); });
+    sl.addEventListener('pointermove', e => { if (sl.hasPointerCapture(e.pointerId)) fromPointer(e); });
+    sl.addEventListener('keydown', e => {
+      const cur = +sl.getAttribute('aria-valuenow');
+      if (['ArrowUp', 'ArrowRight'].includes(e.key)) { set(cur + 1); e.preventDefault(); }
+      if (['ArrowDown', 'ArrowLeft'].includes(e.key)) { set(cur - 1); e.preventDefault(); }
+    });
+
+    set(+sl.getAttribute('aria-valuenow'));
+  });
+</script>
+</body>
+</html>

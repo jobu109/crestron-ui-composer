@@ -146,6 +146,7 @@
   let customPreservedRelationships = [];
   let customSelfTestResolve = null;
   let sourceEditingComponent = false;
+  let sourceEditorInitialValue = "";
   let snapEnabled = true,
     snapSize = 10;
   const snap = (value) =>
@@ -3588,6 +3589,11 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           );
       });
       item.signalBindings = item.signalBindings || {};
+      if (!item.componentSourceEdits && (item.componentTemplate != null || item.componentStyles != null))
+        item.componentSourceEdits = collectComponentSourceEdits(definition, {
+          html: item.componentTemplate ?? definition.template,
+          css: item.componentStyles ?? definition.styles,
+        }, item.properties);
       definition.signals.forEach((signal) => {
         if (
           !Object.prototype.hasOwnProperty.call(item.signalBindings, signal.key)
@@ -3642,8 +3648,9 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
         {
           bindings: item.signalBindings,
           properties: item.properties || {},
-          templateOverride: item.componentTemplate || "",
-          stylesOverride: item.componentStyles || "",
+          templateOverride: item.componentTemplate,
+          stylesOverride: item.componentStyles,
+          sourceEdits: item.componentSourceEdits,
           contractPrefix: contractWidgetPrefix(item),
           targetPage: item.targetPage,
           navigate: () => {},
@@ -16467,11 +16474,103 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         : null;
       sourceEditingComponent = !!definition;
       $("source-editor").value = definition
-        ? `<style>${item.componentStyles || definition.styles || ""}</style>\n${item.componentTemplate || definition.template || ""}`
+        ? `<style>${item.componentStyles ?? definition.styles ?? ""}</style>\n${item.componentTemplate ?? definition.template ?? ""}`
         : item.source;
+      $("source-editor").value = formatComponentSource($("source-editor").value);
+      sourceEditorInitialValue = $("source-editor").value;
       $("source-dialog").showModal();
     }
   };
+
+  function formatComponentSource(source) {
+    function css(text) {
+      let result = "", line = "", depth = 0, parentheses = 0, quote = "", comment = false;
+      const flush = () => { if (line.trim()) result += "  ".repeat(Math.max(0, depth)) + line.trim() + "\n"; line = ""; };
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i], next = text[i + 1];
+        if (comment) { line += c; if (c === "*" && next === "/") { line += next; i++; comment = false; } continue; }
+        if (quote) { line += c; if (c === "\\") line += text[++i] || ""; else if (c === quote) quote = ""; continue; }
+        if (c === "/" && next === "*") { line += c + next; i++; comment = true; continue; }
+        if (c === '"' || c === "'") { quote = c; line += c; continue; }
+        if (c === "(") parentheses++;
+        if (c === ")") parentheses--;
+        if (!parentheses && c === "{") { line = line.trimEnd() + " {"; flush(); depth++; }
+        else if (!parentheses && c === "}") { flush(); depth--; line = "}"; flush(); }
+        else if (!parentheses && c === ";") { line += c; flush(); }
+        else line += c;
+      }
+      flush(); return result.trimEnd();
+    }
+    const parsed = new DOMParser().parseFromString(source, "text/html");
+    function format(node, depth) {
+      const indent = "  ".repeat(depth);
+      if (node.nodeType !== 1) return node.nodeType === 8 ? indent + "<!--" + node.data + "-->" : node.textContent.trim() ? indent + node.textContent : "";
+      if (node.tagName === "STYLE") return indent + "<style>\n" + css(node.textContent).split("\n").map(line => indent + "  " + line).join("\n") + "\n" + indent + "</style>";
+      if (/^(SCRIPT|PRE|TEXTAREA|SVG)$/.test(node.tagName) || !node.children.length || [...node.childNodes].some(child => child.nodeType === 3 && child.textContent.trim())) return indent + node.outerHTML;
+      // Avoid inserting visible spaces between adjacent inline elements.
+      if (node.children.length > 1 && [...node.children].every(child => /^(SPAN|A|B|I|STRONG|EM|CODE)$/.test(child.tagName))) return indent + node.outerHTML;
+      const shell = node.cloneNode(false).outerHTML, opening = shell.slice(0, shell.indexOf(">") + 1);
+      return indent + opening + "\n" + [...node.childNodes].map(child => format(child, depth + 1)).filter(Boolean).join("\n") + "\n" + indent + "</" + node.tagName.toLowerCase() + ">";
+    }
+    if (/<(?:!doctype|html)\b/i.test(source)) return (parsed.doctype ? "<!DOCTYPE html>\n" : "") + format(parsed.documentElement, 0);
+    return [...parsed.head.childNodes, ...parsed.body.childNodes].map(node => format(node, 0)).filter(Boolean).join("\n\n");
+  }
+  function collectComponentSourceEdits(definition, source, properties) {
+    function cssRules(css) {
+      const sheet = new CSSStyleSheet(); sheet.replaceSync(css || "");
+      const entries = new Map(), occurrences = new Map();
+      function visit(rules, wrappers) {
+        for (const rule of rules) {
+          if (rule.type === 1) {
+            const identity = JSON.stringify([wrappers, rule.selectorText]);
+            const occurrence = occurrences.get(identity) || 0;
+            occurrences.set(identity, occurrence + 1);
+            const key = JSON.stringify([identity, occurrence]);
+            const entry = { selector: rule.selectorText, wrappers, values: {} };
+            for (const name of rule.style) entry.values[name] = rule.style.getPropertyValue(name);
+            entries.set(key, entry);
+          } else if (rule.cssRules && rule.type !== 7) visit(rule.cssRules, [...wrappers, rule.cssText.slice(0, rule.cssText.indexOf("{"))]);
+        }
+      }
+      visit(sheet.cssRules, []); return entries;
+    }
+    const beforeCss = cssRules(definition.styles), afterCss = cssRules(source.css), rules = [];
+    for (const [key, entry] of afterCss) {
+      const original = beforeCss.get(key)?.values || {};
+      const declarations = Object.entries(entry.values).filter(([name, value]) => original[name] !== value).map(([name, value]) => name + ":" + value + " !important;");
+      if (declarations.length) rules.push(entry.wrappers.map(wrapper => wrapper + "{").join("") + entry.selector + "{" + declarations.join("") + "}" + "}".repeat(entry.wrappers.length));
+    }
+    const before = document.createElement("template"), after = document.createElement("template");
+    before.innerHTML = definition.template || ""; after.innerHTML = source.html;
+    function selector(element) {
+      if (element.id) return "#" + CSS.escape(element.id);
+      const classes = [...element.classList].map(name => "." + CSS.escape(name)).join("");
+      if (classes && after.content.querySelectorAll(classes).length === 1) return classes;
+      const parts = []; let current = element;
+      while (current && current.nodeType === 1) {
+        const siblings = [...current.parentNode.children].filter(sibling => sibling.tagName === current.tagName);
+        parts.unshift(current.tagName.toLowerCase() + ":nth-of-type(" + (siblings.indexOf(current) + 1) + ")"); current = current.parentElement;
+      }
+      return ":scope > " + parts.join(" > ");
+    }
+    const elements = [];
+    for (const element of after.content.querySelectorAll("*")) {
+      const path = selector(element), old = before.content.querySelector(path.replace(/^:scope > /, "")), edit = { selector: path, attributes: {} };
+      if (!element.children.length && element.textContent.trim() && element.textContent !== old?.textContent) {
+        edit.text = element.textContent;
+        // Keep local Inspector text in sync with explicitly edited template text.
+        for (const property of definition.properties || []) {
+          if (typeof property.defaultValue === "string" && old?.textContent.trim() === property.defaultValue && /text|label|name|title/i.test(property.key) && !/color|font|size|selected/i.test(property.key)) properties[property.key] = element.textContent;
+        }
+      }
+      for (const attribute of element.attributes) if (attribute.value !== old?.getAttribute(attribute.name)) edit.attributes[attribute.name] = attribute.value;
+      if (old) for (const attribute of old.attributes) if (!element.hasAttribute(attribute.name)) edit.attributes[attribute.name] = null;
+      if (edit.attributes.style) rules.push(path + "{" + [...element.style].map(name => name + ":" + element.style.getPropertyValue(name) + " !important;").join("") + "}");
+      if (edit.text != null || Object.keys(edit.attributes).length) elements.push(edit);
+    }
+    return { elements, css: rules.join("\n") };
+  }
+
   function splitCustomSource(source) {
     const documentValue = new DOMParser().parseFromString(
         String(source || ""),
@@ -28740,6 +28839,8 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
     if (current()) {
       if (sourceEditingComponent) {
         const source = splitCustomSource($("source-editor").value);
+        current().properties = current().properties || {};
+        current().componentSourceEdits = collectComponentSourceEdits(window.ComposerRuntime.get(current().componentId), source, current().properties);
         current().componentTemplate = source.html;
         current().componentStyles = source.css;
       } else current().source = $("source-editor").value;
@@ -29149,7 +29250,6 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   });
   $("health-search").oninput = renderHealthDashboard;
   $("health-fix-all").onclick = fixAllHealthIssues;
-  $("build-self-test").onclick = runBuildSelfTest;
   $("project-backups").onclick = async () => {
     if (!native)
       return alert("Project backups are available in the Windows application.");

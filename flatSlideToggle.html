@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flat Slide Toggle</title>
+  <style>
+    :root { --flat-surface: #2b2f38; --flat-accent: #2f80ed; --flat-knob: #e9ecf1; }
+    .flat-switch { position: relative; width: 96px; height: 52px; padding: 0; border: none; border-radius: 26px; background: var(--flat-surface); cursor: pointer; transition: background .18s; }
+    .flat-switch .knob { position: absolute; top: 6px; left: 6px; width: 40px; height: 40px; border-radius: 50%; background: var(--flat-knob); transition: transform .18s ease; }
+    .flat-switch[aria-checked="true"] { background: var(--flat-accent); }
+    .flat-switch[aria-checked="true"] .knob { transform: translateX(44px); }
+  </style>
+</head>
+<body>
+  <button class="flat-switch" type="button" role="switch" aria-checked="false" aria-label="Toggle">
+    <span class="knob"></span>
+  </button>
+  <script>
+    document.querySelectorAll('.flat-switch').forEach(button => {
+      button.addEventListener('click', () => {
+        const value = button.getAttribute('aria-checked') !== 'true';
+        button.setAttribute('aria-checked', String(value));
+        button.dispatchEvent(new CustomEvent('flat-change', { detail: { value } }));
+      });
+    });
+  </script>
+</body>
+</html>

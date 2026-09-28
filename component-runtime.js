@@ -1474,6 +1474,7 @@
       widgetType.options = [...definitions.values()]
         .filter(
           (entry) =>
+            !entry.retired &&
             entry.id !== "widget-list" &&
             entry.id !== "toast-queue" &&
             entry.category !== "Multi-Devices",
@@ -1567,6 +1568,93 @@
       element.removeEventListener("contextmenu", preventNative);
     };
   }
+
+  function scopeSourceStyles(root, css) {
+    if (!root.dataset.sourceInstance) root.dataset.sourceInstance = String(window.__composerSourceInstance = (window.__composerSourceInstance || 0) + 1);
+    const scope = '[data-source-instance="' + root.dataset.sourceInstance + '"]';
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css || "");
+    const animations = new Map(root.__sourceAnimations || []);
+    function collectAnimations(rules) { for (const rule of rules) { if (rule.type === 7) animations.set(rule.name, "source-" + root.dataset.sourceInstance + "-" + rule.name); else if (rule.cssRules) collectAnimations(rule.cssRules); } }
+    collectAnimations(sheet.cssRules);
+    root.__sourceAnimations = [...animations];
+    function selectors(value) {
+      const parts = []; let start = 0, depth = 0, quote = "";
+      for (let i = 0; i < value.length; i++) {
+        const c = value[i];
+        if (c === "\\") { i++; continue; }
+        if (quote) { if (c === quote) quote = ""; continue; }
+        if (c === '"' || c === "'") { quote = c; continue; }
+        if (c === "(" || c === "[") depth++;
+        if (c === ")" || c === "]") depth--;
+        if (c === "," && !depth) { parts.push(value.slice(start, i)); start = i + 1; }
+      }
+      parts.push(value.slice(start));
+      return parts.map(part => {
+        part = part.trim();
+        if (part.startsWith(scope)) return part;
+        const rootSelector = /^(?:\[data-component\s*=\s*(?:"[^"]*"|'[^']*'|[^\]]+)\]|:root|:scope|html|body)(?=[\s.#[:>+~]|$)/;
+        return rootSelector.test(part) ? part.replace(rootSelector, scope) : scope + " " + part;
+      }).join(", ");
+    }
+    function rules(list) {
+      return [...list].map(rule => {
+        if (rule.type === 1) {
+          for (const property of ["animation", "animation-name"]) {
+            let value = rule.style.getPropertyValue(property);
+            if (!value) continue;
+            for (const [name, replacement] of animations) value = value.replace(new RegExp("(^|[^\\w-])" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w-])", "g"), (_, prefix) => prefix + replacement);
+            rule.style.setProperty(property, value, rule.style.getPropertyPriority(property));
+          }
+          return selectors(rule.selectorText) + "{" + rule.style.cssText + "}";
+        }
+        if (rule.type === 7) return "@keyframes " + animations.get(rule.name) + "{" + [...rule.cssRules].map(frame => frame.cssText).join(" ") + "}";
+        if (rule.cssRules && rule.type !== 7) return rule.cssText.slice(0, rule.cssText.indexOf("{")) + "{" + rules(rule.cssRules) + "}";
+        return rule.cssText;
+      }).join("\n");
+    }
+    return rules(sheet.cssRules);
+  }
+  function applySourceEdits(root, edits) {
+    if (!edits) return;
+    for (const edit of edits.elements || []) {
+      const target = root.querySelector(edit.selector);
+      if (!target) continue;
+      if (edit.text != null && target.textContent !== edit.text) target.textContent = edit.text;
+      for (const [key, value] of Object.entries(edit.attributes || {})) {
+        if (value == null) target.removeAttribute(key);
+        else target.setAttribute(key, value);
+      }
+    }
+    if (edits.css) {
+      // Preserve the component's more-specific selected/pressed state rules
+      // when promoting edited declarations above Inspector inline styles.
+      const patchSheet = new CSSStyleSheet();
+      patchSheet.replaceSync(edits.css);
+      const changed = new Set(), stateRules = [];
+      function properties(rules) {
+        for (const rule of rules) {
+          if (rule.type === 1) for (const name of rule.style) changed.add(name);
+          else if (rule.cssRules && rule.type !== 7) properties(rule.cssRules);
+        }
+      }
+      function states(rules, wrappers = []) {
+        for (const rule of rules) {
+          if (rule.type === 1 && /[.:](?:active|pressed|selected|armed|checked|hover|focus)(?![\w-])/.test(rule.selectorText)) {
+            const declarations = [...rule.style].filter(name => changed.has(name)).map(name => name + ":" + rule.style.getPropertyValue(name) + " !important;").join("");
+            if (declarations) stateRules.push(wrappers.map(wrapper => wrapper + "{").join("") + rule.selectorText + "{" + declarations + "}" + "}".repeat(wrappers.length));
+          } else if (rule.cssRules && rule.type !== 7) states(rule.cssRules, [...wrappers, rule.cssText.slice(0, rule.cssText.indexOf("{"))]);
+        }
+      }
+      properties(patchSheet.cssRules);
+      root.querySelectorAll("style").forEach(style => { if (style.sheet && !style.dataset.sourceEdits) states(style.sheet.cssRules); });
+      const style = document.createElement("style");
+      style.dataset.sourceEdits = "true";
+      style.textContent = scopeSourceStyles(root, stateRules.join("\n") + "\n" + edits.css);
+      root.appendChild(style);
+    }
+  }
+
   function mount(root, id, options = {}) {
     const definition = get(id),
       optionEnabled = (value) =>
@@ -1629,9 +1717,9 @@
     root.innerHTML =
       '<style data-composer-touch-reset>[data-component],[data-component] *{-webkit-tap-highlight-color:transparent!important;-webkit-touch-callout:none}[data-component] :focus{outline:none!important}</style>' +
       "<style>" +
-      (options.stylesOverride || definition.styles) +
+      (options.stylesOverride != null ? scopeSourceStyles(root, options.stylesOverride) : definition.styles) +
       "</style>" +
-      (options.templateOverride || definition.template);
+      (options.templateOverride ?? definition.template);
     const cleanups = [],
       lib = options.lib === undefined ? library() : options.lib,
       bindings = options.bindings || {},
@@ -1891,6 +1979,7 @@
       observer.observe(root, { childList: true, subtree: true });
       cleanups.push(() => observer.disconnect());
     }
+    applySourceEdits(root, options.sourceEdits);
     return () =>
       cleanups.splice(0).forEach((fn) => {
         try {
@@ -1939,6 +2028,8 @@
     wireScrollReturn,
     wireButtonLabel,
     wireIconPlacement,
+    scopeSourceStyles,
+    applySourceEdits,
     resolveAddress: contractAddress,
     typeCode,
   };

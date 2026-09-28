@@ -414,8 +414,9 @@
           targetPage: item.targetPage || "",
           interaction: item.interaction || null,
           pageId: page.id,
-          templateOverride: item.componentTemplate || "",
-          stylesOverride: item.componentStyles || "",
+          templateOverride: item.componentTemplate,
+          stylesOverride: item.componentStyles,
+          sourceEdits: item.componentSourceEdits,
         })),
     );
     const usedIconValues = [
@@ -523,7 +524,7 @@
       animatedShow =
         "function show(id){document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id===id)});var page=document.getElementById(id),config=pages.find(function(p){return p.id===id});if(page&&config&&config.transition!=='none'){var preset=config.transition.indexOf('slide')===0?'slide':config.transition,direction=config.transition==='slide-right'?'right':'left';page.animate(motion({preset:preset,direction:direction}),{duration:config.transitionDuration||350,easing:'ease-out'})}interactionItems.forEach(function(entry){if(entry.pageId===id){tracks(entry).filter(function(c){return c.trigger==='page-enter'}).forEach(function(c){play(document.querySelector('[data-instance=\"'+entry.instance+'\"]'),c)});runActions(entry,'page-enter')}});diag('Page: '+id)}",
       layeredController = pointerController
-        .replace("(function(){var feedbackState=", `(function(){${wireCipText.toString()};${wireItemVisibility.toString()};${global.ComposerRuntime.wireUniformScrollbars.toString()};${global.ComposerRuntime.wireScrollReturn.toString()};${global.ComposerRuntime.wireButtonLabel.toString()};${global.ComposerRuntime.wireIconPlacement.toString()};var feedbackState=`)
+        .replace("(function(){var feedbackState=", `(function(){${wireCipText.toString()};${wireItemVisibility.toString()};${global.ComposerRuntime.wireUniformScrollbars.toString()};${global.ComposerRuntime.wireScrollReturn.toString()};${global.ComposerRuntime.wireButtonLabel.toString()};${global.ComposerRuntime.wireIconPlacement.toString()};${global.ComposerRuntime.scopeSourceStyles.toString()};${global.ComposerRuntime.applySourceEdits.toString()};var feedbackState=`)
         .replace(
           "function mount(item){var root=document.querySelector('[data-instance=\"'+item.instance+'\"]'),def=definitions[item.componentId];",
           "function mount(item){var holder=document.querySelector('[data-instance=\"'+item.instance+'\"]'),root=holder&&holder.querySelector('.scoped-preview'),def=definitions[item.componentId];",
@@ -588,7 +589,7 @@
         )
         .replace(
           "root.innerHTML='<style>'+def.styles+'</style>'+def.template;",
-          "root.innerHTML='<style>'+(item.stylesOverride||def.styles)+'</style>'+(item.templateOverride||def.template);",
+          "root.innerHTML='<style>'+(item.stylesOverride!=null?scopeSourceStyles(root,item.stylesOverride):def.styles)+'</style>'+(item.templateOverride!=null?item.templateOverride:def.template);",
         )
         .replace(
           "subscribe:function(key,callback){var spec=def.signals.find(function(s){return s.key===key}),binding=item.bindings[key];if(!spec||!binding||!binding.value||spec.optionalProperty&&!enabled(item.properties[spec.optionalProperty]))return;subscribeAddress(spec.type,binding.value,callback)}",
@@ -605,7 +606,7 @@
         )
         .replace(
           "def.mount(root,{signals:signals,icons:window.ComposerIcons,interactions:{bindPrimaryPointer:bindPrimaryPointer},resolveComponent:function(id){return definitions[id]},decorateButtonLabel:wireButtonLabel,decorateIconPlacement:wireIconPlacement,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});wireScrollReturn(root,root.closest('.widget,.scoped-widget')||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{})",
-          "try{def.mount(root,{signals:signals,icons:window.ComposerIcons,interactions:{bindPrimaryPointer:bindPrimaryPointer},resolveComponent:function(id){return definitions[id]},decorateButtonLabel:wireButtonLabel,decorateIconPlacement:wireIconPlacement,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});wireButtonLabel(root,def,item.properties||{},signals);wireIconPlacement(root,def,item.properties||{});wireItemVisibility(root,def,item.properties||{},signals)}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}wireCipText(root,signals);wireScrollReturn(root,holder||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{})",
+          "try{def.mount(root,{signals:signals,icons:window.ComposerIcons,interactions:{bindPrimaryPointer:bindPrimaryPointer},resolveComponent:function(id){return definitions[id]},decorateButtonLabel:wireButtonLabel,decorateIconPlacement:wireIconPlacement,navigate:show,options:{targetPage:item.targetPage,properties:item.properties||{},definitionData:def.data||{}}});wireButtonLabel(root,def,item.properties||{},signals);wireIconPlacement(root,def,item.properties||{});wireItemVisibility(root,def,item.properties||{},signals);applySourceEdits(root,item.sourceEdits)}catch(error){diag('Component '+item.componentId+' failed: '+error.message);root.innerHTML='<div style=\"height:100%;padding:12px;border:1px solid #a65050;background:#291718;color:#ffc1c1;overflow:auto\"></div>';root.firstChild.textContent='Component error: '+(error.message||error)}wireCipText(root,signals);wireScrollReturn(root,holder||root,{scrollReturnAxes:def.scrollAxes||[]},item.properties||{});appearance(root,item.properties||{})",
         )
         .replace(
           "window.addEventListener('message',function(e){",
