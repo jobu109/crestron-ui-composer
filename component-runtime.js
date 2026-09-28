@@ -1,6 +1,7 @@
 (function (global) {
   "use strict";
   const definitions = new Map();
+  let nextVisibilityScope = 0;
   const simulator = {
     values: new Map(),
     listeners: new Map(),
@@ -875,7 +876,7 @@
         signalKey: "",
       };
       const labelProperties = [
-        { key: "showLabel", name: "Show label", type: "checkbox", defaultValue: !!dedicatedLabelProperty, group: "Optional Label" },
+        { key: "showLabel", name: "Show label", type: "checkbox", defaultValue: false, group: "Optional Label" },
         { key: "labelFontSize", name: "Label size (px)", type: "number", min: 6, max: 240, defaultValue: Number(definition.properties.find((property) => property.key === "textSize")?.defaultValue) || 18, group: "Optional Label" },
         { key: "labelColor", name: "Label color", type: "color", defaultValue: definition.properties.find((property) => property.key === "textColor")?.defaultValue || "#ffffff", group: "Optional Label" },
         { key: "labelFontWeight", name: "Label weight", type: "select", options: [{ value: "400", label: "Regular" }, { value: "600", label: "Semi-bold" }, { value: "700", label: "Bold" }, { value: "800", label: "Extra bold" }], defaultValue: "700", group: "Optional Label" },
@@ -1818,6 +1819,7 @@
       cleanups.push(wireScrollReturn(root, root.closest(".widget,.scoped-widget") || root, definition, options.properties || {}));
       const disposeCip = wireCipText(root, signals);
       cleanups.push(disposeCip);
+      root.dataset.visibilityScope = String(++nextVisibilityScope);
       const visibility = definition.optionalContent,
         style = document.createElement("style"),
         holder = root.closest(".widget,.scoped-widget"),
@@ -1825,7 +1827,7 @@
           ? `.widget[data-id="${holder.dataset.id}"] `
           : holder?.dataset.instance
             ? `.scoped-widget[data-instance="${holder.dataset.instance}"] `
-            : `[data-component="${id}"] `;
+            : `[data-visibility-scope="${root.dataset.visibilityScope}"] `;
       if (visibility) {
         style.textContent = Object.entries(visibility)
           .filter(([key]) => options.properties?.[key] === false || options.properties?.[key] === 0 || options.properties?.[key] === "0" || String(options.properties?.[key]).toLowerCase() === "false")

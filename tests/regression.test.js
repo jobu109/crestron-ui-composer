@@ -3032,7 +3032,8 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(standardButton.includes('key:"backgroundOpacity"'));
   assert.ok(standardButton.includes('key:"selectedBackgroundColor"'));
   assert.ok(standardButton.includes('key:"selectedBackgroundOpacity"'));
-  assert.ok(standardButton.includes("background-color:'+selectedBackground+'"));
+  assert.ok(standardButton.includes("background-color:var(--standard-button-selected-background)"));
+  assert.ok(standardButton.includes('root.style.setProperty("--standard-button-selected-background",selectedBackground)'));
   assert.ok(editor.includes("keep scrolling to load more"));
   assert.ok(editor.includes('chdContents = buildChdMapping(contractResult)'));
   assert.ok(editor.includes('chdName: state.contract.name'));

@@ -286,9 +286,12 @@
             };
             addGraphic(normalGraphic, false); addGraphic(selectedGraphic, true);
           }
+          // Style elements are global, so scope optional content to this child.
+          window.__composerOptionalScope = (window.__composerOptionalScope || 0) + 1;
+          widget.dataset.optionalScope = String(window.__composerOptionalScope);
           const hiddenSelectors = Object.entries(definition.optionalContent || {})
             .filter(([key]) => defaults[key] === false || defaults[key] === 0 || defaults[key] === "0" || String(defaults[key]).toLowerCase() === "false")
-            .map(([, selector]) => `[data-component="${definition.id}"] ${selector}{display:none!important}`)
+            .map(([, selector]) => selector.split(",").map(part => `[data-optional-scope="${widget.dataset.optionalScope}"] ${part.trim()}{display:none!important}`).join(""))
             .join("");
           if (hiddenSelectors) {
             const visibilityStyle = document.createElement("style");

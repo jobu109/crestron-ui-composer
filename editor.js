@@ -10391,6 +10391,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
     definition.signals.forEach((signal) => {
       if (
         signal.optionalProperty &&
+        signal.key !== definition.buttonLabelCapability?.signalKey &&
         !item.properties?.[signal.optionalProperty]
       )
         return;
