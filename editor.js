@@ -252,6 +252,7 @@
         const hidden = collapsed[bar] === true;
         workspace.dataset[bar + "Collapsed"] = String(hidden);
         button.setAttribute("aria-expanded", String(!hidden));
+        button.querySelector(".workspace-bar-status").textContent = hidden ? "Hidden" : "Visible";
         button.title = `${hidden ? "Show" : "Hide"} ${name} bar`;
         button.setAttribute("aria-label", button.title);
       };
@@ -7067,6 +7068,7 @@ box-shadow:0 0 ${Math.max(0, Number(properties.glowStrength) || 0)}px ${color(pr
           input.value = String(nextValue);
         }
         item.properties[property.key] = nextValue;
+        updateComponentSourceProperty(item, property.key, nextValue);
         if (item.componentId === "widget-list" && property.key === "widgetType" && previousValue !== nextValue)
           Object.keys(item.properties).filter(key => key.startsWith("includedWidget__") || key.startsWith("includedRange__") || key.startsWith("includedRangeIncrement__")).forEach(key => delete item.properties[key]);
         if (property.type === "asset" || property.type === "font") {
@@ -16473,6 +16475,7 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
         ? window.ComposerRuntime.get(item.componentId)
         : null;
       sourceEditingComponent = !!definition;
+      if (definition) materializeComponentSourceProperties(item, definition);
       $("source-editor").value = definition
         ? `<style>${item.componentStyles ?? definition.styles ?? ""}</style>\n${item.componentTemplate ?? definition.template ?? ""}`
         : item.source;
@@ -16515,7 +16518,42 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     if (/<(?:!doctype|html)\b/i.test(source)) return (parsed.doctype ? "<!DOCTYPE html>\n" : "") + format(parsed.documentElement, 0);
     return [...parsed.head.childNodes, ...parsed.body.childNodes].map(node => format(node, 0)).filter(Boolean).join("\n\n");
   }
-  function collectComponentSourceEdits(definition, source, properties) {
+  function collectComponentSourceEdits(definition, source, properties, previousSource) {
+    const propertyBindings = [], sourcePropertyKeys = [];
+    const colorProperties = (definition.properties || []).filter(property => property.type === "color");
+    function colorKey(selector, name, original) {
+      const matches = colorProperties.filter(property => (original || "").includes("--" + property.key.replace(/[A-Z]/g, letter => "-" + letter.toLowerCase())));
+      if (matches.length === 1) return matches[0].key;
+      const selected = /active|selected|aria-(?:checked|pressed).*true|:checked/.test(selector);
+      const key = name === "color" ? (selected ? "selectedTextColor" : "textColor") : /background/.test(name) ? (selected ? "selectedBackgroundColor" : "backgroundColor") : name === "border-color" ? (selected ? "selectedBorderColor" : "borderColor") : null;
+      if (colorProperties.some(property => property.key === key)) return key;
+      const fallback = /background/.test(name) ? (selected ? "selectedColor" : "faceColor") : null;
+      return colorProperties.some(property => property.key === fallback) ? fallback : null;
+    }
+    function bindColor(selector, name, value, original, wrappers = [], sync = true) {
+      const token = /var\(\s*(--[\w-]+)/.exec(original || "")?.[1];
+      const numeric = (definition.properties || []).filter(property => property.type === "number");
+      const numericKey = numeric.find(property => {
+        const variable = "--" + property.key.replace(/[A-Z]/g, letter => "-" + letter.toLowerCase());
+        return name === variable || token === variable || token === variable + "-px" || token === variable + "-percent";
+      })?.key || (/^border(?:-\w+)*-radius$/.test(name) ? numeric.find(property => /^(cornerRadius|borderRadius|radius)$/.test(property.key))?.key : name === "font-size" ? numeric.find(property => property.key === (/composer-button-label/.test(selector) ? "labelFontSize" : "textSize"))?.key || numeric.find(property => property.key === "labelFontSize")?.key : null);
+      if (numericKey && /^-?\d+(?:\.\d+)?(?:px|%)?$/.test(value.trim())) {
+        const property = numeric.find(property => property.key === numericKey), number = parseFloat(value);
+        if (sync) properties[numericKey] = Math.min(property.max ?? Infinity, Math.max(property.min ?? -Infinity, number));
+        propertyBindings.push({ key: numericKey, selector, name, wrappers, unit: value.trim().match(/(?:px|%)$/)?.[0] || "" });
+        return;
+      }
+      const key = name.startsWith("--") ? colorProperties.find(property => name === "--" + property.key.replace(/[A-Z]/g, letter => "-" + letter.toLowerCase()))?.key : colorKey(selector, name, original);
+      if (!key || !CSS.supports("color", value) || /var\(/.test(value)) return;
+      const probe = document.createElement("span"); probe.style.color = value; document.body.appendChild(probe);
+      const rgb = getComputedStyle(probe).color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/); probe.remove();
+      if (!rgb) return;
+      if (sync) {
+        properties[key] = "#" + rgb.slice(1, 4).map(channel => Number(channel).toString(16).padStart(2, "0")).join("");
+        if (key.startsWith("selected")) properties.selectedSameAsStandard = false;
+      }
+      propertyBindings.push({ key, selector, name, wrappers });
+    }
     function cssRules(css) {
       const sheet = new CSSStyleSheet(); sheet.replaceSync(css || "");
       const entries = new Map(), occurrences = new Map();
@@ -16534,14 +16572,33 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
       }
       visit(sheet.cssRules, []); return entries;
     }
-    const beforeCss = cssRules(definition.styles), afterCss = cssRules(source.css), rules = [];
+    const beforeCss = cssRules(definition.styles), afterCss = cssRules(source.css), previousCss = previousSource ? cssRules(previousSource.css) : beforeCss, rules = [];
     for (const [key, entry] of afterCss) {
       const original = beforeCss.get(key)?.values || {};
+      for (const [name, value] of Object.entries(entry.values)) if (original[name] !== value || previousCss.get(key)?.values[name] !== value) {
+        bindColor(entry.selector, name, value, original[name], entry.wrappers, previousCss.get(key)?.values[name] !== value);
+      }
       const declarations = Object.entries(entry.values).filter(([name, value]) => original[name] !== value).map(([name, value]) => name + ":" + value + " !important;");
       if (declarations.length) rules.push(entry.wrappers.map(wrapper => wrapper + "{").join("") + entry.selector + "{" + declarations.join("") + "}" + "}".repeat(entry.wrappers.length));
     }
-    const before = document.createElement("template"), after = document.createElement("template");
+    const before = document.createElement("template"), after = document.createElement("template"), previous = document.createElement("template");
     before.innerHTML = definition.template || ""; after.innerHTML = source.html;
+    previous.innerHTML = previousSource?.html || definition.template || "";
+    const encoded = after.content.querySelector("[data-composer-properties]")?.getAttribute("data-composer-properties");
+    const previousEncoded = previous.content.querySelector("[data-composer-properties]")?.getAttribute("data-composer-properties");
+    if (encoded) {
+      const values = JSON.parse(encoded), priorValues = previousEncoded ? JSON.parse(previousEncoded) : {};
+      for (const property of definition.properties || []) if (Object.hasOwn(values, property.key) && JSON.stringify(values[property.key]) !== JSON.stringify(priorValues[property.key])) {
+        let value = values[property.key];
+        if (property.type === "number") {
+          value = Number(value); if (!Number.isFinite(value)) continue;
+          value = Math.min(property.max ?? Infinity, Math.max(property.min ?? -Infinity, value));
+        } else if (property.type === "checkbox") value = value === true || value === "true" || value === 1;
+        else if (value != null && typeof value === "object") continue;
+        properties[property.key] = value;
+        sourcePropertyKeys.push(property.key);
+      }
+    }
     function selector(element) {
       if (element.id) return "#" + CSS.escape(element.id);
       const classes = [...element.classList].map(name => "." + CSS.escape(name)).join("");
@@ -16555,20 +16612,64 @@ if(window.ResizeObserver){var observer=new ResizeObserver(function(){fit(true)})
     }
     const elements = [];
     for (const element of after.content.querySelectorAll("*")) {
-      const path = selector(element), old = before.content.querySelector(path.replace(/^:scope > /, "")), edit = { selector: path, attributes: {} };
+      const path = selector(element), old = before.content.querySelector(path.replace(/^:scope > /, "")), prior = previous.content.querySelector(path.replace(/^:scope > /, "")), edit = { selector: path, attributes: {} };
       if (!element.children.length && element.textContent.trim() && element.textContent !== old?.textContent) {
         edit.text = element.textContent;
         // Keep local Inspector text in sync with explicitly edited template text.
         for (const property of definition.properties || []) {
-          if (typeof property.defaultValue === "string" && old?.textContent.trim() === property.defaultValue && /text|label|name|title/i.test(property.key) && !/color|font|size|selected/i.test(property.key)) properties[property.key] = element.textContent;
+          if (typeof property.defaultValue === "string" && old?.textContent.trim() === property.defaultValue && /text|label|name|title/i.test(property.key) && !/color|font|size|selected/i.test(property.key)) {
+            if (element.textContent !== prior?.textContent) properties[property.key] = element.textContent;
+            propertyBindings.push({ key: property.key, selector: path, text: true });
+          }
         }
       }
       for (const attribute of element.attributes) if (attribute.value !== old?.getAttribute(attribute.name)) edit.attributes[attribute.name] = attribute.value;
       if (old) for (const attribute of old.attributes) if (!element.hasAttribute(attribute.name)) edit.attributes[attribute.name] = null;
-      if (edit.attributes.style) rules.push(path + "{" + [...element.style].map(name => name + ":" + element.style.getPropertyValue(name) + " !important;").join("") + "}");
+      if (edit.attributes.style) {
+        for (const name of element.style) bindColor(path, name, element.style.getPropertyValue(name), old?.style.getPropertyValue(name), [], element.style.getPropertyValue(name) !== prior?.style.getPropertyValue(name));
+        rules.push(path + "{" + [...element.style].map(name => name + ":" + element.style.getPropertyValue(name) + " !important;").join("") + "}");
+      }
       if (edit.text != null || Object.keys(edit.attributes).length) elements.push(edit);
     }
-    return { elements, css: rules.join("\n") };
+    return { elements, css: rules.join("\n"), propertyBindings, sourcePropertyKeys };
+  }
+
+  function updateComponentSourceProperty(item, key, value) {
+    const bindings = item.componentSourceEdits?.propertyBindings?.filter(binding => binding.key === key) || [];
+    if (!bindings.length) { if (item.componentTemplate != null) materializeComponentSourceProperties(item, window.ComposerRuntime.get(item.componentId)); return; }
+    function rewrite(css) {
+      const sheet = new CSSStyleSheet(); sheet.replaceSync(css || "");
+      function visit(rules, wrappers = []) {
+        for (const rule of rules) {
+          if (rule.type === 1) for (const binding of bindings) {
+            if (!binding.text && rule.selectorText === binding.selector && JSON.stringify(wrappers) === JSON.stringify(binding.wrappers)) rule.style.setProperty(binding.name, String(value) + (binding.unit || ""), rule.style.getPropertyPriority(binding.name));
+          }
+          else if (rule.cssRules && rule.type !== 7) visit(rule.cssRules, [...wrappers, rule.cssText.slice(0, rule.cssText.indexOf("{"))]);
+        }
+      }
+      visit(sheet.cssRules); return [...sheet.cssRules].map(rule => rule.cssText).join("\n");
+    }
+    item.componentStyles = rewrite(item.componentStyles);
+    item.componentSourceEdits.css = rewrite(item.componentSourceEdits.css);
+    const template = document.createElement("template"); template.innerHTML = item.componentTemplate || "";
+    for (const binding of bindings) {
+      const selector = binding.selector.replace(/^:scope > /, ""), element = template.content.querySelector(selector);
+      if (binding.text && element) element.textContent = value;
+      if (!binding.text && element?.style.getPropertyValue(binding.name)) element.style.setProperty(binding.name, String(value) + (binding.unit || ""));
+      const edit = item.componentSourceEdits.elements.find(edit => edit.selector === binding.selector);
+      if (binding.text && edit) edit.text = value;
+      if (edit?.attributes.style && element) edit.attributes.style = element.getAttribute("style");
+    }
+    item.componentTemplate = template.innerHTML;
+    materializeComponentSourceProperties(item, window.ComposerRuntime.get(item.componentId));
+  }
+
+  function materializeComponentSourceProperties(item, definition) {
+    if (!definition) return;
+    const template = document.createElement("template"); template.innerHTML = item.componentTemplate ?? definition.template ?? "";
+    const values = Object.fromEntries((definition.properties || []).map(property => [property.key, item.properties?.[property.key] ?? property.defaultValue]));
+    template.content.firstElementChild?.setAttribute("data-composer-properties", JSON.stringify(values));
+    item.componentTemplate = template.innerHTML;
   }
 
   function splitCustomSource(source) {
@@ -28837,15 +28938,20 @@ window.ComposerSignals.subscribe('itemCount',render);render(config.defaultCount)
   };
   $("apply-source").onclick = () => {
     if (current()) {
+      if ($("source-editor").value === sourceEditorInitialValue) return;
       if (sourceEditingComponent) {
         const source = splitCustomSource($("source-editor").value);
         current().properties = current().properties || {};
-        current().componentSourceEdits = collectComponentSourceEdits(window.ComposerRuntime.get(current().componentId), source, current().properties);
+        current().componentSourceEdits = collectComponentSourceEdits(window.ComposerRuntime.get(current().componentId), source, current().properties, splitCustomSource(sourceEditorInitialValue));
         current().componentTemplate = source.html;
         current().componentStyles = source.css;
+        for (const key of current().componentSourceEdits.sourcePropertyKeys || []) updateComponentSourceProperty(current(), key, current().properties[key]);
+        materializeComponentSourceProperties(current(), window.ComposerRuntime.get(current().componentId));
       } else current().source = $("source-editor").value;
       renderItem(current());
+      renderProperties(current());
       scheduleHistory();
+      sourceEditorInitialValue = $("source-editor").value;
     }
   };
   $("add-page").onclick = addPage;

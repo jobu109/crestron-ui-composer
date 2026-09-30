@@ -390,13 +390,17 @@ for (const definition of definitions.values()) {
   if (!definition.buttonLabelCapability) continue;
   const capability = definition.buttonLabelCapability;
   for (const [key, name] of [[capability.signalKey, "Standard Label"], [capability.selectedLabelSignalKey, "Selected Label"]]) {
+    if (!key) continue;
     const signal = definition.signals.find(signal => signal.key === key);
     assert.ok(signal, definition.id + " lacks " + name);
     assert.equal(signal.name, name);
     assert.equal(signal.type, "serial");
     assert.equal(signal.direction, "input");
-    assert.equal(signal.optionalProperty, "showLabel");
+    assert.equal(signal.optionalProperty, undefined);
   }
   assert.notEqual(capability.signalKey, capability.selectedLabelSignalKey);
+  const optional = definition.signals.find(signal => signal.key === capability.optionalSignalKey);
+  assert.equal(optional.optionalProperty, "showLabel");
+  assert.notEqual(optional.key, capability.signalKey);
 }
 console.log("PASS separate standard and selected serial label inputs");

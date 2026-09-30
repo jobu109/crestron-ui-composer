@@ -3026,7 +3026,7 @@ run("Composer catalog enhancements remain wired through editor and desktop packa
   assert.ok(runtime.includes('value: "above", label: "Above component"'));
   assert.ok(runtime.includes('value: "below", label: "Below component"'));
   assert.ok(runtime.includes('key: "labelExternalWidth"'));
-  assert.ok(runtime.includes('target.style.transform = placement === "above"'));
+  assert.ok(runtime.includes('label.style.transform = placement === "above"'));
   assert.ok(runtime.includes('entry.category !== "Multi-Devices"'));
   assert.ok(standardButton.includes('key:"backgroundColor"'));
   assert.ok(standardButton.includes('key:"backgroundOpacity"'));

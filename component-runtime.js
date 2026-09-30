@@ -692,125 +692,51 @@
   }
   function wireButtonLabel(root, definition, properties, signals) {
     const capability = definition?.buttonLabelCapability;
-    if (!capability) return function () {};
-    const enabled = !(
-        properties?.showLabel === false ||
-        properties?.showLabel === 0 ||
-        properties?.showLabel === "0" ||
-        String(properties?.showLabel).toLowerCase() === "false"
-      ),
-      cleanups = [];
-    let remoteText = "", remoteSelectedText = "", selected = false;
-    function authoredLabelTargets() {
-      let targets = capability.selector
-        ? [...root.querySelectorAll(capability.selector)]
-        : [];
-      if (!targets.length && !capability.synthetic) {
-        const selector =
-          '[data-composer-label],.standard-button-label,.hold-label,.countdown-label,.safety-label,.nm-label,.ng-label,.sss-system,.btn-txt,.label,.text,.name';
-        targets = [...root.querySelectorAll(selector)].filter(
-          (element) => !element.closest(".composer-button-label"),
-        );
+    if (!capability) return () => {};
+    const enabled = properties?.showLabel === true || properties?.showLabel === 1 || properties?.showLabel === "1" || properties?.showLabel === "true";
+    let remote = "", selected = false, standard = "", selectedText = "";
+    const label = document.createElement("span"); label.className = "composer-button-label";
+    function render() {
+      const placement = properties?.labelPlacement || "below", gap = Math.max(0, Number(properties?.labelGap) || 0);
+      label.textContent = remote || properties?.optionalLabelText || "Label";
+      label.style.cssText = "position:absolute;z-index:75;pointer-events:none;line-height:1.15;white-space:nowrap;";
+      label.style.display = enabled ? "block" : "none";
+      label.style.color = properties?.labelColor || "#ffffff";
+      label.style.fontSize = (Number(properties?.labelFontSize) || 18) + "px";
+      label.style.fontWeight = String(properties?.labelFontWeight || "700");
+      label.style.textAlign = properties?.labelHorizontalAlignment || "center";
+      label.style.whiteSpace = properties?.wrapText ? "normal" : "nowrap";
+      label.style.width = (Number(properties?.labelExternalWidth) || 140) + "%";
+      if (placement === "left" || placement === "right") {
+        label.style.top = "50%"; label.style.transform = placement === "left" ? "translate(-100%,-50%)" : "translateY(-50%)";
+        label.style.left = placement === "left" ? -gap + "px" : "calc(100% + " + gap + "px)";
+      } else {
+        label.style.left = "50%"; label.style.top = placement === "above" ? -gap + "px" : placement === "inside" ? "50%" : "calc(100% + " + gap + "px)";
+        label.style.transform = placement === "above" ? "translate(-50%,-100%)" : placement === "inside" ? "translate(-50%,-50%)" : "translateX(-50%)";
       }
-      return targets;
-    }
-    function overlayLabel() {
-      let label = root.querySelector(":scope > .composer-button-label");
-      if (!label) {
-        label = document.createElement("span");
-        label.className = "composer-button-label";
-        label.dataset.composerLabel = "true";
-        root.appendChild(label);
+      if (placement === "inside") {
+        const padding = Math.max(0, Number(properties?.labelPadding) || 0), vertical = properties?.labelVerticalAlignment || "center";
+        label.style.width = "calc(100% - " + (padding * 2) + "px)";
+        if (vertical === "top") { label.style.top = padding + "px"; label.style.transform = "translateX(-50%)"; }
+        if (vertical === "bottom") { label.style.top = "auto"; label.style.bottom = padding + "px"; label.style.transform = "translateX(-50%)"; }
       }
-      return label;
+      if (enabled) { root.style.overflow = "visible"; root.style.position = "relative"; const holder = root.closest(".widget,.scoped-widget,.wl-widget,.wl-item"); if (holder) holder.style.overflow = "visible"; }
     }
-    function apply() {
-      const placement = properties?.labelPlacement || "inside",
-        external = placement === "above" || placement === "below",
-        authoredTargets = authoredLabelTargets(),
-        targets = external || !authoredTargets.length
-          ? [overlayLabel()]
-          : authoredTargets,
-        localText = properties?.[capability.localKey || "labelText"] ?? definition.name ?? "Label",
-        stateText = selected ? remoteSelectedText || properties?.[capability.selectedLocalKey] || String(localText) : remoteText,
-        text = stateText || (external && authoredTargets[0]?.textContent
-          ? authoredTargets[0].textContent
-          : String(localText)),
-        size = Math.max(6, Number(properties?.labelFontSize) || 18),
-        padding = Math.max(0, Number(properties?.labelPadding) || 6),
-        gap = Math.max(0, Number(properties?.labelGap) || 0),
-        width = Math.max(100, Math.min(400, Number(properties?.labelExternalWidth) || 140)),
-        horizontal = properties?.labelHorizontalAlignment || "center",
-        vertical = properties?.labelVerticalAlignment || "center";
-      root.style.overflow = "visible";
-      root.style.position = "relative";
-      const holder = root.closest(".widget,.scoped-widget,.wl-widget,.wl-item");
-      if (holder) holder.style.overflow = "visible";
-      authoredTargets.forEach((target) => {
-        target.style.visibility = external && enabled ? "hidden" : "";
-        target.style.display = enabled ? "" : "none";
-      });
-      targets.forEach((target) => {
-        target.style.display = enabled ? "" : "none";
-        const hasStateTextColors = definition.properties?.some(property => property.key === "textColor") &&
-          definition.properties?.some(property => property.key === "selectedTextColor");
-        if (hasStateTextColors) {
-          // Native labels retain their component's state CSS, including pressed states.
-          if (target.classList.contains("composer-button-label"))
-            target.style.color = (authoredTargets[0] ? getComputedStyle(authoredTargets[0]).color : (selected ? properties?.selectedTextColor : properties?.textColor)) || properties?.textColor || "#ffffff";
-        } else target.style.color = properties?.labelColor || "#ffffff";
-        target.style.fontSize = `${size}px`;
-        target.style.fontWeight = String(properties?.labelFontWeight || "700");
-        target.style.textAlign = horizontal;
-        target.style.whiteSpace = properties?.wrapText ? "normal" : "nowrap";
-        if (target.classList.contains("composer-button-label")) {
-          if (target.textContent !== text) target.textContent = text;
-          target.style.position = "absolute";
-          target.style.zIndex = "75";
-          target.style.pointerEvents = "none";
-          target.style.lineHeight = "1.15";
-          target.style.overflow = "hidden";
-          target.style.textOverflow = "ellipsis";
-          if (external) {
-            target.style.left = "50%";
-            target.style.right = "auto";
-            target.style.width = `${width}%`;
-            target.style.top = placement === "above" ? `${-gap}px` : `calc(100% + ${gap}px)`;
-            target.style.bottom = "auto";
-            target.style.transform = placement === "above"
-              ? "translate(-50%,-100%)"
-              : "translateX(-50%)";
-          } else {
-            target.style.left = `${padding}px`;
-            target.style.right = `${padding}px`;
-            target.style.width = "auto";
-            target.style.top = vertical === "top" ? `${padding}px` : vertical === "bottom" ? "auto" : "50%";
-            target.style.bottom = vertical === "bottom" ? `${padding}px` : "auto";
-            target.style.transform = vertical === "center" ? "translateY(-50%)" : "none";
-          }
-        } else if ((stateText || remoteText || remoteSelectedText) && target.textContent !== text) target.textContent = text;
-      });
+    // Native state labels are independent of the additional optional label.
+    function renderNative() {
+      const text = selected ? selectedText || properties?.[capability.selectedLocalKey] || standard || properties?.[capability.nativeLocalKey] : standard || properties?.[capability.nativeLocalKey];
+      if (text == null || !capability.nativeLocalKey) return;
+      const targets = root.querySelectorAll('[data-composer-label],.standard-button-label,.hold-label,.countdown-label,.safety-label,.nm-label,.ng-label,.sss-system,.btn-txt,.flat-label,.label,.text,.name');
+      targets.forEach(target => { if (!target.children.length && !target.closest('.composer-button-label')) target.textContent = String(text); });
     }
-    if (enabled && capability.signalKey && signals?.subscribe)
-      signals.subscribe(capability.signalKey, (value) => {
-        remoteText = String(value ?? "");
-        apply();
-      });
-    if (enabled && capability.selectedLabelSignalKey && signals?.subscribe)
-      signals.subscribe(capability.selectedLabelSignalKey, value => {
-        remoteSelectedText = String(value ?? "");
-        apply();
-      });
-    if (enabled && capability.selectedStateSignalKey && signals?.subscribe)
-      signals.subscribe(capability.selectedStateSignalKey, value => {
-        selected = value === true || value === 1 || value === "1";
-        apply();
-      });
-    apply();
-    const observer = new MutationObserver(() => apply());
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
-    cleanups.push(() => observer.disconnect());
-    return () => cleanups.splice(0).forEach((cleanup) => cleanup());
+    root.appendChild(label); render();
+    if (signals?.subscribe) {
+      signals.subscribe(capability.optionalSignalKey, value => { remote = String(value ?? ""); render(); });
+      if (capability.signalKey) signals.subscribe(capability.signalKey, value => { standard = String(value ?? ""); renderNative(); });
+      if (capability.selectedLabelSignalKey) signals.subscribe(capability.selectedLabelSignalKey, value => { selectedText = String(value ?? ""); renderNative(); });
+      if (capability.selectedStateSignalKey) signals.subscribe(capability.selectedStateSignalKey, value => { selected = value === true || value === 1 || value === "1"; renderNative(); });
+    }
+    return () => label.remove();
   }
   function wireIconPlacement(root, definition, properties) {
     if (!definition?.iconPlacementCapability) return function () {};
@@ -887,10 +813,12 @@
       iconProperty = definition.properties.find(
         (property) => property.iconPicker && !/^selected/i.test(property.key || ""),
       );
-    if (buttonCategory) {
+    if (buttonCategory || definition.optionalContent.showLabel || definition.properties.some(property => property.key === "showLabel")) {
       definition.buttonLabelCapability = {
         synthetic: !dedicatedLabelProperty,
-        localKey: dedicatedLabelProperty?.key || "labelText",
+        localKey: "optionalLabelText",
+        nativeLocalKey: buttonCategory ? dedicatedLabelProperty?.key || "" : "",
+        optionalSignalKey: "optionalLabel",
         signalKey: "",
       };
       const labelProperties = [
@@ -899,17 +827,19 @@
         { key: "labelColor", name: "Label color", type: "color", defaultValue: definition.properties.find((property) => property.key === "textColor")?.defaultValue || "#ffffff", group: "Optional Label" },
         { key: "labelFontWeight", name: "Label weight", type: "select", options: [{ value: "400", label: "Regular" }, { value: "600", label: "Semi-bold" }, { value: "700", label: "Bold" }, { value: "800", label: "Extra bold" }], defaultValue: "700", group: "Optional Label" },
         { key: "labelHorizontalAlignment", name: "Label horizontal alignment", type: "select", options: [{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }], defaultValue: "center", group: "Optional Label" },
-        { key: "labelPlacement", name: "Label placement", type: "select", options: [{ value: "above", label: "Above component" }, { value: "inside", label: "Inside component" }, { value: "below", label: "Below component" }], defaultValue: "inside", group: "Optional Label" },
+        { key: "labelPlacement", name: "Label placement", type: "select", options: [{ value: "above", label: "Above component" }, { value: "inside", label: "Inside component" }, { value: "below", label: "Below component" }, { value: "left", label: "Left of component" }, { value: "right", label: "Right of component" }], defaultValue: "below", group: "Optional Label" },
         { key: "labelVerticalAlignment", name: "Label vertical placement", type: "select", options: [{ value: "top", label: "Top" }, { value: "center", label: "Center" }, { value: "bottom", label: "Bottom" }], defaultValue: "center", group: "Optional Label" },
         { key: "labelGap", name: "Outside label gap (px)", type: "number", min: 0, max: 200, defaultValue: 8, group: "Optional Label" },
         { key: "labelExternalWidth", name: "Outside label width (%)", type: "number", min: 100, max: 400, defaultValue: 140, group: "Optional Label" },
         { key: "labelPadding", name: "Label edge padding (px)", type: "number", min: 0, max: 100, defaultValue: 6, group: "Optional Label" },
       ];
-      if (!dedicatedLabelProperty)
-        labelProperties.splice(1, 0, { key: "labelText", name: "Default label", type: "text", defaultValue: definition.name || "Button", group: "Optional Label" });
+      labelProperties.splice(1, 0, { key: "optionalLabelText", name: "Optional label text", type: "text", defaultValue: "Label", group: "Optional Label" });
+      delete definition.optionalContent.showLabel;
+      if (!definition.signals.some(signal => signal.key === "optionalLabel")) definition.signals.push({ key: "optionalLabel", name: "Optional Label", type: "serial", direction: "input", defaultValue: definition.id + ".OptionalLabel", optionalProperty: "showLabel" });
       labelProperties.forEach((property) => {
         if (!definition.properties.some((entry) => entry.key === property.key))
           definition.properties.push(property);
+        else if (property.key === "showLabel") Object.assign(definition.properties.find(entry => entry.key === "showLabel"), property);
       });
       if (iconProperty) {
         definition.iconPlacementCapability = true;
@@ -971,6 +901,7 @@
         (signal) =>
           signal.type === "serial" &&
           signal.direction === "input" &&
+          signal.key !== "optionalLabel" &&
           /label|name|text|title/i.test(`${signal.key || ""} ${signal.name || ""}`),
       );
       if (!labelSignal) {
@@ -984,7 +915,7 @@
         definition.signals.push(labelSignal);
       }
       labelSignal.name = "Standard Label";
-      labelSignal.optionalProperty = "showLabel";
+      delete labelSignal.optionalProperty;
       definition.buttonLabelCapability.signalKey = labelSignal.key;
       let selectedLabelSignal = definition.signals.find(signal => signal.key === "selectedLabel" && signal.type === "serial" && signal.direction === "input");
       if (!selectedLabelSignal) {
@@ -992,7 +923,7 @@
         definition.signals.push(selectedLabelSignal);
       }
       selectedLabelSignal.name = "Selected Label";
-      selectedLabelSignal.optionalProperty = "showLabel";
+      delete selectedLabelSignal.optionalProperty;
       definition.buttonLabelCapability.selectedLabelSignalKey = selectedLabelSignal.key;
       definition.buttonLabelCapability.selectedStateSignalKey = definition.signals.find(signal => signal.type === "digital" && signal.direction === "input" && /^(selected|active|feedback)$/i.test(signal.key))?.key || "";
       definition.buttonLabelCapability.selectedLocalKey = definition.properties.find(property => /^(selectedText|selectedLabel|selectedName|selectedTitle)$/.test(property.key))?.key || "";

@@ -26,8 +26,11 @@ const probe = function () {
     const equal = (actual, expected) => { if (actual !== expected) throw Error(actual + " != " + expected); };
     equal(getComputedStyle(buttons[0]).backgroundColor, "rgba(255, 0, 0, 0.25)");
     equal(getComputedStyle(buttons[1]).backgroundColor, "rgba(0, 0, 255, 0.75)");
-    const label = buttons[0].parentElement.querySelector('.composer-button-label') || buttons[0].querySelector('.standard-button-label');
+    const label = buttons[0].querySelector('.standard-button-label');
+    const optional = buttons[0].parentElement.querySelector('.composer-button-label');
+    equal(getComputedStyle(optional).color, 'rgb(0, 0, 255)');
     equal(getComputedStyle(label).color, 'rgb(255, 0, 0)');
+    equal(getComputedStyle(optional).color, 'rgb(0, 0, 255)');
     const feedback = (address, value) => {
       const suffix = {'201':'.Label','202':'.SelectedLabel','203':'.Selected'}[address];
       const subscriptions = window.__labelSubscriptions.filter(entry => entry.address === address || entry.address.endsWith(suffix));

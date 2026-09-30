@@ -112,7 +112,8 @@ for (const [id, definition] of definitions) {
       dynamicUsage = new RegExp(`signals\\.${method}\\(\\s*[A-Za-z_$][\\w$]*`);
     const sharedHoldSignal =
       signal.key === definition.standardHoldCapability?.heldKey;
-    if (!usage.test(mountSource) && !dynamicUsage.test(mountSource) && !signal.optionalProperty && !sharedHoldSignal)
+    const sharedLabelSignal = [definition.buttonLabelCapability?.signalKey, definition.buttonLabelCapability?.selectedLabelSignalKey].includes(signal.key);
+    if (!usage.test(mountSource) && !dynamicUsage.test(mountSource) && !signal.optionalProperty && !sharedHoldSignal && !sharedLabelSignal)
       problem(id, `${signal.direction} signal ${signal.key} is declared but never used by the runtime`);
   });
   for (const match of mountSource.matchAll(/signals\.(?:subscribe|publish)\(\s*["']([^"']+)["']/g))
@@ -293,7 +294,7 @@ buttonDefinitions.forEach((definition) => {
   );
   assert.deepEqual(
     (placement?.options || []).map((option) => option.value),
-    ["above", "inside", "below"],
+    ["above", "inside", "below", "left", "right"],
     `${definition.id} cannot place its label outside the component bounds`,
   );
   assert.ok(
