@@ -502,11 +502,16 @@ if (chromePath) {
     assert.equal(interactionErrors, "", `Widget List interaction/feedback error: ${interactionErrors}`);
     console.log(`PASS mounted ${mounted} included widgets; exercised ${published} publishes / ${subscriptions} feedback subscriptions; verified ${selectedVisuals} selected visuals, ${namedText} labels, ${analogText} analog displays, and ${iconSizeVariables + textSizeVariables + glowVariables} included style variables`);
   } finally {
-    fs.rmSync(smokeDirectory, {
-      recursive: true,
-      force: true,
-      maxRetries: 15,
-      retryDelay: 250,
-    });
+    try {
+      fs.rmSync(smokeDirectory, {
+        recursive: true,
+        force: true,
+        maxRetries: 15,
+        retryDelay: 250,
+      });
+    } catch (error) {
+      if (error.code !== "EPERM" && error.code !== "EBUSY") throw error;
+      console.warn(`Chrome still holds its temporary profile: ${smokeDirectory}`);
+    }
   }
 } else console.log("SKIP Widget List browser smoke test (Google Chrome not installed)");
