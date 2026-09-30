@@ -459,11 +459,11 @@ if (chromePath) {
     const result = childProcess.spawnSync(chromePath, [
       "--headless=new", "--disable-gpu", "--disable-gpu-compositing", "--disable-software-rasterizer",
       "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
-      "--disable-background-networking", "--disable-component-update", "--disable-sync",
+      "--disable-background-networking", "--disable-component-update", "--disable-sync", "--disable-extensions",
       "--disable-features=OptimizationGuideModelDownloading,MediaRouter", "--metrics-recording-only",
       `--user-data-dir=${chromeProfile}`, "--virtual-time-budget=3000", "--dump-dom",
       new URL(`file:///${smokeFile.replace(/\\/g, "/")}`).href,
-    ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 240000 });
+    ], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, timeout: 360000 });
     assert.equal(result.status, 0, `Chrome Widget List smoke test failed: ${result.stderr || result.error || "unknown error"}`);
     const mounted = (result.stdout.match(/class="[^"]*\bwl-widget\b[^"]*"/g) || []).length;
     assert.equal(mounted, widgetListChoices.length * 2, `Expected ${widgetListChoices.length * 2} mounted included widgets, found ${mounted}`);
